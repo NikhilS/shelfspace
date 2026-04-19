@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "A user of the application.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Library": {
+      "title": "Library",
+      "description": "A collection of books.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "sharedWith": {
+          "type": "array",
+          "items": { "type": "string", "format": "email" },
+          "description": "List of emails this library is shared with."
+        },
+        "heroImageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId", "createdAt"]
+    },
+    "Book": {
+      "title": "Book",
+      "description": "A book in a library.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "isbn": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "publishedDate": { "type": "string" },
+        "genre": { "type": "string" },
+        "addedAt": { "type": "string", "format": "date-time" },
+        "addedBy": { "type": "string" }
+      },
+      "required": ["title", "addedAt", "addedBy"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "A review for a book.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "rating": { "type": "number" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "rating", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles."
+    },
+    "/libraries/{libraryId}": {
+      "schema": { "$ref": "#/entities/Library" },
+      "description": "Libraries owned by users."
+    },
+    "/libraries/{libraryId}/books/{bookId}": {
+      "schema": { "$ref": "#/entities/Book" },
+      "description": "Books within a library."
+    },
+    "/libraries/{libraryId}/books/{bookId}/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/Review" },
+      "description": "Reviews for a book."
+    }
+  }
+}
