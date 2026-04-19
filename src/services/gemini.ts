@@ -44,6 +44,7 @@ export async function extractBooksFromImage(base64Image: string, mimeType: strin
 
 export async function extractBooksFromCsv(csvText: string): Promise<{ title: string, author: string, isbn?: string, genre?: string }[]> {
   try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `You are a data extraction assistant. I am providing you with the raw text of a CSV file containing a user's book library (e.g., from Goodreads, Amazon, or a custom spreadsheet).

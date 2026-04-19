@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, collection, query, onSnapshot, addDoc, deleteDoc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
-import { ArrowLeft, Plus, Share2, Settings, Trash2, X, Sparkles, LayoutGrid, List, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown, LogOut, Search, Filter, Download } from 'lucide-react';
+import { ArrowLeft, Plus, Share2, Settings, Trash2, X, Sparkles, LayoutGrid, List, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown, LogOut, Search, Filter, Download, Book as BookIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { GoogleGenAI, Type } from '@google/genai';
 import AddBookModal from '../components/AddBookModal';
@@ -870,7 +870,7 @@ export default function LibraryView() {
             <div className="text-center py-20 bg-surface rounded-2xl shadow-sm border border-border/60 relative overflow-hidden">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-accent/5 to-transparent pointer-events-none" />
               <div className="w-20 h-20 bg-paper rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner border border-border/50 relative z-10">
-                <Book size={32} className="text-accent" strokeWidth={1.5} />
+                <BookIcon size={32} className="text-accent" strokeWidth={1.5} />
               </div>
               <h3 className="text-2xl font-serif font-bold mb-2 text-ink relative z-10">No books found</h3>
               <p className="text-muted text-base max-w-md mx-auto font-medium relative z-10">

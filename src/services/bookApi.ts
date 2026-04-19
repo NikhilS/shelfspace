@@ -5,6 +5,7 @@ export interface BookDetails {
   coverUrl: string;
   publishedDate: string;
   genre?: string;
+  description?: string;
 }
 
 function extractIsbn(identifiers: any[]): string {
