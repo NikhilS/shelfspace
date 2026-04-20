@@ -59,7 +59,7 @@ export default function RecommendationsModal({ isOpen, onClose, libraryBooks }: 
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-sans" 
+          className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans" 
           onClick={onClose}
         >
           <motion.div 
@@ -67,28 +67,28 @@ export default function RecommendationsModal({ isOpen, onClose, libraryBooks }: 
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 10 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
-            className="bg-paper rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl relative"
+            className="bg-surface/90 backdrop-blur-xl rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl relative border border-border/40"
             onClick={e => e.stopPropagation()}
           >
-            <div className="bg-surface px-8 py-6 border-b border-border flex items-center justify-between sticky top-0 z-10">
+            <div className="bg-surface/50 px-8 py-6 border-b border-border/40 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-accent text-white rounded-xl">
-              <Sparkles size={24} />
+            <div className="p-2.5 bg-accent text-surface rounded-xl shadow-[0_4px_10px_rgba(0,0,0,0.1)]">
+              <Sparkles size={24} strokeWidth={2} />
             </div>
             <div>
-              <h2 className="text-2xl font-serif font-bold text-ink">AI Recommendations</h2>
-              <p className="text-sm text-muted">Based on your current library</p>
+              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-ink tracking-tight">AI Recommendations</h2>
+              <p className="text-sm font-medium text-muted">Based on your current library</p>
             </div>
           </div>
           <button 
             onClick={onClose} 
-            className="p-2 text-muted hover:bg-paper rounded-full transition-colors"
+            className="p-2 text-muted hover:bg-surface border border-transparent hover:border-border/60 rounded-full transition-colors"
           >
-            <X size={24} />
+            <X size={20} strokeWidth={2} />
           </button>
         </div>
 
-        <div className="p-8 overflow-y-auto flex-1">
+        <div className="p-8 overflow-y-auto flex-1 bg-surface/30 custom-scrollbar">
           {libraryBooks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted text-center">
               <BookOpen size={48} className="mb-4 opacity-20" />

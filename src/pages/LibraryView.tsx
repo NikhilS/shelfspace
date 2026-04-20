@@ -62,7 +62,7 @@ export default function LibraryView() {
   const [groupBy, setGroupBy] = useState<GroupOption>('none');
   const [aiGroups, setAiGroups] = useState<{category: string, books: Book[]}[]>([]);
   const [isGrouping, setIsGrouping] = useState(false);
-  const [viewMode, setViewMode] = useState<'standard' | 'table'>('standard');
+  const [viewMode, setViewMode] = useState<'standard' | 'table'>('table');
   const [booksPerShelf, setBooksPerShelf] = useState(6);
   const mainRef = useRef<HTMLElement>(null);
 
@@ -668,18 +668,18 @@ export default function LibraryView() {
       };
 
       return (
-        <div className="bg-surface rounded-2xl shadow-sm border border-border/60 overflow-hidden font-sans">
+        <div className="bg-surface/60 backdrop-blur-sm rounded-3xl shadow-sm border border-border/40 overflow-hidden font-sans">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-paper border-b border-border/60 text-muted text-xs uppercase tracking-wider">
-                  <th className="px-5 py-3 font-bold cursor-pointer hover:bg-black/5 transition-colors" onClick={() => handleSort('title')}>
+                <tr className="bg-black/5 border-b border-border/40 text-muted text-xs uppercase tracking-wider">
+                  <th className="px-6 py-4 font-bold cursor-pointer hover:bg-black/5 transition-colors" onClick={() => handleSort('title')}>
                     <div className="flex items-center gap-2">Title <SortIcon column="title" /></div>
                   </th>
-                  <th className="px-5 py-3 font-bold cursor-pointer hover:bg-black/5 transition-colors" onClick={() => handleSort('author')}>
+                  <th className="px-6 py-4 font-bold cursor-pointer hover:bg-black/5 transition-colors" onClick={() => handleSort('author')}>
                     <div className="flex items-center gap-2">Author <SortIcon column="author" /></div>
                   </th>
-                  <th className="px-5 py-3 font-bold cursor-pointer hover:bg-black/5 transition-colors" onClick={() => handleSort('added')}>
+                  <th className="px-6 py-4 font-bold cursor-pointer hover:bg-black/5 transition-colors" onClick={() => handleSort('added')}>
                     <div className="flex items-center gap-2">Added <SortIcon column="added" /></div>
                   </th>
                 </tr>
@@ -710,22 +710,22 @@ export default function LibraryView() {
                         onClick={() => setSelectedBook(book)}
                         className="hover:bg-paper/80 transition-colors cursor-pointer group"
                       >
-                        <td className="px-5 py-3">
+                        <td className="px-6 py-4">
                           <div className="flex items-center gap-4">
-                            <div className={`w-10 h-14 rounded-md shadow-sm overflow-hidden flex-shrink-0 ${!book.coverUrl ? `bg-gradient-to-br ${gradientClass}` : 'bg-surface'}`}>
+                            <div className={`w-12 h-16 rounded-md shadow-sm overflow-hidden flex-shrink-0 ${!book.coverUrl ? `bg-gradient-to-br ${gradientClass}` : 'bg-surface'}`}>
                               {book.coverUrl ? (
                                 <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center">
-                                  <span className="text-[8px] font-serif font-bold text-ink/50 px-1 text-center line-clamp-3 leading-tight">{toTitleCase(book.title)}</span>
+                                  <span className="text-[8px] font-serif font-bold text-ink/70 px-1 text-center line-clamp-3 leading-tight">{toTitleCase(book.title)}</span>
                                 </div>
                               )}
                             </div>
-                            <div className="font-serif font-bold text-ink text-sm sm:text-base line-clamp-2">{toTitleCase(book.title)}</div>
+                            <div className="font-serif font-medium text-ink text-sm sm:text-base line-clamp-2 max-w-sm tracking-tight">{toTitleCase(book.title)}</div>
                           </div>
                         </td>
-                        <td className="px-5 py-3 text-muted font-medium text-sm">{toTitleCase(book.author)}</td>
-                        <td className="px-5 py-3 text-muted text-xs font-medium">
+                        <td className="px-6 py-4 text-muted font-medium text-sm">{toTitleCase(book.author)}</td>
+                        <td className="px-6 py-4 text-muted text-xs font-medium">
                           {book.addedAt 
                             ? (typeof book.addedAt.toMillis === 'function' 
                                 ? new Date(book.addedAt.toMillis()).toLocaleDateString() 
@@ -759,31 +759,35 @@ export default function LibraryView() {
     }
 
     return (
-      <div className="bg-paper p-4 sm:p-6 rounded-t-[32px] shadow-inner border-x-4 sm:border-x-8 border-t-4 sm:border-t-8 border-accent relative overflow-hidden">
+      <div className="bg-surface/50 border border-border/40 p-4 sm:p-8 rounded-3xl backdrop-blur-sm relative overflow-hidden">
         {shelves.map((shelfBooks, shelfIdx) => (
-          <div key={shelfIdx} className="mb-10 relative">
-            <div className="flex items-end gap-3 sm:gap-5 px-2 sm:px-4 pt-6 h-60 sm:h-64 z-10 relative">
+          <div key={shelfIdx} className="mb-14 last:mb-2 relative">
+            <div className="flex items-end gap-4 sm:gap-6 px-2 sm:px-6 pt-4 h-64 sm:h-72 z-10 relative">
               <AnimatePresence>
                 {shelfBooks.map((book, idx) => (
                   <motion.div
                     key={book.id}
-                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                    initial={{ opacity: 0, y: 15, scale: 0.98 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.3, delay: idx * 0.05, ease: 'easeOut' }}
+                    transition={{ duration: 0.35, delay: idx * 0.05, ease: [0.25, 0.1, 0.25, 1.0] }}
                   >
                     <BookCard book={book} onDelete={handleDeleteBook} onClick={() => setSelectedBook(book)} canEdit={canEdit} />
                   </motion.div>
                 ))}
               </AnimatePresence>
               {shelfBooks.length === 0 && (
-                <div className="w-full h-full flex items-center justify-center opacity-40 font-sans text-sm pb-6 text-accent">
+                <div className="w-full h-full flex flex-col items-center justify-center opacity-40 font-sans text-sm pb-8 text-ink/70">
+                  <div className="w-12 h-12 mb-3 border-2 border-dashed border-ink/40 rounded-full flex items-center justify-center">
+                    <BookIcon size={20} className="text-ink/60" />
+                  </div>
                   {emptyMessage}
                 </div>
               )}
             </div>
-            <div className="absolute bottom-0 left-[-20px] sm:left-[-32px] right-[-20px] sm:right-[-32px] h-6 bg-accent shadow-[0_6px_10px_rgba(0,0,0,0.2)] z-0 rounded-sm border-b-2 border-ink/20" />
-            <div className="absolute bottom-[-10px] left-[-18px] sm:left-[-30px] right-[-18px] sm:right-[-30px] h-3 bg-ink/20 z-0 rounded-b-sm" />
+            {/* Minimalist shelf line */}
+            <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-gradient-to-r from-transparent via-border to-transparent z-0 rounded-full opacity-70" />
+            <div className="absolute bottom-[-14px] left-8 right-8 h-8 bg-black/5 blur-md -z-10 rounded-full" />
           </div>
         ))}
       </div>
@@ -814,100 +818,97 @@ export default function LibraryView() {
         </div>
       )}
       
-      <div className="sticky top-0 z-40 flex flex-col shadow-sm">
-        <header className="bg-surface/80 backdrop-blur-xl px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 border-b border-border/60">
+      <div className="sticky top-0 z-40 flex flex-col shadow-sm border-b border-border/40">
+        <header className="bg-surface/90 backdrop-blur-xl px-4 sm:px-8 py-4 sm:py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0 transition-all">
           <div className="flex items-center justify-between w-full sm:w-auto">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <Link to="/" className="p-2 text-muted hover:text-ink hover:bg-paper rounded-full transition-colors flex-shrink-0 border border-transparent hover:border-border/50">
-                <ArrowLeft size={20} strokeWidth={2} />
+            <div className="flex items-center gap-4 sm:gap-6">
+              <Link to="/" className="p-2 text-muted hover:text-ink bg-surface border border-border/40 shadow-sm hover:shadow hover:bg-paper hover:border-border/60 rounded-full transition-all flex-shrink-0 group">
+                <ArrowLeft size={18} strokeWidth={2} className="group-hover:-translate-x-0.5 transition-transform" />
               </Link>
-              <div className="min-w-0">
-                <h1 className="text-xl sm:text-3xl font-serif font-bold truncate tracking-tight text-ink">{toTitleCase(library.name)}</h1>
-                <p className="text-[10px] sm:text-xs font-sans text-muted truncate font-bold mt-0.5 uppercase tracking-wider">
-                  {books.length} {books.length === 1 ? 'book' : 'books'} • {isOwner ? 'Owned by you' : `Shared by ${toTitleCase(library.ownerName)}`}
-                </p>
+              <div className="min-w-0 flex flex-col">
+                <h1 className="text-2xl sm:text-3xl font-serif font-bold truncate tracking-tight text-ink">{toTitleCase(library.name)}</h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] sm:text-xs font-sans text-muted font-bold uppercase tracking-wider bg-black/5 px-2 py-0.5 rounded-full">
+                    {books.length} {books.length === 1 ? 'book' : 'books'}
+                  </span>
+                  <span className="text-[10px] sm:text-xs font-sans text-muted font-medium tracking-wide">
+                    {isOwner ? 'Owned by you' : `Shared by ${toTitleCase(library.ownerName)}`}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar pb-1 sm:pb-0 w-full sm:w-auto">
-            <div className="flex items-center bg-paper rounded-xl p-1 mr-1 sm:mr-2 border border-border flex-shrink-0">
+          <div className="flex items-center gap-3 overflow-x-auto hide-scrollbar pb-1 sm:pb-0 w-full sm:w-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <div className="flex items-center bg-black/5 rounded-full p-1 border border-border/40 flex-shrink-0">
               <button
                 onClick={() => setViewMode('standard')}
-                className={`p-1.5 rounded-lg transition-all ${viewMode === 'standard' ? 'bg-surface shadow-sm text-ink' : 'text-muted hover:text-ink'}`}
+                className={`p-1.5 sm:px-3 sm:py-1.5 rounded-full transition-all flex items-center gap-2 text-sm font-medium ${viewMode === 'standard' ? 'bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-ink' : 'text-muted hover:text-ink'}`}
                 title="Standard View"
               >
                 <LayoutGrid size={16} strokeWidth={2} />
+                <span className="hidden lg:inline">Grid</span>
               </button>
               <button
                 onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-lg transition-all ${viewMode === 'table' ? 'bg-surface shadow-sm text-ink' : 'text-muted hover:text-ink'}`}
+                className={`p-1.5 sm:px-3 sm:py-1.5 rounded-full transition-all flex items-center gap-2 text-sm font-medium ${viewMode === 'table' ? 'bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-ink' : 'text-muted hover:text-ink'}`}
                 title="Table View"
               >
                 <TableIcon size={16} strokeWidth={2} />
+                <span className="hidden lg:inline">Table</span>
               </button>
             </div>
+            
+            <div className="w-[1px] h-6 bg-border/60 hidden sm:block mx-1"></div>
+
             <button
               onClick={() => setIsRecommendationsModalOpen(true)}
-              className="flex items-center gap-1.5 bg-paper text-accent px-3 sm:px-4 py-2 rounded-full hover:bg-surface transition-all font-sans text-xs border border-accent/20 flex-shrink-0 font-bold shadow-sm"
+              className="flex items-center gap-2 bg-gradient-to-br from-paper to-surface text-accent px-4 py-2 rounded-full hover:shadow-md transition-all font-sans text-xs sm:text-sm border border-accent/20 flex-shrink-0 font-bold shadow-sm group"
             >
-              <Sparkles size={14} strokeWidth={2.5} />
-              <span className="hidden sm:inline">Recommendations</span>
+              <Sparkles size={16} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
+              <span className="hidden sm:inline">AI Picks</span>
             </button>
+            
             {canEdit && (
               <button
                 onClick={() => setIsAddModalOpen(true)}
-                className="flex items-center gap-1.5 bg-accent text-white px-4 sm:px-5 py-2 rounded-full hover:bg-accent/90 hover:shadow-lg hover:shadow-accent/30 hover:-translate-y-0.5 transition-all font-sans text-xs flex-shrink-0 font-bold"
+                className="flex items-center gap-2 bg-ink text-surface px-4 sm:px-5 py-2 rounded-full hover:bg-ink/90 hover:shadow-md hover:-translate-y-0.5 transition-all font-sans text-xs sm:text-sm flex-shrink-0 font-medium"
               >
                 <Plus size={16} strokeWidth={2.5} />
                 <span className="hidden sm:inline">Add Book</span>
               </button>
             )}
+            
             {canEdit && (
               <button
                 onClick={() => setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-full transition-all border ${isAdvancedSettingsOpen ? 'bg-paper text-ink border-border shadow-sm' : 'text-muted hover:bg-paper border-transparent hover:border-border/50'} flex-shrink-0 font-sans text-xs font-bold`}
+                className={`flex items-center gap-2 px-3 py-2 rounded-full transition-all border ${isAdvancedSettingsOpen ? 'bg-surface text-ink border-border/80 shadow-sm' : 'bg-transparent text-muted hover:bg-surface border-transparent hover:border-border/50'} flex-shrink-0 font-sans text-xs sm:text-sm font-medium`}
               >
                 <Settings size={16} strokeWidth={2} />
-                <span className="hidden sm:inline">Advanced</span>
-              </button>
-            )}
-            {isOwner && (
-              <button
-                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-full transition-all border ${isSettingsOpen ? 'bg-paper text-ink border-border shadow-sm' : 'text-muted hover:bg-paper border-transparent hover:border-border/50'} flex-shrink-0 font-sans text-xs font-bold`}
-              >
-                <Share2 size={16} strokeWidth={2} />
-                <span className="hidden sm:inline">Share</span>
+                <span className="hidden xl:inline">Advanced</span>
               </button>
             )}
             
-            <button
-              onClick={async () => {
-                if (window.aistudio?.openSelectKey) {
-                  await window.aistudio.openSelectKey();
-                  toast.success("AI API Key configuration opened.");
-                } else {
-                  toast.error("Custom API key configuration is only available within AI Studio.");
-                }
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full transition-all border text-muted hover:bg-paper border-transparent hover:border-border/50 flex-shrink-0 font-sans text-xs font-bold ml-1"
-              title="Configure Custom AI Key"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-              <span className="hidden sm:inline">AI Key</span>
-            </button>
-
-            <div className="hidden sm:flex items-center gap-3 ml-2 pl-4 border-l border-border">
-              <div className="flex items-center gap-2">
+            {isOwner && (
+              <button
+                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-full transition-all border ${isSettingsOpen ? 'bg-surface text-ink border-border/80 shadow-sm' : 'bg-transparent text-muted hover:bg-surface border-transparent hover:border-border/50'} flex-shrink-0 font-sans text-xs sm:text-sm font-medium`}
+              >
+                <Share2 size={16} strokeWidth={2} />
+                <span className="hidden xl:inline">Share</span>
+              </button>
+            )}
+            
+            <div className="hidden sm:flex items-center gap-3 ml-2 pl-4 border-l border-border/60">
+              <div className="flex items-center gap-2 group cursor-pointer relative">
                 {user?.photoURL ? (
-                  <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-border" referrerPolicy="no-referrer" />
+                  <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-border/50 group-hover:border-ink transition-colors" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-white font-sans text-xs font-medium">
+                  <div className="w-8 h-8 rounded-full bg-border text-ink flex items-center justify-center font-sans text-xs font-bold group-hover:bg-ink group-hover:text-surface transition-colors">
                     {user?.email?.[0].toUpperCase() || 'U'}
                   </div>
                 )}
               </div>
-              <button onClick={logOut} className="p-2 text-muted hover:text-ink transition-colors rounded-full hover:bg-paper border border-transparent hover:border-border/50" title="Log out">
+              <button onClick={logOut} className="p-2 text-muted hover:text-ink transition-colors rounded-full hover:bg-surface border border-transparent hover:border-border/50" title="Log out">
                 <LogOut size={16} strokeWidth={2} />
               </button>
             </div>
@@ -915,15 +916,15 @@ export default function LibraryView() {
         </header>
 
         {/* Toolbar */}
-        <div className="bg-surface/80 border-b border-border/50 flex flex-col backdrop-blur-xl">
-          <div className="px-4 sm:px-8 py-3 sm:py-4 flex flex-wrap gap-4 sm:gap-5 items-center justify-between">
-            <div className="flex flex-wrap items-center gap-4 sm:gap-8 w-full sm:w-auto">
-              <div className="flex items-center gap-3">
-                <label className="text-xs sm:text-sm font-sans font-medium text-muted uppercase tracking-wider">Sort by:</label>
+        <div className="bg-surface/60 border-t border-border/30 flex flex-col backdrop-blur-md">
+          <div className="px-4 sm:px-8 py-2.5 sm:py-3 flex flex-wrap gap-4 sm:gap-6 items-center justify-between">
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6 w-full sm:w-auto">
+              <div className="flex items-center gap-2.5 bg-paper/50 px-3 py-1.5 rounded-full border border-border/40">
+                <label className="text-[10px] sm:text-xs font-sans font-bold text-muted uppercase tracking-wider">Sort by:</label>
                 <select 
                   value={sortBy} 
                   onChange={e => handleSort(e.target.value as SortOption)}
-                  className="bg-transparent border-none text-ink font-sans text-sm font-medium focus:outline-none cursor-pointer max-w-[120px] sm:max-w-none hover:text-accent transition-colors"
+                  className="bg-transparent border-none text-ink font-sans text-sm font-medium focus:outline-none cursor-pointer max-w-[110px] appearance-none hover:text-accent transition-colors"
                 >
                   <option value="added">Recently Added</option>
                   <option value="title">Title (A-Z)</option>
@@ -932,104 +933,104 @@ export default function LibraryView() {
                 {sortBy !== 'added' && (
                   <button 
                     onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                    className="p-1.5 text-muted hover:text-ink transition-colors rounded-full hover:bg-paper"
+                    className="p-1 hover:text-accent transition-colors rounded-full hover:bg-black/5"
                   >
-                    {sortOrder === 'asc' ? <ArrowUp size={16} strokeWidth={1.5} /> : <ArrowDown size={16} strokeWidth={1.5} />}
+                    {sortOrder === 'asc' ? <ArrowUp size={14} strokeWidth={2} /> : <ArrowDown size={14} strokeWidth={2} />}
                   </button>
                 )}
               </div>
-              <div className="hidden sm:block w-[1px] h-5 bg-border"></div>
-              <div className="flex items-center gap-3">
-                <label className="text-xs sm:text-sm font-sans font-medium text-muted uppercase tracking-wider">Group by:</label>
+              
+              <div className="flex items-center gap-2.5 bg-paper/50 px-3 py-1.5 rounded-full border border-border/40">
+                <label className="text-[10px] sm:text-xs font-sans font-bold text-muted uppercase tracking-wider">Group by:</label>
                 <select 
                   value={groupBy} 
                   onChange={e => setGroupBy(e.target.value as GroupOption)}
-                  className="bg-transparent border-none text-ink font-sans text-sm font-medium focus:outline-none cursor-pointer max-w-[120px] sm:max-w-none hover:text-accent transition-colors"
+                  className="bg-transparent border-none text-ink font-sans text-sm font-medium focus:outline-none cursor-pointer max-w-[110px] appearance-none hover:text-accent transition-colors"
                 >
                   <option value="none">None</option>
                   <option value="author">Author</option>
                   <option value="genre">Genre</option>
                   <option value="series">Series</option>
-                  <option value="lucky">I'm Feeling Lucky (AI)</option>
+                  <option value="lucky">Magic (AI)</option>
                 </select>
               </div>
-              <div className="hidden sm:block w-[1px] h-5 bg-border"></div>
+              
               <button
                 onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${isFiltersOpen || searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax ? 'bg-accent/10 text-accent' : 'text-muted hover:bg-paper hover:text-ink'}`}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-all shadow-sm border ${isFiltersOpen || searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax ? 'bg-accent text-surface border-accent' : 'bg-surface text-ink border-border/60 hover:border-border hover:shadow'}`}
               >
-                <Filter size={16} strokeWidth={1.5} />
-                Filters {(searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax) && <span className="w-2 h-2 rounded-full bg-accent"></span>}
+                <Filter size={14} strokeWidth={2} />
+                Filters {(searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax) && <span className="w-1.5 h-1.5 rounded-full bg-surface"></span>}
               </button>
             </div>
             {isGrouping && (
-              <div className="text-sm font-sans text-accent flex items-center gap-2 animate-pulse font-medium bg-accent/10 px-3 py-1.5 rounded-full">
-                <Sparkles size={16} strokeWidth={2} /> Categorizing with AI...
+              <div className="text-xs font-sans text-accent flex items-center gap-2 animate-pulse font-bold bg-accent/10 px-3 py-1.5 rounded-full">
+                <Sparkles size={14} strokeWidth={2.5} /> Categorizing...
               </div>
             )}
           </div>
           
           {/* Filters Bar */}
           {isFiltersOpen && (
-            <div className="px-4 sm:px-8 py-3 bg-paper/50 border-t border-border/50 flex flex-wrap gap-4 items-center animate-in slide-in-from-top-2 fade-in duration-200">
+            <div className="px-4 sm:px-8 py-4 bg-surface border-t border-border/40 flex flex-wrap gap-4 items-center animate-in slide-in-from-top-2 fade-in duration-200">
               <div className="relative flex-1 min-w-[200px] max-w-md">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" strokeWidth={1.5} />
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" strokeWidth={2} />
                 <input
                   type="text"
                   placeholder="Search title or author..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-surface border border-border rounded-full text-sm focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all font-sans"
+                  className="w-full pl-10 pr-4 py-2 bg-paper/50 border border-border/60 rounded-full text-sm focus:outline-none focus:border-ink/50 focus:bg-surface transition-all font-sans placeholder-muted"
                 />
                 {searchQuery && (
-                  <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink">
-                    <X size={14} />
+                  <button onClick={() => setSearchQuery('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink">
+                    <X size={14} strokeWidth={2} />
                   </button>
                 )}
               </div>
               
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
                 <select
                   value={filterGenre}
                   onChange={(e) => setFilterGenre(e.target.value)}
-                  className="px-3 py-2 bg-surface border border-border rounded-full text-sm focus:outline-none focus:border-accent/50 font-sans text-ink"
+                  className="px-4 py-2 bg-paper/50 border border-border/60 rounded-full text-sm focus:outline-none focus:border-ink/50 font-sans text-ink appearance-none min-w-[120px]"
+                  style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em' }}
                 >
                   <option value="">All Genres</option>
                   {availableGenres.map(genre => (
                     <option key={genre} value={genre}>{genre}</option>
                   ))}
                 </select>
-              </div>
 
-              <div className="flex items-center gap-2">
                 <select
                   value={filterAuthor}
                   onChange={(e) => setFilterAuthor(e.target.value)}
-                  className="px-3 py-2 bg-surface border border-border rounded-full text-sm focus:outline-none focus:border-accent/50 font-sans text-ink max-w-[150px] truncate"
+                  className="px-4 py-2 bg-paper/50 border border-border/60 rounded-full text-sm focus:outline-none focus:border-ink/50 font-sans text-ink max-w-[150px] truncate appearance-none"
+                  style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em' }}
                 >
                   <option value="">All Authors</option>
                   {availableAuthors.map(author => (
                     <option key={author} value={author}>{author}</option>
                   ))}
                 </select>
-              </div>
 
-              <div className="flex items-center gap-2 text-sm font-sans text-muted">
-                <input
-                  type="number"
-                  placeholder="Min Year"
-                  value={filterYearMin}
-                  onChange={(e) => setFilterYearMin(e.target.value)}
-                  className="w-24 px-3 py-2 bg-surface border border-border rounded-full focus:outline-none focus:border-accent/50 text-ink"
-                />
-                <span>-</span>
-                <input
-                  type="number"
-                  placeholder="Max Year"
-                  value={filterYearMax}
-                  onChange={(e) => setFilterYearMax(e.target.value)}
-                  className="w-24 px-3 py-2 bg-surface border border-border rounded-full focus:outline-none focus:border-accent/50 text-ink"
-                />
+                <div className="flex items-center gap-1.5 text-sm font-sans text-muted bg-paper/50 px-3 py-1 border border-border/60 rounded-full">
+                  <input
+                    type="number"
+                    placeholder="Min Yr"
+                    value={filterYearMin}
+                    onChange={(e) => setFilterYearMin(e.target.value)}
+                    className="w-14 bg-transparent focus:outline-none text-ink text-center placeholder-muted/70"
+                  />
+                  <span className="opacity-40">-</span>
+                  <input
+                    type="number"
+                    placeholder="Max Yr"
+                    value={filterYearMax}
+                    onChange={(e) => setFilterYearMax(e.target.value)}
+                    className="w-14 bg-transparent focus:outline-none text-ink text-center placeholder-muted/70"
+                  />
+                </div>
               </div>
 
               {(searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax) && (
@@ -1041,7 +1042,7 @@ export default function LibraryView() {
                     setFilterYearMin('');
                     setFilterYearMax('');
                   }}
-                  className="text-sm text-muted hover:text-ink font-medium transition-colors px-2"
+                  className="text-xs text-muted hover:text-ink font-bold uppercase tracking-wider transition-colors px-2"
                 >
                   Clear All
                 </button>
@@ -1054,19 +1055,19 @@ export default function LibraryView() {
       <main ref={mainRef} className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col lg:flex-row gap-6 sm:gap-8">
         <div className="flex-1 min-w-0">
           {displayGroups.length === 0 ? (
-            <div className="text-center py-20 bg-surface rounded-2xl shadow-sm border border-border/60 relative overflow-hidden">
+            <div className="text-center py-32 bg-surface/40 backdrop-blur-sm rounded-3xl shadow-sm border border-border/40 relative overflow-hidden">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-accent/5 to-transparent pointer-events-none" />
-              <div className="w-20 h-20 bg-paper rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner border border-border/50 relative z-10">
-                <BookIcon size={32} className="text-accent" strokeWidth={1.5} />
+              <div className="w-24 h-24 bg-paper/80 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-border/30 relative z-10">
+                <BookIcon size={36} className="text-accent/80" strokeWidth={1.5} />
               </div>
-              <h3 className="text-2xl font-serif font-bold mb-2 text-ink relative z-10">No books found</h3>
-              <p className="text-muted text-base max-w-md mx-auto font-medium relative z-10">
-                {books.length === 0 ? "This library is empty. Add some books to get started!" : "No books match your current filters."}
+              <h3 className="text-3xl font-serif font-bold mb-3 text-ink relative z-10 tracking-tight">No books found</h3>
+              <p className="text-muted text-lg max-w-md mx-auto relative z-10">
+                {books.length === 0 ? "This library is empty. Let's add some great reads to your collection." : "No books match your current filters."}
               </p>
               {books.length === 0 && canEdit && (
                 <button
                   onClick={() => setIsAddModalOpen(true)}
-                  className="mt-6 inline-flex items-center gap-2 bg-accent text-white px-5 py-2.5 rounded-full hover:bg-accent/90 hover:shadow-lg hover:shadow-accent/30 hover:-translate-y-0.5 transition-all font-sans text-sm font-bold relative z-10"
+                  className="mt-8 inline-flex items-center gap-2 bg-accent text-white px-6 py-3 rounded-full hover:bg-accent/90 hover:shadow-lg hover:shadow-accent/30 hover:-translate-y-0.5 transition-all font-sans text-sm font-bold relative z-10"
                 >
                   <Plus size={18} strokeWidth={2.5} />
                   Add Your First Book
@@ -1077,12 +1078,15 @@ export default function LibraryView() {
             displayGroups.map((group, idx) => (
               <div key={idx} className="mb-10 sm:mb-12 last:mb-0">
                 {groupBy !== 'none' && (
-                  <h2 className="text-xl sm:text-3xl font-serif font-bold mb-4 sm:mb-6 text-ink border-b border-border/50 pb-3 flex items-baseline gap-3 tracking-tight">
-                    {toTitleCase(group.category)} 
-                    <span className="text-xs sm:text-sm font-sans text-muted font-bold bg-paper px-2.5 py-0.5 rounded-full border border-border">
+                  <div className="flex items-center gap-4 mb-6 sm:mb-8 ml-2">
+                    <h2 className="text-2xl sm:text-4xl font-serif font-medium text-ink tracking-tight">
+                      {toTitleCase(group.category)} 
+                    </h2>
+                    <span className="text-xs sm:text-sm font-sans text-muted font-bold bg-surface px-3 py-1 rounded-full border border-border/80 shadow-sm">
                       {group.books.length} {group.books.length === 1 ? 'book' : 'books'}
                     </span>
-                  </h2>
+                    <div className="flex-1 h-[1px] bg-gradient-to-r from-border/80 to-transparent ml-2" />
+                  </div>
                 )}
                 {renderShelves(group.books)}
               </div>

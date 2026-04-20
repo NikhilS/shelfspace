@@ -29,19 +29,19 @@ export default function Login() {
         initial={{ scale: 0.95, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }}
-        className="max-w-md w-full bg-surface/80 backdrop-blur-xl rounded-[32px] shadow-2xl shadow-accent/10 p-10 text-center border border-border/60 relative z-10"
+        className="max-w-md w-full bg-surface/80 backdrop-blur-xl rounded-[32px] shadow-2xl shadow-ink/5 p-10 sm:p-12 text-center border border-border/40 relative z-10"
       >
-        <div className="w-24 h-24 bg-gradient-to-br from-accent to-teal-700 text-white rounded-full flex items-center justify-center mx-auto mb-8 shadow-lg shadow-accent/30 border-4 border-white">
+        <div className="w-24 h-24 bg-accent text-surface rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl shadow-accent/20 border-4 border-surface ring-1 ring-border/20">
           <BookOpen size={40} strokeWidth={2} />
         </div>
-        <h1 className="text-5xl font-serif font-bold text-ink mb-3 tracking-tight">ShelfSpace</h1>
-        <p className="text-muted mb-10 font-sans text-lg font-medium">Your personal book librarian and companion.</p>
+        <h1 className="text-4xl sm:text-5xl font-serif font-bold text-ink mb-4 tracking-tight">ShelfSpace</h1>
+        <p className="text-muted mb-12 font-sans text-lg font-medium">Your personal book librarian and companion.</p>
         
         <button
           onClick={signIn}
-          className="w-full flex items-center justify-center gap-3 bg-surface border-2 border-border/50 text-ink font-sans font-bold py-4 px-4 rounded-full hover:bg-paper hover:border-accent/30 hover:shadow-md transition-all"
+          className="w-full flex items-center justify-center gap-3 bg-paper border border-border/60 text-ink font-sans font-bold py-4 px-4 rounded-full hover:bg-surface hover:border-border hover:shadow-md transition-all group"
         >
-          <svg className="w-5 h-5" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
             <path
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
               fill="#4285F4"

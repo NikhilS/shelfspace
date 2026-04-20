@@ -306,7 +306,7 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="bg-surface rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col md:flex-row overflow-hidden shadow-[0px_10px_40px_rgba(0,0,0,0.1)] relative border border-border/50"
+              className="bg-surface/95 backdrop-blur-xl rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col md:flex-row overflow-hidden shadow-2xl relative border border-border/40"
               onClick={e => e.stopPropagation()}
             >
             <div className="absolute top-4 right-4 flex gap-2 z-10">
@@ -314,7 +314,7 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
             <>
               <button 
                 onClick={() => setIsEditing(true)} 
-                className="p-2.5 bg-surface/80 backdrop-blur-md text-ink hover:bg-paper rounded-full transition-colors shadow-sm border border-border/50 hover:text-accent"
+                className="p-3 bg-paper/80 backdrop-blur-md text-ink hover:bg-surface rounded-full transition-all shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-md border border-border/40 hover:text-accent"
                 title="Edit Book"
               >
                 <Edit2 size={18} strokeWidth={2} />
@@ -322,10 +322,10 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
               <button 
                 onClick={() => {
                   if (onDelete && book) {
-                    onDelete(book.id);
+                     onDelete(book.id);
                   }
                 }} 
-                className="p-2.5 bg-surface/80 backdrop-blur-md text-red-500 hover:bg-red-50 rounded-full transition-colors shadow-sm border border-border/50 hover:border-red-100"
+                className="p-3 bg-paper/80 backdrop-blur-md text-muted hover:bg-red-50 hover:text-red-500 rounded-full transition-all shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-md border border-border/40 hover:border-red-200"
                 title="Delete Book"
               >
                 <Trash2 size={18} strokeWidth={2} />
@@ -336,7 +336,7 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
             <button 
               onClick={handleSave} 
               disabled={isSaving} 
-              className="p-2.5 bg-accent text-white hover:bg-accent/90 rounded-full transition-colors shadow-md disabled:opacity-50 border border-transparent"
+              className="p-3 bg-ink text-surface shadow-md hover:-translate-y-0.5 rounded-full transition-all disabled:opacity-50 border border-transparent"
               title="Save Changes"
             >
               <Save size={18} strokeWidth={2} />
@@ -344,16 +344,16 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
           )}
           <button 
             onClick={onClose} 
-            className="p-2.5 bg-surface/80 backdrop-blur-md text-ink hover:bg-paper rounded-full transition-colors shadow-sm border border-border/50 hover:text-accent"
+            className="p-3 bg-paper/80 backdrop-blur-md text-ink hover:bg-surface rounded-full transition-all shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-md border border-border/40 hover:text-muted"
           >
             <X size={18} strokeWidth={2} />
           </button>
         </div>
 
         {/* Cover Section */}
-        <div className="w-full md:w-2/5 bg-paper flex items-center justify-center p-6 md:p-8 min-h-[250px] md:min-h-[300px] border-b md:border-b-0 md:border-r border-border/50">
+        <div className="w-full md:w-2/5 bg-surface/40 flex items-center justify-center p-6 md:p-8 min-h-[250px] md:min-h-[300px] border-b md:border-b-0 md:border-r border-border/40 relative">
           {displayBook.coverUrl ? (
-            <div className="relative group">
+            <div className="relative group z-10">
               <img 
                 src={displayBook.coverUrl} 
                 alt={displayBook.title} 
@@ -401,7 +401,7 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
         </div>
 
         {/* Details Section */}
-        <div className="w-full md:w-3/5 p-8 overflow-y-auto custom-scrollbar">
+        <div className="w-full md:w-3/5 p-8 overflow-y-auto custom-scrollbar relative bg-surface">
           <div className="mb-10 pr-12">
             {isEditing ? (
               <div className="space-y-4">
@@ -444,8 +444,8 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
           <div className="space-y-8">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">
               <div className="flex items-start gap-4">
-                <div className="mt-1 p-2.5 bg-paper rounded-xl text-accent border border-border/50">
-                  <Calendar size={18} strokeWidth={1.5} />
+                <div className="mt-1 p-2.5 bg-surface/60 rounded-xl text-accent border border-border/40 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                  <Calendar size={18} strokeWidth={2} />
                 </div>
                 <div className="flex-1">
                   <p className="text-xs text-muted uppercase tracking-wider font-medium mb-1.5">Published</p>
@@ -462,11 +462,11 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
                 </div>
               </div>
 
-              <div className="flex items-start gap-4">
-                <div className="mt-1 p-2.5 bg-paper rounded-xl text-accent border border-border/50">
-                  <Hash size={18} strokeWidth={1.5} />
-                </div>
-                <div className="flex-1">
+                <div className="flex items-start gap-4">
+                  <div className="mt-1 p-2.5 bg-surface/60 rounded-xl text-accent border border-border/40 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                    <Hash size={18} strokeWidth={2} />
+                  </div>
+                  <div className="flex-1">
                   <p className="text-xs text-muted uppercase tracking-wider font-medium mb-1.5">ISBN</p>
                   {isEditing ? (
                     <input 
@@ -482,8 +482,8 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
               </div>
 
               <div className="flex items-start gap-4">
-                <div className="mt-1 p-2.5 bg-paper rounded-xl text-accent border border-border/50">
-                  <BookIcon size={18} strokeWidth={1.5} />
+                <div className="mt-1 p-2.5 bg-surface/60 rounded-xl text-accent border border-border/40 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                  <BookIcon size={18} strokeWidth={2} />
                 </div>
                 <div className="flex-1">
                   <p className="text-xs text-muted uppercase tracking-wider font-medium mb-1.5">Genre</p>
@@ -501,8 +501,8 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
               </div>
 
               <div className="flex items-start gap-4">
-                <div className="mt-1 p-2.5 bg-paper rounded-xl text-accent border border-border/50">
-                  <BookIcon size={18} strokeWidth={1.5} />
+                <div className="mt-1 p-2.5 bg-surface/60 rounded-xl text-accent border border-border/40 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                  <BookIcon size={18} strokeWidth={2} />
                 </div>
                 <div className="flex-1">
                   <p className="text-xs text-muted uppercase tracking-wider font-medium mb-1.5">Series</p>
@@ -521,8 +521,8 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
 
               {isEditing && (
                 <div className="flex items-start gap-4 sm:col-span-2">
-                  <div className="mt-1 p-2.5 bg-paper rounded-xl text-accent border border-border/50">
-                    <ImageIcon size={18} strokeWidth={1.5} />
+                  <div className="mt-1 p-2.5 bg-surface/60 rounded-xl text-accent border border-border/40 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                    <ImageIcon size={18} strokeWidth={2} />
                   </div>
                   <div className="flex-1">
                     <p className="text-xs text-muted uppercase tracking-wider font-medium mb-1.5">Cover URL</p>
@@ -536,21 +536,21 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
                 </div>
               )}
 
-              <div className="flex items-start gap-4">
-                <div className="mt-1 p-2.5 bg-paper rounded-xl text-accent border border-border/50">
-                  <User size={18} strokeWidth={1.5} />
-                </div>
-                <div>
+                <div className="flex items-start gap-4">
+                  <div className="mt-1 p-2.5 bg-surface/60 rounded-xl text-accent border border-border/40 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                    <User size={18} strokeWidth={2} />
+                  </div>
+                  <div>
                   <p className="text-xs text-muted uppercase tracking-wider font-medium mb-1.5">Added By</p>
                   <p className="text-ink font-medium">{addedByName}</p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-4">
-                <div className="mt-1 p-2.5 bg-paper rounded-xl text-accent border border-border/50">
-                  <Clock size={18} strokeWidth={1.5} />
-                </div>
-                <div className="flex-1">
+                <div className="flex items-start gap-4">
+                  <div className="mt-1 p-2.5 bg-surface/60 rounded-xl text-accent border border-border/40 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                    <Clock size={18} strokeWidth={2} />
+                  </div>
+                  <div className="flex-1">
                   <p className="text-xs text-muted uppercase tracking-wider font-medium mb-1.5">Added On</p>
                   {isEditing ? (
                     <input
@@ -568,41 +568,41 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
 
             {/* AI Reading Companion Section */}
             {!isEditing && (
-              <div className="mt-12 pt-8 border-t border-border/50">
+              <div className="mt-12 pt-8 border-t border-border/40">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-accent/10 rounded-lg text-accent">
+                  <div className="p-2.5 bg-accent text-surface rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
                     <Sparkles size={20} strokeWidth={2} />
                   </div>
-                  <h3 className="text-xl font-serif font-medium text-ink tracking-tight">AI Reading Companion</h3>
+                  <h3 className="text-xl sm:text-2xl font-serif font-bold text-ink tracking-tight">AI Reading Companion</h3>
                 </div>
                 
                 <div className="flex flex-wrap gap-3 mb-8">
                   <button
                     onClick={() => handleGenerateInsight('summary')}
-                    className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all border ${
+                    className={`px-6 py-2.5 rounded-full text-sm font-bold transition-all border ${
                       activeInsight === 'summary' 
-                        ? 'bg-accent text-white border-accent shadow-sm' 
-                        : 'bg-surface text-ink border-border hover:bg-paper hover:border-accent/30'
+                        ? 'bg-ink text-surface border-ink shadow-md' 
+                        : 'bg-surface/50 text-ink border-border/60 hover:bg-surface hover:border-ink/20 hover:shadow-sm'
                     }`}
                   >
                     Summary (No Spoilers)
                   </button>
                   <button
                     onClick={() => handleGenerateInsight('catchup')}
-                    className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all border ${
+                    className={`px-6 py-2.5 rounded-full text-sm font-bold transition-all border ${
                       activeInsight === 'catchup' 
-                        ? 'bg-accent text-white border-accent shadow-sm' 
-                        : 'bg-surface text-ink border-border hover:bg-paper hover:border-accent/30'
+                        ? 'bg-ink text-surface border-ink shadow-md' 
+                        : 'bg-surface/50 text-ink border-border/60 hover:bg-surface hover:border-ink/20 hover:shadow-sm'
                     }`}
                   >
                     Catch me up (Spoilers)
                   </button>
                   <button
                     onClick={() => handleGenerateInsight('similar')}
-                    className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all border ${
+                    className={`px-6 py-2.5 rounded-full text-sm font-bold transition-all border ${
                       activeInsight === 'similar' 
-                        ? 'bg-accent text-white border-accent shadow-sm' 
-                        : 'bg-surface text-ink border-border hover:bg-paper hover:border-accent/30'
+                        ? 'bg-ink text-surface border-ink shadow-md' 
+                        : 'bg-surface/50 text-ink border-border/60 hover:bg-surface hover:border-ink/20 hover:shadow-sm'
                     }`}
                   >
                     Other books like this
@@ -610,14 +610,14 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
                 </div>
 
                 {activeInsight && (
-                  <div className="bg-paper rounded-2xl p-6 sm:p-8 shadow-inner border border-border/50">
+                  <div className="bg-surface/40 rounded-3xl p-6 sm:p-8 shadow-sm border border-border/40">
                     {isGeneratingInsight ? (
                       <div className="flex flex-col items-center justify-center py-10 text-muted">
-                        <Loader2 className="animate-spin mb-4 text-accent" size={32} strokeWidth={1.5} />
+                        <Loader2 className="animate-spin mb-4 text-accent/80" size={32} strokeWidth={2} />
                         <p className="font-medium">Consulting the AI Librarian...</p>
                       </div>
                     ) : insightContent ? (
-                      <div className="prose prose-sm sm:prose-base max-w-none prose-headings:font-serif prose-headings:font-medium prose-headings:text-ink prose-p:text-ink/80 prose-a:text-accent prose-strong:text-ink leading-relaxed">
+                      <div className="prose prose-sm sm:prose-base max-w-none prose-headings:font-serif prose-headings:font-bold prose-headings:text-ink prose-p:text-ink/80 prose-a:text-accent prose-strong:text-ink leading-relaxed">
                         <Markdown>{insightContent}</Markdown>
                       </div>
                     ) : null}
@@ -628,18 +628,18 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
 
             {/* Reviews Section */}
             {!isEditing && (
-              <div className="mt-12 pt-8 border-t border-border/50">
+              <div className="mt-12 pt-8 border-t border-border/40">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-accent/10 rounded-lg text-accent">
+                    <div className="p-2.5 bg-accent text-surface rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
                       <MessageSquare size={20} strokeWidth={2} />
                     </div>
-                    <h3 className="text-xl font-serif font-medium text-ink tracking-tight">Reviews</h3>
+                    <h3 className="text-xl sm:text-2xl font-serif font-bold text-ink tracking-tight">Reviews</h3>
                   </div>
                   {canEdit && !isReviewing && !reviews.some(r => r.userId === user?.uid) && (
                     <button
                       onClick={() => setIsReviewing(true)}
-                      className="text-sm font-medium text-accent hover:text-accent/80 transition-colors"
+                      className="px-5 py-2.5 text-sm font-bold bg-ink text-surface hover:bg-ink/90 rounded-full transition-all shadow-sm hover:shadow-md"
                     >
                       Write a Review
                     </button>
@@ -647,7 +647,7 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
                 </div>
 
                 {isReviewing && (
-                  <div className="bg-paper rounded-2xl p-6 mb-8 border border-border/50">
+                  <div className="bg-surface/50 rounded-3xl p-6 sm:p-8 mb-8 border border-border/60 shadow-sm">
                     <div className="flex items-center gap-2 mb-4">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <button
@@ -666,9 +666,9 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
                       value={reviewText}
                       onChange={(e) => setReviewText(e.target.value)}
                       placeholder="What did you think of this book?"
-                      className="w-full bg-surface border border-border rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all min-h-[100px] mb-4 resize-y"
+                      className="w-full bg-paper/80 border border-border/60 rounded-2xl p-5 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20 focus:border-ink/40 transition-all min-h-[120px] mb-6 resize-y font-medium custom-scrollbar"
                     />
-                    <div className="flex justify-end gap-3">
+                    <div className="flex justify-end gap-3 sm:gap-4">
                       <button
                         onClick={() => {
                           setIsReviewing(false);
@@ -676,14 +676,14 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
                           setReviewRating(0);
                           setReviewText('');
                         }}
-                        className="px-4 py-2 text-sm font-medium text-muted hover:text-ink transition-colors"
+                        className="px-6 py-3 text-sm font-bold text-ink border border-border/60 rounded-full hover:bg-surface transition-colors"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={handleSaveReview}
                         disabled={isSavingReview}
-                        className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-opacity-90 transition-colors disabled:opacity-50"
+                        className="px-6 py-3 bg-accent text-surface text-sm font-bold rounded-full hover:bg-accent/90 transition-all disabled:opacity-50 shadow-sm hover:shadow-md hover:-translate-y-0.5"
                       >
                         {isSavingReview ? 'Saving...' : 'Save Review'}
                       </button>
@@ -693,53 +693,53 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
 
                 <div className="space-y-6">
                   {reviews.length === 0 && !isReviewing ? (
-                    <p className="text-muted text-sm italic">No reviews yet.</p>
+                    <p className="text-muted text-lg font-medium italic">No reviews yet.</p>
                   ) : (
                     reviews.map((review) => (
-                      <div key={review.id} className="bg-surface rounded-xl p-5 border border-border/50">
-                        <div className="flex items-center justify-between mb-3">
+                      <div key={review.id} className="bg-surface/40 rounded-3xl p-6 sm:p-8 border border-border/40 shadow-[0_2px_10px_rgba(0,0,0,0.02)] hover:border-border/60 transition-colors">
+                        <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-accent font-medium text-sm">
+                            <div className="w-10 h-10 rounded-full bg-ink/5 flex items-center justify-center text-ink font-bold text-base shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] border border-border/40">
                               {review.userName.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <p className="text-sm font-medium text-ink">{review.userName}</p>
-                              <div className="flex items-center gap-1">
+                              <p className="text-sm font-bold text-ink tracking-tight">{review.userName}</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
                                 {[1, 2, 3, 4, 5].map((star) => (
                                   <Star
                                     key={star}
                                     size={12}
-                                    className={star <= review.rating ? "fill-yellow-400 text-yellow-400" : "text-border"}
+                                    className={star <= review.rating ? "fill-yellow-500 text-yellow-500" : "text-border"}
                                   />
                                 ))}
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs text-muted">
+                          <div className="flex items-center gap-3 sm:gap-4">
+                            <span className="text-xs font-medium text-muted uppercase tracking-wider">
                               {review.createdAt?.toDate ? review.createdAt.toDate().toLocaleDateString() : 'Just now'}
                             </span>
                             {user?.uid === review.userId && !isReviewing && (
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 bg-surface/60 px-2 py-1 rounded-full border border-border/40 shadow-sm">
                                 <button
                                   onClick={() => handleEditReview(review)}
-                                  className="text-muted hover:text-accent transition-colors"
+                                  className="p-1.5 text-muted hover:text-accent transition-colors rounded-full hover:bg-paper"
                                   title="Edit Review"
                                 >
-                                  <Edit2 size={14} />
+                                  <Edit2 size={14} strokeWidth={2.5} />
                                 </button>
                                 <button
                                   onClick={() => handleDeleteReview(review.id)}
-                                  className="text-muted hover:text-red-500 transition-colors"
+                                  className="p-1.5 text-muted hover:text-red-500 transition-colors rounded-full hover:bg-red-50"
                                   title="Delete Review"
                                 >
-                                  <Trash2 size={14} />
+                                  <Trash2 size={14} strokeWidth={2.5} />
                                 </button>
                               </div>
                             )}
                           </div>
                         </div>
-                        <p className="text-sm text-ink/80 whitespace-pre-wrap">{review.text}</p>
+                        <p className="text-sm text-ink/80 whitespace-pre-wrap leading-relaxed font-medium">{review.text}</p>
                       </div>
                     ))
                   )}
@@ -758,7 +758,7 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans" 
+            className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-[70] p-4 font-sans" 
             onClick={() => setConfirmDelete(null)}
           >
             <motion.div 
@@ -766,11 +766,11 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="bg-surface rounded-2xl w-full max-w-sm p-6 shadow-xl border border-border/50" 
+              className="bg-surface/95 backdrop-blur-xl rounded-3xl w-full max-w-sm p-8 shadow-2xl border border-border/40" 
               onClick={e => e.stopPropagation()}
             >
-              <h3 className="text-xl font-serif font-medium text-ink mb-2">Confirm Deletion</h3>
-            <p className="text-muted mb-6">
+              <h3 className="text-2xl font-serif font-bold tracking-tight text-ink mb-3">Confirm Deletion</h3>
+            <p className="text-muted font-medium mb-8">
               {confirmDelete.type === 'cover' 
                 ? "Are you sure you want to remove this book's cover image?" 
                 : "Are you sure you want to delete this review?"}
@@ -778,7 +778,7 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
             <div className="flex justify-end gap-3">
               <button 
                 onClick={() => setConfirmDelete(null)}
-                className="px-4 py-2 rounded-full text-sm font-medium text-muted hover:text-ink hover:bg-paper transition-colors"
+                className="px-6 py-2.5 rounded-full text-sm font-bold text-ink border border-border/60 hover:bg-surface transition-colors"
               >
                 Cancel
               </button>
@@ -799,7 +799,7 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
                   }
                   setConfirmDelete(null);
                 }}
-                className="px-4 py-2 rounded-full text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
+                className="px-6 py-2.5 rounded-full text-sm font-bold bg-red-500 text-white hover:bg-red-600 transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5"
               >
                 Delete
               </button>

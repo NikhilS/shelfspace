@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Camera, X, BookPlus, Loader2, UploadCloud, FileText, Plus } from 'lucide-react';
+import { Search, Camera, X, BookPlus, Loader2, UploadCloud, FileText, Plus, Sparkles } from 'lucide-react';
 import { searchBookByTitle, searchBookByIsbn, searchBookByTitleAndAuthor, BookDetails } from '../services/bookApi';
 import { extractBooksFromImage, extractBooksFromCsv } from '../services/gemini';
 import { toast } from 'sonner';
@@ -104,11 +104,18 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setIsCameraActive(true);
-      }
+      const attachStream = () => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          setIsCameraActive(true);
+        } else {
+          // Retry if React hasn't mounted the video element yet
+          setTimeout(attachStream, 50);
+        }
+      };
+      attachStream();
     } catch (err) {
+      console.error(err);
       toast.error("Could not access camera");
     }
   };
@@ -117,9 +124,10 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
     if (videoRef.current && videoRef.current.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
       stream.getTracks().forEach(track => track.stop());
-      setIsCameraActive(false);
-      setIsCoverCameraActive(false);
+      videoRef.current.srcObject = null;
     }
+    setIsCameraActive(false);
+    setIsCoverCameraActive(false);
   };
 
   const captureCover = () => {
@@ -421,6 +429,12 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
   }, [isOpen]);
 
   useEffect(() => {
+    if (isOpen && activeTab === 'camera' && extractedBooks.length === 0 && !isExtracting && !isCameraActive) {
+      startCamera();
+    }
+  }, [isOpen, activeTab, extractedBooks.length, isExtracting, isCameraActive]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
         handleClose();
@@ -445,43 +459,47 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 10 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
-            className="bg-surface rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-[0px_10px_40px_rgba(0,0,0,0.1)] border border-border/50"
+            className="bg-surface/90 backdrop-blur-xl rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-border/40"
           >
-            <div className="flex items-center justify-between p-6 border-b border-border/50">
-              <h2 className="text-2xl font-serif font-medium text-ink tracking-tight">Add Books</h2>
-              <button onClick={handleClose} className="p-2 text-muted hover:bg-paper rounded-full transition-colors">
-                <X size={20} strokeWidth={1.5} />
+            <div className="flex items-center justify-between p-6 sm:p-8 border-b border-border/40 bg-surface/50">
+              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-ink tracking-tight">Add Books</h2>
+              <button onClick={handleClose} className="p-2 text-muted hover:bg-surface rounded-full transition-colors border border-transparent hover:border-border/60 hover:shadow-sm">
+                <X size={20} strokeWidth={2} />
               </button>
             </div>
 
-        <div className="flex border-b border-border/50 overflow-x-auto custom-scrollbar">
-          <button
-            className={`flex-1 py-4 px-4 flex items-center justify-center gap-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'camera' ? 'text-accent border-b-2 border-accent' : 'text-muted hover:bg-paper/50'}`}
-            onClick={() => { setActiveTab('camera'); startCamera(); }}
-          >
-            <Camera size={18} strokeWidth={1.5} /> Scan / Upload
-          </button>
-          <button
-            className={`flex-1 py-4 px-4 flex items-center justify-center gap-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'csv' ? 'text-accent border-b-2 border-accent' : 'text-muted hover:bg-paper/50'}`}
-            onClick={() => { setActiveTab('csv'); stopCamera(); }}
-          >
-            <FileText size={18} strokeWidth={1.5} /> Import CSV
-          </button>
-          <button
-            className={`flex-1 py-4 px-4 flex items-center justify-center gap-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'search' ? 'text-accent border-b-2 border-accent' : 'text-muted hover:bg-paper/50'}`}
-            onClick={() => { setActiveTab('search'); stopCamera(); }}
-          >
-            <Search size={18} strokeWidth={1.5} /> Search
-          </button>
-          <button
-            className={`flex-1 py-4 px-4 flex items-center justify-center gap-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'manual' ? 'text-accent border-b-2 border-accent' : 'text-muted hover:bg-paper/50'}`}
-            onClick={() => { setActiveTab('manual'); stopCamera(); }}
-          >
-            <Plus size={18} strokeWidth={1.5} /> Manual
-          </button>
+        <div className="px-6 py-4 bg-surface/30 border-b border-border/40 overflow-x-auto custom-scrollbar">
+          <div className="flex bg-black/5 p-1 rounded-full w-max mx-auto sm:w-full border border-border/40">
+            <button
+              className={`flex-1 py-2 px-4 sm:px-6 rounded-full flex items-center justify-center gap-2 text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'camera' ? 'bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-ink' : 'text-muted hover:text-ink'}`}
+              onClick={() => { setActiveTab('camera'); startCamera(); }}
+            >
+              <Camera size={16} strokeWidth={2} /> <span className="hidden sm:inline">Scan / Upload</span>
+              <span className="sm:hidden">Scan</span>
+            </button>
+            <button
+              className={`flex-1 py-2 px-4 sm:px-6 rounded-full flex items-center justify-center gap-2 text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'csv' ? 'bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-ink' : 'text-muted hover:text-ink'}`}
+              onClick={() => { setActiveTab('csv'); stopCamera(); }}
+            >
+              <FileText size={16} strokeWidth={2} /> <span className="hidden sm:inline">Import CSV</span>
+              <span className="sm:hidden">CSV</span>
+            </button>
+            <button
+              className={`flex-1 py-2 px-4 sm:px-6 rounded-full flex items-center justify-center gap-2 text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'search' ? 'bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-ink' : 'text-muted hover:text-ink'}`}
+              onClick={() => { setActiveTab('search'); stopCamera(); }}
+            >
+              <Search size={16} strokeWidth={2} /> Search
+            </button>
+            <button
+              className={`flex-1 py-2 px-4 sm:px-6 rounded-full flex items-center justify-center gap-2 text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'manual' ? 'bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-ink' : 'text-muted hover:text-ink'}`}
+              onClick={() => { setActiveTab('manual'); stopCamera(); }}
+            >
+              <Plus size={16} strokeWidth={2} /> Manual
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-paper custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-surface/30 custom-scrollbar">
           {activeTab === 'search' && (
             <div className="space-y-6">
               <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
@@ -490,12 +508,12 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by title, author, or ISBN..."
-                  className="flex-1 bg-surface border border-border/80 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-ink placeholder:text-muted/70"
+                  className="flex-1 bg-surface/50 border border-border/60 rounded-full px-6 py-4 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium placeholder:text-muted/60"
                 />
                 <button
                   type="submit"
                   disabled={isSearching}
-                  className="bg-accent text-white px-6 py-3 rounded-xl hover:bg-opacity-90 transition-colors disabled:opacity-50 flex items-center justify-center sm:w-auto w-full font-medium shadow-sm"
+                  className="bg-ink text-surface px-8 py-4 rounded-full hover:bg-ink/90 shadow-sm hover:shadow-md transition-all disabled:opacity-50 flex items-center justify-center sm:w-auto w-full font-bold flex-shrink-0"
                 >
                   {isSearching ? <Loader2 className="animate-spin" size={20} /> : 'Search'}
                 </button>
@@ -509,23 +527,23 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                   </div>
                 )}
                 {searchResults.map((book, idx) => (
-                  <div key={idx} className="bg-surface p-4 rounded-2xl shadow-sm border border-border/30 flex gap-4 items-center hover:shadow-md transition-shadow">
+                  <div key={idx} className="bg-surface/60 p-4 rounded-3xl shadow-sm border border-border/40 flex gap-4 items-center hover:shadow-md hover:border-border/60 transition-all">
                     {book.coverUrl ? (
-                      <img src={book.coverUrl} alt={book.title} className="w-16 h-24 object-cover rounded-md shadow-[2px_4px_10px_rgba(0,0,0,0.1)]" referrerPolicy="no-referrer" />
+                      <img src={book.coverUrl} alt={book.title} className="w-16 h-24 object-cover rounded-xl shadow-[2px_4px_10px_rgba(0,0,0,0.1)]" referrerPolicy="no-referrer" />
                     ) : (
-                      <div className="w-16 h-24 bg-paper rounded-md flex items-center justify-center text-muted border border-border/50">
+                      <div className="w-16 h-24 bg-paper rounded-xl flex items-center justify-center text-muted border border-border/50">
                         <BookPlus size={24} strokeWidth={1.5} />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-serif font-medium text-base sm:text-lg text-ink truncate tracking-tight">{toTitleCase(book.title)}</h4>
-                      <p className="text-muted text-xs sm:text-sm truncate mt-0.5">{toTitleCase(book.author)}</p>
+                      <h4 className="font-serif font-bold text-base sm:text-lg text-ink truncate tracking-tight">{toTitleCase(book.title)}</h4>
+                      <p className="text-muted text-xs sm:text-sm truncate mt-0.5 font-medium">{toTitleCase(book.author)}</p>
                       {book.publishedDate && <p className="text-muted/60 text-xs mt-1.5 truncate font-mono">{book.publishedDate}</p>}
                     </div>
                     <button
                       onClick={() => handleAdd(book)}
                       disabled={isAdding === (book.isbn || book.title)}
-                      className="bg-paper text-accent px-4 py-2 rounded-full hover:bg-accent/10 transition-colors disabled:opacity-50 text-sm font-medium whitespace-nowrap flex-shrink-0 border border-border/50"
+                      className="bg-ink/5 text-ink px-5 py-2.5 rounded-full hover:bg-ink hover:text-surface transition-colors disabled:opacity-50 text-sm font-bold whitespace-nowrap flex-shrink-0"
                     >
                       {isAdding === (book.isbn || book.title) ? <Loader2 className="animate-spin" size={18} /> : 'Add'}
                     </button>
@@ -538,17 +556,17 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
           {activeTab === 'camera' && (
             <div className="space-y-6 flex flex-col items-center">
               {!isExtracting && extractedBooks.length === 0 && (
-                <div className="w-full max-w-md aspect-[3/4] bg-ink rounded-2xl overflow-hidden relative shadow-inner">
+                <div className="w-full max-w-md aspect-[3/4] bg-ink/90 rounded-3xl overflow-hidden relative shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-border/20">
                   <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
                   <canvas ref={canvasRef} className="hidden" />
                   
                   {isCameraActive ? (
-                    <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-3">
+                    <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-3 px-4">
                       <button
                         onClick={captureAndExtract}
-                        className="bg-surface text-ink px-6 py-3 rounded-full font-medium shadow-lg flex items-center gap-2 hover:bg-paper transition-colors"
+                        className="bg-surface/95 backdrop-blur-md text-ink px-6 py-3 rounded-full font-bold shadow-[0_4px_16px_rgba(0,0,0,0.15)] flex items-center gap-2 hover:bg-surface hover:scale-105 transition-all text-sm border border-border/40"
                       >
-                        <Camera size={20} strokeWidth={1.5} /> Capture Shelf
+                        <Camera size={18} strokeWidth={2} /> Capture Shelf
                       </button>
                       <input 
                         type="file" 
@@ -559,13 +577,14 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                       />
                       <button
                         onClick={() => imageInputRef.current?.click()}
-                        className="bg-surface text-ink px-6 py-3 rounded-full font-medium shadow-lg flex items-center gap-2 hover:bg-paper transition-colors"
+                        className="bg-ink text-surface px-6 py-3 rounded-full font-bold shadow-[0_4px_16px_rgba(0,0,0,0.15)] flex items-center gap-2 hover:bg-ink/90 hover:scale-105 transition-all text-sm border border-transparent"
                       >
-                        <UploadCloud size={20} strokeWidth={1.5} /> Upload Photo
+                        <UploadCloud size={18} strokeWidth={2} /> Upload Photo
                       </button>
                     </div>
                   ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-white/50 font-medium">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-surface/60 font-medium">
+                      <Camera size={48} strokeWidth={1.5} className="mb-4 opacity-40" />
                       Camera inactive
                       <input 
                         type="file" 
@@ -576,9 +595,9 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                       />
                       <button
                         onClick={() => imageInputRef.current?.click()}
-                        className="mt-4 bg-surface text-ink px-6 py-3 rounded-full font-medium shadow-lg flex items-center gap-2 hover:bg-paper transition-colors"
+                        className="mt-6 bg-surface text-ink px-6 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 hover:bg-surface/90 hover:scale-105 transition-all text-sm border border-border/40"
                       >
-                        <UploadCloud size={20} strokeWidth={1.5} /> Upload Photo instead
+                        <UploadCloud size={18} strokeWidth={2} /> Upload Photo instead
                       </button>
                     </div>
                   )}
@@ -586,82 +605,70 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
               )}
 
               {isExtracting && (
-                <div className="py-20 flex flex-col items-center text-muted">
-                  <Loader2 className="animate-spin mb-4 text-accent" size={40} strokeWidth={1.5} />
-                  <p className="font-medium text-lg text-ink">Analyzing bookshelf...</p>
-                  <p className="text-sm mt-1">Gemini is extracting book titles and authors.</p>
+                <div className="py-24 flex flex-col items-center justify-center w-full bg-surface/30 rounded-3xl border border-border/40">
+                  <div className="relative mb-6 text-accent">
+                    <Loader2 className="animate-spin absolute inset-0" size={56} strokeWidth={1.5} />
+                    <Sparkles className="animate-pulse" size={56} strokeWidth={1.5} />
+                  </div>
+                  <h3 className="font-serif font-bold text-2xl text-ink tracking-tight mb-2">Analyzing bookshelf...</h3>
+                  <p className="text-muted font-medium text-center max-w-xs">The AI Librarian is extracting book titles, authors, and metadata from your image.</p>
                 </div>
               )}
 
               {extractedBooks.length > 0 && (
                 <div className="w-full space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-serif text-xl font-medium text-ink tracking-tight">Found {extractedBooks.length} Books</h3>
-                    <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between sticky top-0 bg-surface/80 backdrop-blur-xl py-3 px-2 z-10 border-b border-border/40 mb-2 rounded-t-xl -mx-2">
+                    <h3 className="font-serif text-xl sm:text-2xl font-bold text-ink tracking-tight">Found {extractedBooks.length} Books</h3>
+                    <div className="flex gap-2 sm:gap-3 items-center">
+                      <label className="hidden sm:flex items-center gap-2 text-sm font-bold text-ink cursor-pointer mr-2 hover:bg-surface/80 px-3 py-1.5 rounded-full transition-colors">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedExtracted.size === extractedBooks.length && extractedBooks.length > 0} 
+                          onChange={toggleSelectAll}
+                          className="rounded border-border/60 text-ink focus:ring-ink/20 w-4 h-4 cursor-pointer"
+                        />
+                        Select All
+                      </label>
                       <button 
-                        onClick={() => { setExtractedBooks([]); setSelectedExtracted(new Set()); startCamera(); }}
-                        className="text-sm text-muted hover:text-ink transition-colors font-medium"
+                        onClick={() => { setExtractedBooks([]); setSelectedExtracted(new Set()); }}
+                        className="p-2 sm:px-4 sm:py-2 text-sm font-bold text-muted hover:text-ink hover:bg-surface border border-transparent hover:border-border/60 rounded-full transition-colors"
+                        title="Clear & Scan Again"
                       >
-                        Scan Again
+                        <span className="hidden sm:inline">Clear</span>
+                        <X size={18} strokeWidth={2} className="sm:hidden" />
                       </button>
                       <button
                         onClick={handleAddSelectedExtracted}
                         disabled={isAddingAll || selectedExtracted.size === 0}
-                        className="bg-accent text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-accent/90 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                        className="bg-ink text-surface px-4 py-2 sm:px-5 sm:py-2.5 rounded-full text-sm font-bold hover:bg-ink/90 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5"
                       >
-                        {isAddingAll ? <Loader2 className="animate-spin" size={16} /> : <BookPlus size={16} strokeWidth={2} />}
-                        Add Selected ({selectedExtracted.size})
+                        {isAddingAll ? <Loader2 className="animate-spin" size={16} /> : <BookPlus size={16} strokeWidth={2.5} />}
+                        <span className="hidden sm:inline">Add Selected </span>({selectedExtracted.size})
                       </button>
                     </div>
                   </div>
                   
-                  <div className="bg-surface rounded-2xl shadow-sm overflow-hidden border border-border/50">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="bg-paper border-b border-border/50">
-                        <tr>
-                          <th className="py-2 px-3 w-10 text-center">
-                            <input 
-                              type="checkbox" 
-                              checked={selectedExtracted.size === extractedBooks.length && extractedBooks.length > 0} 
-                              onChange={toggleSelectAll}
-                              className="rounded border-border/50 text-accent focus:ring-accent/20 cursor-pointer"
-                            />
-                          </th>
-                          <th className="py-2 px-3 font-medium text-muted text-[10px] uppercase tracking-wider w-[45%]">Title</th>
-                          <th className="py-2 px-3 font-medium text-muted text-[10px] uppercase tracking-wider w-[25%]">Author</th>
-                          <th className="py-2 px-3 font-medium text-muted text-[10px] uppercase tracking-wider w-[20%]">ISBN</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/30">
-                        {extractedBooks.map((book, idx) => (
-                          <tr key={idx} className="hover:bg-paper/50 transition-colors">
-                            <td className="py-1.5 px-3 text-center">
-                              <input 
-                                type="checkbox"
-                                checked={selectedExtracted.has(`${book.title}::${book.author}`)}
-                                onChange={() => toggleSelect(book)}
-                                className="rounded border-border/50 text-accent focus:ring-accent/20 cursor-pointer"
-                              />
-                            </td>
-                            <td className="py-1.5 px-3 font-serif font-medium text-ink text-sm leading-tight">
-                              <div className="flex items-center gap-2">
-                                {isAdding === book.title && <Loader2 className="animate-spin text-accent flex-shrink-0" size={14} />}
-                                {toTitleCase(book.title)}
-                              </div>
-                            </td>
-                            <td className="py-1.5 px-3 text-muted text-xs leading-tight">{toTitleCase(book.author)}</td>
-                            <td className="py-1.5 px-3 text-muted/70 text-[11px] font-mono leading-tight">{book.isbn && book.isbn !== 'null' ? book.isbn : '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-paper border-t border-border/50">
-                        <tr>
-                          <td colSpan={4} className="py-2 px-3 font-medium text-ink text-xs">
-                            Total Books Found: {extractedBooks.length} | Selected: {selectedExtracted.size}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {extractedBooks.map((book, idx) => (
+                      <label key={idx} className={`bg-surface/60 p-5 rounded-3xl border transition-all cursor-pointer flex gap-4 ${selectedExtracted.has(`${book.title}::${book.author}`) ? 'border-ink shadow-md bg-surface ring-1 ring-ink/5' : 'border-border/40 shadow-[0_2px_8px_rgba(0,0,0,0.02)] hover:shadow-md hover:border-border/80'}`}>
+                        <div className="pt-1">
+                          <input 
+                            type="checkbox"
+                            checked={selectedExtracted.has(`${book.title}::${book.author}`)}
+                            onChange={() => toggleSelect(book)}
+                            className="rounded border-border/60 text-ink focus:ring-ink/20 w-5 h-5 cursor-pointer mt-0.5"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            {isAdding === book.title && <Loader2 className="animate-spin text-accent flex-shrink-0" size={14} />}
+                            <h4 className="font-serif font-bold text-base sm:text-lg text-ink truncate tracking-tight" title={book.title}>{toTitleCase(book.title)}</h4>
+                          </div>
+                          <p className="text-muted text-xs sm:text-sm truncate mt-0.5 font-medium" title={book.author}>{toTitleCase(book.author)}</p>
+                          {book.isbn && book.isbn !== 'null' && <p className="text-muted/60 text-xs mt-1.5 font-mono font-medium">ISBN: {book.isbn}</p>}
+                        </div>
+                      </label>
+                    ))}
                   </div>
                 </div>
               )}
@@ -670,12 +677,12 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
           {activeTab === 'csv' && (
             <div className="space-y-6">
               {extractedBooks.length === 0 ? (
-                <div className="bg-surface p-8 rounded-2xl border border-dashed border-border flex flex-col items-center justify-center text-center">
-                  <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center text-accent mb-4">
-                    <UploadCloud size={32} strokeWidth={1.5} />
+                <div className="bg-surface/40 p-12 rounded-3xl border-2 border-dashed border-border/60 flex flex-col items-center justify-center text-center">
+                  <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center text-accent mb-6 shadow-[0_2px_10px_rgba(0,0,0,0.04)] border border-border/40">
+                    <UploadCloud size={36} strokeWidth={2} />
                   </div>
-                  <h3 className="text-xl font-serif font-medium text-ink mb-2">Upload Library CSV</h3>
-                  <p className="text-muted text-sm mb-6 max-w-md">
+                  <h3 className="text-2xl sm:text-3xl font-serif font-bold text-ink mb-3 tracking-tight">Upload Library CSV</h3>
+                  <p className="text-muted text-sm sm:text-base mb-8 max-w-md font-medium leading-relaxed">
                     Upload a CSV export from Goodreads, Amazon, or your own spreadsheet. Our AI will automatically extract the titles, authors, and ISBNs.
                   </p>
                   
@@ -690,65 +697,67 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                   <button 
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isExtracting}
-                    className="bg-accent text-white px-6 py-3 rounded-xl hover:bg-opacity-90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 font-medium shadow-sm"
+                    className="bg-ink text-surface px-8 py-4 rounded-full hover:bg-ink/90 transition-all disabled:opacity-50 flex items-center justify-center gap-3 font-bold shadow-[0_4px_16px_rgba(0,0,0,0.15)] hover:shadow-lg hover:-translate-y-0.5"
                   >
                     {isExtracting ? (
-                      <><Loader2 className="animate-spin" size={20} /> Processing CSV...</>
+                      <><Loader2 className="animate-spin" size={20} strokeWidth={2.5} /> Processing CSV...</>
                     ) : (
-                      <><FileText size={20} /> Select CSV File</>
+                      <><FileText size={20} strokeWidth={2.5} /> Select CSV File</>
                     )}
                   </button>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between sticky top-0 bg-paper/90 backdrop-blur-md py-2 z-10 border-b border-border/50">
-                    <h3 className="font-serif font-medium text-lg text-ink">Found {extractedBooks.length} Books</h3>
-                    <div className="flex gap-2 items-center">
-                      <label className="flex items-center gap-2 text-sm font-medium text-ink cursor-pointer mr-2">
+                <div className="w-full space-y-4">
+                  <div className="flex items-center justify-between sticky top-0 bg-surface/80 backdrop-blur-xl py-3 px-2 z-10 border-b border-border/40 mb-2 rounded-t-xl -mx-2">
+                    <h3 className="font-serif text-xl sm:text-2xl font-bold text-ink tracking-tight">Found {extractedBooks.length} Books</h3>
+                    <div className="flex gap-2 sm:gap-3 items-center">
+                      <label className="hidden sm:flex items-center gap-2 text-sm font-bold text-ink cursor-pointer mr-2 hover:bg-surface/80 px-3 py-1.5 rounded-full transition-colors">
                         <input 
                           type="checkbox" 
                           checked={selectedExtracted.size === extractedBooks.length && extractedBooks.length > 0} 
                           onChange={toggleSelectAll}
-                          className="rounded border-border/50 text-accent focus:ring-accent/20 cursor-pointer"
+                          className="rounded border-border/60 text-ink focus:ring-ink/20 w-4 h-4 cursor-pointer"
                         />
                         Select All
                       </label>
                       <button 
                         onClick={() => { setExtractedBooks([]); setSelectedExtracted(new Set()); }}
-                        className="px-4 py-2 text-sm font-medium text-muted hover:text-ink hover:bg-surface rounded-full transition-colors"
+                        className="p-2 sm:px-4 sm:py-2 text-sm font-bold text-muted hover:text-ink hover:bg-surface border border-transparent hover:border-border/60 rounded-full transition-colors"
+                        title="Clear & Upload Again"
                       >
-                        Clear
+                        <span className="hidden sm:inline">Clear</span>
+                        <X size={18} strokeWidth={2} className="sm:hidden" />
                       </button>
                       <button 
                         onClick={handleAddSelectedExtracted}
                         disabled={isAddingAll || selectedExtracted.size === 0}
-                        className="bg-accent text-white px-4 py-2 rounded-full hover:bg-opacity-90 transition-colors disabled:opacity-50 text-sm font-medium flex items-center gap-2 shadow-sm"
+                        className="bg-ink text-surface px-4 py-2 sm:px-5 sm:py-2.5 rounded-full text-sm font-bold hover:bg-ink/90 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5"
                       >
-                        {isAddingAll ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
-                        Add Selected ({selectedExtracted.size})
+                        {isAddingAll ? <Loader2 className="animate-spin" size={16} /> : <BookPlus size={16} strokeWidth={2.5} />}
+                        <span className="hidden sm:inline">Add Selected </span>({selectedExtracted.size})
                       </button>
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {extractedBooks.map((book, idx) => (
-                      <label key={idx} className="bg-surface p-4 rounded-2xl shadow-sm border border-border/30 flex gap-3 hover:shadow-md transition-shadow cursor-pointer">
+                      <label key={idx} className={`bg-surface/60 p-5 rounded-3xl border transition-all cursor-pointer flex gap-4 ${selectedExtracted.has(`${book.title}::${book.author}`) ? 'border-ink shadow-md bg-surface ring-1 ring-ink/5' : 'border-border/40 shadow-[0_2px_8px_rgba(0,0,0,0.02)] hover:shadow-md hover:border-border/80'}`}>
                         <div className="pt-1">
                           <input 
                             type="checkbox"
                             checked={selectedExtracted.has(`${book.title}::${book.author}`)}
                             onChange={() => toggleSelect(book)}
-                            className="rounded border-border/50 text-accent focus:ring-accent/20 w-4 h-4 cursor-pointer"
+                            className="rounded border-border/60 text-ink focus:ring-ink/20 w-5 h-5 cursor-pointer mt-0.5"
                           />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             {isAdding === book.title && <Loader2 className="animate-spin text-accent flex-shrink-0" size={14} />}
-                            <h4 className="font-serif font-medium text-base text-ink truncate tracking-tight" title={book.title}>{toTitleCase(book.title)}</h4>
+                            <h4 className="font-serif font-bold text-base sm:text-lg text-ink truncate tracking-tight" title={book.title}>{toTitleCase(book.title)}</h4>
                           </div>
-                          <p className="text-muted text-sm truncate mt-0.5" title={book.author}>{toTitleCase(book.author)}</p>
-                          {book.isbn && <p className="text-muted/60 text-xs mt-1.5 font-mono">ISBN: {book.isbn}</p>}
-                          {book.genre && <p className="text-accent/80 text-xs mt-1 font-medium bg-accent/5 inline-block px-2 py-0.5 rounded-full border border-accent/10">{book.genre}</p>}
+                          <p className="text-muted text-xs sm:text-sm truncate mt-0.5 font-medium" title={book.author}>{toTitleCase(book.author)}</p>
+                          {book.isbn && book.isbn !== 'null' && <p className="text-muted/60 text-xs mt-1.5 font-mono font-medium">ISBN: {book.isbn}</p>}
+                          {book.genre && <p className="text-ink/80 text-xs mt-2 font-bold bg-ink/5 inline-block px-2.5 py-1 rounded-full border border-ink/10">{book.genre}</p>}
                         </div>
                       </label>
                     ))}
@@ -759,130 +768,130 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
           )}
 
           {activeTab === 'manual' && (
-            <div className="space-y-6">
-              <div className="flex flex-col items-center mb-2">
+            <div className="space-y-8 bg-surface/30 p-2 sm:p-4 rounded-3xl">
+              <div className="flex flex-col items-center mb-6">
                 {isCoverCameraActive ? (
-                  <div className="w-full max-w-sm mx-auto aspect-[3/4] bg-ink rounded-2xl overflow-hidden relative shadow-inner mb-4">
+                  <div className="w-full max-w-sm mx-auto aspect-[3/4] bg-ink/90 rounded-3xl overflow-hidden relative shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-border/20 mb-4">
                     <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
                     <canvas ref={canvasRef} className="hidden" />
                     <button
                       onClick={captureCover}
-                      className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-surface text-ink px-6 py-3 rounded-full font-medium shadow-lg flex items-center gap-2 hover:bg-paper transition-colors whitespace-nowrap"
+                      className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-surface/95 backdrop-blur-md text-ink px-6 py-3 rounded-full font-bold shadow-[0_4px_16px_rgba(0,0,0,0.15)] flex items-center gap-2 hover:bg-surface hover:scale-105 transition-all text-sm whitespace-nowrap border border-border/40"
                     >
-                      <Camera size={20} strokeWidth={1.5} /> Capture Cover
+                      <Camera size={18} strokeWidth={2} /> Capture Cover
                     </button>
                     <button
                       onClick={() => { stopCamera(); setIsCoverCameraActive(false); }}
-                      className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors"
+                      className="absolute top-4 right-4 p-2 bg-ink text-surface rounded-full hover:bg-ink/90 transition-colors shadow-md"
                     >
-                      <X size={20} />
+                      <X size={20} strokeWidth={2.5} />
                     </button>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center">
                     {manualBook.coverUrl ? (
                       <div className="relative group">
-                        <img src={manualBook.coverUrl} alt="Cover" className="w-32 h-48 object-cover rounded-md shadow-md" />
+                        <img src={manualBook.coverUrl} alt="Cover" className="w-32 h-48 object-cover rounded-xl shadow-[2px_4px_12px_rgba(0,0,0,0.1)] border border-border/40" />
                         <button 
                           onClick={() => setManualBook(prev => ({ ...prev, coverUrl: '' }))}
-                          className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                          className="absolute -top-3 -right-3 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all hover:scale-110 shadow-md"
                         >
-                          <X size={14} />
+                          <X size={14} strokeWidth={2.5} />
                         </button>
                       </div>
                     ) : (
                       <button 
                         onClick={() => { setIsCoverCameraActive(true); startCamera(); }}
-                        className="w-32 h-48 bg-paper border-2 border-dashed border-border rounded-md flex flex-col items-center justify-center text-muted hover:text-accent hover:border-accent transition-colors"
+                        className="w-32 h-48 bg-surface/50 border-2 border-dashed border-border/60 rounded-2xl flex flex-col items-center justify-center text-muted hover:text-ink hover:border-ink/40 transition-all shadow-sm hover:shadow-md"
                       >
-                        <Camera size={32} className="mb-2 opacity-50" />
-                        <span className="text-sm font-medium text-center px-2">Take Photo<br/>of Cover</span>
+                        <Camera size={32} className="mb-3 opacity-60" strokeWidth={1.5} />
+                        <span className="text-sm font-bold text-center px-4 leading-tight">Take Cover<br/>Photo</span>
                       </button>
                     )}
                   </div>
                 )}
               </div>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-sm font-medium text-ink mb-1.5">Title *</label>
+                    <label className="block text-sm font-bold text-ink mb-1.5 ml-1">Title *</label>
                     <input 
                       type="text" 
                       value={manualBook.title}
                       onChange={e => setManualBook(prev => ({ ...prev, title: e.target.value }))}
-                      className="w-full bg-surface border border-border/80 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-ink"
+                      className="w-full bg-surface/60 border border-border/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium"
                       required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-ink mb-1.5">Author *</label>
+                    <label className="block text-sm font-bold text-ink mb-1.5 ml-1">Author *</label>
                     <input 
                       type="text" 
                       value={manualBook.author}
                       onChange={e => setManualBook(prev => ({ ...prev, author: e.target.value }))}
-                      className="w-full bg-surface border border-border/80 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-ink"
+                      className="w-full bg-surface/60 border border-border/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium"
                       required
                     />
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                   <div>
-                    <label className="block text-sm font-medium text-ink mb-1.5">Genre</label>
+                    <label className="block text-sm font-bold text-ink mb-1.5 ml-1">Genre</label>
                     <input 
                       type="text" 
                       value={manualBook.genre || ''}
                       onChange={e => setManualBook(prev => ({ ...prev, genre: e.target.value }))}
-                      className="w-full bg-surface border border-border/80 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-ink"
+                      className="w-full bg-surface/60 border border-border/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-ink mb-1.5">Series</label>
+                    <label className="block text-sm font-bold text-ink mb-1.5 ml-1">Series</label>
                     <input 
                       type="text" 
                       value={manualBook.series || ''}
                       onChange={e => setManualBook(prev => ({ ...prev, series: e.target.value }))}
-                      className="w-full bg-surface border border-border/80 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-ink"
+                      className="w-full bg-surface/60 border border-border/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-ink mb-1.5">ISBN</label>
+                    <label className="block text-sm font-bold text-ink mb-1.5 ml-1">ISBN</label>
                     <input 
                       type="text" 
                       value={manualBook.isbn || ''}
                       onChange={e => setManualBook(prev => ({ ...prev, isbn: e.target.value }))}
-                      className="w-full bg-surface border border-border/80 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-ink"
+                      className="w-full bg-surface/60 border border-border/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium font-mono text-sm"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink mb-1.5">Published Date</label>
+                  <label className="block text-sm font-bold text-ink mb-1.5 ml-1">Published Date</label>
                   <input 
                     type="text" 
                     placeholder="e.g., 2023 or YYYY-MM-DD"
                     value={manualBook.publishedDate || ''}
                     onChange={e => setManualBook(prev => ({ ...prev, publishedDate: e.target.value }))}
-                    className="w-full bg-surface border border-border/80 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-ink"
+                    className="w-full bg-surface/60 border border-border/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink mb-1.5">Description</label>
+                  <label className="block text-sm font-bold text-ink mb-1.5 ml-1">Description</label>
                   <textarea 
                     value={manualBook.description || ''}
                     onChange={e => setManualBook(prev => ({ ...prev, description: e.target.value }))}
-                    className="w-full bg-surface border border-border/80 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-ink min-h-[100px] resize-y"
+                    className="w-full bg-surface/60 border border-border/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium min-h-[120px] resize-y"
                   />
                 </div>
 
                 <button
                   onClick={handleManualAdd}
                   disabled={!manualBook.title.trim() || !manualBook.author.trim() || isAdding === 'manual'}
-                  className="w-full bg-accent text-white px-6 py-3 rounded-xl hover:bg-opacity-90 transition-colors disabled:opacity-50 flex items-center justify-center font-medium shadow-sm mt-4"
+                  className="w-full bg-ink text-surface px-8 py-4 rounded-full hover:bg-ink/90 transition-all disabled:opacity-50 flex items-center justify-center font-bold shadow-[0_4px_16px_rgba(0,0,0,0.15)] hover:shadow-lg hover:-translate-y-0.5 mt-8"
                 >
-                  {isAdding === 'manual' ? <Loader2 className="animate-spin" size={20} /> : 'Add Book'}
+                  {isAdding === 'manual' ? <Loader2 className="animate-spin" size={24} strokeWidth={2.5} /> : 'Add Book to Library'}
                 </button>
               </div>
             </div>

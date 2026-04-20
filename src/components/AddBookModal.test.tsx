@@ -134,7 +134,7 @@ describe('AddBookModal', () => {
     await user.type(titleInput, 'Manual Title');
     await user.type(authorInput, 'Manual Author');
 
-    const submitBtn = screen.getByRole('button', { name: 'Add Book' });
+    const submitBtn = screen.getByRole('button', { name: 'Add Book to Library' });
     await user.click(submitBtn);
 
     await waitFor(() => {
@@ -161,7 +161,7 @@ describe('AddBookModal', () => {
     await user.type(titleInput, 'Duplicate Book');
     await user.type(authorInput, 'Same Author');
 
-    const submitBtn = screen.getByRole('button', { name: 'Add Book' });
+    const submitBtn = screen.getByRole('button', { name: 'Add Book to Library' });
     await user.click(submitBtn);
 
     await waitFor(() => {

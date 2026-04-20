@@ -135,29 +135,29 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="fixed bottom-24 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-96 h-[32rem] max-h-[calc(100vh-8rem)] bg-paper rounded-2xl shadow-xl border border-border flex flex-col overflow-hidden z-50 font-sans"
+            className="fixed bottom-24 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-[400px] h-[36rem] max-h-[calc(100vh-8rem)] bg-surface/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-border/40 flex flex-col overflow-hidden z-[60] font-sans"
           >
             {/* Header */}
-            <div className="bg-surface px-4 py-3 border-b border-border flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-accent text-white rounded-lg">
-                  <Bot size={20} />
+            <div className="bg-surface/50 px-5 py-4 border-b border-border/40 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-accent text-surface rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
+                  <Bot size={20} strokeWidth={2} />
                 </div>
                 <div>
-                  <h3 className="font-serif font-bold text-ink leading-tight">AI Librarian</h3>
-                  <p className="text-xs text-muted">Powered by Gemini</p>
+                  <h3 className="font-serif font-bold text-ink leading-tight tracking-tight">AI Librarian</h3>
+                  <p className="text-xs text-muted font-medium">Powered by Gemini</p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 text-muted hover:bg-paper rounded-full transition-colors"
+                className="p-2 text-muted hover:bg-surface rounded-full transition-colors border border-transparent hover:border-border/60"
               >
-                <X size={20} />
+                <X size={18} strokeWidth={2} />
               </button>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-surface/30 custom-scrollbar">
               {messages.map((msg) => (
                 <div 
                   key={msg.id} 
@@ -169,10 +169,10 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
                     }`}>
                       {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                     </div>
-                    <div className={`p-3 rounded-2xl ${
+                    <div className={`p-4 rounded-3xl ${
                       msg.role === 'user' 
-                        ? 'bg-ink text-paper rounded-tr-sm' 
-                        : 'bg-surface border border-border text-ink rounded-tl-sm'
+                        ? 'bg-ink text-surface rounded-tr-sm shadow-sm' 
+                        : 'bg-surface border border-border/40 text-ink rounded-tl-sm shadow-sm'
                     }`}>
                       <div className={`prose prose-sm max-w-none ${
                         msg.role === 'user' 
@@ -201,23 +201,23 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
             </div>
 
             {/* Input */}
-            <div className="p-3 bg-surface border-t border-border">
+            <div className="p-4 bg-surface/50 border-t border-border/40 backdrop-blur-sm">
               <div className="relative flex items-center">
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask about your library..."
-                  className="w-full bg-paper border border-border rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none"
+                  className="w-full bg-paper/80 border border-border/60 rounded-2xl pl-5 pr-14 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20 focus:border-ink/40 resize-none font-medium custom-scrollbar"
                   rows={1}
-                  style={{ minHeight: '44px', maxHeight: '120px' }}
+                  style={{ minHeight: '50px', maxHeight: '120px' }}
                 />
                 <button
                   onClick={handleSend}
                   disabled={!input.trim() || isLoading}
-                  className="absolute right-2 p-2 text-accent disabled:text-muted hover:bg-surface rounded-lg transition-colors"
+                  className="absolute right-2 p-2.5 text-surface bg-accent disabled:bg-surface disabled:text-muted hover:bg-accent/90 rounded-xl transition-all shadow-sm disabled:shadow-none"
                 >
-                  <Send size={18} />
+                  <Send size={16} strokeWidth={2} />
                 </button>
               </div>
             </div>
