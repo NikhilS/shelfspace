@@ -95,12 +95,16 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
           msg.id === modelMessageId ? { ...msg, text: responseText } : msg
         ));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending message:", error);
+      const errorMessage = error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('quota')
+        ? "The AI Librarian is currently resting (quota limit). Please come back later!"
+        : "I'm sorry, I encountered an error while trying to respond. Please try again.";
+        
       setMessages(prev => [...prev, { 
         id: Date.now().toString(), 
         role: 'model', 
-        text: "I'm sorry, I encountered an error while trying to respond. Please try again." 
+        text: errorMessage
       }]);
     } finally {
       setIsLoading(false);

@@ -19,7 +19,8 @@ vi.mock('../services/gemini', () => ({
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
-    error: vi.fn()
+    error: vi.fn(),
+    info: vi.fn()
   }
 }));
 
@@ -134,6 +135,27 @@ describe('AddBookModal', () => {
         author: 'Manual Author'
       }));
       expect(mockOnClose).toHaveBeenCalled();
+    });
+  });
+
+  it('skips duplicate book when adding manually', async () => {
+    const user = userEvent.setup();
+    const existingBooks = [{ title: 'Duplicate Book', author: 'Same Author', isbn: '123', coverUrl: '', publishedDate: '' }];
+    render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} existingBooks={existingBooks} />);
+    
+    await user.click(screen.getByText('Manual'));
+
+    const titleInput = screen.getByText('Title *').nextElementSibling as HTMLInputElement;
+    const authorInput = screen.getByText('Author *').nextElementSibling as HTMLInputElement;
+
+    await user.type(titleInput, 'Duplicate Book');
+    await user.type(authorInput, 'Same Author');
+
+    const submitBtn = screen.getByRole('button', { name: 'Add Book' });
+    await user.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockOnAddBook).not.toHaveBeenCalled();
     });
   });
 });

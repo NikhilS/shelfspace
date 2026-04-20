@@ -1,5 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 
+export function handleGeminiError(error: any): never {
+  console.error("Error calling Gemini:", error);
+  const errorMessage = error?.message || '';
+  if (error?.status === 429 || errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('quota')) {
+    throw new Error("The AI service has exceeded its quota limit. Please try again later.");
+  }
+  throw new Error("Failed to communicate with the AI service. Please try again.");
+}
+
 export async function extractBooksFromImage(base64Image: string, mimeType: string): Promise<{ title: string, author: string, isbn?: string, genre?: string }[]> {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -37,8 +46,7 @@ export async function extractBooksFromImage(base64Image: string, mimeType: strin
       return [];
     }
   } catch (error) {
-    console.error("Error calling Gemini:", error);
-    throw error;
+    handleGeminiError(error);
   }
 }
 
@@ -80,8 +88,7 @@ export async function extractBooksFromCsv(csvText: string): Promise<{ title: str
       return [];
     }
   } catch (error) {
-    console.error("Error calling Gemini:", error);
-    throw error;
+    handleGeminiError(error);
   }
 }
 
@@ -106,8 +113,7 @@ Format the response with simple markdown (use ## for the book titles).`;
 
     return response.text || "I'm sorry, I couldn't generate recommendations at the moment.";
   } catch (error) {
-    console.error("Error generating library recommendations:", error);
-    throw error;
+    handleGeminiError(error);
   }
 }
 export async function generateBookInsights(title: string, author: string, type: 'summary' | 'catchup' | 'similar'): Promise<string> {
@@ -138,8 +144,7 @@ export async function generateBookInsights(title: string, author: string, type: 
 
     return response.text || "I'm sorry, I couldn't generate insights for this book at the moment.";
   } catch (error) {
-    console.error("Error generating book insights:", error);
-    throw error;
+    handleGeminiError(error);
   }
 }
 

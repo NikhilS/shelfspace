@@ -10,9 +10,10 @@ interface AddBookModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddBook: (book: BookDetails) => Promise<void>;
+  existingBooks?: BookDetails[];
 }
 
-export default function AddBookModal({ isOpen, onClose, onAddBook }: AddBookModalProps) {
+export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks = [] }: AddBookModalProps) {
   const [activeTab, setActiveTab] = useState<'search' | 'camera' | 'csv' | 'manual'>('camera');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<BookDetails[]>([]);
@@ -75,6 +76,17 @@ export default function AddBookModal({ isOpen, onClose, onAddBook }: AddBookModa
   };
 
   const handleAdd = async (book: BookDetails) => {
+    // Check for duplicate before processing
+    if (existingBooks.some(b => 
+      (b.isbn && book.isbn && b.isbn === book.isbn && book.isbn !== 'null') ||
+      (b.title.toLowerCase() === book.title.toLowerCase() && 
+       b.author.toLowerCase() === book.author.toLowerCase())
+    )) {
+      toast.info(`Skipped duplicate: ${book.title}`);
+      onClose();
+      return;
+    }
+
     setIsAdding(book.isbn || book.title);
     try {
       await onAddBook(book);
@@ -129,6 +141,16 @@ export default function AddBookModal({ isOpen, onClose, onAddBook }: AddBookModa
   const handleManualAdd = async () => {
     if (!manualBook.title.trim() || !manualBook.author.trim()) return;
     
+    // Check for duplicate before processing
+    if (existingBooks.some(b => 
+      (b.isbn && manualBook.isbn && b.isbn === manualBook.isbn && manualBook.isbn !== 'null') ||
+      (b.title.toLowerCase() === manualBook.title.trim().toLowerCase() && 
+       b.author.toLowerCase() === manualBook.author.trim().toLowerCase())
+    )) {
+      toast.info(`Skipped duplicate: ${manualBook.title}`);
+      return;
+    }
+    
     setIsAdding('manual');
     try {
       await onAddBook(manualBook);
@@ -174,7 +196,11 @@ export default function AddBookModal({ isOpen, onClose, onAddBook }: AddBookModa
         toast.error("No books found in image");
       }
     } catch (error) {
-      toast.error("Failed to extract books from image");
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Failed to extract books from image");
+      }
     } finally {
       setIsExtracting(false);
     }
@@ -200,7 +226,11 @@ export default function AddBookModal({ isOpen, onClose, onAddBook }: AddBookModa
         toast.success(`Found ${books.length} books in CSV.`);
       }
     } catch (error) {
-      toast.error("Failed to process CSV file.");
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Failed to process CSV file.");
+      }
     } finally {
       setIsExtracting(false);
       if (fileInputRef.current) {
@@ -234,7 +264,11 @@ export default function AddBookModal({ isOpen, onClose, onAddBook }: AddBookModa
              toast.success(`Found ${books.length} books.`);
           }
         } catch (err) {
-          toast.error("Failed to extract books from image");
+          if (err instanceof Error) {
+            toast.error(err.message);
+          } else {
+            toast.error("Failed to extract books from image");
+          }
         } finally {
           setIsExtracting(false);
         }
@@ -252,6 +286,18 @@ export default function AddBookModal({ isOpen, onClose, onAddBook }: AddBookModa
 
   const handleAddExtracted = async (extracted: {title: string, author: string, isbn?: string, genre?: string}) => {
     setIsAdding(extracted.title);
+    
+    // Check for duplicate before processing
+    if (existingBooks.some(b => 
+      (b.isbn && extracted.isbn && b.isbn === extracted.isbn && extracted.isbn !== 'null') ||
+      (b.title.toLowerCase() === extracted.title.toLowerCase())
+    )) {
+      toast.info(`Skipped duplicate: ${extracted.title}`);
+      setExtractedBooks(prev => prev.filter(b => b.title !== extracted.title));
+      setIsAdding(null);
+      return;
+    }
+    
     try {
       let bookToAdd: BookDetails | null = null;
 
@@ -293,44 +339,68 @@ export default function AddBookModal({ isOpen, onClose, onAddBook }: AddBookModa
   const handleAddAllExtracted = async () => {
     setIsAddingAll(true);
     let addedCount = 0;
+    let duplicateCount = 0;
     const booksToAdd = [...extractedBooks];
     
-    for (const book of booksToAdd) {
-      try {
-        setIsAdding(book.title);
-        let bookToAdd: BookDetails | null = null;
+    // Process in batches of 5 to avoid rate-limiting while still parallelizing
+    const batchSize = 5;
+    for (let i = 0; i < booksToAdd.length; i += batchSize) {
+      const batch = booksToAdd.slice(i, i + batchSize);
+      
+      const batchPromises = batch.map(async (book) => {
+        try {
+          setIsAdding(book.title); // Note: This might flicker with parallel updates, but gives some feedback
+          
+          if (existingBooks.some(b => 
+            (b.isbn && book.isbn && b.isbn === book.isbn && book.isbn !== 'null') ||
+            (b.title.toLowerCase() === book.title.toLowerCase())
+          )) {
+            // It's a duplicate, skip adding it
+            setExtractedBooks(prev => prev.filter(b => b.title !== book.title));
+            return 'duplicate';
+          }
+          
+          let bookToAdd: BookDetails | null = null;
 
-        // 1. Try ISBN first if available
-        if (book.isbn && book.isbn !== 'null') {
-          bookToAdd = await searchBookByIsbn(book.isbn);
-        }
+          // 1. Try ISBN first if available
+          if (book.isbn && book.isbn !== 'null') {
+            bookToAdd = await searchBookByIsbn(book.isbn);
+          }
 
-        // 2. Fallback to title search if ISBN failed or wasn't provided
-        if (!bookToAdd) {
-          const results = await searchBookByTitle(book.title);
-          bookToAdd = results.find(r => r.author.toLowerCase().includes(book.author.toLowerCase())) || results[0] || null;
+          // 2. Fallback to title search if ISBN failed or wasn't provided
+          if (!bookToAdd) {
+            const results = await searchBookByTitle(book.title);
+            bookToAdd = results.find(r => r.author.toLowerCase().includes(book.author.toLowerCase())) || results[0] || null;
+          }
+          
+          const finalBook: BookDetails = bookToAdd || {
+            title: book.title,
+            author: book.author,
+            isbn: book.isbn && book.isbn !== 'null' ? book.isbn : '',
+            coverUrl: '',
+            publishedDate: '',
+            genre: book.genre
+          };
+          
+          // Ensure genre is set if we extracted it
+          if (book.genre && !finalBook.genre) {
+            finalBook.genre = book.genre;
+          }
+          
+          await onAddBook(finalBook);
+          
+          // Using functional state update to safely remove from the list
+          setExtractedBooks(prev => prev.filter(b => b.title !== book.title));
+          return true; // Success
+        } catch (error) {
+          console.error(`Failed to add ${book.title}`, error);
+          return false; // Failure
         }
-        
-        const finalBook: BookDetails = bookToAdd || {
-          title: book.title,
-          author: book.author,
-          isbn: book.isbn && book.isbn !== 'null' ? book.isbn : '',
-          coverUrl: '',
-          publishedDate: '',
-          genre: book.genre
-        };
-        
-        // Ensure genre is set if we extracted it
-        if (book.genre && !finalBook.genre) {
-          finalBook.genre = book.genre;
-        }
-        
-        await onAddBook(finalBook);
-        addedCount++;
-        setExtractedBooks(prev => prev.filter(b => b.title !== book.title));
-      } catch (error) {
-        console.error(`Failed to add ${book.title}`, error);
-      }
+      });
+      
+      const results = await Promise.all(batchPromises);
+      addedCount += results.filter(r => r === true).length;
+      duplicateCount += results.filter(r => r === 'duplicate').length;
     }
     
     setIsAdding(null);
@@ -339,8 +409,11 @@ export default function AddBookModal({ isOpen, onClose, onAddBook }: AddBookModa
     if (addedCount > 0) {
       toast.success(`Successfully added ${addedCount} books`);
     }
-    if (addedCount !== booksToAdd.length && booksToAdd.length > 0) {
-      toast.error(`Failed to add ${booksToAdd.length - addedCount} books`);
+    if (duplicateCount > 0) {
+      toast.info(`Skipped ${duplicateCount} duplicate book${duplicateCount === 1 ? '' : 's'}`);
+    }
+    if (addedCount + duplicateCount !== booksToAdd.length && booksToAdd.length > 0) {
+      toast.error(`Failed to add ${booksToAdd.length - addedCount - duplicateCount} books`);
     }
   };
 

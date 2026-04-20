@@ -154,8 +154,11 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
     try {
       const content = await generateBookInsights(book.title, book.author, type);
       setInsightContent(content);
-    } catch (error) {
-      toast.error("Failed to generate insights. Please try again.");
+    } catch (error: any) {
+      const errorMessage = error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('quota')
+        ? "The AI Librarian is currently resting (quota limit). Please come back later!"
+        : "Failed to generate insights. Please try again.";
+      toast.error(errorMessage);
       setActiveInsight(null);
     } finally {
       setIsGeneratingInsight(false);

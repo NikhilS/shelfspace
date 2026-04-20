@@ -29,9 +29,12 @@ export default function RecommendationsModal({ isOpen, onClose, libraryBooks }: 
     try {
       const content = await generateLibraryRecommendations(libraryBooks);
       setRecommendations(content);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to generate recommendations:", error);
-      setRecommendations("Failed to generate recommendations. Please try again later.");
+      const errorMessage = error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('quota')
+        ? "The AI Librarian is currently resting (quota limit). Please come back later!"
+        : "Failed to generate recommendations. Please try again later.";
+      setRecommendations(errorMessage);
     } finally {
       isGeneratingRef.current = false;
       setIsGenerating(false);
