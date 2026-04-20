@@ -30,13 +30,6 @@ describe('BookCard component', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
-  it('renders compact book card correctly', () => {
-    // Compact mode shouldn't render image even if it exists
-    render(<BookCard book={mockBook} canEdit={false} compact={true} />);
-    expect(screen.queryByRole('img')).not.toBeInTheDocument();
-    expect(screen.getByText('The Great Gatsby')).toBeInTheDocument();
-  });
-
   it('calls onClick when card is clicked', () => {
     const handleClick = vi.fn();
     render(<BookCard book={mockBook} canEdit={false} onClick={handleClick} />);

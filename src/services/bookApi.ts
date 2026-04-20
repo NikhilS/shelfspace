@@ -5,6 +5,7 @@ export interface BookDetails {
   coverUrl: string;
   publishedDate: string;
   genre?: string;
+  series?: string;
   description?: string;
 }
 
@@ -73,6 +74,33 @@ export async function searchBookByIsbn(isbn: string): Promise<BookDetails | null
   }
 
   return null;
+}
+
+export async function searchBookByTitleAndAuthor(title: string, author: string): Promise<BookDetails[]> {
+  let results: BookDetails[] = [];
+  try {
+    const q = encodeURIComponent(`intitle:"${title}"+inauthor:"${author}"`);
+    const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.items && data.items.length > 0) {
+        results = data.items.map((item: any) => {
+          const bookData = item.volumeInfo;
+          return {
+            title: bookData.title || title,
+            author: bookData.authors?.join(', ') || author,
+            isbn: extractIsbn(bookData.industryIdentifiers),
+            coverUrl: bookData.imageLinks?.thumbnail?.replace('http:', 'https:') || bookData.imageLinks?.smallThumbnail?.replace('http:', 'https:') || '',
+            publishedDate: bookData.publishedDate || '',
+            genre: bookData.categories?.[0] || undefined
+          };
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Google Books search failed:", error);
+  }
+  return results;
 }
 
 export async function searchBookByTitle(query: string): Promise<BookDetails[]> {

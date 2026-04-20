@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AddBookModal from './AddBookModal';
 import * as bookApi from '../services/bookApi';
@@ -48,7 +48,9 @@ describe('AddBookModal', () => {
   });
 
   it('renders standard layout when isOpen is true', async () => {
-    render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} />);
+    await act(async () => {
+      render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} />);
+    });
     expect(screen.getByText('Add Books')).toBeInTheDocument();
     
     // Tabs
@@ -64,7 +66,9 @@ describe('AddBookModal', () => {
       { title: 'Test Book', author: 'Test Author', isbn: '123' }
     ]);
 
-    render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} />);
+    await act(async () => {
+      render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} />);
+    });
     
     const searchTab = screen.getByText('Search');
     await user.click(searchTab);
@@ -91,7 +95,9 @@ describe('AddBookModal', () => {
       { title: 'Title To Add', author: 'Author to Add', isbn: '555' }
     ]);
 
-    render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} />);
+    await act(async () => {
+      render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} />);
+    });
     await user.click(screen.getByText('Search'));
     
     await user.type(screen.getByPlaceholderText(/Search by title/i), 'Query');
@@ -116,7 +122,9 @@ describe('AddBookModal', () => {
 
   it('switches to Manual tab and adds a book manually', async () => {
     const user = userEvent.setup();
-    render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} />);
+    await act(async () => {
+      render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} />);
+    });
     
     await user.click(screen.getByText('Manual'));
 
@@ -141,7 +149,9 @@ describe('AddBookModal', () => {
   it('skips duplicate book when adding manually', async () => {
     const user = userEvent.setup();
     const existingBooks = [{ title: 'Duplicate Book', author: 'Same Author', isbn: '123', coverUrl: '', publishedDate: '' }];
-    render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} existingBooks={existingBooks} />);
+    await act(async () => {
+      render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} existingBooks={existingBooks} />);
+    });
     
     await user.click(screen.getByText('Manual'));
 

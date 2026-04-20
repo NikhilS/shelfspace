@@ -2,16 +2,17 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, collection, query, onSnapshot, addDoc, deleteDoc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
-import { ArrowLeft, Plus, Share2, Settings, Trash2, X, Sparkles, LayoutGrid, List, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown, LogOut, Search, Filter, Download, Book as BookIcon } from 'lucide-react';
+import { doc, collection, query, onSnapshot, addDoc, deleteDoc, serverTimestamp, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { ArrowLeft, Plus, Share2, Settings, Trash2, X, Sparkles, LayoutGrid, List, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown, LogOut, Search, Filter, Download, Book as BookIcon, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { GoogleGenAI, Type } from '@google/genai';
+import { enrichBooksMetadata } from '../services/gemini';
 import AddBookModal from '../components/AddBookModal';
 import BookCard from '../components/BookCard';
 import BookDetailsModal from '../components/BookDetailsModal';
 import RecommendationsModal from '../components/RecommendationsModal';
 import Chatbot from '../components/Chatbot';
-import { BookDetails } from '../services/bookApi';
+import { BookDetails, searchBookByTitleAndAuthor } from '../services/bookApi';
 import { toSentenceCase, toTitleCase } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -46,6 +47,12 @@ export default function LibraryView() {
   const [isRecommendationsModalOpen, setIsRecommendationsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
+  const [isResyncing, setIsResyncing] = useState(false);
+  const [resyncTotal, setResyncTotal] = useState(0);
+  const [resyncCompleted, setResyncCompleted] = useState(0);
+  const [resyncErrors, setResyncErrors] = useState<{title: string, error: string}[]>([]);
+  const [showResyncErrors, setShowResyncErrors] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
   const [bookToDelete, setBookToDelete] = useState<string | null>(null);
   const [libraryToDelete, setLibraryToDelete] = useState<boolean>(false);
@@ -55,7 +62,7 @@ export default function LibraryView() {
   const [groupBy, setGroupBy] = useState<GroupOption>('none');
   const [aiGroups, setAiGroups] = useState<{category: string, books: Book[]}[]>([]);
   const [isGrouping, setIsGrouping] = useState(false);
-  const [viewMode, setViewMode] = useState<'standard' | 'compact' | 'table'>('standard');
+  const [viewMode, setViewMode] = useState<'standard' | 'table'>('standard');
   const [booksPerShelf, setBooksPerShelf] = useState(6);
   const mainRef = useRef<HTMLElement>(null);
 
@@ -86,14 +93,14 @@ export default function LibraryView() {
         const isMobile = window.innerWidth < 640;
         
         // Book widths based on BookCard.tsx
-        const bookWidth = viewMode === 'compact' ? (isMobile ? 80 : 96) : (isMobile ? 128 : 160);
-        const gap = isMobile ? 12 : 16;
+        const bookWidth = isMobile ? 128 : 160;
+        // gap-3 is 12px, sm:gap-5 is 20px
+        const gap = isMobile ? 12 : 20;
         
-        // Deductions from main container width:
-        // Main has px-6 (48px) - but contentRect already excludes this if we observe main
-        // Shelf container has border-x-4 (8px) and p-4 (32px) on mobile
-        // Shelf row has px-2 (16px) on mobile
-        const containerDeductions = isMobile ? (8 + 32 + 16) : (16 + 64 + 32);
+        // Deductions from main container width (which is already minus its own px-4/px-6 due to contentRect):
+        // Shelf container has border-x-4 (8px)/border-x-8 (16px) and p-4 (32px)/p-6 (48px)
+        // Shelf row has px-2 (16px)/px-4 (32px)
+        const containerDeductions = isMobile ? (8 + 32 + 16) : (16 + 48 + 32);
         
         // If there's a sidebar on desktop, width is reduced
         const availableWidth = width - containerDeductions;
@@ -127,8 +134,15 @@ export default function LibraryView() {
       snapshot.forEach((doc) => {
         bks.push({ id: doc.id, ...doc.data() } as Book);
       });
+      const getTime = (dateObj: any) => {
+        if (!dateObj) return 0;
+        if (typeof dateObj.toMillis === 'function') return dateObj.toMillis();
+        const d = new Date(dateObj);
+        return isNaN(d.getTime()) ? 0 : d.getTime();
+      };
+      
       // Sort by addedAt descending
-      bks.sort((a, b) => (b.addedAt?.toMillis() || 0) - (a.addedAt?.toMillis() || 0));
+      bks.sort((a, b) => getTime(b.addedAt) - getTime(a.addedAt));
       setBooks(bks);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `libraries/${id}/books`);
@@ -142,6 +156,25 @@ export default function LibraryView() {
 
   const canEdit = library?.ownerId === user?.uid || library?.sharedWith.includes(user?.email || '');
   const isOwner = library?.ownerId === user?.uid;
+
+  useEffect(() => {
+    // Backfill any books that have addedAt as a string (without the time) to a full Timestamp at midnight
+    if (!canEdit || books.length === 0 || !id) return;
+
+    const booksToBackfill = books.filter(b => typeof b.addedAt === 'string');
+    if (booksToBackfill.length > 0) {
+      booksToBackfill.forEach(b => {
+        const d = new Date(b.addedAt);
+        if (!isNaN(d.getTime())) {
+          // Setting local midnight for the relevant day
+          d.setHours(0, 0, 0, 0);
+          updateDoc(doc(db, 'libraries', id, 'books', b.id), {
+            addedAt: Timestamp.fromDate(d)
+          }).catch(err => console.error("Error backfilling addedAt", err));
+        }
+      });
+    }
+  }, [books, canEdit, id]);
 
   const handleSort = (option: SortOption) => {
     if (sortBy === option) {
@@ -204,9 +237,15 @@ export default function LibraryView() {
     } else if (sortBy === 'author') {
       sorted.sort((a, b) => sortOrder === 'asc' ? a.author.localeCompare(b.author) : b.author.localeCompare(a.author));
     } else {
+      const getTime = (dateObj: any) => {
+        if (!dateObj) return 0;
+        if (typeof dateObj.toMillis === 'function') return dateObj.toMillis();
+        const d = new Date(dateObj);
+        return isNaN(d.getTime()) ? 0 : d.getTime();
+      };
       sorted.sort((a, b) => {
-        const timeA = a.addedAt?.toMillis() || 0;
-        const timeB = b.addedAt?.toMillis() || 0;
+        const timeA = getTime(a.addedAt);
+        const timeB = getTime(b.addedAt);
         return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
       });
     }
@@ -230,6 +269,18 @@ export default function LibraryView() {
         .sort((a, b) => a.category.localeCompare(b.category));
     }
     
+    if (groupBy === 'genre' || groupBy === 'series') {
+      const groups: Record<string, Book[]> = {};
+      sortedBooks.forEach(book => {
+        const value = (groupBy === 'genre' ? book.genre : book.series) || `Unknown ${groupBy === 'genre' ? 'Genre' : 'Series'}`;
+        if (!groups[value]) groups[value] = [];
+        groups[value].push(book);
+      });
+      return Object.entries(groups)
+        .map(([category, bks]) => ({ category, books: bks }))
+        .sort((a, b) => a.category.localeCompare(b.category));
+    }
+    
     return aiGroups.map(group => {
       const groupFilteredBooks = group.books.filter(book => filteredBooks.some(fb => fb.id === book.id));
       const sortedGroupBooks = [...groupFilteredBooks];
@@ -238,7 +289,13 @@ export default function LibraryView() {
       } else if (sortBy === 'author') {
         sortedGroupBooks.sort((a, b) => a.author.localeCompare(b.author));
       } else {
-        sortedGroupBooks.sort((a, b) => (b.addedAt?.toMillis() || 0) - (a.addedAt?.toMillis() || 0));
+        const getTime = (dateObj: any) => {
+          if (!dateObj) return 0;
+          if (typeof dateObj.toMillis === 'function') return dateObj.toMillis();
+          const d = new Date(dateObj);
+          return isNaN(d.getTime()) ? 0 : d.getTime();
+        };
+        sortedGroupBooks.sort((a, b) => getTime(b.addedAt) - getTime(a.addedAt));
       }
       return { category: group.category, books: sortedGroupBooks };
     }).filter(group => group.books.length > 0);
@@ -247,7 +304,7 @@ export default function LibraryView() {
   const bookIdsString = books.map(b => b.id).sort().join(',');
 
   useEffect(() => {
-    if (groupBy === 'none' || groupBy === 'author') return;
+    if (groupBy !== 'lucky') return;
     if (books.length === 0) {
       setAiGroups([]);
       return;
@@ -258,8 +315,6 @@ export default function LibraryView() {
       try {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const prompt = `You are an expert librarian. Group the following books into categories based on: ${groupBy}.
-        If mode is 'genre', group by literary genre.
-        If mode is 'series', group by book series (use 'Standalone' for books not in a series).
         If mode is 'lucky', create fun, creative, highly specific, and quirky categories (e.g., 'Brooding Detectives', 'Space Operas with Snarky Robots').
         
         Books:
@@ -328,8 +383,29 @@ export default function LibraryView() {
   const handleAddBook = async (bookDetails: BookDetails) => {
     if (!id || !user || !canEdit) return;
     try {
+      let enrichedDetails = { ...bookDetails };
+      
+      // Attempt to quickly enrich genre/series if missing
+      if (!enrichedDetails.genre || !enrichedDetails.series) {
+        try {
+          const enrichments = await enrichBooksMetadata([{
+            id: 'temp', 
+            title: enrichedDetails.title, 
+            author: enrichedDetails.author,
+            description: enrichedDetails.description,
+            currentGenre: enrichedDetails.genre
+          }]);
+          if (enrichments.length > 0) {
+            enrichedDetails.genre = enrichedDetails.genre || enrichments[0].genre;
+            enrichedDetails.series = enrichedDetails.series || enrichments[0].series;
+          }
+        } catch (e) {
+          console.warn("Failed to enrich metadata on add", e);
+        }
+      }
+
       await addDoc(collection(db, 'libraries', id, 'books'), {
-        ...bookDetails,
+        ...enrichedDetails,
         addedBy: user.uid,
         addedAt: serverTimestamp()
       });
@@ -359,7 +435,7 @@ export default function LibraryView() {
     }
   };
 
-  const handleUpdateBook = async (bookId: string, updatedData: Partial<BookDetails>) => {
+  const handleUpdateBook = async (bookId: string, updatedData: Partial<Omit<Book, 'id'>>) => {
     if (!id || !canEdit) return;
     try {
       await updateDoc(doc(db, 'libraries', id, 'books', bookId), updatedData);
@@ -446,14 +522,21 @@ export default function LibraryView() {
     };
 
     const rows = books.map(book => {
-      const addedDate = book.addedAt ? new Date(book.addedAt.toMillis()).toLocaleDateString() : '';
+      let addedDateStr = '';
+      if (book.addedAt) {
+        if (typeof book.addedAt.toMillis === 'function') {
+          addedDateStr = new Date(book.addedAt.toMillis()).toLocaleString();
+        } else {
+          addedDateStr = new Date(book.addedAt).toLocaleString();
+        }
+      }
       return [
         escapeCSV(book.title),
         escapeCSV(book.author),
         escapeCSV(book.isbn),
         escapeCSV(book.genre),
         escapeCSV(book.publishedDate),
-        escapeCSV(addedDate)
+        escapeCSV(addedDateStr)
       ].join(',');
     });
 
@@ -468,6 +551,107 @@ export default function LibraryView() {
     document.body.removeChild(link);
     
     toast.success("Library exported to CSV");
+  };
+
+  const handleResyncAllBooks = async () => {
+    if (!id || !canEdit) return;
+    const booksToSync = books.filter(b => (!b.isbn || b.isbn === 'null' || !b.genre || !b.series) && b.author);
+    
+    if (booksToSync.length === 0) {
+      toast.info("All books already have ISBN, Genre, and Series synced.");
+      return;
+    }
+
+    setResyncTotal(booksToSync.length);
+    setResyncCompleted(0);
+    setIsResyncing(true);
+    setResyncErrors([]);
+    setShowResyncErrors(false);
+    let updatedCount = 0;
+    const currentErrors: {title: string, error: string}[] = [];
+
+    try {
+      // Process in batches of 10 to avoid overwhelming endpoints
+      const batchSize = 10;
+      for (let i = 0; i < booksToSync.length; i += batchSize) {
+        const batch = booksToSync.slice(i, i + batchSize);
+        // First, check ISBNs via normal API
+        await Promise.all(batch.map(async (book) => {
+          try {
+            const changes: Partial<Omit<Book, 'id'>> = {};
+            if (!book.isbn || book.isbn === 'null') {
+              const results = await searchBookByTitleAndAuthor(book.title, book.author);
+              if (results && results.length > 0 && results[0].isbn) {
+                changes.isbn = results[0].isbn;
+                if (!book.genre && results[0].genre) {
+                  changes.genre = results[0].genre;
+                }
+              }
+            }
+
+            if (Object.keys(changes).length > 0) {
+              await updateDoc(doc(db, 'libraries', id, 'books', book.id), changes);
+            }
+          } catch (err: any) {
+             currentErrors.push({ title: book.title, error: err.message || "Failed to fetch ISBN" });
+          }
+        }));
+
+        // Next, enrich any missing genre/series for the batch via Gemini
+        const missingMetadataBooks = batch.filter(b => !b.genre || !b.series);
+        if (missingMetadataBooks.length > 0) {
+           try {
+             const enrichments = await enrichBooksMetadata(missingMetadataBooks.map(b => ({
+               id: b.id,
+               title: b.title,
+               author: b.author,
+               currentGenre: b.genre
+             })));
+             
+             await Promise.all(enrichments.map(async (enriched) => {
+               const book = missingMetadataBooks.find(b => b.id === enriched.id);
+               if (book) {
+                 const changes: Partial<Omit<Book, 'id'>> = {};
+                 if (!book.genre) changes.genre = enriched.genre;
+                 if (!book.series) changes.series = enriched.series;
+                 if (Object.keys(changes).length > 0) {
+                   await updateDoc(doc(db, 'libraries', id, 'books', book.id), changes);
+                   updatedCount++;
+                 }
+               }
+             }));
+           } catch (err: any) {
+             console.error("Batch enrichment failed", err);
+           }
+        }
+        
+        // Progress update
+        setResyncCompleted(prev => prev + batch.length);
+
+        // Add a small delay between batches to avoid rate limits
+        if (i + batchSize < booksToSync.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      if (updatedCount > 0) {
+        toast.success(`Successfully resynced ${updatedCount} books.`);
+      } else if (currentErrors.length > 0) {
+        toast.error(`Resync finished, but issues were found.`);
+      } else {
+        toast.info("Resync finished. No new metadata found.");
+      }
+    } catch (err) {
+      toast.error("Failed to finish resyncing all books.");
+    } finally {
+      setIsResyncing(false);
+      setResyncTotal(0);
+      setResyncCompleted(0);
+      setResyncErrors(currentErrors);
+      if (currentErrors.length === 0) {
+        setIsAdvancedSettingsOpen(false);
+      }
+    }
   };
 
   if (isLoading) {
@@ -498,7 +682,6 @@ export default function LibraryView() {
                   <th className="px-5 py-3 font-bold cursor-pointer hover:bg-black/5 transition-colors" onClick={() => handleSort('added')}>
                     <div className="flex items-center gap-2">Added <SortIcon column="added" /></div>
                   </th>
-                  {canEdit && <th className="px-5 py-3 font-bold text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/30">
@@ -543,28 +726,19 @@ export default function LibraryView() {
                         </td>
                         <td className="px-5 py-3 text-muted font-medium text-sm">{toTitleCase(book.author)}</td>
                         <td className="px-5 py-3 text-muted text-xs font-medium">
-                          {book.addedAt ? new Date(book.addedAt.toMillis()).toLocaleDateString() : 'Unknown'}
+                          {book.addedAt 
+                            ? (typeof book.addedAt.toMillis === 'function' 
+                                ? new Date(book.addedAt.toMillis()).toLocaleDateString() 
+                                : new Date(book.addedAt).toLocaleDateString())
+                            : 'Unknown'}
                         </td>
-                        {canEdit && (
-                          <td className="px-5 py-3 text-right">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteBook(book.id);
-                              }}
-                              className="text-red-400 hover:text-red-600 p-2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-red-50"
-                            >
-                              <Trash2 size={16} strokeWidth={2} />
-                            </button>
-                          </td>
-                        )}
                       </motion.tr>
                     );
                   })}
                 </AnimatePresence>
                 {shelfBooksList.length === 0 && (
                   <tr>
-                    <td colSpan={canEdit ? 4 : 3} className="px-5 py-8 text-center text-muted italic text-sm">
+                    <td colSpan={3} className="px-5 py-8 text-center text-muted italic text-sm">
                       {emptyMessage}
                     </td>
                   </tr>
@@ -588,7 +762,7 @@ export default function LibraryView() {
       <div className="bg-paper p-4 sm:p-6 rounded-t-[32px] shadow-inner border-x-4 sm:border-x-8 border-t-4 sm:border-t-8 border-accent relative overflow-hidden">
         {shelves.map((shelfBooks, shelfIdx) => (
           <div key={shelfIdx} className="mb-10 relative">
-            <div className={`flex items-end gap-3 sm:gap-5 px-2 sm:px-4 pt-6 ${viewMode === 'compact' ? 'h-32 sm:h-40' : 'h-60 sm:h-64'} z-10 relative`}>
+            <div className="flex items-end gap-3 sm:gap-5 px-2 sm:px-4 pt-6 h-60 sm:h-64 z-10 relative">
               <AnimatePresence>
                 {shelfBooks.map((book, idx) => (
                   <motion.div
@@ -598,7 +772,7 @@ export default function LibraryView() {
                     exit={{ opacity: 0, scale: 0.9 }}
                     transition={{ duration: 0.3, delay: idx * 0.05, ease: 'easeOut' }}
                   >
-                    <BookCard book={book} onDelete={handleDeleteBook} onClick={() => setSelectedBook(book)} canEdit={canEdit} compact={viewMode === 'compact'} />
+                    <BookCard book={book} onDelete={handleDeleteBook} onClick={() => setSelectedBook(book)} canEdit={canEdit} />
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -654,15 +828,6 @@ export default function LibraryView() {
                 </p>
               </div>
             </div>
-            {isOwner && (
-              <button
-                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                className={`sm:hidden p-2 rounded-full transition-colors flex-shrink-0 ml-2 border ${isSettingsOpen ? 'bg-paper text-ink border-border' : 'text-muted hover:bg-paper border-transparent hover:border-border/50'}`}
-                title="Share & Settings"
-              >
-                <Share2 size={18} strokeWidth={2} />
-              </button>
-            )}
           </div>
           <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar pb-1 sm:pb-0 w-full sm:w-auto">
             <div className="flex items-center bg-paper rounded-xl p-1 mr-1 sm:mr-2 border border-border flex-shrink-0">
@@ -672,13 +837,6 @@ export default function LibraryView() {
                 title="Standard View"
               >
                 <LayoutGrid size={16} strokeWidth={2} />
-              </button>
-              <button
-                onClick={() => setViewMode('compact')}
-                className={`p-1.5 rounded-lg transition-all ${viewMode === 'compact' ? 'bg-surface shadow-sm text-ink' : 'text-muted hover:text-ink'}`}
-                title="Compact View"
-              >
-                <List size={16} strokeWidth={2} />
               </button>
               <button
                 onClick={() => setViewMode('table')}
@@ -704,13 +862,22 @@ export default function LibraryView() {
                 <span className="hidden sm:inline">Add Book</span>
               </button>
             )}
+            {canEdit && (
+              <button
+                onClick={() => setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-full transition-all border ${isAdvancedSettingsOpen ? 'bg-paper text-ink border-border shadow-sm' : 'text-muted hover:bg-paper border-transparent hover:border-border/50'} flex-shrink-0 font-sans text-xs font-bold`}
+              >
+                <Settings size={16} strokeWidth={2} />
+                <span className="hidden sm:inline">Advanced</span>
+              </button>
+            )}
             {isOwner && (
               <button
                 onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                className={`hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-full transition-all border ${isSettingsOpen ? 'bg-paper text-ink border-border shadow-sm' : 'text-muted hover:bg-paper border-transparent hover:border-border/50'} flex-shrink-0 font-sans text-xs font-bold`}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-full transition-all border ${isSettingsOpen ? 'bg-paper text-ink border-border shadow-sm' : 'text-muted hover:bg-paper border-transparent hover:border-border/50'} flex-shrink-0 font-sans text-xs font-bold`}
               >
                 <Share2 size={16} strokeWidth={2} />
-                <span>Share</span>
+                <span className="hidden sm:inline">Share</span>
               </button>
             )}
             
@@ -781,8 +948,8 @@ export default function LibraryView() {
                 >
                   <option value="none">None</option>
                   <option value="author">Author</option>
-                  <option value="genre">Genre (AI)</option>
-                  <option value="series">Series (AI)</option>
+                  <option value="genre">Genre</option>
+                  <option value="series">Series</option>
                   <option value="lucky">I'm Feeling Lucky (AI)</option>
                 </select>
               </div>
@@ -987,7 +1154,92 @@ export default function LibraryView() {
                   )}
                 </div>
               </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Advanced Settings Modal */}
+        <AnimatePresence>
+          {isAdvancedSettingsOpen && canEdit && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-sans" 
+              onClick={() => setIsAdvancedSettingsOpen(false)}
+            >
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+                className="w-full max-w-md bg-surface p-8 rounded-[32px] shadow-[0px_10px_40px_rgba(0,0,0,0.1)] h-fit max-h-[90vh] overflow-y-auto border border-border/50" 
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-8">
+                <h3 className="text-2xl font-serif font-medium flex items-center gap-3 text-ink tracking-tight">
+                  <div className="w-10 h-10 bg-paper rounded-full flex items-center justify-center text-accent border border-border/50">
+                    <Settings size={20} strokeWidth={1.5} />
+                  </div>
+                  Advanced Settings
+                </h3>
+                <button onClick={() => setIsAdvancedSettingsOpen(false)} className="p-2.5 text-muted hover:bg-paper hover:text-ink rounded-full transition-colors border border-transparent hover:border-border/50">
+                  <X size={20} strokeWidth={1.5} />
+                </button>
+              </div>
               
+              <div className="mb-10">
+                <h4 className="text-sm font-medium text-muted mb-4 uppercase tracking-wider">Data Operations</h4>
+                <button
+                  onClick={handleResyncAllBooks}
+                  disabled={isResyncing}
+                  className={`w-full flex items-center justify-center gap-2 bg-paper text-ink border border-border px-5 py-4 rounded-xl hover:bg-surface hover:border-border/80 transition-colors text-sm font-medium shadow-sm ${isResyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {isResyncing ? (
+                    <><Loader2 size={18} className="animate-spin" /> Resyncing ({resyncCompleted}/{resyncTotal})...</>
+                  ) : (
+                    <><Sparkles size={18} strokeWidth={1.5} /> Resync Missing Metadata</>
+                  )}
+                </button>
+                <p className="text-xs text-muted mt-3 text-center">
+                  Scans your library and attempts to fetch missing ISBNs or genre categories using Google Books API.
+                </p>
+                {resyncErrors.length > 0 && !isResyncing && (
+                  <div className="mt-4 border border-red-500/20 bg-red-500/5 rounded-xl p-4 overflow-hidden">
+                    <button 
+                      onClick={() => setShowResyncErrors(!showResyncErrors)} 
+                      className="text-red-600 text-sm font-bold flex items-center justify-between w-full transition-colors hover:text-red-700"
+                    >
+                      <div className="flex items-center gap-2">
+                        <AlertCircle size={16} strokeWidth={2} />
+                        Show Issues (Advanced)
+                      </div>
+                      <span>{resyncErrors.length}</span>
+                    </button>
+                    <AnimatePresence>
+                      {showResyncErrors && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <ul className="mt-3 space-y-2 text-xs text-red-800/80 max-h-32 overflow-y-auto custom-scrollbar border-t border-red-500/10 pt-3">
+                            {resyncErrors.map((e, index) => (
+                              <li key={index} className="truncate">
+                                <strong className="font-semibold">{e.title}</strong>: {e.error}
+                              </li>
+                            ))}
+                          </ul>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+              </div>
+
               <div className="mb-10 pt-8 border-t border-border/50">
                 <h4 className="text-sm font-medium text-muted mb-4 uppercase tracking-wider">Export Data</h4>
                 <button
@@ -1001,6 +1253,7 @@ export default function LibraryView() {
                 </p>
               </div>
 
+              {isOwner && (
                 <div className="pt-8 border-t border-border/50">
                   <h4 className="text-sm font-medium text-red-500 mb-4 uppercase tracking-wider">Danger Zone</h4>
                   <button
@@ -1010,6 +1263,7 @@ export default function LibraryView() {
                     <Trash2 size={18} strokeWidth={1.5} /> Delete Library
                   </button>
                 </div>
+              )}
               </motion.div>
             </motion.div>
           )}

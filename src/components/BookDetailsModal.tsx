@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Calendar, Hash, User, Clock, Edit2, Save, Image as ImageIcon, Trash2, Book as BookIcon, Sparkles, Loader2, Star, MessageSquare } from 'lucide-react';
 import { BookDetails } from '../services/bookApi';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { doc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp, orderBy, Timestamp } from 'firebase/firestore';
 import { generateBookInsights } from '../services/gemini';
 import { toast } from 'sonner';
 import Markdown from 'react-markdown';
@@ -32,7 +32,7 @@ interface BookDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   canEdit?: boolean;
-  onUpdate?: (bookId: string, data: Partial<BookDetails>) => Promise<void>;
+  onUpdate?: (bookId: string, data: Partial<Omit<Book, 'id'>>) => Promise<void>;
   onDelete?: (bookId: string) => void;
 }
 
@@ -58,7 +58,7 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
   const { user } = useAuth();
   const [addedByName, setAddedByName] = useState<string>('Loading...');
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState<Partial<BookDetails>>({});
+  const [editData, setEditData] = useState<Partial<Omit<Book, 'id'>>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [activeInsight, setActiveInsight] = useState<'summary' | 'catchup' | 'similar' | null>(null);
   const [insightContent, setInsightContent] = useState<string | null>(null);
@@ -247,11 +247,42 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
     ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) 
     : null;
 
-  const addedDate = book?.addedAt?.toDate ? book.addedAt.toDate().toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  }) : 'Unknown date';
+  const formatAddedDate = (addedAt: any) => {
+    if (!addedAt) return 'Unknown date';
+    const date = addedAt.toDate ? addedAt.toDate() : new Date(addedAt);
+    if (isNaN(date.getTime())) return 'Unknown date';
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  };
+
+  const getAddedAtInputValue = () => {
+    const current = editData.addedAt !== undefined ? editData.addedAt : book?.addedAt;
+    if (!current) return '';
+    
+    const d = current.toDate ? current.toDate() : new Date(current);
+    if (isNaN(d.getTime())) return '';
+    
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  };
+
+  const handleAddedAtChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (!val) return;
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      setEditData({ ...editData, addedAt: Timestamp.fromDate(d) });
+    }
+  };
 
   const displayBook = isEditing ? { ...book, ...editData } : book;
 
@@ -469,6 +500,25 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
                 </div>
               </div>
 
+              <div className="flex items-start gap-4">
+                <div className="mt-1 p-2.5 bg-paper rounded-xl text-accent border border-border/50">
+                  <BookIcon size={18} strokeWidth={1.5} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-muted uppercase tracking-wider font-medium mb-1.5">Series</p>
+                  {isEditing ? (
+                    <input 
+                      value={editData.series || ''} 
+                      onChange={e => setEditData({...editData, series: e.target.value})}
+                      className="w-full text-ink border-b border-border focus:border-accent focus:outline-none py-1 bg-transparent text-sm transition-colors"
+                      placeholder="e.g. Harry Potter"
+                    />
+                  ) : (
+                    <p className="text-ink font-medium">{book.series || 'Standalone'}</p>
+                  )}
+                </div>
+              </div>
+
               {isEditing && (
                 <div className="flex items-start gap-4 sm:col-span-2">
                   <div className="mt-1 p-2.5 bg-paper rounded-xl text-accent border border-border/50">
@@ -500,9 +550,18 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
                 <div className="mt-1 p-2.5 bg-paper rounded-xl text-accent border border-border/50">
                   <Clock size={18} strokeWidth={1.5} />
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="text-xs text-muted uppercase tracking-wider font-medium mb-1.5">Added On</p>
-                  <p className="text-ink font-medium">{addedDate}</p>
+                  {isEditing ? (
+                    <input
+                      type="datetime-local"
+                      value={getAddedAtInputValue()}
+                      onChange={handleAddedAtChange}
+                      className="w-full text-ink border-b border-border focus:border-accent focus:outline-none py-1 bg-transparent text-sm transition-colors"
+                    />
+                  ) : (
+                    <p className="text-ink font-medium">{formatAddedDate(book?.addedAt)}</p>
+                  )}
                 </div>
               </div>
             </div>

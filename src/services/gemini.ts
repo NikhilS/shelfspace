@@ -92,6 +92,50 @@ export async function extractBooksFromCsv(csvText: string): Promise<{ title: str
   }
 }
 
+export async function enrichBooksMetadata(books: { id: string, title: string, author: string, description?: string, currentGenre?: string }[]): Promise<{ id: string, genre: string, series: string }[]> {
+  try {
+    if (!books || books.length === 0) return [];
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    
+    const prompt = `Act as an expert librarian. I have a list of books. For each book, please determine:
+    1. The primary literary genre (be specific but use standard categories like 'Science Fiction', 'High Fantasy', 'Historical Fiction', 'Thriller', 'Biography', etc.).
+    2. The book series it belongs to. If it is a standalone book, return 'Standalone'.
+
+    Here are the books:
+    ${JSON.stringify(books.map(b => ({ id: b.id, title: b.title, author: b.author }))) }
+
+    Return ONLY a JSON array of objects. Do not include markdown formatting like \`\`\`json. Each object MUST have:
+    - id (exactly matching the provided id)
+    - genre (the literary genre)
+    - series (the series name, or 'Standalone')
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const text = response.text;
+    if (!text) return [];
+    
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      return [];
+    } catch (e) {
+      console.error("Failed to parse Gemini response:", e);
+      return [];
+    }
+  } catch (error) {
+    handleGeminiError(error);
+  }
+}
+
 export async function generateLibraryRecommendations(libraryBooks: { title: string, author: string }[]): Promise<string> {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Camera, X, BookPlus, Loader2, UploadCloud, FileText, Plus } from 'lucide-react';
-import { searchBookByTitle, searchBookByIsbn, BookDetails } from '../services/bookApi';
+import { searchBookByTitle, searchBookByIsbn, searchBookByTitleAndAuthor, BookDetails } from '../services/bookApi';
 import { extractBooksFromImage, extractBooksFromCsv } from '../services/gemini';
 import { toast } from 'sonner';
 import { toTitleCase } from '../lib/utils';
@@ -26,6 +26,7 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [extractedBooks, setExtractedBooks] = useState<{title: string, author: string, isbn?: string, genre?: string}[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [selectedExtracted, setSelectedExtracted] = useState<Set<string>>(new Set());
   const [isAddingAll, setIsAddingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +36,7 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
     author: '',
     isbn: '',
     genre: '',
+    series: '',
     description: '',
     publishedDate: '',
     coverUrl: ''
@@ -160,6 +162,7 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
         author: '',
         isbn: '',
         genre: '',
+        series: '',
         description: '',
         publishedDate: '',
         coverUrl: ''
@@ -192,6 +195,7 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
     try {
       const books = await extractBooksFromImage(base64Image, 'image/jpeg');
       setExtractedBooks(books);
+      setSelectedExtracted(new Set(books.map(b => `${b.title}::${b.author}`)));
       if (books.length === 0) {
         toast.error("No books found in image");
       }
@@ -220,6 +224,7 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
       const text = await file.text();
       const books = await extractBooksFromCsv(text);
       setExtractedBooks(books);
+      setSelectedExtracted(new Set(books.map(b => `${b.title}::${b.author}`)));
       if (books.length === 0) {
         toast.error("No books could be extracted from this file.");
       } else {
@@ -258,6 +263,7 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
         try {
           const books = await extractBooksFromImage(base64Image, file.type);
           setExtractedBooks(books);
+          setSelectedExtracted(new Set(books.map(b => `${b.title}::${b.author}`)));
           if (books.length === 0) {
             toast.error("No books found in image");
           } else {
@@ -284,63 +290,30 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
     }
   };
 
-  const handleAddExtracted = async (extracted: {title: string, author: string, isbn?: string, genre?: string}) => {
-    setIsAdding(extracted.title);
-    
-    // Check for duplicate before processing
-    if (existingBooks.some(b => 
-      (b.isbn && extracted.isbn && b.isbn === extracted.isbn && extracted.isbn !== 'null') ||
-      (b.title.toLowerCase() === extracted.title.toLowerCase())
-    )) {
-      toast.info(`Skipped duplicate: ${extracted.title}`);
-      setExtractedBooks(prev => prev.filter(b => b.title !== extracted.title));
-      setIsAdding(null);
-      return;
-    }
-    
-    try {
-      let bookToAdd: BookDetails | null = null;
-
-      // 1. Try ISBN first if available
-      if (extracted.isbn && extracted.isbn !== 'null') {
-        bookToAdd = await searchBookByIsbn(extracted.isbn);
-      }
-
-      // 2. Fallback to title search if ISBN failed or wasn't provided
-      if (!bookToAdd) {
-        const results = await searchBookByTitle(extracted.title);
-        bookToAdd = results.find(r => r.author.toLowerCase().includes(extracted.author.toLowerCase())) || results[0] || null;
-      }
-      
-      const finalBook: BookDetails = bookToAdd || {
-        title: extracted.title,
-        author: extracted.author,
-        isbn: extracted.isbn && extracted.isbn !== 'null' ? extracted.isbn : '',
-        coverUrl: '',
-        publishedDate: '',
-        genre: extracted.genre
-      };
-      
-      // Ensure genre is set if we extracted it
-      if (extracted.genre && !finalBook.genre) {
-        finalBook.genre = extracted.genre;
-      }
-      
-      await onAddBook(finalBook);
-      toast.success(`Added ${finalBook.title}`);
-      setExtractedBooks(prev => prev.filter(b => b.title !== extracted.title));
-    } catch (error) {
-      toast.error("Failed to add book");
-    } finally {
-      setIsAdding(null);
+  const toggleSelectAll = () => {
+    if (selectedExtracted.size === extractedBooks.length && extractedBooks.length > 0) {
+      setSelectedExtracted(new Set());
+    } else {
+      setSelectedExtracted(new Set(extractedBooks.map(b => `${b.title}::${b.author}`)));
     }
   };
 
-  const handleAddAllExtracted = async () => {
+  const toggleSelect = (book: {title: string, author: string}) => {
+    const id = `${book.title}::${book.author}`;
+    const newSelected = new Set(selectedExtracted);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedExtracted(newSelected);
+  };
+
+  const handleAddSelectedExtracted = async () => {
     setIsAddingAll(true);
     let addedCount = 0;
     let duplicateCount = 0;
-    const booksToAdd = [...extractedBooks];
+    const booksToAdd = extractedBooks.filter(book => selectedExtracted.has(`${book.title}::${book.author}`));
     
     // Process in batches of 5 to avoid rate-limiting while still parallelizing
     const batchSize = 5;
@@ -367,7 +340,13 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
             bookToAdd = await searchBookByIsbn(book.isbn);
           }
 
-          // 2. Fallback to title search if ISBN failed or wasn't provided
+          // 2. Fallback to title + author search if ISBN failed or wasn't provided
+          if (!bookToAdd && book.author) {
+             const results = await searchBookByTitleAndAuthor(book.title, book.author);
+             bookToAdd = results[0] || null;
+          }
+
+          // 3. Fallback to just title search
           if (!bookToAdd) {
             const results = await searchBookByTitle(book.title);
             bookToAdd = results.find(r => r.author.toLowerCase().includes(book.author.toLowerCase())) || results[0] || null;
@@ -391,6 +370,11 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
           
           // Using functional state update to safely remove from the list
           setExtractedBooks(prev => prev.filter(b => b.title !== book.title));
+          setSelectedExtracted(prev => {
+            const next = new Set(prev);
+            next.delete(`${book.title}::${book.author}`);
+            return next;
+          });
           return true; // Success
         } catch (error) {
           console.error(`Failed to add ${book.title}`, error);
@@ -401,6 +385,11 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
       const results = await Promise.all(batchPromises);
       addedCount += results.filter(r => r === true).length;
       duplicateCount += results.filter(r => r === 'duplicate').length;
+
+      // Add a small delay between batches to avoid rate limits
+      if (i + batchSize < booksToAdd.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
     
     setIsAdding(null);
@@ -610,18 +599,18 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                     <h3 className="font-serif text-xl font-medium text-ink tracking-tight">Found {extractedBooks.length} Books</h3>
                     <div className="flex items-center gap-3">
                       <button 
-                        onClick={() => { setExtractedBooks([]); startCamera(); }}
+                        onClick={() => { setExtractedBooks([]); setSelectedExtracted(new Set()); startCamera(); }}
                         className="text-sm text-muted hover:text-ink transition-colors font-medium"
                       >
                         Scan Again
                       </button>
                       <button
-                        onClick={handleAddAllExtracted}
-                        disabled={isAddingAll || extractedBooks.length === 0}
+                        onClick={handleAddSelectedExtracted}
+                        disabled={isAddingAll || selectedExtracted.size === 0}
                         className="bg-accent text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-accent/90 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
                       >
                         {isAddingAll ? <Loader2 className="animate-spin" size={16} /> : <BookPlus size={16} strokeWidth={2} />}
-                        Add All
+                        Add Selected ({selectedExtracted.size})
                       </button>
                     </div>
                   </div>
@@ -630,34 +619,45 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                     <table className="w-full text-left border-collapse">
                       <thead className="bg-paper border-b border-border/50">
                         <tr>
+                          <th className="py-2 px-3 w-10 text-center">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedExtracted.size === extractedBooks.length && extractedBooks.length > 0} 
+                              onChange={toggleSelectAll}
+                              className="rounded border-border/50 text-accent focus:ring-accent/20 cursor-pointer"
+                            />
+                          </th>
                           <th className="py-2 px-3 font-medium text-muted text-[10px] uppercase tracking-wider w-[45%]">Title</th>
                           <th className="py-2 px-3 font-medium text-muted text-[10px] uppercase tracking-wider w-[25%]">Author</th>
                           <th className="py-2 px-3 font-medium text-muted text-[10px] uppercase tracking-wider w-[20%]">ISBN</th>
-                          <th className="py-2 px-3 font-medium text-muted text-[10px] uppercase tracking-wider text-right">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/30">
                         {extractedBooks.map((book, idx) => (
                           <tr key={idx} className="hover:bg-paper/50 transition-colors">
-                            <td className="py-1.5 px-3 font-serif font-medium text-ink text-sm leading-tight">{toTitleCase(book.title)}</td>
+                            <td className="py-1.5 px-3 text-center">
+                              <input 
+                                type="checkbox"
+                                checked={selectedExtracted.has(`${book.title}::${book.author}`)}
+                                onChange={() => toggleSelect(book)}
+                                className="rounded border-border/50 text-accent focus:ring-accent/20 cursor-pointer"
+                              />
+                            </td>
+                            <td className="py-1.5 px-3 font-serif font-medium text-ink text-sm leading-tight">
+                              <div className="flex items-center gap-2">
+                                {isAdding === book.title && <Loader2 className="animate-spin text-accent flex-shrink-0" size={14} />}
+                                {toTitleCase(book.title)}
+                              </div>
+                            </td>
                             <td className="py-1.5 px-3 text-muted text-xs leading-tight">{toTitleCase(book.author)}</td>
                             <td className="py-1.5 px-3 text-muted/70 text-[11px] font-mono leading-tight">{book.isbn && book.isbn !== 'null' ? book.isbn : '-'}</td>
-                            <td className="py-1.5 px-3 text-right">
-                              <button
-                                onClick={() => handleAddExtracted(book)}
-                                disabled={isAdding === book.title || isAddingAll}
-                                className="text-accent hover:text-opacity-80 font-medium text-xs disabled:opacity-50 inline-flex items-center justify-end gap-1 transition-colors"
-                              >
-                                {isAdding === book.title ? <Loader2 className="animate-spin" size={14} /> : 'Add'}
-                              </button>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot className="bg-paper border-t border-border/50">
                         <tr>
                           <td colSpan={4} className="py-2 px-3 font-medium text-ink text-xs">
-                            Total Books Found: {extractedBooks.length}
+                            Total Books Found: {extractedBooks.length} | Selected: {selectedExtracted.size}
                           </td>
                         </tr>
                       </tfoot>
@@ -703,41 +703,54 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                 <div className="space-y-4">
                   <div className="flex items-center justify-between sticky top-0 bg-paper/90 backdrop-blur-md py-2 z-10 border-b border-border/50">
                     <h3 className="font-serif font-medium text-lg text-ink">Found {extractedBooks.length} Books</h3>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
+                      <label className="flex items-center gap-2 text-sm font-medium text-ink cursor-pointer mr-2">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedExtracted.size === extractedBooks.length && extractedBooks.length > 0} 
+                          onChange={toggleSelectAll}
+                          className="rounded border-border/50 text-accent focus:ring-accent/20 cursor-pointer"
+                        />
+                        Select All
+                      </label>
                       <button 
-                        onClick={() => setExtractedBooks([])}
+                        onClick={() => { setExtractedBooks([]); setSelectedExtracted(new Set()); }}
                         className="px-4 py-2 text-sm font-medium text-muted hover:text-ink hover:bg-surface rounded-full transition-colors"
                       >
                         Clear
                       </button>
                       <button 
-                        onClick={handleAddAllExtracted}
-                        disabled={isAddingAll}
+                        onClick={handleAddSelectedExtracted}
+                        disabled={isAddingAll || selectedExtracted.size === 0}
                         className="bg-accent text-white px-4 py-2 rounded-full hover:bg-opacity-90 transition-colors disabled:opacity-50 text-sm font-medium flex items-center gap-2 shadow-sm"
                       >
                         {isAddingAll ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
-                        Add All
+                        Add Selected ({selectedExtracted.size})
                       </button>
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {extractedBooks.map((book, idx) => (
-                      <div key={idx} className="bg-surface p-4 rounded-2xl shadow-sm border border-border/30 flex flex-col gap-3 hover:shadow-md transition-shadow">
+                      <label key={idx} className="bg-surface p-4 rounded-2xl shadow-sm border border-border/30 flex gap-3 hover:shadow-md transition-shadow cursor-pointer">
+                        <div className="pt-1">
+                          <input 
+                            type="checkbox"
+                            checked={selectedExtracted.has(`${book.title}::${book.author}`)}
+                            onChange={() => toggleSelect(book)}
+                            className="rounded border-border/50 text-accent focus:ring-accent/20 w-4 h-4 cursor-pointer"
+                          />
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-serif font-medium text-base text-ink truncate tracking-tight" title={book.title}>{toTitleCase(book.title)}</h4>
+                          <div className="flex items-center gap-2">
+                            {isAdding === book.title && <Loader2 className="animate-spin text-accent flex-shrink-0" size={14} />}
+                            <h4 className="font-serif font-medium text-base text-ink truncate tracking-tight" title={book.title}>{toTitleCase(book.title)}</h4>
+                          </div>
                           <p className="text-muted text-sm truncate mt-0.5" title={book.author}>{toTitleCase(book.author)}</p>
                           {book.isbn && <p className="text-muted/60 text-xs mt-1.5 font-mono">ISBN: {book.isbn}</p>}
                           {book.genre && <p className="text-accent/80 text-xs mt-1 font-medium bg-accent/5 inline-block px-2 py-0.5 rounded-full border border-accent/10">{book.genre}</p>}
                         </div>
-                        <button
-                          onClick={() => handleAddExtracted(book)}
-                          disabled={isAdding === book.title || isAddingAll}
-                          className="bg-paper text-accent w-full py-2 rounded-xl hover:bg-accent/10 transition-colors disabled:opacity-50 text-sm font-medium border border-border/50 flex items-center justify-center gap-2"
-                        >
-                          {isAdding === book.title ? <Loader2 className="animate-spin" size={16} /> : 'Add to Library'}
-                        </button>
-                      </div>
+                      </label>
                     ))}
                   </div>
                 </div>
@@ -814,13 +827,22 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-ink mb-1.5">Genre</label>
                     <input 
                       type="text" 
                       value={manualBook.genre || ''}
                       onChange={e => setManualBook(prev => ({ ...prev, genre: e.target.value }))}
+                      className="w-full bg-surface border border-border/80 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-ink mb-1.5">Series</label>
+                    <input 
+                      type="text" 
+                      value={manualBook.series || ''}
+                      onChange={e => setManualBook(prev => ({ ...prev, series: e.target.value }))}
                       className="w-full bg-surface border border-border/80 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all text-ink"
                     />
                   </div>

@@ -42,6 +42,7 @@
         "coverUrl": { "type": "string" },
         "publishedDate": { "type": "string" },
         "genre": { "type": "string" },
+        "series": { "type": "string" },
         "addedAt": { "type": "string", "format": "date-time" },
         "addedBy": { "type": "string" }
       },

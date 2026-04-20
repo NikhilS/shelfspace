@@ -122,7 +122,7 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 p-4 bg-accent text-white rounded-full shadow-xl hover:bg-accent/90 hover:scale-105 transition-all z-40 flex items-center justify-center"
+        className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 p-4 bg-accent text-white rounded-full shadow-xl hover:bg-accent/90 hover:scale-105 transition-all z-40 flex items-center justify-center"
         aria-label="Open AI Librarian Chat"
       >
         <MessageSquare size={24} />
@@ -135,7 +135,7 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="fixed bottom-24 right-6 w-96 h-[32rem] max-h-[calc(100vh-8rem)] bg-paper rounded-2xl shadow-2xl border border-border flex flex-col overflow-hidden z-50 font-sans"
+            className="fixed bottom-24 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-96 h-[32rem] max-h-[calc(100vh-8rem)] bg-paper rounded-2xl shadow-xl border border-border flex flex-col overflow-hidden z-50 font-sans"
           >
             {/* Header */}
             <div className="bg-surface px-4 py-3 border-b border-border flex items-center justify-between">
