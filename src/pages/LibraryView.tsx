@@ -5,6 +5,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, collection, query, onSnapshot, addDoc, deleteDoc, serverTimestamp, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { ArrowLeft, Plus, Share2, Settings, Trash2, X, Sparkles, LayoutGrid, List, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown, LogOut, Search, Filter, Download, Book as BookIcon, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import Papa from 'papaparse';
 import { GoogleGenAI, Type } from '@google/genai';
 import { enrichBooksMetadata } from '../services/gemini';
 import AddBookModal from '../components/AddBookModal';
@@ -157,12 +158,15 @@ export default function LibraryView() {
   const canEdit = library?.ownerId === user?.uid || library?.sharedWith.includes(user?.email || '');
   const isOwner = library?.ownerId === user?.uid;
 
+  const hasRunBackfill = useRef(false);
+
   useEffect(() => {
     // Backfill any books that have addedAt as a string (without the time) to a full Timestamp at midnight
     // AND backfill any books missing 'format' to 'physical'
-    if (!canEdit || books.length === 0 || !id) return;
-
-    let hasUpdates = false;
+    if (!canEdit || books.length === 0 || !id || hasRunBackfill.current) return;
+    
+    // Set to true so this effect doesn't aggressively re-trigger loop writes on each remote firestore array change 
+    hasRunBackfill.current = true;
 
     books.forEach(b => {
       const updates: any = {};
@@ -180,7 +184,6 @@ export default function LibraryView() {
       }
 
       if (Object.keys(updates).length > 0) {
-        hasUpdates = true;
         updateDoc(doc(db, 'libraries', id, 'books', b.id), updates)
           .catch(err => console.error("Error backfilling book data", err));
       }
@@ -391,13 +394,13 @@ export default function LibraryView() {
     runAIGrouping();
   }, [groupBy, bookIdsString]);
 
-  const handleAddBook = async (bookDetails: BookDetails) => {
+  const handleAddBook = async (bookDetails: BookDetails, skipEnrichment = false) => {
     if (!id || !user || !canEdit) return;
     try {
       let enrichedDetails = { ...bookDetails };
       
       // Attempt to quickly enrich genre/series if missing
-      if (!enrichedDetails.genre || !enrichedDetails.series) {
+      if (!skipEnrichment && (!enrichedDetails.genre || !enrichedDetails.series)) {
         try {
           const enrichments = await enrichBooksMetadata([{
             id: 'temp', 
@@ -524,34 +527,27 @@ export default function LibraryView() {
       return;
     }
 
-    const headers = ['Title', 'Author', 'ISBN', 'Genre', 'Published Date', 'Added Date'];
-    
-    const escapeCSV = (str: string | undefined) => {
-      if (!str) return '""';
-      const escaped = String(str).replace(/"/g, '""');
-      return `"${escaped}"`;
-    };
-
-    const rows = books.map(book => {
+    const data = books.map(book => {
       let addedDateStr = '';
       if (book.addedAt) {
-        if (typeof book.addedAt.toMillis === 'function') {
-          addedDateStr = new Date(book.addedAt.toMillis()).toLocaleString();
+        if (typeof (book.addedAt as any).toMillis === 'function') {
+          addedDateStr = new Date((book.addedAt as any).toMillis()).toLocaleString();
         } else {
-          addedDateStr = new Date(book.addedAt).toLocaleString();
+          addedDateStr = new Date(book.addedAt as any).toLocaleString();
         }
       }
-      return [
-        escapeCSV(book.title),
-        escapeCSV(book.author),
-        escapeCSV(book.isbn),
-        escapeCSV(book.genre),
-        escapeCSV(book.publishedDate),
-        escapeCSV(addedDateStr)
-      ].join(',');
+      return {
+        'Title': book.title || '',
+        'Author': book.author || '',
+        'ISBN': book.isbn || '',
+        'Format': book.format || '',
+        'Genre': book.genre || '',
+        'Published Date': book.publishedDate || '',
+        'Added Date': addedDateStr
+      };
     });
 
-    const csvContent = [headers.join(','), ...rows].join('\n');
+    const csvContent = Papa.unparse(data);
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

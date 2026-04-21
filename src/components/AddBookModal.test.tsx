@@ -8,6 +8,7 @@ import * as bookApi from '../services/bookApi';
 vi.mock('../services/bookApi', () => ({
   searchBookByTitle: vi.fn(),
   searchBookByIsbn: vi.fn(),
+  searchBookByTitleAndAuthor: vi.fn(),
 }));
 
 vi.mock('../services/gemini', () => ({
@@ -168,6 +169,56 @@ describe('AddBookModal', () => {
 
     await waitFor(() => {
       expect(mockOnAddBook).not.toHaveBeenCalled();
+    });
+  });
+
+  it('applies default format correctly for CSV uploads', async () => {
+    const user = userEvent.setup();
+    const mockBookApi = await import('../services/bookApi');
+    const mockGemini = await import('../services/gemini');
+
+    // Make sure empty API results format fallback happens successfully
+    (mockBookApi.searchBookByIsbn as any).mockResolvedValue(null);
+    (mockBookApi.searchBookByTitleAndAuthor as any).mockResolvedValue([]);
+    (mockBookApi.searchBookByTitle as any).mockResolvedValue([]);
+    
+    (mockGemini.extractBooksFromCsv as any).mockResolvedValue([
+      { title: 'CSV Test Book', author: 'CSV Author' }
+    ]);
+
+    await act(async () => {
+      render(<AddBookModal isOpen={true} onClose={mockOnClose} onAddBook={mockOnAddBook} />);
+    });
+    
+    // 1. Go to CSV Import Tab
+    await user.click(screen.getByText('Import CSV'));
+
+    // 2. Change the format to digital in the UI
+    const formatSelect = screen.getByRole('combobox'); // Assuming there's a `<select>` for this
+    await user.selectOptions(formatSelect, 'digital');
+
+    // 3. Mock file upload
+    const file = new File(['fake,csv,content'], 'library.csv', { type: 'text/csv' });
+    // There shouldn't be multiple inputs but we'll try to get it
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(fileInput, file);
+
+    // 4. Wait for it to extract the book
+    await waitFor(() => {
+        expect(screen.getByText(/CSV Test Book/i)).toBeInTheDocument();
+    });
+
+    // 5. Add the selected item
+    const addSelectedBtn = screen.getByRole('button', { name: /Add Selected/i });
+    await user.click(addSelectedBtn);
+
+    // 6. Verify that it was submitted with the default 'digital' format set in step 2
+    await waitFor(() => {
+      expect(mockOnAddBook).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'CSV Test Book',
+        author: 'CSV Author',
+        format: 'digital'
+      }), true);
     });
   });
 });

@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import Papa from 'papaparse';
 
 export function handleGeminiError(error: any): never {
   console.error("Error calling Gemini:", error);
@@ -52,24 +53,48 @@ export async function extractBooksFromImage(base64Image: string, mimeType: strin
 
 export async function extractBooksFromCsv(csvText: string): Promise<{ title: string, author: string, isbn?: string, genre?: string, format?: 'physical' | 'digital' }[]> {
   try {
+    // 1. Parse CSV locally using PapaParse
+    const parsed = Papa.parse(csvText, {
+      header: false,
+      skipEmptyLines: true,
+    });
+    
+    const rows = parsed.data as string[][];
+    if (rows.length === 0) return [];
+
+    // Extract first 3 rows to give structural context
+    const sampleRows = rows.slice(0, 3);
+    
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `You are a data extraction assistant. I am providing you with the raw text of a CSV file containing a user's book library (e.g., from Goodreads, Amazon, or a custom spreadsheet).
+      model: "gemini-3.1-pro-preview",
+      contents: `You are a data mapping assistant. I am providing you with the first few rows of a CSV file parsed as JSON arrays.
       
-      Your task is to parse this data and extract the list of books.
-      For each book, extract:
-      - title (string, required)
-      - author (string, required. If multiple, join with commas)
-      - isbn (string, optional. Prefer ISBN13 if both are present. Clean up any formatting like '="123"' to just '123')
-      - genre (string, optional. If there are bookshelves/tags, pick the most relevant genre)
-      - format (string, optional. Must be exactly 'physical' or 'digital'. Try to infer from columns like binding, format, tags, etc. Default to 'physical' if unsure or missing)
+      CSV Sample Rows:
+      ${JSON.stringify(sampleRows, null, 2)}
+      
+      Your task is to analyze these rows and determine the structure of the CSV:
+      1. Does the first row appear to be a header row?
+      2. What are the 0-based column indices for the following book attributes?
+         - title (required. name of the book, usually the most prominent text)
+         - author (required. author or creator of the book)
+         - isbn (optional. prefer ISBN13 if multiple exist)
+         - genre (optional. categories, bookshelves, tags)
+         - format (optional. binding, format - e.g., 'physical', 'digital', 'paperback', 'kindle')
 
-      Return ONLY a JSON array of objects. Do not include markdown formatting like \`\`\`json. Just the raw JSON array.
+      If an optional attribute is not present in any column, set its index to null.
       
-      CSV Data:
-      ${csvText.substring(0, 30000)} // Limit to avoid token limits if file is massive
-      `,
+      Return ONLY a JSON object exactly matching this schema, without markdown formatting:
+      {
+        "hasHeaderRow": boolean,
+        "columnMap": {
+          "title": number | null,
+          "author": number | null,
+          "isbn": number | null,
+          "genre": number | null,
+          "format": number | null
+        }
+      }`,
       config: {
         responseMimeType: "application/json",
       }
@@ -78,16 +103,59 @@ export async function extractBooksFromCsv(csvText: string): Promise<{ title: str
     const text = response.text;
     if (!text) return [];
     
+    let schema;
     try {
-      const parsed = JSON.parse(text);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-      return [];
+      schema = JSON.parse(text);
     } catch (e) {
-      console.error("Failed to parse Gemini response:", e);
+      console.error("Failed to parse Gemini schema response:", e);
       return [];
     }
+
+    const { hasHeaderRow, columnMap } = schema;
+    
+    if (columnMap.title === null || columnMap.author === null) {
+      if (columnMap.title === null) return [];
+    }
+
+    const books: { title: string, author: string, isbn?: string, genre?: string, format?: 'physical' | 'digital' }[] = [];
+    const startIndex = hasHeaderRow ? 1 : 0;
+
+    for (let i = startIndex; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length === 0) continue;
+      
+      const titleIndex = columnMap.title;
+      if (typeof titleIndex !== 'number' || !row[titleIndex]?.trim()) continue;
+
+      let isbn: string | undefined = undefined;
+      if (typeof columnMap.isbn === 'number') {
+        const rawIsbn = row[columnMap.isbn] || '';
+        const cleaned = rawIsbn.replace(/[^0-9X]/gi, '');
+        if (cleaned.length >= 10) isbn = cleaned;
+      }
+      
+      let format: 'physical' | 'digital' | undefined = undefined;
+      if (typeof columnMap.format === 'number') {
+        const fVal = (row[columnMap.format] || '').toLowerCase();
+        if (fVal) {
+           if (fVal.includes('kindle') || fVal.includes('ebook') || fVal.includes('digital') || fVal.includes('audiobook')) {
+             format = 'digital';
+           } else {
+             format = 'physical';
+           }
+        }
+      }
+
+      books.push({
+        title: row[titleIndex].trim(),
+        author: typeof columnMap.author === 'number' ? (row[columnMap.author] || 'Unknown').trim() : 'Unknown',
+        isbn: isbn,
+        genre: typeof columnMap.genre === 'number' ? row[columnMap.genre]?.trim() : undefined,
+        format: format
+      });
+    }
+
+    return books;
   } catch (error) {
     handleGeminiError(error);
   }

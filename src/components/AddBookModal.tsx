@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 interface AddBookModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddBook: (book: BookDetails) => Promise<void>;
+  onAddBook: (book: BookDetails, skipEnrichment?: boolean) => Promise<void>;
   existingBooks?: BookDetails[];
 }
 
@@ -27,8 +27,10 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
   const [extractedBooks, setExtractedBooks] = useState<{title: string, author: string, isbn?: string, genre?: string, format?: 'physical' | 'digital'}[]>([]);
   const [csvFormat, setCsvFormat] = useState<'physical' | 'digital'>('physical');
   const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionStatus, setExtractionStatus] = useState<string | null>(null);
   const [selectedExtracted, setSelectedExtracted] = useState<Set<string>>(new Set());
   const [isAddingAll, setIsAddingAll] = useState(false);
+  const [addProgress, setAddProgress] = useState<{current: number, total: number} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -81,11 +83,16 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
 
   const handleAdd = async (book: BookDetails) => {
     // Check for duplicate before processing
-    if (existingBooks.some(b => 
-      (b.isbn && book.isbn && b.isbn === book.isbn && book.isbn !== 'null') ||
-      (b.title.toLowerCase() === book.title.toLowerCase() && 
-       b.author.toLowerCase() === book.author.toLowerCase())
-    )) {
+    const cleanNewIsbn = (book.isbn || '').trim().replace(/[^0-9X]/gi, '');
+    const cleanNewTitle = (book.title || '').trim().toLowerCase();
+    const cleanNewAuthor = (book.author || '').trim().toLowerCase();
+
+    if (existingBooks.some(b => {
+      const cleanExistingIsbn = (b.isbn || '').trim().replace(/[^0-9X]/gi, '');
+      const hasSameIsbn = cleanExistingIsbn.length >= 10 && cleanNewIsbn.length >= 10 && cleanExistingIsbn === cleanNewIsbn;
+      const hasSameTitleAndAuthor = (b.title || '').trim().toLowerCase() === cleanNewTitle && (b.author || '').trim().toLowerCase() === cleanNewAuthor;
+      return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
+    })) {
       toast.info(`Skipped duplicate: ${book.title}`);
       onClose();
       return;
@@ -107,13 +114,18 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      let retries = 0;
       const attachStream = () => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setIsCameraActive(true);
-        } else {
-          // Retry if React hasn't mounted the video element yet
+        } else if (retries < 20) {
+          // Retry if React hasn't mounted the video element yet, up to 1 second
+          retries++;
           setTimeout(attachStream, 50);
+        } else {
+          // Cleanup stream if we couldn't attach it
+          stream.getTracks().forEach(track => track.stop());
         }
       };
       attachStream();
@@ -155,11 +167,16 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
     if (!manualBook.title.trim() || !manualBook.author.trim()) return;
     
     // Check for duplicate before processing
-    if (existingBooks.some(b => 
-      (b.isbn && manualBook.isbn && b.isbn === manualBook.isbn && manualBook.isbn !== 'null') ||
-      (b.title.toLowerCase() === manualBook.title.trim().toLowerCase() && 
-       b.author.toLowerCase() === manualBook.author.trim().toLowerCase())
-    )) {
+    const cleanNewIsbn = (manualBook.isbn || '').trim().replace(/[^0-9X]/gi, '');
+    const cleanNewTitle = manualBook.title.trim().toLowerCase();
+    const cleanNewAuthor = manualBook.author.trim().toLowerCase();
+
+    if (existingBooks.some(b => {
+      const cleanExistingIsbn = (b.isbn || '').trim().replace(/[^0-9X]/gi, '');
+      const hasSameIsbn = cleanExistingIsbn.length >= 10 && cleanNewIsbn.length >= 10 && cleanExistingIsbn === cleanNewIsbn;
+      const hasSameTitleAndAuthor = (b.title || '').trim().toLowerCase() === cleanNewTitle && (b.author || '').trim().toLowerCase() === cleanNewAuthor;
+      return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
+    })) {
       toast.info(`Skipped duplicate: ${manualBook.title}`);
       return;
     }
@@ -232,8 +249,10 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
     }
 
     setIsExtracting(true);
+    setExtractionStatus("Reading CSV file...");
     try {
       const text = await file.text();
+      setExtractionStatus("Extracting books using AI...");
       const books = await extractBooksFromCsv(text);
       setExtractedBooks(books);
       setSelectedExtracted(new Set(books.map(b => `${b.title}::${b.author}`)));
@@ -250,6 +269,7 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
       }
     } finally {
       setIsExtracting(false);
+      setExtractionStatus(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -327,6 +347,11 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
     let duplicateCount = 0;
     const booksToAdd = extractedBooks.filter(book => selectedExtracted.has(`${book.title}::${book.author}`));
     
+    setAddProgress({ current: 0, total: booksToAdd.length });
+
+    // Track recently added books in this loop to prevent intra-batch duplicates
+    const newlyAdded: {title: string, author: string, isbn: string}[] = [];
+
     // Process in batches of 5 to avoid rate-limiting while still parallelizing
     const batchSize = 5;
     for (let i = 0; i < booksToAdd.length; i += batchSize) {
@@ -336,12 +361,28 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
         try {
           setIsAdding(book.title); // Note: This might flicker with parallel updates, but gives some feedback
           
-          if (existingBooks.some(b => 
-            (b.isbn && book.isbn && b.isbn === book.isbn && book.isbn !== 'null') ||
-            (b.title.toLowerCase() === book.title.toLowerCase())
-          )) {
+          const cleanNewIsbn = (book.isbn || '').trim().replace(/[^0-9X]/gi, '');
+          const cleanNewTitle = (book.title || '').trim().toLowerCase();
+          const cleanNewAuthor = (book.author || '').trim().toLowerCase();
+
+          const isDuplicate = existingBooks.some(b => {
+            const cleanExistingIsbn = (b.isbn || '').trim().replace(/[^0-9X]/gi, '');
+            const hasSameIsbn = cleanExistingIsbn.length >= 10 && cleanNewIsbn.length >= 10 && cleanExistingIsbn === cleanNewIsbn;
+            
+            const hasSameTitleAndAuthor = 
+              (b.title || '').trim().toLowerCase() === cleanNewTitle && 
+              (b.author || '').trim().toLowerCase() === cleanNewAuthor;
+              
+            return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
+          }) || newlyAdded.some(b => {
+             const hasSameIsbn = b.isbn.length >= 10 && cleanNewIsbn.length >= 10 && b.isbn === cleanNewIsbn;
+             const hasSameTitleAndAuthor = b.title === cleanNewTitle && b.author === cleanNewAuthor;
+             return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
+          });
+
+          if (isDuplicate) {
             // It's a duplicate, skip adding it
-            setExtractedBooks(prev => prev.filter(b => b.title !== book.title));
+            setExtractedBooks(prev => prev.filter(b => !(b.title === book.title && b.author === book.author)));
             return 'duplicate';
           }
           
@@ -380,10 +421,11 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
           
           finalBook.format = book.format || csvFormat; // Use individual format from extraction or the bulk fallback
 
-          await onAddBook(finalBook);
+          await onAddBook(finalBook, true);
+          newlyAdded.push({ title: cleanNewTitle, author: cleanNewAuthor, isbn: cleanNewIsbn });
           
           // Using functional state update to safely remove from the list
-          setExtractedBooks(prev => prev.filter(b => b.title !== book.title));
+          setExtractedBooks(prev => prev.filter(b => !(b.title === book.title && b.author === book.author)));
           setSelectedExtracted(prev => {
             const next = new Set(prev);
             next.delete(`${book.title}::${book.author}`);
@@ -393,6 +435,8 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
         } catch (error) {
           console.error(`Failed to add ${book.title}`, error);
           return false; // Failure
+        } finally {
+          setAddProgress(prev => prev ? { ...prev, current: prev.current + 1 } : null);
         }
       });
       
@@ -408,6 +452,7 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
     
     setIsAdding(null);
     setIsAddingAll(false);
+    setAddProgress(null);
     
     if (addedCount > 0) {
       toast.success(`Successfully added ${addedCount} books`);
@@ -718,7 +763,7 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                     className="bg-ink text-surface px-8 py-4 rounded-full hover:bg-ink/90 transition-all disabled:opacity-50 flex items-center justify-center gap-3 font-bold shadow-[0_4px_16px_rgba(0,0,0,0.15)] hover:shadow-lg hover:-translate-y-0.5"
                   >
                     {isExtracting ? (
-                      <><Loader2 className="animate-spin" size={20} strokeWidth={2.5} /> Processing CSV...</>
+                      <><Loader2 className="animate-spin" size={20} strokeWidth={2.5} /> {extractionStatus || "Processing CSV..."}</>
                     ) : (
                       <><FileText size={20} strokeWidth={2.5} /> Select CSV File</>
                     )}
@@ -726,35 +771,48 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                 </div>
               ) : (
                 <div className="w-full space-y-4">
-                  <div className="flex items-center justify-between sticky top-0 bg-surface/80 backdrop-blur-xl py-3 px-2 z-10 border-b border-border/40 mb-2 rounded-t-xl -mx-2">
-                    <h3 className="font-serif text-xl sm:text-2xl font-bold text-ink tracking-tight">Found {extractedBooks.length} Books</h3>
-                    <div className="flex gap-2 sm:gap-3 items-center">
-                      <label className="hidden sm:flex items-center gap-2 text-sm font-bold text-ink cursor-pointer mr-2 hover:bg-surface/80 px-3 py-1.5 rounded-full transition-colors">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedExtracted.size === extractedBooks.length && extractedBooks.length > 0} 
-                          onChange={toggleSelectAll}
-                          className="rounded border-border/60 text-ink focus:ring-ink/20 w-4 h-4 cursor-pointer"
-                        />
-                        Select All
-                      </label>
-                      <button 
-                        onClick={() => { setExtractedBooks([]); setSelectedExtracted(new Set()); }}
-                        className="p-2 sm:px-4 sm:py-2 text-sm font-bold text-muted hover:text-ink hover:bg-surface border border-transparent hover:border-border/60 rounded-full transition-colors"
-                        title="Clear & Upload Again"
-                      >
-                        <span className="hidden sm:inline">Clear</span>
-                        <X size={18} strokeWidth={2} className="sm:hidden" />
-                      </button>
-                      <button 
-                        onClick={handleAddSelectedExtracted}
-                        disabled={isAddingAll || selectedExtracted.size === 0}
-                        className="bg-ink text-surface px-4 py-2 sm:px-5 sm:py-2.5 rounded-full text-sm font-bold hover:bg-ink/90 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5"
-                      >
-                        {isAddingAll ? <Loader2 className="animate-spin" size={16} /> : <BookPlus size={16} strokeWidth={2.5} />}
-                        <span className="hidden sm:inline">Add Selected </span>({selectedExtracted.size})
-                      </button>
+                  <div className="flex flex-col gap-2 sticky top-0 bg-surface/80 backdrop-blur-xl py-3 px-2 z-10 border-b border-border/40 mb-2 rounded-t-xl -mx-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-serif text-xl sm:text-2xl font-bold text-ink tracking-tight">Found {extractedBooks.length} Books</h3>
+                      <div className="flex gap-2 sm:gap-3 items-center">
+                        <label className="hidden sm:flex items-center gap-2 text-sm font-bold text-ink cursor-pointer mr-2 hover:bg-surface/80 px-3 py-1.5 rounded-full transition-colors">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedExtracted.size === extractedBooks.length && extractedBooks.length > 0} 
+                            onChange={toggleSelectAll}
+                            className="rounded border-border/60 text-ink focus:ring-ink/20 w-4 h-4 cursor-pointer"
+                          />
+                          Select All
+                        </label>
+                        <button 
+                          onClick={() => { setExtractedBooks([]); setSelectedExtracted(new Set()); }}
+                          className="p-2 sm:px-4 sm:py-2 text-sm font-bold text-muted hover:text-ink hover:bg-surface border border-transparent hover:border-border/60 rounded-full transition-colors"
+                          title="Clear & Upload Again"
+                        >
+                          <span className="hidden sm:inline">Clear</span>
+                          <X size={18} strokeWidth={2} className="sm:hidden" />
+                        </button>
+                        <button 
+                          onClick={handleAddSelectedExtracted}
+                          disabled={isAddingAll || selectedExtracted.size === 0}
+                          className="bg-ink text-surface px-4 py-2 sm:px-5 sm:py-2.5 rounded-full text-sm font-bold hover:bg-ink/90 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5"
+                        >
+                          {isAddingAll ? <Loader2 className="animate-spin" size={16} /> : <BookPlus size={16} strokeWidth={2.5} />}
+                          <span className="hidden sm:inline">Add Selected </span>({selectedExtracted.size})
+                        </button>
+                      </div>
                     </div>
+                    {addProgress !== null && (
+                       <div className="w-full mt-2">
+                         <div className="w-full bg-surface border border-border/40 rounded-full h-2 overflow-hidden">
+                           <div 
+                             className="bg-accent h-full transition-all duration-300"
+                             style={{ width: `${(addProgress.current / addProgress.total) * 100}%` }}
+                           />
+                         </div>
+                         <p className="text-xs text-muted text-center mt-1.5 font-medium">Processing {addProgress.current} of {addProgress.total} books...</p>
+                       </div>
+                    )}
                   </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

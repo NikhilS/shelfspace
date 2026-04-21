@@ -111,7 +111,7 @@ service cloud.firestore {
     function isValidBook(data) {
       return hasRequiredFields(['title', 'addedAt', 'addedBy']) &&
              validStringLength('title', 1, 500) &&
-             data.addedAt is timestamp &&
+             (data.addedAt is timestamp || data.addedAt is string) &&
              data.addedBy is string &&
              isValidOptionalString('author', 0, 500) &&
              isValidOptionalString('isbn', 0, 50) &&
@@ -119,7 +119,7 @@ service cloud.firestore {
              isValidOptionalString('publishedDate', 0, 50) &&
              isValidOptionalString('genre', 0, 100) &&
              isValidOptionalString('series', 0, 100) &&
-             isValidOptionalString('format', 0, 20);
+             isValidOptionalString('format', 0, 50);
     }
 
     function isValidReview(data) {
@@ -181,8 +181,8 @@ service cloud.firestore {
         allow read: if canReadBooks();
         allow create: if canEditBooks() && isValidBook(request.resource.data) && request.resource.data.addedBy == request.auth.uid;
         allow update: if canEditBooks() && isValidBook(request.resource.data) &&
-                      request.resource.data.addedAt == resource.data.addedAt &&
-                      request.resource.data.addedBy == resource.data.addedBy;
+                      (request.resource.data.addedAt == resource.data.addedAt || resource.data.addedAt is string) &&
+                      (request.resource.data.addedBy == resource.data.addedBy || !('addedBy' in resource.data));
         allow delete: if canEditBooks();
 
         match /reviews/{reviewId} {
