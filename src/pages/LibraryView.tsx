@@ -159,21 +159,32 @@ export default function LibraryView() {
 
   useEffect(() => {
     // Backfill any books that have addedAt as a string (without the time) to a full Timestamp at midnight
+    // AND backfill any books missing 'format' to 'physical'
     if (!canEdit || books.length === 0 || !id) return;
 
-    const booksToBackfill = books.filter(b => typeof b.addedAt === 'string');
-    if (booksToBackfill.length > 0) {
-      booksToBackfill.forEach(b => {
+    let hasUpdates = false;
+
+    books.forEach(b => {
+      const updates: any = {};
+      
+      if (typeof b.addedAt === 'string') {
         const d = new Date(b.addedAt);
         if (!isNaN(d.getTime())) {
-          // Setting local midnight for the relevant day
           d.setHours(0, 0, 0, 0);
-          updateDoc(doc(db, 'libraries', id, 'books', b.id), {
-            addedAt: Timestamp.fromDate(d)
-          }).catch(err => console.error("Error backfilling addedAt", err));
+          updates.addedAt = Timestamp.fromDate(d);
         }
-      });
-    }
+      }
+
+      if (!b.format) {
+        updates.format = 'physical';
+      }
+
+      if (Object.keys(updates).length > 0) {
+        hasUpdates = true;
+        updateDoc(doc(db, 'libraries', id, 'books', b.id), updates)
+          .catch(err => console.error("Error backfilling book data", err));
+      }
+    });
   }, [books, canEdit, id]);
 
   const handleSort = (option: SortOption) => {

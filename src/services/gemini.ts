@@ -50,7 +50,7 @@ export async function extractBooksFromImage(base64Image: string, mimeType: strin
   }
 }
 
-export async function extractBooksFromCsv(csvText: string): Promise<{ title: string, author: string, isbn?: string, genre?: string }[]> {
+export async function extractBooksFromCsv(csvText: string): Promise<{ title: string, author: string, isbn?: string, genre?: string, format?: 'physical' | 'digital' }[]> {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const response = await ai.models.generateContent({
@@ -63,6 +63,7 @@ export async function extractBooksFromCsv(csvText: string): Promise<{ title: str
       - author (string, required. If multiple, join with commas)
       - isbn (string, optional. Prefer ISBN13 if both are present. Clean up any formatting like '="123"' to just '123')
       - genre (string, optional. If there are bookshelves/tags, pick the most relevant genre)
+      - format (string, optional. Must be exactly 'physical' or 'digital'. Try to infer from columns like binding, format, tags, etc. Default to 'physical' if unsure or missing)
 
       Return ONLY a JSON array of objects. Do not include markdown formatting like \`\`\`json. Just the raw JSON array.
       

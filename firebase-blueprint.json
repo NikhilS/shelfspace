@@ -43,6 +43,7 @@
         "publishedDate": { "type": "string" },
         "genre": { "type": "string" },
         "series": { "type": "string" },
+        "format": { "type": "string", "enum": ["physical", "digital"] },
         "addedAt": { "type": "string", "format": "date-time" },
         "addedBy": { "type": "string" }
       },

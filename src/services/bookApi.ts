@@ -7,6 +7,7 @@ export interface BookDetails {
   genre?: string;
   series?: string;
   description?: string;
+  format?: 'physical' | 'digital';
 }
 
 function extractIsbn(identifiers: any[]): string {

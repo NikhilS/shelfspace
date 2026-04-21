@@ -114,7 +114,8 @@ describe('AddBookModal', () => {
     await waitFor(() => {
       expect(mockOnAddBook).toHaveBeenCalledWith(expect.objectContaining({
         title: 'Title To Add',
-        isbn: '555'
+        isbn: '555',
+        format: 'physical'
       }));
       expect(mockOnClose).toHaveBeenCalled();
     });
@@ -140,7 +141,8 @@ describe('AddBookModal', () => {
     await waitFor(() => {
       expect(mockOnAddBook).toHaveBeenCalledWith(expect.objectContaining({
         title: 'Manual Title',
-        author: 'Manual Author'
+        author: 'Manual Author',
+        format: 'physical'
       }));
       expect(mockOnClose).toHaveBeenCalled();
     });

@@ -118,7 +118,8 @@ service cloud.firestore {
              isValidOptionalString('coverUrl', 0, 1048576) &&
              isValidOptionalString('publishedDate', 0, 50) &&
              isValidOptionalString('genre', 0, 100) &&
-             isValidOptionalString('series', 0, 100);
+             isValidOptionalString('series', 0, 100) &&
+             isValidOptionalString('format', 0, 20);
     }
 
     function isValidReview(data) {

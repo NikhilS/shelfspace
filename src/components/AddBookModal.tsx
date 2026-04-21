@@ -24,7 +24,8 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
-  const [extractedBooks, setExtractedBooks] = useState<{title: string, author: string, isbn?: string, genre?: string}[]>([]);
+  const [extractedBooks, setExtractedBooks] = useState<{title: string, author: string, isbn?: string, genre?: string, format?: 'physical' | 'digital'}[]>([]);
+  const [csvFormat, setCsvFormat] = useState<'physical' | 'digital'>('physical');
   const [isExtracting, setIsExtracting] = useState(false);
   const [selectedExtracted, setSelectedExtracted] = useState<Set<string>>(new Set());
   const [isAddingAll, setIsAddingAll] = useState(false);
@@ -39,7 +40,8 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
     series: '',
     description: '',
     publishedDate: '',
-    coverUrl: ''
+    coverUrl: '',
+    format: 'physical'
   });
   const [isCoverCameraActive, setIsCoverCameraActive] = useState(false);
 
@@ -91,8 +93,9 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
 
     setIsAdding(book.isbn || book.title);
     try {
-      await onAddBook(book);
-      toast.success(`Added ${book.title}`);
+      const bookToAdd = { ...book, format: book.format || 'physical' } as BookDetails;
+      await onAddBook(bookToAdd);
+      toast.success(`Added ${bookToAdd.title}`);
       onClose();
     } catch (error) {
       toast.error("Failed to add book");
@@ -173,7 +176,8 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
         series: '',
         description: '',
         publishedDate: '',
-        coverUrl: ''
+        coverUrl: '',
+        format: 'physical'
       });
       onClose();
     } catch (error) {
@@ -374,6 +378,8 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
             finalBook.genre = book.genre;
           }
           
+          finalBook.format = book.format || csvFormat; // Use individual format from extraction or the bulk fallback
+
           await onAddBook(finalBook);
           
           // Using functional state update to safely remove from the list
@@ -682,10 +688,22 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                     <UploadCloud size={36} strokeWidth={2} />
                   </div>
                   <h3 className="text-2xl sm:text-3xl font-serif font-bold text-ink mb-3 tracking-tight">Upload Library CSV</h3>
-                  <p className="text-muted text-sm sm:text-base mb-8 max-w-md font-medium leading-relaxed">
+                  <p className="text-muted text-sm sm:text-base mb-6 max-w-md font-medium leading-relaxed">
                     Upload a CSV export from Goodreads, Amazon, or your own spreadsheet. Our AI will automatically extract the titles, authors, and ISBNs.
                   </p>
                   
+                  <div className="mb-8 w-full max-w-xs text-left">
+                    <label className="block text-sm font-bold text-ink mb-1.5 ml-1 text-center">Default Format</label>
+                    <select 
+                      value={csvFormat}
+                      onChange={e => setCsvFormat(e.target.value as 'physical' | 'digital')}
+                      className="w-full bg-surface border border-border/80 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium"
+                    >
+                      <option value="physical">Physical Books</option>
+                      <option value="digital">Digital / E-Books</option>
+                    </select>
+                  </div>
+
                   <input 
                     type="file" 
                     accept=".csv" 
@@ -866,15 +884,28 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-ink mb-1.5 ml-1">Published Date</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g., 2023 or YYYY-MM-DD"
-                    value={manualBook.publishedDate || ''}
-                    onChange={e => setManualBook(prev => ({ ...prev, publishedDate: e.target.value }))}
-                    className="w-full bg-surface/60 border border-border/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-sm font-bold text-ink mb-1.5 ml-1">Published Date</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g., 2023 or YYYY-MM-DD"
+                      value={manualBook.publishedDate || ''}
+                      onChange={e => setManualBook(prev => ({ ...prev, publishedDate: e.target.value }))}
+                      className="w-full bg-surface/60 border border-border/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-ink mb-1.5 ml-1">Format *</label>
+                    <select 
+                      value={manualBook.format || 'physical'}
+                      onChange={e => setManualBook(prev => ({ ...prev, format: e.target.value as 'physical' | 'digital' }))}
+                      className="w-full bg-surface/60 border border-border/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-ink font-medium"
+                    >
+                      <option value="physical">Physical Book</option>
+                      <option value="digital">Digital / E-Book</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div>

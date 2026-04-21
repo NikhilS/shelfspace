@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Hash, User, Clock, Edit2, Save, Image as ImageIcon, Trash2, Book as BookIcon, Sparkles, Loader2, Star, MessageSquare } from 'lucide-react';
+import { X, Calendar, Hash, User, Clock, Edit2, Save, Image as ImageIcon, Trash2, Book as BookIcon, Sparkles, Loader2, Star, MessageSquare, Smartphone, Library as LibraryIcon } from 'lucide-react';
 import { BookDetails } from '../services/bookApi';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp, orderBy, Timestamp } from 'firebase/firestore';
@@ -496,6 +496,27 @@ export default function BookDetailsModal({ book, libraryId, isOpen, onClose, can
                     />
                   ) : (
                     <p className="text-ink font-medium">{book.genre || 'Uncategorized'}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-4">
+                <div className="mt-1 p-2.5 bg-surface/60 rounded-xl text-accent border border-border/40 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                  {book.format === 'digital' ? <Smartphone size={18} strokeWidth={2} /> : <LibraryIcon size={18} strokeWidth={2} />}
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-muted uppercase tracking-wider font-medium mb-1.5">Format</p>
+                  {isEditing ? (
+                    <select
+                      value={editData.format || 'physical'}
+                      onChange={e => setEditData({...editData, format: e.target.value as 'physical' | 'digital'})}
+                      className="w-full text-ink border-b border-border focus:border-accent focus:outline-none py-1 bg-transparent text-sm transition-colors"
+                    >
+                      <option value="physical">Physical Book</option>
+                      <option value="digital">Digital / E-Book</option>
+                    </select>
+                  ) : (
+                    <p className="text-ink font-medium capitalize">{book.format || 'Physical'}</p>
                   )}
                 </div>
               </div>
