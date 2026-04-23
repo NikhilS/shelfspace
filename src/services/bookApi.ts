@@ -10,11 +10,36 @@ export interface BookDetails {
   format?: 'physical' | 'digital';
 }
 
-function extractIsbn(identifiers: any[]): string {
+interface GoogleBooksItem {
+  volumeInfo: {
+    title?: string;
+    authors?: string[];
+    industryIdentifiers?: IndustryIdentifier[];
+    imageLinks?: {
+      thumbnail?: string;
+      smallThumbnail?: string;
+    };
+    publishedDate?: string;
+    categories?: string[];
+    description?: string;
+  };
+}
+
+interface OpenLibraryDoc {
+  title?: string;
+  author_name?: string[];
+  isbn?: string[];
+  cover_i?: number;
+  first_publish_year?: number;
+}
+
+interface IndustryIdentifier { type: string; identifier: string; }
+
+function extractIsbn(identifiers?: IndustryIdentifier[]): string {
   if (!identifiers) return '';
-  const isbn13 = identifiers.find((id: any) => id.type === 'ISBN_13');
+  const isbn13 = identifiers.find((id) => id.type === 'ISBN_13');
   if (isbn13) return isbn13.identifier;
-  const isbn10 = identifiers.find((id: any) => id.type === 'ISBN_10');
+  const isbn10 = identifiers.find((id) => id.type === 'ISBN_10');
   if (isbn10) return isbn10.identifier;
   return '';
 }
@@ -38,7 +63,8 @@ export async function searchBookByIsbn(isbn: string): Promise<BookDetails | null
           author: bookData.authors?.join(', ') || 'Unknown Author',
           isbn: extractIsbn(bookData.industryIdentifiers) || isbn,
           coverUrl: bookData.imageLinks?.thumbnail?.replace('http:', 'https:') || bookData.imageLinks?.smallThumbnail?.replace('http:', 'https:') || '',
-          publishedDate: bookData.publishedDate || ''
+          publishedDate: bookData.publishedDate || '',
+          description: bookData.description || undefined
         };
       }
     }
@@ -85,7 +111,7 @@ export async function searchBookByTitleAndAuthor(title: string, author: string):
     if (response.ok) {
       const data = await response.json();
       if (data.items && data.items.length > 0) {
-        results = data.items.map((item: any) => {
+        results = data.items.map((item: GoogleBooksItem) => {
           const bookData = item.volumeInfo;
           return {
             title: bookData.title || title,
@@ -93,7 +119,8 @@ export async function searchBookByTitleAndAuthor(title: string, author: string):
             isbn: extractIsbn(bookData.industryIdentifiers),
             coverUrl: bookData.imageLinks?.thumbnail?.replace('http:', 'https:') || bookData.imageLinks?.smallThumbnail?.replace('http:', 'https:') || '',
             publishedDate: bookData.publishedDate || '',
-            genre: bookData.categories?.[0] || undefined
+            genre: bookData.categories?.[0] || undefined,
+            description: bookData.description || undefined
           };
         });
       }
@@ -115,14 +142,15 @@ export async function searchBookByTitle(query: string): Promise<BookDetails[]> {
       const data = await response.json();
       
       if (data.items && data.items.length > 0) {
-        results = data.items.map((item: any) => {
+        results = data.items.map((item: GoogleBooksItem) => {
           const bookData = item.volumeInfo;
           return {
             title: bookData.title || 'Unknown Title',
             author: bookData.authors?.join(', ') || 'Unknown Author',
             isbn: extractIsbn(bookData.industryIdentifiers),
             coverUrl: bookData.imageLinks?.thumbnail?.replace('http:', 'https:') || bookData.imageLinks?.smallThumbnail?.replace('http:', 'https:') || '',
-            publishedDate: bookData.publishedDate || ''
+            publishedDate: bookData.publishedDate || '',
+            description: bookData.description || undefined
           };
         });
       }
@@ -134,14 +162,15 @@ export async function searchBookByTitle(query: string): Promise<BookDetails[]> {
       if (fallbackResponse.ok) {
         const fallbackData = await fallbackResponse.json();
         if (fallbackData.items && fallbackData.items.length > 0) {
-          const fallbackResults = fallbackData.items.map((item: any) => {
+          const fallbackResults = fallbackData.items.map((item: GoogleBooksItem) => {
             const bookData = item.volumeInfo;
             return {
               title: bookData.title || 'Unknown Title',
               author: bookData.authors?.join(', ') || 'Unknown Author',
               isbn: extractIsbn(bookData.industryIdentifiers),
               coverUrl: bookData.imageLinks?.thumbnail?.replace('http:', 'https:') || bookData.imageLinks?.smallThumbnail?.replace('http:', 'https:') || '',
-              publishedDate: bookData.publishedDate || ''
+              publishedDate: bookData.publishedDate || '',
+              description: bookData.description || undefined
             };
           });
           
@@ -175,7 +204,7 @@ export async function searchBookByTitle(query: string): Promise<BookDetails[]> {
         }
 
         if (data.docs && data.docs.length > 0) {
-          results = data.docs.map((doc: any) => ({
+          results = data.docs.map((doc: OpenLibraryDoc) => ({
             title: doc.title || 'Unknown Title',
             author: doc.author_name?.join(', ') || 'Unknown Author',
             isbn: doc.isbn?.[0] || '',

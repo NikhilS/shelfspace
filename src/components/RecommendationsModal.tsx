@@ -29,9 +29,10 @@ export default function RecommendationsModal({ isOpen, onClose, libraryBooks }: 
     try {
       const content = await generateLibraryRecommendations(libraryBooks);
       setRecommendations(content);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to generate recommendations:", error);
-      const errorMessage = error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('quota')
+      const isQuota = typeof error === 'object' && error !== null && ('status' in error && (error as {status: number}).status === 429) || (error instanceof Error && (error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED') || error.message.includes('quota')));
+      const errorMessage = isQuota
         ? "The AI Librarian is currently resting (quota limit). Please come back later!"
         : "Failed to generate recommendations. Please try again later.";
       setRecommendations(errorMessage);
@@ -102,7 +103,7 @@ export default function RecommendationsModal({ isOpen, onClose, libraryBooks }: 
               <p className="text-sm mt-2">The AI Librarian is finding the perfect books for you.</p>
             </div>
           ) : recommendations ? (
-            <div className="prose prose-sm sm:prose-base max-w-none prose-headings:font-serif prose-headings:text-ink prose-p:text-ink/80 prose-a:text-accent prose-strong:text-ink">
+            <div className="markdown-body">
               <Markdown>{recommendations}</Markdown>
             </div>
           ) : null}

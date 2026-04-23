@@ -5,17 +5,24 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, collection, query, onSnapshot, addDoc, deleteDoc, serverTimestamp, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { ArrowLeft, Plus, Share2, Settings, Trash2, X, Sparkles, LayoutGrid, List, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown, LogOut, Search, Filter, Download, Book as BookIcon, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import Papa from 'papaparse';
 import { GoogleGenAI, Type } from '@google/genai';
 import { enrichBooksMetadata } from '../services/gemini';
 import AddBookModal from '../components/AddBookModal';
 import BookCard from '../components/BookCard';
-import BookDetailsModal from '../components/BookDetailsModal';
 import RecommendationsModal from '../components/RecommendationsModal';
 import Chatbot from '../components/Chatbot';
 import { BookDetails, searchBookByTitleAndAuthor } from '../services/bookApi';
 import { toSentenceCase, toTitleCase } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+
+type FirestoreDate = Timestamp | Date | string | number;
+
+function getFirestoreTime(dateObj?: FirestoreDate): number {
+  if (!dateObj) return 0;
+  if (typeof dateObj === 'object' && 'toMillis' in dateObj && typeof dateObj.toMillis === 'function') return dateObj.toMillis();
+  const d = new Date(dateObj as string | number | Date);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
 
 interface Library {
   id: string;
@@ -23,14 +30,14 @@ interface Library {
   ownerId: string;
   ownerName: string;
   sharedWith: string[];
-  createdAt: any;
+  createdAt: FirestoreDate;
   heroImageUrl?: string;
 }
 
 interface Book extends BookDetails {
   id: string;
   addedBy: string;
-  addedAt: any;
+  addedAt: FirestoreDate;
 }
 
 type SortOption = 'added' | 'title' | 'author';
@@ -60,11 +67,7 @@ export default function LibraryView() {
 
   const [sortBy, setSortBy] = useState<SortOption>('added');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [groupBy, setGroupBy] = useState<GroupOption>('none');
-  const [aiGroups, setAiGroups] = useState<{category: string, books: Book[]}[]>([]);
-  const [isGrouping, setIsGrouping] = useState(false);
   const [viewMode, setViewMode] = useState<'standard' | 'table'>('table');
-  const [booksPerShelf, setBooksPerShelf] = useState(6);
   const mainRef = useRef<HTMLElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,6 +76,7 @@ export default function LibraryView() {
   const [filterYearMin, setFilterYearMin] = useState('');
   const [filterYearMax, setFilterYearMax] = useState('');
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -87,31 +91,8 @@ export default function LibraryView() {
   }, [libraryToDelete, bookToDelete, isSettingsOpen]);
 
   useEffect(() => {
-    if (!mainRef.current || viewMode === 'table') return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const width = entry.contentRect.width;
-        const isMobile = window.innerWidth < 640;
-        
-        // Book widths based on BookCard.tsx
-        const bookWidth = isMobile ? 128 : 160;
-        // gap-3 is 12px, sm:gap-5 is 20px
-        const gap = isMobile ? 12 : 20;
-        
-        // Deductions from main container width (which is already minus its own px-4/px-6 due to contentRect):
-        // Shelf container has border-x-4 (8px)/border-x-8 (16px) and p-4 (32px)/p-6 (48px)
-        // Shelf row has px-2 (16px)/px-4 (32px)
-        const containerDeductions = isMobile ? (8 + 32 + 16) : (16 + 48 + 32);
-        
-        // If there's a sidebar on desktop, width is reduced
-        const availableWidth = width - containerDeductions;
-        const count = Math.max(1, Math.floor((availableWidth + gap) / (bookWidth + gap)));
-        setBooksPerShelf(count);
-      }
-    });
-    observer.observe(mainRef.current);
-    return () => observer.disconnect();
-  }, [viewMode]);
+    // Resize observer removed as we now use CSS grid
+  }, []);
 
   useEffect(() => {
     if (!id || !user) return;
@@ -135,10 +116,10 @@ export default function LibraryView() {
       snapshot.forEach((doc) => {
         bks.push({ id: doc.id, ...doc.data() } as Book);
       });
-      const getTime = (dateObj: any) => {
+      const getTime = (dateObj: FirestoreDate | undefined) => {
         if (!dateObj) return 0;
-        if (typeof dateObj.toMillis === 'function') return dateObj.toMillis();
-        const d = new Date(dateObj);
+        if (typeof dateObj === 'object' && 'toMillis' in dateObj && typeof dateObj.toMillis === 'function') return dateObj.toMillis();
+        const d = new Date(dateObj as string | number | Date);
         return isNaN(d.getTime()) ? 0 : d.getTime();
       };
       
@@ -158,18 +139,15 @@ export default function LibraryView() {
   const canEdit = library?.ownerId === user?.uid || library?.sharedWith.includes(user?.email || '');
   const isOwner = library?.ownerId === user?.uid;
 
-  const hasRunBackfill = useRef(false);
-
   useEffect(() => {
     // Backfill any books that have addedAt as a string (without the time) to a full Timestamp at midnight
     // AND backfill any books missing 'format' to 'physical'
-    if (!canEdit || books.length === 0 || !id || hasRunBackfill.current) return;
-    
-    // Set to true so this effect doesn't aggressively re-trigger loop writes on each remote firestore array change 
-    hasRunBackfill.current = true;
+    if (!canEdit || books.length === 0 || !id) return;
+
+    let hasUpdates = false;
 
     books.forEach(b => {
-      const updates: any = {};
+      const updates: Partial<Book> = {};
       
       if (typeof b.addedAt === 'string') {
         const d = new Date(b.addedAt);
@@ -184,6 +162,7 @@ export default function LibraryView() {
       }
 
       if (Object.keys(updates).length > 0) {
+        hasUpdates = true;
         updateDoc(doc(db, 'libraries', id, 'books', b.id), updates)
           .catch(err => console.error("Error backfilling book data", err));
       }
@@ -251,156 +230,24 @@ export default function LibraryView() {
     } else if (sortBy === 'author') {
       sorted.sort((a, b) => sortOrder === 'asc' ? a.author.localeCompare(b.author) : b.author.localeCompare(a.author));
     } else {
-      const getTime = (dateObj: any) => {
-        if (!dateObj) return 0;
-        if (typeof dateObj.toMillis === 'function') return dateObj.toMillis();
-        const d = new Date(dateObj);
-        return isNaN(d.getTime()) ? 0 : d.getTime();
-      };
       sorted.sort((a, b) => {
-        const timeA = getTime(a.addedAt);
-        const timeB = getTime(b.addedAt);
+        const timeA = getFirestoreTime(a.addedAt);
+        const timeB = getFirestoreTime(b.addedAt);
         return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
       });
     }
     return sorted;
   }, [filteredBooks, sortBy, sortOrder]);
 
-  const displayGroups = useMemo(() => {
-    if (groupBy === 'none') {
-      return [{ category: 'All Books', books: sortedBooks }];
-    }
-    
-    if (groupBy === 'author') {
-      const groups: Record<string, Book[]> = {};
-      sortedBooks.forEach(book => {
-        const author = book.author || 'Unknown Author';
-        if (!groups[author]) groups[author] = [];
-        groups[author].push(book);
-      });
-      return Object.entries(groups)
-        .map(([category, bks]) => ({ category, books: bks }))
-        .sort((a, b) => a.category.localeCompare(b.category));
-    }
-    
-    if (groupBy === 'genre' || groupBy === 'series') {
-      const groups: Record<string, Book[]> = {};
-      sortedBooks.forEach(book => {
-        const value = (groupBy === 'genre' ? book.genre : book.series) || `Unknown ${groupBy === 'genre' ? 'Genre' : 'Series'}`;
-        if (!groups[value]) groups[value] = [];
-        groups[value].push(book);
-      });
-      return Object.entries(groups)
-        .map(([category, bks]) => ({ category, books: bks }))
-        .sort((a, b) => a.category.localeCompare(b.category));
-    }
-    
-    return aiGroups.map(group => {
-      const groupFilteredBooks = group.books.filter(book => filteredBooks.some(fb => fb.id === book.id));
-      const sortedGroupBooks = [...groupFilteredBooks];
-      if (sortBy === 'title') {
-        sortedGroupBooks.sort((a, b) => a.title.localeCompare(b.title));
-      } else if (sortBy === 'author') {
-        sortedGroupBooks.sort((a, b) => a.author.localeCompare(b.author));
-      } else {
-        const getTime = (dateObj: any) => {
-          if (!dateObj) return 0;
-          if (typeof dateObj.toMillis === 'function') return dateObj.toMillis();
-          const d = new Date(dateObj);
-          return isNaN(d.getTime()) ? 0 : d.getTime();
-        };
-        sortedGroupBooks.sort((a, b) => getTime(b.addedAt) - getTime(a.addedAt));
-      }
-      return { category: group.category, books: sortedGroupBooks };
-    }).filter(group => group.books.length > 0);
-  }, [groupBy, sortedBooks, aiGroups, sortBy, filteredBooks]);
-
   const bookIdsString = books.map(b => b.id).sort().join(',');
 
-  useEffect(() => {
-    if (groupBy !== 'lucky') return;
-    if (books.length === 0) {
-      setAiGroups([]);
-      return;
-    }
-
-    const runAIGrouping = async () => {
-      setIsGrouping(true);
-      try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const prompt = `You are an expert librarian. Group the following books into categories based on: ${groupBy}.
-        If mode is 'lucky', create fun, creative, highly specific, and quirky categories (e.g., 'Brooding Detectives', 'Space Operas with Snarky Robots').
-        
-        Books:
-        ${JSON.stringify(books.map(b => ({ id: b.id, title: b.title, author: b.author })))}
-        `;
-
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.1-pro-preview',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  categoryName: { type: Type.STRING },
-                  bookIds: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  }
-                },
-                required: ["categoryName", "bookIds"]
-              }
-            }
-          }
-        });
-
-        const result = JSON.parse(response.text || '[]');
-        
-        const newGroups: { category: string, books: Book[] }[] = [];
-        const groupedIds = new Set<string>();
-
-        result.forEach((group: any) => {
-          const groupBooks = group.bookIds
-            .map((id: string) => books.find(b => b.id === id))
-            .filter(Boolean);
-          
-          if (groupBooks.length > 0) {
-            newGroups.push({ category: group.categoryName, books: groupBooks });
-            groupBooks.forEach((b: Book) => groupedIds.add(b.id));
-          }
-        });
-
-        const missingBooks = books.filter(b => !groupedIds.has(b.id));
-        if (missingBooks.length > 0) {
-          newGroups.push({ category: 'Other', books: missingBooks });
-        }
-
-        setAiGroups(newGroups);
-      } catch (error: any) {
-        console.error("AI Grouping failed:", error);
-        const errorMessage = error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('quota')
-          ? "The AI is currently at capacity (quota limit). Please try grouping again later."
-          : "Failed to categorize books with AI.";
-        toast.error(errorMessage);
-        setGroupBy('none');
-      } finally {
-        setIsGrouping(false);
-      }
-    };
-
-    runAIGrouping();
-  }, [groupBy, bookIdsString]);
-
-  const handleAddBook = async (bookDetails: BookDetails, skipEnrichment = false) => {
+  const handleAddBook = async (bookDetails: BookDetails) => {
     if (!id || !user || !canEdit) return;
     try {
       let enrichedDetails = { ...bookDetails };
       
       // Attempt to quickly enrich genre/series if missing
-      if (!skipEnrichment && (!enrichedDetails.genre || !enrichedDetails.series)) {
+      if (!enrichedDetails.genre || !enrichedDetails.series) {
         try {
           const enrichments = await enrichBooksMetadata([{
             id: 'temp', 
@@ -527,27 +374,33 @@ export default function LibraryView() {
       return;
     }
 
-    const data = books.map(book => {
+    const headers = ['Title', 'Author', 'ISBN', 'Genre', 'Published Date', 'Added Date'];
+    
+    const escapeCSV = (str: string | undefined) => {
+      if (!str) return '""';
+      const escaped = String(str).replace(/"/g, '""');
+      return `"${escaped}"`;
+    };
+
+    const rows = books.map(book => {
       let addedDateStr = '';
       if (book.addedAt) {
-        if (typeof (book.addedAt as any).toMillis === 'function') {
-          addedDateStr = new Date((book.addedAt as any).toMillis()).toLocaleString();
-        } else {
-          addedDateStr = new Date(book.addedAt as any).toLocaleString();
+        const time = getFirestoreTime(book.addedAt);
+        if (time > 0) {
+          addedDateStr = new Date(time).toLocaleString();
         }
       }
-      return {
-        'Title': book.title || '',
-        'Author': book.author || '',
-        'ISBN': book.isbn || '',
-        'Format': book.format || '',
-        'Genre': book.genre || '',
-        'Published Date': book.publishedDate || '',
-        'Added Date': addedDateStr
-      };
+      return [
+        escapeCSV(book.title),
+        escapeCSV(book.author),
+        escapeCSV(book.isbn),
+        escapeCSV(book.genre),
+        escapeCSV(book.publishedDate),
+        escapeCSV(addedDateStr)
+      ].join(',');
     });
 
-    const csvContent = Papa.unparse(data);
+    const csvContent = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -599,8 +452,8 @@ export default function LibraryView() {
             if (Object.keys(changes).length > 0) {
               await updateDoc(doc(db, 'libraries', id, 'books', book.id), changes);
             }
-          } catch (err: any) {
-             currentErrors.push({ title: book.title, error: err.message || "Failed to fetch ISBN" });
+          } catch (err: unknown) {
+             currentErrors.push({ title: book.title, error: err instanceof Error ? err.message : "Failed to fetch ISBN" });
           }
         }));
 
@@ -615,7 +468,7 @@ export default function LibraryView() {
                currentGenre: b.genre
              })));
              
-             await Promise.all(enrichments.map(async (enriched) => {
+             await Promise.all((enrichments || []).map(async (enriched) => {
                const book = missingMetadataBooks.find(b => b.id === enriched.id);
                if (book) {
                  const changes: Partial<Omit<Book, 'id'>> = {};
@@ -627,7 +480,7 @@ export default function LibraryView() {
                  }
                }
              }));
-           } catch (err: any) {
+           } catch (err: unknown) {
              console.error("Batch enrichment failed", err);
            }
         }
@@ -675,35 +528,32 @@ export default function LibraryView() {
       };
 
       return (
-        <div className="bg-surface/60 backdrop-blur-sm rounded-3xl shadow-sm border border-border/40 overflow-hidden font-sans">
+        <div className="bg-surface-container-lowest rounded-xl border border-surface-variant overflow-hidden shadow-[0_2px_12px_rgba(2,26,53,0.03)]">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-black/5 border-b border-border/40 text-muted text-xs uppercase tracking-wider">
-                  <th className="px-6 py-4 font-bold cursor-pointer hover:bg-black/5 transition-colors" onClick={() => handleSort('title')}>
+                <tr className="bg-surface-container-low border-b border-surface-variant">
+                  <th className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/2 cursor-pointer hover:bg-surface-variant/30 transition-colors" onClick={() => handleSort('title')}>
                     <div className="flex items-center gap-2">Title <SortIcon column="title" /></div>
                   </th>
-                  <th className="px-6 py-4 font-bold cursor-pointer hover:bg-black/5 transition-colors" onClick={() => handleSort('author')}>
+                  <th className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/4 cursor-pointer hover:bg-surface-variant/30 transition-colors" onClick={() => handleSort('author')}>
                     <div className="flex items-center gap-2">Author <SortIcon column="author" /></div>
                   </th>
-                  <th className="px-6 py-4 font-bold cursor-pointer hover:bg-black/5 transition-colors" onClick={() => handleSort('added')}>
-                    <div className="flex items-center gap-2">Added <SortIcon column="added" /></div>
+                  <th className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right cursor-pointer hover:bg-surface-variant/30 transition-colors" onClick={() => handleSort('added')}>
+                    <div className="flex items-center gap-2 justify-end">Added <SortIcon column="added" /></div>
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/30">
+              <tbody className="divide-y divide-surface-variant/60">
                 <AnimatePresence>
                   {shelfBooksList.map((book, idx) => {
                     const hash = book.title.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
                     const gradients = [
-                      'from-teal-100 to-emerald-200',
-                      'from-yellow-100 to-amber-200',
-                      'from-rose-100 to-pink-200',
-                      'from-indigo-100 to-blue-200',
-                      'from-purple-100 to-fuchsia-200',
-                      'from-orange-100 to-red-200',
-                      'from-cyan-100 to-sky-200',
-                      'from-lime-100 to-green-200'
+                      'from-[#2f4d40] to-[#163428]',
+                      'from-[#7d5633] to-[#2e1500]',
+                      'from-[#021a35] to-[#041c37]',
+                      'from-[#8397b8] to-[#4b5f7e]',
+                      'from-[#e5e2dc] to-[#dcdad4]'
                     ];
                     const gradientClass = gradients[hash % gradients.length];
 
@@ -714,29 +564,25 @@ export default function LibraryView() {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 10 }}
                         transition={{ duration: 0.2, delay: idx * 0.02 }}
-                        onClick={() => setSelectedBook(book)}
-                        className="hover:bg-paper/80 transition-colors cursor-pointer group"
+                        onClick={() => navigate(`/library/${id}/book/${book.id}`)}
+                        className="group hover:bg-surface-container-low/50 transition-colors cursor-pointer"
                       >
-                        <td className="px-6 py-4">
+                        <td className="py-4 px-6">
                           <div className="flex items-center gap-4">
-                            <div className={`w-12 h-16 rounded-md shadow-sm overflow-hidden flex-shrink-0 ${!book.coverUrl ? `bg-gradient-to-br ${gradientClass}` : 'bg-surface'}`}>
+                            <div className="h-12 w-8 bg-surface-variant rounded-sm shadow-sm flex-shrink-0 overflow-hidden relative border border-outline-variant/30">
                               {book.coverUrl ? (
                                 <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <span className="text-[8px] font-serif font-bold text-ink/70 px-1 text-center line-clamp-3 leading-tight">{toTitleCase(book.title)}</span>
-                                </div>
+                                <div className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-80`}></div>
                               )}
                             </div>
-                            <div className="font-serif font-medium text-ink text-sm sm:text-base line-clamp-2 max-w-sm tracking-tight">{toTitleCase(book.title)}</div>
+                            <span className="font-headline-md text-[18px] sm:text-[20px] text-on-surface line-clamp-2 max-w-lg leading-snug">{toTitleCase(book.title)}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-muted font-medium text-sm">{toTitleCase(book.author)}</td>
-                        <td className="px-6 py-4 text-muted text-xs font-medium">
-                          {book.addedAt 
-                            ? (typeof book.addedAt.toMillis === 'function' 
-                                ? new Date(book.addedAt.toMillis()).toLocaleDateString() 
-                                : new Date(book.addedAt).toLocaleDateString())
+                        <td className="py-4 px-6 font-body-md text-body-md text-on-surface-variant">{toTitleCase(book.author)}</td>
+                        <td className="py-4 px-6 text-right font-body-md text-outline whitespace-nowrap">
+                          {book.addedAt && getFirestoreTime(book.addedAt) > 0
+                            ? new Date(getFirestoreTime(book.addedAt)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
                             : 'Unknown'}
                         </td>
                       </motion.tr>
@@ -745,7 +591,7 @@ export default function LibraryView() {
                 </AnimatePresence>
                 {shelfBooksList.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-5 py-8 text-center text-muted italic text-sm">
+                    <td colSpan={3} className="px-6 py-8 text-center text-on-surface-variant italic font-body-md text-sm">
                       {emptyMessage}
                     </td>
                   </tr>
@@ -757,250 +603,242 @@ export default function LibraryView() {
       );
     }
 
-    const shelves = [];
-    for (let i = 0; i < Math.max(shelfBooksList.length, 1); i += booksPerShelf) {
-      shelves.push(shelfBooksList.slice(i, i + booksPerShelf));
-    }
-    while (shelves.length < (groupBy === 'none' ? 3 : 1)) {
-      shelves.push([]);
-    }
-
     return (
-      <div className="bg-surface/50 border border-border/40 p-4 sm:p-8 rounded-3xl backdrop-blur-sm relative overflow-hidden">
-        {shelves.map((shelfBooks, shelfIdx) => (
-          <div key={shelfIdx} className="mb-14 last:mb-2 relative">
-            <div className="flex items-end gap-4 sm:gap-6 px-2 sm:px-6 pt-4 h-64 sm:h-72 z-10 relative">
-              <AnimatePresence>
-                {shelfBooks.map((book, idx) => (
-                  <motion.div
-                    key={book.id}
-                    initial={{ opacity: 0, y: 15, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.35, delay: idx * 0.05, ease: [0.25, 0.1, 0.25, 1.0] }}
-                  >
-                    <BookCard book={book} onDelete={handleDeleteBook} onClick={() => setSelectedBook(book)} canEdit={canEdit} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              {shelfBooks.length === 0 && (
-                <div className="w-full h-full flex flex-col items-center justify-center opacity-40 font-sans text-sm pb-8 text-ink/70">
-                  <div className="w-12 h-12 mb-3 border-2 border-dashed border-ink/40 rounded-full flex items-center justify-center">
-                    <BookIcon size={20} className="text-ink/60" />
-                  </div>
-                  {emptyMessage}
-                </div>
-              )}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+        <AnimatePresence>
+          {shelfBooksList.map((book, idx) => (
+            <motion.div
+              key={book.id}
+              initial={{ opacity: 0, y: 15, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.35, delay: idx * 0.05, ease: [0.25, 0.1, 0.25, 1.0] }}
+            >
+              <BookCard book={book} onDelete={handleDeleteBook} onClick={() => navigate(`/library/${id}/book/${book.id}`)} canEdit={canEdit} />
+            </motion.div>
+          ))}
+        </AnimatePresence>
+        {shelfBooksList.length === 0 && (
+          <div className="col-span-full w-full py-12 flex flex-col items-center justify-center opacity-40 font-sans text-sm pb-8 text-ink/70">
+            <div className="w-12 h-12 mb-3 border-2 border-dashed border-ink/40 rounded-full flex items-center justify-center">
+              <BookIcon size={20} className="text-ink/60" />
             </div>
-            {/* Minimalist shelf line */}
-            <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-gradient-to-r from-transparent via-border to-transparent z-0 rounded-full opacity-70" />
-            <div className="absolute bottom-[-14px] left-8 right-8 h-8 bg-black/5 blur-md -z-10 rounded-full" />
+            {emptyMessage}
           </div>
-        ))}
+        )}
       </div>
     );
   };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="min-h-screen bg-paper font-sans text-ink"
-    >
-      {library.heroImageUrl && (
-        <div className="w-full h-48 sm:h-64 relative overflow-hidden">
-          <img src={library.heroImageUrl} alt={library.name} className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-ink/90 via-ink/30 to-transparent" />
+    <div className="bg-background text-on-background font-body-md text-body-md antialiased flex min-h-screen relative w-full overflow-x-hidden">
+      
+      {/* Mobile Nav Overlay */}
+      {isMobileNavOpen && (
+        <div 
+          className="fixed inset-0 bg-black/40 z-40 md:hidden backdrop-blur-sm"
+          onClick={() => setIsMobileNavOpen(false)}
+        />
+      )}
+
+      {/* SideNavBar Component */}
+      <nav className={`fixed left-0 top-0 flex flex-col h-screen w-64 py-8 border-r border-outline-variant/30 bg-surface shadow-md md:shadow-none z-50 transition-transform duration-300 ease-in-out md:translate-x-0 ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="px-6 mb-8 flex flex-col gap-1">
+          <Link to="/" className="text-2xl font-serif font-bold text-primary font-headline-md text-headline-md tracking-tight">Athenaeum</Link>
+          <span className="text-on-surface-variant font-body-md text-body-md opacity-80">Modern Archivist</span>
+        </div>
+        
+        <div className="flex-grow flex flex-col gap-2">
+          <Link 
+            to="/"
+            onClick={() => setIsMobileNavOpen(false)}
+            className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 font-serif text-lg tracking-tight"
+          >
+            <span className="material-symbols-outlined text-primary">arrow_back</span>
+            <span>Back to Libraries</span>
+          </Link>
+
+          {canEdit && (
+            <button 
+              onClick={() => {
+                setIsAddModalOpen(true);
+                setIsMobileNavOpen(false);
+              }}
+              className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
+            >
+              <span className="material-symbols-outlined text-primary">add</span>
+              <span>Add Book</span>
+            </button>
+          )}
+
+          {canEdit && (
+            <button 
+              onClick={() => {
+                setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen);
+                setIsMobileNavOpen(false);
+              }}
+              className={`flex items-center gap-3 pl-6 py-3 transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight ${isAdvancedSettingsOpen ? 'bg-surface-container text-primary border-r-2 border-primary' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
+            >
+              <span className="material-symbols-outlined text-primary">settings</span>
+              <span>Settings</span>
+            </button>
+          )}
+
+          {isOwner && (
+            <button 
+              onClick={() => {
+                setIsSettingsOpen(!isSettingsOpen);
+                setIsMobileNavOpen(false);
+              }}
+              className={`flex items-center gap-3 pl-6 py-3 transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight ${isSettingsOpen ? 'bg-surface-container text-primary border-r-2 border-primary' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
+            >
+              <span className="material-symbols-outlined text-primary">share</span>
+              <span>Share</span>
+            </button>
+          )}
+        </div>
+        
+        <div className="mt-auto">
+          <button 
+            onClick={logOut}
+            className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
+          >
+            <span className="material-symbols-outlined text-primary">logout</span>
+            <span>Logout</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content Wrapper */}
+      <div className="flex-grow flex flex-col md:ml-64 min-h-screen w-full lg:w-[calc(100%-16rem)]">
+        
+        {/* TopAppBar Component */}
+        <header className="flex justify-between items-center w-full px-4 sm:px-8 h-16 border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md shadow-[0_4px_20px_rgba(26,47,75,0.02)] z-10 sticky top-0">
+          <div className="flex-1 flex items-center max-w-2xl gap-3">
+            <button 
+              className="md:hidden p-2 -ml-2 text-on-surface hover:text-primary rounded-full hover:bg-surface-container transition-colors flex items-center justify-center"
+              onClick={() => setIsMobileNavOpen(true)}
+            >
+              <span className="material-symbols-outlined">menu</span>
+            </button>
+            <div className="relative w-full max-w-md hidden sm:block">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+              <input 
+                className="w-full pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant/50 rounded-DEFAULT font-body-md text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors" 
+                placeholder="Search collection..." 
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <div className="flex-none ml-4 group cursor-pointer relative">
+            {user?.photoURL ? (
+              <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full object-cover border border-outline-variant/50 group-hover:border-primary transition-colors" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-surface-container border border-outline-variant/50 flex items-center justify-center text-primary font-bold shadow-sm group-hover:border-primary transition-colors">
+                {user?.email?.[0].toUpperCase() || 'U'}
+              </div>
+            )}
+          </div>
+        </header>
+
+        <div className={`w-full h-48 sm:h-64 relative overflow-hidden ${!library.heroImageUrl ? 'bg-primary' : ''}`}>
+
+          {library.heroImageUrl && (
+            <img src={library.heroImageUrl} alt={library.name} className="w-full h-full object-cover" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
           <div className="absolute bottom-6 left-6 sm:left-10 text-white">
             <h1 className="text-3xl sm:text-5xl font-serif font-medium tracking-tight drop-shadow-lg mb-2 leading-tight">{toTitleCase(library.name)}</h1>
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-accent" />
               <p className="text-xs sm:text-sm font-sans font-medium uppercase tracking-wider text-white/90">
-                {books.length} {books.length === 1 ? 'book' : 'books'} • {isOwner ? 'Owned by you' : `Shared by ${toTitleCase(library.ownerName)}`}
+                {books.length} {books.length === 1 ? 'volume' : 'volumes'} • {isOwner ? 'Owned by you' : `Shared by ${toTitleCase(library.ownerName)}`}
               </p>
             </div>
           </div>
         </div>
-      )}
       
-      <div className="sticky top-0 z-40 flex flex-col shadow-sm border-b border-border/40">
-        <header className="bg-surface/90 backdrop-blur-xl px-4 sm:px-8 py-4 sm:py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0 transition-all">
-          <div className="flex items-center justify-between w-full sm:w-auto">
-            <div className="flex items-center gap-4 sm:gap-6">
-              <Link to="/" className="p-2 text-muted hover:text-ink bg-surface border border-border/40 shadow-sm hover:shadow hover:bg-paper hover:border-border/60 rounded-full transition-all flex-shrink-0 group">
-                <ArrowLeft size={18} strokeWidth={2} className="group-hover:-translate-x-0.5 transition-transform" />
-              </Link>
-              <div className="min-w-0 flex flex-col">
-                <h1 className="text-2xl sm:text-3xl font-serif font-bold truncate tracking-tight text-ink">{toTitleCase(library.name)}</h1>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] sm:text-xs font-sans text-muted font-bold uppercase tracking-wider bg-black/5 px-2 py-0.5 rounded-full">
-                    {books.length} {books.length === 1 ? 'book' : 'books'}
-                  </span>
-                  <span className="text-[10px] sm:text-xs font-sans text-muted font-medium tracking-wide">
-                    {isOwner ? 'Owned by you' : `Shared by ${toTitleCase(library.ownerName)}`}
-                  </span>
-                </div>
-              </div>
+      <div className="sticky top-0 z-40 flex flex-col shadow-[0_4px_20px_rgba(26,47,75,0.02)] border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md">
+        <div className="px-4 sm:px-8 min-h-16 py-2.5 flex flex-wrap lg:flex-nowrap items-center justify-between gap-y-3 gap-x-6 transition-all">
+          
+          {/* Sort, Group, Filter Controls */}
+          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            <div className="flex items-center gap-2 bg-surface px-3 py-1.5 rounded-md border border-outline-variant/40">
+              <label className="text-xs font-label-caps text-outline uppercase tracking-wider hidden sm:block">Sort by:</label>
+              <select 
+                value={sortBy} 
+                onChange={e => handleSort(e.target.value as SortOption)}
+                className="bg-transparent border-none text-on-surface font-body-md text-sm focus:outline-none cursor-pointer max-w-[110px] appearance-none hover:text-primary transition-colors"
+                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0 center', backgroundRepeat: 'no-repeat', backgroundSize: '1em', paddingRight: '1.25rem' }}
+              >
+                <option value="added">Recently Added</option>
+                <option value="title">Title (A-Z)</option>
+                <option value="author">Author (A-Z)</option>
+              </select>
+              {sortBy !== 'added' && (
+                <button 
+                  onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  className="p-0.5 text-on-surface hover:text-primary transition-colors rounded-full hover:bg-surface-container"
+                >
+                  <span className="material-symbols-outlined text-sm">{sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>
+                </button>
+              )}
             </div>
+            
+            <button
+              onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-body-md transition-all border ${isFiltersOpen || searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax ? 'bg-primary text-on-primary border-primary shadow-sm' : 'bg-surface text-on-surface border-outline-variant/60 hover:border-outline-variant hover:shadow-sm'}`}
+            >
+              <span className="material-symbols-outlined text-sm">filter_list</span>
+              <span className="hidden sm:inline">Filters</span>
+              {(searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax) && <span className="w-1.5 h-1.5 rounded-full bg-surface"></span>}
+            </button>
           </div>
-          <div className="flex items-center gap-3 overflow-x-auto hide-scrollbar pb-1 sm:pb-0 w-full sm:w-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-            <div className="flex items-center bg-black/5 rounded-full p-1 border border-border/40 flex-shrink-0">
+
+          {/* View Modes and AI Picks */}
+          <div className="flex items-center gap-3 w-full lg:w-auto lg:ml-auto">
+            <div className="flex items-center bg-surface-container-lowest rounded-md p-1 border border-outline-variant/40 flex-shrink-0">
               <button
                 onClick={() => setViewMode('standard')}
-                className={`p-1.5 sm:px-3 sm:py-1.5 rounded-full transition-all flex items-center gap-2 text-sm font-medium ${viewMode === 'standard' ? 'bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-ink' : 'text-muted hover:text-ink'}`}
-                title="Standard View"
+                className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'standard' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
+                title="Grid View"
               >
-                <LayoutGrid size={16} strokeWidth={2} />
-                <span className="hidden lg:inline">Grid</span>
+                <span className="material-symbols-outlined text-sm">grid_view</span>
+                <span className="hidden sm:inline">Grid</span>
               </button>
               <button
                 onClick={() => setViewMode('table')}
-                className={`p-1.5 sm:px-3 sm:py-1.5 rounded-full transition-all flex items-center gap-2 text-sm font-medium ${viewMode === 'table' ? 'bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-ink' : 'text-muted hover:text-ink'}`}
+                className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'table' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
                 title="Table View"
               >
-                <TableIcon size={16} strokeWidth={2} />
-                <span className="hidden lg:inline">Table</span>
+                <span className="material-symbols-outlined text-sm">table_rows</span>
+                <span className="hidden sm:inline">Table</span>
               </button>
             </div>
             
-            <div className="w-[1px] h-6 bg-border/60 hidden sm:block mx-1"></div>
+            <div className="w-[1px] h-6 bg-outline-variant/50 hidden sm:block mx-1"></div>
 
             <button
               onClick={() => setIsRecommendationsModalOpen(true)}
-              className="flex items-center gap-2 bg-gradient-to-br from-paper to-surface text-accent px-4 py-2 rounded-full hover:shadow-md transition-all font-sans text-xs sm:text-sm border border-accent/20 flex-shrink-0 font-bold shadow-sm group"
+              className="flex items-center gap-2 bg-surface text-primary px-3 sm:px-4 py-1.5 sm:py-2 rounded-md hover:bg-surface-container architectural-shadow transition-all font-body-md text-sm border border-outline-variant/50 flex-shrink-0 group ml-auto lg:ml-0"
             >
-              <Sparkles size={16} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
-              <span className="hidden sm:inline">AI Picks</span>
+              <span className="material-symbols-outlined text-sm group-hover:scale-110 transition-transform">auto_awesome</span>
+              <span>AI Picks</span>
             </button>
-            
-            {canEdit && (
-              <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="flex items-center gap-2 bg-ink text-surface px-4 sm:px-5 py-2 rounded-full hover:bg-ink/90 hover:shadow-md hover:-translate-y-0.5 transition-all font-sans text-xs sm:text-sm flex-shrink-0 font-medium"
-              >
-                <Plus size={16} strokeWidth={2.5} />
-                <span className="hidden sm:inline">Add Book</span>
-              </button>
-            )}
-            
-            {canEdit && (
-              <button
-                onClick={() => setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-full transition-all border ${isAdvancedSettingsOpen ? 'bg-surface text-ink border-border/80 shadow-sm' : 'bg-transparent text-muted hover:bg-surface border-transparent hover:border-border/50'} flex-shrink-0 font-sans text-xs sm:text-sm font-medium`}
-              >
-                <Settings size={16} strokeWidth={2} />
-                <span className="hidden xl:inline">Advanced</span>
-              </button>
-            )}
-            
-            {isOwner && (
-              <button
-                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-full transition-all border ${isSettingsOpen ? 'bg-surface text-ink border-border/80 shadow-sm' : 'bg-transparent text-muted hover:bg-surface border-transparent hover:border-border/50'} flex-shrink-0 font-sans text-xs sm:text-sm font-medium`}
-              >
-                <Share2 size={16} strokeWidth={2} />
-                <span className="hidden xl:inline">Share</span>
-              </button>
-            )}
-            
-            <div className="hidden sm:flex items-center gap-3 ml-2 pl-4 border-l border-border/60">
-              <div className="flex items-center gap-2 group cursor-pointer relative">
-                {user?.photoURL ? (
-                  <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-border/50 group-hover:border-ink transition-colors" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-border text-ink flex items-center justify-center font-sans text-xs font-bold group-hover:bg-ink group-hover:text-surface transition-colors">
-                    {user?.email?.[0].toUpperCase() || 'U'}
-                  </div>
-                )}
-              </div>
-              <button onClick={logOut} className="p-2 text-muted hover:text-ink transition-colors rounded-full hover:bg-surface border border-transparent hover:border-border/50" title="Log out">
-                <LogOut size={16} strokeWidth={2} />
-              </button>
-            </div>
           </div>
-        </header>
+        </div>
 
-        {/* Toolbar */}
-        <div className="bg-surface/60 border-t border-border/30 flex flex-col backdrop-blur-md">
-          <div className="px-4 sm:px-8 py-2.5 sm:py-3 flex flex-wrap gap-4 sm:gap-6 items-center justify-between">
-            <div className="flex flex-wrap items-center gap-4 sm:gap-6 w-full sm:w-auto">
-              <div className="flex items-center gap-2.5 bg-paper/50 px-3 py-1.5 rounded-full border border-border/40">
-                <label className="text-[10px] sm:text-xs font-sans font-bold text-muted uppercase tracking-wider">Sort by:</label>
-                <select 
-                  value={sortBy} 
-                  onChange={e => handleSort(e.target.value as SortOption)}
-                  className="bg-transparent border-none text-ink font-sans text-sm font-medium focus:outline-none cursor-pointer max-w-[110px] appearance-none hover:text-accent transition-colors"
-                >
-                  <option value="added">Recently Added</option>
-                  <option value="title">Title (A-Z)</option>
-                  <option value="author">Author (A-Z)</option>
-                </select>
-                {sortBy !== 'added' && (
-                  <button 
-                    onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                    className="p-1 hover:text-accent transition-colors rounded-full hover:bg-black/5"
-                  >
-                    {sortOrder === 'asc' ? <ArrowUp size={14} strokeWidth={2} /> : <ArrowDown size={14} strokeWidth={2} />}
-                  </button>
-                )}
-              </div>
-              
-              <div className="flex items-center gap-2.5 bg-paper/50 px-3 py-1.5 rounded-full border border-border/40">
-                <label className="text-[10px] sm:text-xs font-sans font-bold text-muted uppercase tracking-wider">Group by:</label>
-                <select 
-                  value={groupBy} 
-                  onChange={e => setGroupBy(e.target.value as GroupOption)}
-                  className="bg-transparent border-none text-ink font-sans text-sm font-medium focus:outline-none cursor-pointer max-w-[110px] appearance-none hover:text-accent transition-colors"
-                >
-                  <option value="none">None</option>
-                  <option value="author">Author</option>
-                  <option value="genre">Genre</option>
-                  <option value="series">Series</option>
-                  <option value="lucky">Magic (AI)</option>
-                </select>
-              </div>
-              
-              <button
-                onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-all shadow-sm border ${isFiltersOpen || searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax ? 'bg-accent text-surface border-accent' : 'bg-surface text-ink border-border/60 hover:border-border hover:shadow'}`}
-              >
-                <Filter size={14} strokeWidth={2} />
-                Filters {(searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax) && <span className="w-1.5 h-1.5 rounded-full bg-surface"></span>}
-              </button>
-            </div>
-            {isGrouping && (
-              <div className="text-xs font-sans text-accent flex items-center gap-2 animate-pulse font-bold bg-accent/10 px-3 py-1.5 rounded-full">
-                <Sparkles size={14} strokeWidth={2.5} /> Categorizing...
-              </div>
-            )}
-          </div>
-          
-          {/* Filters Bar */}
+        {/* Filters Bar */}
           {isFiltersOpen && (
-            <div className="px-4 sm:px-8 py-4 bg-surface border-t border-border/40 flex flex-wrap gap-4 items-center animate-in slide-in-from-top-2 fade-in duration-200">
-              <div className="relative flex-1 min-w-[200px] max-w-md">
-                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" strokeWidth={2} />
-                <input
-                  type="text"
-                  placeholder="Search title or author..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-paper/50 border border-border/60 rounded-full text-sm focus:outline-none focus:border-ink/50 focus:bg-surface transition-all font-sans placeholder-muted"
-                />
-                {searchQuery && (
-                  <button onClick={() => setSearchQuery('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink">
-                    <X size={14} strokeWidth={2} />
-                  </button>
-                )}
-              </div>
-              
+            <div className="px-4 sm:px-8 py-4 bg-surface border-t border-outline-variant/40 flex flex-wrap gap-4 items-center animate-in slide-in-from-top-2 fade-in duration-200">
               <div className="flex flex-wrap items-center gap-3">
                 <select
                   value={filterGenre}
                   onChange={(e) => setFilterGenre(e.target.value)}
-                  className="px-4 py-2 bg-paper/50 border border-border/60 rounded-full text-sm focus:outline-none focus:border-ink/50 font-sans text-ink appearance-none min-w-[120px]"
+                  className="px-4 py-2 bg-surface border border-outline-variant/60 rounded-md text-sm focus:outline-none focus:border-primary font-body-md text-on-surface appearance-none min-w-[120px]"
                   style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em' }}
                 >
                   <option value="">All Genres</option>
@@ -1056,12 +894,11 @@ export default function LibraryView() {
               )}
             </div>
           )}
-        </div>
       </div>
 
       <main ref={mainRef} className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col lg:flex-row gap-6 sm:gap-8">
         <div className="flex-1 min-w-0">
-          {displayGroups.length === 0 ? (
+          {sortedBooks.length === 0 ? (
             <div className="text-center py-32 bg-surface/40 backdrop-blur-sm rounded-3xl shadow-sm border border-border/40 relative overflow-hidden">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-accent/5 to-transparent pointer-events-none" />
               <div className="w-24 h-24 bg-paper/80 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-border/30 relative z-10">
@@ -1082,22 +919,9 @@ export default function LibraryView() {
               )}
             </div>
           ) : (
-            displayGroups.map((group, idx) => (
-              <div key={idx} className="mb-10 sm:mb-12 last:mb-0">
-                {groupBy !== 'none' && (
-                  <div className="flex items-center gap-4 mb-6 sm:mb-8 ml-2">
-                    <h2 className="text-2xl sm:text-4xl font-serif font-medium text-ink tracking-tight">
-                      {toTitleCase(group.category)} 
-                    </h2>
-                    <span className="text-xs sm:text-sm font-sans text-muted font-bold bg-surface px-3 py-1 rounded-full border border-border/80 shadow-sm">
-                      {group.books.length} {group.books.length === 1 ? 'book' : 'books'}
-                    </span>
-                    <div className="flex-1 h-[1px] bg-gradient-to-r from-border/80 to-transparent ml-2" />
-                  </div>
-                )}
-                {renderShelves(group.books)}
-              </div>
-            ))
+            <div className="mb-10 sm:mb-12 last:mb-0">
+              {renderShelves(sortedBooks)}
+            </div>
           )}
         </div>
 
@@ -1293,16 +1117,6 @@ export default function LibraryView() {
         onClose={() => setIsRecommendationsModalOpen(false)}
         libraryBooks={books.map(b => ({ title: b.title, author: b.author }))}
       />
-      
-      <BookDetailsModal
-        book={selectedBook}
-        libraryId={id || ''}
-        isOpen={!!selectedBook}
-        onClose={() => setSelectedBook(null)}
-        canEdit={canEdit}
-        onUpdate={handleUpdateBook}
-        onDelete={handleDeleteBook}
-      />
 
       <Chatbot libraryBooks={books.map(b => ({ title: b.title, author: b.author, genre: b.genre, description: b.description }))} />
 
@@ -1387,6 +1201,7 @@ export default function LibraryView() {
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+      </div>
+    </div>
   );
 }

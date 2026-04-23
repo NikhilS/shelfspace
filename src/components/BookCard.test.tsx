@@ -25,8 +25,8 @@ describe('BookCard component', () => {
   it('renders standard book card without cover', () => {
     const noCoverBook = { ...mockBook, coverUrl: '' };
     render(<BookCard book={noCoverBook} canEdit={false} />);
-    expect(screen.getByText('The Great Gatsby')).toBeInTheDocument();
-    expect(screen.getByText('F. Scott Fitzgerald')).toBeInTheDocument();
+    expect(screen.getAllByText('The Great Gatsby')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('F. Scott Fitzgerald')[0]).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
@@ -43,8 +43,9 @@ describe('BookCard component', () => {
 
   it('does not show delete button if canEdit is false', () => {
     render(<BookCard book={mockBook} canEdit={false} />);
-    const buttons = screen.queryAllByRole('button');
-    expect(buttons.length).toBe(0);
+    // There is one button now ("View Details"), but not the delete button
+    const deleteButton = screen.queryByTitle('Delete Book');
+    expect(deleteButton).not.toBeInTheDocument();
   });
 
   it('shows delete button if canEdit is true and user hovers (using test logic)', () => {

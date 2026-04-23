@@ -1,5 +1,5 @@
 {
-  "name": "ShelfSpace",
+  "name": "Athenaeum",
   "description": "A book librarian and companion app to organize your physical bookshelves, extract books from photos, and share libraries.",
   "requestFramePermissions": [
     "camera"

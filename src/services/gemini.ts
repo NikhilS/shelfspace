@@ -1,10 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 import Papa from 'papaparse';
 
-export function handleGeminiError(error: any): never {
+export function handleGeminiError(error: unknown): never {
   console.error("Error calling Gemini:", error);
-  const errorMessage = error?.message || '';
-  if (error?.status === 429 || errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('quota')) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const status = typeof error === 'object' && error !== null && 'status' in error ? error.status : undefined;
+  if (status === 429 || errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('quota')) {
     throw new Error("The AI service has exceeded its quota limit. Please try again later.");
   }
   throw new Error("Failed to communicate with the AI service. Please try again.");
@@ -113,8 +114,8 @@ export async function extractBooksFromCsv(csvText: string): Promise<{ title: str
 
     const { hasHeaderRow, columnMap } = schema;
     
-    if (columnMap.title === null || columnMap.author === null) {
-      if (columnMap.title === null) return [];
+    if (!columnMap || typeof columnMap !== 'object' || typeof columnMap.title !== 'number' || typeof columnMap.author !== 'number') {
+      return [];
     }
 
     const books: { title: string, author: string, isbn?: string, genre?: string, format?: 'physical' | 'digital' }[] = [];
@@ -229,7 +230,7 @@ Format the response with simple markdown (use ## for the book titles).`;
     handleGeminiError(error);
   }
 }
-export async function generateBookInsights(title: string, author: string, type: 'summary' | 'catchup' | 'similar'): Promise<string> {
+export async function generateBookInsights(title: string, author: string, type: 'summary' | 'catchup' | 'similar' | 'author_bio'): Promise<string> {
   try {
     let prompt = "";
     switch (type) {
@@ -237,6 +238,10 @@ export async function generateBookInsights(title: string, author: string, type: 
         prompt = `Act as an expert librarian and literary critic. Provide a compelling, spoiler-free summary of the book "${title}" by ${author}. 
         Focus on the premise, the main themes, the setting, and the general tone of the book. 
         Why might someone want to read this? Keep it concise (around 2-3 paragraphs) and engaging. Format with simple markdown (use ## for headings if needed).`;
+        break;
+      case 'author_bio':
+        prompt = `Act as an expert librarian. Provide a concise biographical summary of the author ${author}, who wrote "${title}". 
+        Focus on their career, notable works, writing style, and any major awards. Keep it to 1-2 paragraphs. Format with simple markdown if needed, but do not use headings.`;
         break;
       case 'catchup':
         prompt = `I am currently reading or have previously read "${title}" by ${author} but I need a refresher. 

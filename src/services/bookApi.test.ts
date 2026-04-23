@@ -100,16 +100,106 @@ describe('bookApi', () => {
       // Google intitle search yielded 1 item. Because length < 5, it triggers the fallback search.
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ items: [] }) // Empty fallback
+        json: async () => ({
+          items: [{
+            volumeInfo: {
+              title: 'Fallback Book Title',
+              authors: ['Fallback Author'],
+              industryIdentifiers: [{ type: 'ISBN_13', identifier: '9876543210123' }]
+            }
+          }]
+        })
       });
 
       const results = await searchBookByTitle('Test Book Title');
-      expect(results.length).toBe(1);
+      expect(results.length).toBe(2);
       expect(results[0].title).toBe('Test Book Title');
+      expect(results[1].title).toBe('Fallback Book Title');
+    });
+
+    it('falls back to OpenLibrary when Google fails, and uses general OpenLibrary search if title search returns empty', async () => {
+      // Mock Google Books returning nothing
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [] })
+      });
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [] })
+      });
+      // Mock OpenLibrary returning no docs for title=
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ docs: [] })
+      });
+      // Mock OpenLibrary returning docs for q=
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          docs: [{
+            title: 'OpenLib Book Title General',
+            author_name: ['Author Two'],
+            isbn: ['0987654321098']
+          }]
+        })
+      });
+
+      const results = await searchBookByTitle('OpenLib Book Title General');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].title).toBe('OpenLib Book Title General');
     });
     
     it('sorts exact matches to the top', async () => {
-        // ... (can omit complicated tests for now, just basics)
+       const mockGoogleResponse = {
+        items: [{
+          volumeInfo: { title: 'Test Book Title Extended' }
+        }, {
+          volumeInfo: { title: 'Test Book Title' } // Exact match should sort to top
+        }, {
+          volumeInfo: { title: 'Another Book' }
+        }]
+      };
+
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockGoogleResponse
+      });
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [] })
+      });
+
+      const results = await searchBookByTitle('Test Book Title');
+      expect(results[0].title).toBe('Test Book Title');
+      expect(results[1].title).toBe('Test Book Title Extended');
+    });
+  });
+
+  describe('searchBookByTitleAndAuthor', () => {
+    it('returns a book when found', async () => {
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [{
+            volumeInfo: {
+              title: 'Specific Book',
+              authors: ['Specific Author']
+            }
+          }]
+        })
+      });
+      const { searchBookByTitleAndAuthor } = await import('./bookApi');
+      const result = await searchBookByTitleAndAuthor('Specific Book', 'Specific Author');
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0].title).toBe('Specific Book');
+      expect(result[0].author).toBe('Specific Author');
+    });
+
+    it('returns empty array on failure', async () => {
+      (global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
+      const { searchBookByTitleAndAuthor } = await import('./bookApi');
+      const result = await searchBookByTitleAndAuthor('Fail Book', 'Fail Author');
+      expect(result).toEqual([]);
     });
   });
 });

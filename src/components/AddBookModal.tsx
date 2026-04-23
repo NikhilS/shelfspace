@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 interface AddBookModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddBook: (book: BookDetails, skipEnrichment?: boolean) => Promise<void>;
+  onAddBook: (book: BookDetails) => Promise<void>;
   existingBooks?: BookDetails[];
 }
 
@@ -114,18 +114,13 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      let retries = 0;
       const attachStream = () => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setIsCameraActive(true);
-        } else if (retries < 20) {
-          // Retry if React hasn't mounted the video element yet, up to 1 second
-          retries++;
-          setTimeout(attachStream, 50);
         } else {
-          // Cleanup stream if we couldn't attach it
-          stream.getTracks().forEach(track => track.stop());
+          // Retry if React hasn't mounted the video element yet
+          setTimeout(attachStream, 50);
         }
       };
       attachStream();
@@ -421,7 +416,7 @@ export default function AddBookModal({ isOpen, onClose, onAddBook, existingBooks
           
           finalBook.format = book.format || csvFormat; // Use individual format from extraction or the bulk fallback
 
-          await onAddBook(finalBook, true);
+          await onAddBook(finalBook);
           newlyAdded.push({ title: cleanNewTitle, author: cleanNewAuthor, isbn: cleanNewIsbn });
           
           // Using functional state update to safely remove from the list

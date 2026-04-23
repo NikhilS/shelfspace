@@ -218,7 +218,7 @@ describe('AddBookModal', () => {
         title: 'CSV Test Book',
         author: 'CSV Author',
         format: 'digital'
-      }), true);
+      }));
     });
   });
 });

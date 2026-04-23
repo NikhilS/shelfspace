@@ -3,9 +3,13 @@ import { BookDetails } from '../services/bookApi';
 import { Book as BookIcon } from 'lucide-react';
 import { toTitleCase } from '../lib/utils';
 
+import { Timestamp } from 'firebase/firestore';
+
+type FirestoreDate = Timestamp | Date | string | number;
+
 interface BookCardProps {
   key?: React.Key;
-  book: BookDetails & { id: string, addedBy: string, addedAt: any };
+  book: BookDetails & { id: string, addedBy: string, addedAt: FirestoreDate };
   onDelete?: (id: string) => void;
   onClick?: () => void;
   canEdit: boolean;
@@ -36,16 +40,11 @@ export default function BookCard({ book, onDelete, onClick, canEdit }: BookCardP
   return (
     <div 
       onClick={onClick}
-      className={`group relative w-32 h-48 sm:w-40 sm:h-56 rounded-r-xl rounded-l-sm shadow-md transition-all duration-400 ease-out hover:-translate-y-4 hover:shadow-2xl hover:shadow-accent/20 hover:rotate-1 cursor-pointer flex-shrink-0 ring-1 ring-black/5 hover:ring-accent/40`}
+      className={`group cursor-pointer flex flex-col h-full`}
     >
-      {/* Book Spine Effect */}
-      <div className="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-black/20 via-black/5 to-transparent rounded-l-sm z-10" />
-      <div className="absolute left-0 top-0 bottom-0 w-[1px] bg-white/50 z-20" />
-      <div className="absolute left-2 top-0 bottom-0 w-[1px] bg-black/5 z-20" />
-      
-      {/* Book Cover / Spine */}
+      {/* Book Cover */}
       <div 
-        className={`w-full h-full rounded-r-xl rounded-l-sm overflow-hidden relative ${!book.coverUrl ? `bg-gradient-to-br ${gradientClass}` : 'bg-surface'}`}
+        className={`relative aspect-[2/3] mb-4 bg-surface-container-high rounded-sm shadow-[0_4px_12px_rgba(26,47,75,0.08)] overflow-hidden transform transition-transform duration-300 group-hover:-translate-y-1 ${!book.coverUrl ? `bg-gradient-to-br ${gradientClass}` : 'bg-surface'}`}
       >
         {book.coverUrl ? (
           <img 
@@ -74,20 +73,30 @@ export default function BookCard({ book, onDelete, onClick, canEdit }: BookCardP
             </div>
           </div>
         )}
+        
+        <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
+          <button className="w-full py-2 bg-surface text-on-surface font-label-caps text-label-caps rounded-DEFAULT hover:bg-surface-bright transition-colors">View Details</button>
+        </div>
+
+        {/* Delete Button */}
+        {canEdit && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete?.(book.id);
+            }}
+            className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-md z-30 hover:bg-red-600 hover:scale-110"
+          >
+            &times;
+          </button>
+        )}
       </div>
 
-      {/* Delete Button */}
-      {canEdit && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete?.(book.id);
-          }}
-          className="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-md z-30 hover:bg-red-600 hover:scale-110"
-        >
-          &times;
-        </button>
-      )}
+      {/* Book Metadata */}
+      <div className="mt-auto">
+        <h3 className="font-headline-md text-headline-md text-on-surface line-clamp-1 tracking-tight">{toTitleCase(book.title)}</h3>
+        <p className="font-body-md text-body-md text-on-surface-variant line-clamp-1">{toTitleCase(book.author)}</p>
+      </div>
     </div>
   );
 }

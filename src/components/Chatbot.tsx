@@ -95,9 +95,10 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
           msg.id === modelMessageId ? { ...msg, text: responseText } : msg
         ));
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error sending message:", error);
-      const errorMessage = error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('quota')
+      const isQuota = typeof error === 'object' && error !== null && ('status' in error && (error as {status: number}).status === 429) || (error instanceof Error && (error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED') || error.message.includes('quota')));
+      const errorMessage = isQuota
         ? "The AI Librarian is currently resting (quota limit). Please come back later!"
         : "I'm sorry, I encountered an error while trying to respond. Please try again.";
         
@@ -169,16 +170,8 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
                     }`}>
                       {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                     </div>
-                    <div className={`p-4 rounded-3xl ${
-                      msg.role === 'user' 
-                        ? 'bg-ink text-surface rounded-tr-sm shadow-sm' 
-                        : 'bg-surface border border-border/40 text-ink rounded-tl-sm shadow-sm'
-                    }`}>
-                      <div className={`prose prose-sm max-w-none ${
-                        msg.role === 'user' 
-                          ? 'prose-p:text-paper prose-headings:text-paper prose-strong:text-paper prose-a:text-paper' 
-                          : 'prose-p:text-ink/90 prose-headings:text-ink prose-strong:text-ink prose-a:text-accent'
-                      }`}>
+                    <div className="p-4 rounded-3xl bg-surface border border-border/40 text-ink rounded-tl-sm shadow-sm">
+                      <div className="markdown-body text-sm max-w-none text-ink/90">
                         <Markdown>{msg.text}</Markdown>
                       </div>
                     </div>

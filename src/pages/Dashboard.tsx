@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, or } from 'firebase/firestore';
-import { Link } from 'react-router-dom';
-import { Book, Plus, LogOut, Library as LibraryIcon, Loader2 } from 'lucide-react';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, or, getCountFromServer } from 'firebase/firestore';
+import { Link, Navigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { toTitleCase } from '../lib/utils';
 import { generateLibraryHeroImage } from '../services/gemini';
 import { motion, AnimatePresence } from 'motion/react';
+import { Timestamp } from 'firebase/firestore';
+
+type FirestoreDate = Timestamp | Date | string | number;
 
 interface Library {
   id: string;
@@ -15,8 +18,9 @@ interface Library {
   ownerId: string;
   ownerName: string;
   sharedWith: string[];
-  createdAt: any;
+  createdAt: FirestoreDate;
   heroImageUrl?: string;
+  volumeCount?: number; // Added to match mock, would normally be computed
 }
 
 export default function Dashboard() {
@@ -25,6 +29,8 @@ export default function Dashboard() {
   const [isCreating, setIsCreating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newLibName, setNewLibName] = useState('');
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -37,12 +43,44 @@ export default function Dashboard() {
       )
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
       const libs: Library[] = [];
       snapshot.forEach((doc) => {
-        libs.push({ id: doc.id, ...doc.data() } as Library);
+        const data = doc.data();
+        libs.push({ 
+          id: doc.id, 
+          ...data 
+        } as Library);
       });
-      setLibraries(libs);
+
+      // Optimistically update libraries, retaining previous volumeCounts to prevent flickering
+      setLibraries(prevLibs => {
+        return libs.map(lib => {
+          const prevLib = prevLibs.find(p => p.id === lib.id);
+          return {
+            ...lib,
+            volumeCount: prevLib !== undefined && prevLib.volumeCount !== undefined ? prevLib.volumeCount : 0
+          };
+        });
+      });
+
+      // Fetch accurate counts asynchronously
+      try {
+        const updatedCounts = await Promise.all(libs.map(async (lib) => {
+          const coll = collection(db, 'libraries', lib.id, 'books');
+          const countSnap = await getCountFromServer(coll);
+          return { id: lib.id, count: countSnap.data().count };
+        }));
+        
+        setLibraries(currentLibs => {
+          return currentLibs.map(lib => {
+            const update = updatedCounts.find(u => u.id === lib.id);
+            return update ? { ...lib, volumeCount: update.count } : lib;
+          });
+        });
+      } catch (err) {
+        console.error("Failed to fetch volume counts", err);
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'libraries');
     });
@@ -76,141 +114,205 @@ export default function Dashboard() {
     }
   };
 
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="min-h-screen bg-paper font-sans text-ink"
-    >
-      <header className="bg-surface/90 backdrop-blur-xl px-4 sm:px-8 py-4 sm:py-5 flex items-center justify-between sticky top-0 z-40 border-b border-border/40 shadow-sm transition-all">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-accent text-surface rounded-full flex items-center justify-center shadow-md">
-            <LibraryIcon size={20} strokeWidth={2} />
-          </div>
-          <h1 className="text-2xl font-serif font-bold tracking-tight text-ink">ShelfSpace</h1>
+    <div className="bg-background text-on-background font-body-md text-body-md antialiased flex min-h-screen relative w-full overflow-x-hidden">
+      
+      {/* Mobile Nav Overlay */}
+      {isMobileNavOpen && (
+        <div 
+          className="fixed inset-0 bg-black/40 z-40 md:hidden backdrop-blur-sm"
+          onClick={() => setIsMobileNavOpen(false)}
+        />
+      )}
+
+      {/* SideNavBar Component */}
+      <nav className={`fixed left-0 top-0 flex flex-col h-screen w-64 py-8 border-r border-outline-variant/30 bg-surface shadow-md md:shadow-none z-50 transition-transform duration-300 ease-in-out md:translate-x-0 ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="px-6 mb-8 flex flex-col gap-1">
+          <Link to="/" className="text-2xl font-serif font-bold text-primary font-headline-md text-headline-md tracking-tight">Athenaeum</Link>
+          <span className="text-on-surface-variant font-body-md text-body-md opacity-80">Modern Archivist</span>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-surface px-2.5 py-1.5 rounded-full border border-border/60 shadow-sm cursor-pointer group hover:bg-paper transition-colors">
+        
+        <div className="flex-grow flex flex-col gap-2">
+          <button 
+            onClick={() => {
+              setIsCreating(true);
+              setIsMobileNavOpen(false);
+            }}
+            className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
+          >
+            <span className="material-symbols-outlined text-primary">add_circle</span>
+            <span>Create Library</span>
+          </button>
+          
+          <Link 
+            to="/"
+            onClick={() => setIsMobileNavOpen(false)}
+            className="flex items-center gap-3 text-primary font-bold border-l-2 border-primary pl-6 py-3 bg-surface-container-low hover:bg-surface-container transition-colors duration-200 font-serif text-lg tracking-tight"
+          >
+            <span className="material-symbols-outlined text-primary">library_books</span>
+            <span>My Libraries</span>
+          </Link>
+        </div>
+        
+        <div className="mt-auto">
+          <button 
+            onClick={logOut}
+            className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
+          >
+            <span className="material-symbols-outlined text-primary">logout</span>
+            <span>Logout</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content Wrapper */}
+      <div className="flex-grow flex flex-col md:ml-64 min-h-screen w-full lg:w-[calc(100%-16rem)]">
+        
+        {/* TopAppBar Component */}
+        <header className="flex justify-between items-center w-full px-4 sm:px-8 h-16 border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md shadow-[0_4px_20px_rgba(26,47,75,0.02)] z-10 sticky top-0">
+          <div className="flex-1 flex items-center max-w-2xl gap-3">
+            <button 
+              className="md:hidden p-2 -ml-2 text-on-surface hover:text-primary rounded-full hover:bg-surface-container transition-colors flex items-center justify-center"
+              onClick={() => setIsMobileNavOpen(true)}
+            >
+              <span className="material-symbols-outlined">menu</span>
+            </button>
+            <div className="relative w-full max-w-md">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+              <input 
+                className="w-full pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant/50 rounded-DEFAULT font-body-md text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors" 
+                placeholder="Search libraries..." 
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <div className="flex-none ml-4 group cursor-pointer relative">
             {user?.photoURL ? (
-              <img src={user.photoURL} alt="Profile" className="w-7 h-7 rounded-full object-cover group-hover:border-ink/20 border border-transparent transition-colors" referrerPolicy="no-referrer" />
+              <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full object-cover border border-outline-variant/50 group-hover:border-primary transition-colors" referrerPolicy="no-referrer" />
             ) : (
-              <div className="w-7 h-7 rounded-full bg-border flex items-center justify-center text-ink text-xs font-bold group-hover:bg-ink group-hover:text-surface transition-colors">
+              <div className="w-10 h-10 rounded-full bg-surface-container border border-outline-variant/50 flex items-center justify-center text-primary font-bold shadow-sm group-hover:border-primary transition-colors">
                 {user?.email?.[0].toUpperCase() || 'U'}
               </div>
             )}
-            <span className="text-[11px] sm:text-xs text-ink font-bold hidden sm:inline-block pr-2 tracking-wide">{user?.displayName || user?.email}</span>
           </div>
-          <button onClick={logOut} className="p-2 text-muted hover:text-ink transition-colors rounded-full hover:bg-surface border border-transparent hover:border-border/50" title="Log out">
-            <LogOut size={18} strokeWidth={2} />
-          </button>
-        </div>
-      </header>
+        </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 sm:py-12">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-10 sm:mb-12 gap-6">
-          <div>
-            <h2 className="text-3xl sm:text-5xl font-serif font-bold tracking-tight text-ink mb-2">Your Libraries</h2>
-            <p className="text-muted text-lg font-medium">Manage your collections and reading lists.</p>
+        {/* Main Canvas */}
+        <main className="flex-grow p-4 sm:p-8 lg:p-12 max-w-[1200px] mx-auto w-full">
+          <div className="mb-12">
+            <h2 className="font-headline-xl text-headline-xl text-primary-container mb-4">My Libraries</h2>
+            <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">Your curated collections, meticulously organized for deep focus and easy retrieval.</p>
           </div>
-          <button 
-            onClick={() => setIsCreating(true)}
-            className="flex items-center justify-center gap-2 bg-ink text-surface px-6 py-3 rounded-full hover:bg-ink/90 hover:-translate-y-0.5 hover:shadow-md transition-all font-medium text-sm flex-shrink-0"
-          >
-            <Plus size={18} strokeWidth={2.5} />
-            New Library
-          </button>
-        </div>
 
-        <AnimatePresence>
-          {isCreating && (
-            <motion.form 
-              initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
-              animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
-              exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
-              transition={{ duration: 0.3, ease: 'easeInOut' }}
-              onSubmit={handleCreateLibrary} 
-              className="bg-surface/60 backdrop-blur-sm p-6 sm:p-8 rounded-3xl shadow-sm mb-10 sm:mb-12 border border-border/40 relative overflow-hidden"
-            >
-              <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center relative z-10 w-full">
-                <input
-                  type="text"
-                  value={newLibName}
-                  onChange={(e) => setNewLibName(e.target.value)}
-                  placeholder="Library Name (e.g. Living Room Shelf)"
-                  className="flex-1 bg-paper/50 border border-border/60 rounded-full px-6 py-4 focus:outline-none focus:ring-2 focus:ring-ink/10 focus:border-ink/40 transition-all text-base sm:text-lg font-medium placeholder:text-muted/60"
-                  autoFocus
-                  disabled={isSubmitting}
-                />
-                <div className="flex gap-3 sm:gap-4 flex-shrink-0">
-                  <button type="button" onClick={() => setIsCreating(false)} disabled={isSubmitting} className="flex-1 sm:flex-none justify-center text-ink px-6 py-4 rounded-full font-bold hover:bg-surface border border-border/60 transition-colors disabled:opacity-50">
-                    Cancel
-                  </button>
-                  <button type="submit" disabled={isSubmitting} className="flex-1 sm:flex-none justify-center bg-accent text-white px-8 py-4 rounded-full font-bold hover:bg-accent/90 hover:shadow-lg hover:shadow-accent/20 hover:-translate-y-0.5 transition-all flex items-center gap-2 disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none min-w-[140px]">
-                    {isSubmitting ? <><Loader2 size={18} className="animate-spin" /> Generating</> : 'Create'}
-                  </button>
+          <AnimatePresence>
+            {isCreating && (
+              <motion.form 
+                initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
+                exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                transition={{ duration: 0.3, ease: 'easeInOut' }}
+                onSubmit={handleCreateLibrary} 
+                className="bg-surface-container p-6 sm:p-8 rounded-lg shadow-sm border border-outline-variant/30 mb-12 relative overflow-hidden"
+              >
+                <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center relative z-10 w-full">
+                  <input
+                    type="text"
+                    value={newLibName}
+                    onChange={(e) => setNewLibName(e.target.value)}
+                    placeholder="Library Name (e.g. Private Study)"
+                    className="flex-1 bg-surface border border-outline-variant/50 rounded-md px-6 py-4 focus:outline-none focus:ring-0 focus:border-primary transition-all text-base sm:text-lg placeholder:text-outline"
+                    autoFocus
+                    disabled={isSubmitting}
+                  />
+                  <div className="flex gap-3 sm:gap-4 flex-shrink-0">
+                    <button type="button" onClick={() => setIsCreating(false)} disabled={isSubmitting} className="flex-1 sm:flex-none justify-center text-primary px-6 py-4 rounded-md font-body-md hover:bg-surface-variant border border-outline-variant/50 transition-colors disabled:opacity-50">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={isSubmitting} className="flex-1 sm:flex-none justify-center bg-primary text-on-primary px-8 py-4 rounded-md font-body-md hover:bg-primary/90 transition-all flex items-center gap-2 disabled:opacity-50 min-w-[140px] architectural-shadow">
+                      {isSubmitting ? <><Loader2 size={18} className="animate-spin" /> Abstracting</> : 'Create Collection'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </motion.form>
-          )}
-        </AnimatePresence>
+              </motion.form>
+            )}
+          </AnimatePresence>
 
-        {libraries.length === 0 && !isCreating ? (
-          <div className="text-center py-32 bg-surface/40 backdrop-blur-sm rounded-3xl shadow-sm border border-border/40 relative overflow-hidden">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-accent/5 to-transparent pointer-events-none" />
-            <div className="w-24 h-24 bg-paper/80 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-border/30 relative z-10">
-              <Book size={36} className="text-accent/80" strokeWidth={1.5} />
+          {libraries.length === 0 && !isCreating ? (
+            <div className="text-center py-24 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
+              <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/30">
+                <span className="material-symbols-outlined text-4xl text-outline">library_add</span>
+              </div>
+              <h3 className="text-2xl font-serif font-bold mb-3 text-primary tracking-tight">The Archives are Empty</h3>
+              <p className="text-on-surface-variant text-lg max-w-md mx-auto mb-8">Establish your first collection to begin cataloging your physical volumes.</p>
+              <button 
+                onClick={() => setIsCreating(true)}
+                className="bg-primary text-on-primary px-6 py-3 rounded-md font-body-md hover:bg-primary/90 transition-all architectural-shadow flex items-center gap-2 mx-auto"
+              >
+                <span className="material-symbols-outlined text-sm">add</span>
+                Create Library
+              </button>
             </div>
-            <h3 className="text-3xl font-serif font-bold mb-3 text-ink relative z-10 tracking-tight">No libraries yet</h3>
-            <p className="text-muted text-lg max-w-md mx-auto relative z-10">Create your first library to start organizing your books and reading lists.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-            <AnimatePresence>
-              {libraries.map((lib, index) => (
-                <motion.div 
-                  key={lib.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: index * 0.05, ease: 'easeOut' }}
-                  className="h-full"
-                >
-                  <Link to={`/library/${lib.id}`} className="block group h-full">
-                    <div className="bg-surface/60 backdrop-blur-sm rounded-3xl shadow-sm hover:shadow-xl hover:shadow-border/60 transition-all duration-400 border border-border/40 hover:border-border/80 h-full flex flex-col overflow-hidden relative group-hover:-translate-y-1.5 focus:outline-none focus:ring-2 focus:ring-ink/20">
-                      {lib.heroImageUrl ? (
-                        <div className="h-56 w-full relative overflow-hidden border-b border-border/20">
-                          <img src={lib.heroImageUrl} alt={lib.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-ink/90 via-ink/20 to-transparent" />
-                          <div className="absolute bottom-6 left-8 right-8 text-white">
-                            <h3 className="text-2xl sm:text-3xl font-serif font-medium mb-1 tracking-tight leading-tight line-clamp-2">{toTitleCase(lib.name)}</h3>
-                          </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <AnimatePresence>
+                {libraries.filter(lib => lib.name.toLowerCase().includes(searchQuery.toLowerCase())).map((lib, index) => (
+                  <motion.div 
+                    key={lib.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: index * 0.05, ease: 'easeOut' }}
+                    className="h-full"
+                  >
+                    <Link to={`/library/${lib.id}`} className="block h-full group">
+                      <div className="bg-surface-container-low rounded-lg overflow-hidden border border-transparent shadow-[0_8px_30px_rgba(26,47,75,0.02)] hover:shadow-[0_12px_40px_rgba(26,47,75,0.08)] hover:border-outline-variant/30 transition-all duration-300 flex flex-col h-full cursor-pointer">
+                        <div className="h-44 w-full overflow-hidden bg-surface-variant relative">
+                          {lib.heroImageUrl ? (
+                            <img alt={lib.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" src={lib.heroImageUrl} />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-surface-container">
+                               <span className="material-symbols-outlined text-5xl text-outline-variant opacity-50 group-hover:scale-110 transition-transform duration-500">menu_book</span>
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-primary/10 to-transparent mix-blend-multiply opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                         </div>
-                      ) : (
-                        <div className="p-8 pb-6 flex-1 flex flex-col justify-end relative overflow-hidden min-h-[14rem]">
-                          <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-accent to-transparent pointer-events-none" />
-                          <div className="w-14 h-14 bg-paper/80 rounded-full flex items-center justify-center mb-6 text-accent group-hover:scale-110 transition-transform duration-500 shadow-sm border border-border/40 relative z-10">
-                            <Book size={24} strokeWidth={2} />
+                        
+                        <div className="p-6 flex flex-col flex-grow justify-between bg-surface-container-lowest">
+                          <div className="flex items-start justify-between">
+                            <h3 className="font-headline-md text-headline-md text-on-surface group-hover:text-primary transition-colors line-clamp-1">{toTitleCase(lib.name)}</h3>
+                            <button className="text-outline hover:text-primary transition-colors p-1" onClick={(e) => e.preventDefault()}>
+                              <span className="material-symbols-outlined">more_horiz</span>
+                            </button>
                           </div>
-                          <h3 className="text-2xl sm:text-3xl font-serif font-medium mb-2 tracking-tight leading-tight text-ink relative z-10 group-hover:text-accent transition-colors line-clamp-2">{toTitleCase(lib.name)}</h3>
-                        </div>
-                      )}
-                      <div className={`px-8 py-5 mt-auto ${lib.heroImageUrl ? 'bg-surface/40' : 'border-t border-border/30 bg-surface/20'}`}>
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-2 h-2 rounded-full bg-accent/80" />
-                          <p className="text-muted text-xs font-bold uppercase tracking-wider">
-                            {lib.ownerId === user?.uid ? 'Owned by you' : `Shared by ${toTitleCase(lib.ownerName)}`}
-                          </p>
+                          
+                          <div className="flex items-center justify-between mt-6">
+                            <div className="flex items-center gap-2 text-outline flex-shrink-0">
+                              <span className="material-symbols-outlined text-sm">auto_stories</span>
+                              <span className="font-label-caps text-label-caps uppercase tracking-wider">{lib.volumeCount || 0} Volumes</span>
+                            </div>
+                            
+                            {lib.ownerId !== user?.uid && (
+                              <div className="text-xs font-label-caps uppercase tracking-wider text-outline px-2 py-1 bg-surface-container rounded-sm border border-outline-variant/30 truncate max-w-[120px]">
+                                By {toTitleCase(lib.ownerName)}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </Link>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        )}
-      </main>
-    </motion.div>
+                    </Link>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
   );
 }
