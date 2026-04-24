@@ -42,20 +42,9 @@ describe('BookCard component', () => {
   });
 
   it('does not show delete button if canEdit is false', () => {
+    // Delete has been removed from card
     render(<BookCard book={mockBook} canEdit={false} />);
-    // There is one button now ("View Details"), but not the delete button
-    const deleteButton = screen.queryByTitle('Delete Book');
+    const deleteButton = screen.queryByRole('button', { name: /×/i });
     expect(deleteButton).not.toBeInTheDocument();
-  });
-
-  it('shows delete button if canEdit is true and user hovers (using test logic)', () => {
-    const handleDelete = vi.fn();
-    render(<BookCard book={mockBook} canEdit={true} onDelete={handleDelete} />);
-    
-    const deleteButton = screen.getByRole('button', { name: /×/i });
-    expect(deleteButton).toBeInTheDocument();
-    
-    fireEvent.click(deleteButton);
-    expect(handleDelete).toHaveBeenCalledWith('book1');
   });
 });

@@ -3,12 +3,11 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, collection, query, onSnapshot, addDoc, deleteDoc, serverTimestamp, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
-import { ArrowLeft, Plus, Share2, Settings, Trash2, X, Sparkles, LayoutGrid, List, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown, LogOut, Search, Filter, Download, Book as BookIcon, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Share2, Settings, Trash2, X, Sparkles, LayoutGrid, List, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown, LogOut, Search, Filter, Download, Book as BookIcon, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { GoogleGenAI, Type } from '@google/genai';
 import { enrichBooksMetadata, getPickOfTheDay } from '../services/gemini';
 import BookCard from '../components/BookCard';
-import RecommendationsModal from '../components/RecommendationsModal';
 import Chatbot from '../components/Chatbot';
 import { BookDetails, searchBookByTitleAndAuthor } from '../services/bookApi';
 import { toSentenceCase, toTitleCase } from '../lib/utils';
@@ -52,10 +51,9 @@ export default function LibraryView() {
   const [library, setLibrary] = useState<Library | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [currentTab, setCurrentTab] = useState<'overview' | 'collection'>('overview');
-  const [pickOfTheDay, setPickOfTheDay] = useState<{book: Book, reason: string} | null>(null);
+  const [pickOfTheDay, setPickOfTheDay] = useState<{title: string, author: string, coverUrl?: string, reason: string} | null>(null);
   const [isGeneratingPick, setIsGeneratingPick] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [isRecommendationsModalOpen, setIsRecommendationsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
@@ -82,26 +80,43 @@ export default function LibraryView() {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
+  const generateNewPick = async () => {
+    if (books.length === 0 || isGeneratingPick) return;
+    setIsGeneratingPick(true);
+    try {
+      const sample = [...books].sort(() => Math.random() - 0.5).slice(0, 50);
+      let pick = await getPickOfTheDay(sample);
+      
+      let attempts = 0;
+      while (pick && attempts < 3) {
+        const alreadyExists = books.some(b => b.title.toLowerCase() === pick!.title.toLowerCase() && b.author.toLowerCase() === pick!.author.toLowerCase());
+        if (!alreadyExists) break;
+        pick = await getPickOfTheDay(sample);
+        attempts++;
+      }
+
+      if (pick) {
+        let coverUrl: string | undefined = undefined;
+        try {
+          const results = await searchBookByTitleAndAuthor(pick.title, pick.author);
+          if (results && results.length > 0 && results[0].coverUrl) {
+            coverUrl = results[0].coverUrl;
+          }
+        } catch (err) {
+          console.error("Failed to get cover for pick:", err);
+        }
+        setPickOfTheDay({ title: pick.title, author: pick.author, coverUrl, reason: pick.reason });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsGeneratingPick(false);
+    }
+  };
+
   useEffect(() => {
     if (books.length > 0 && !pickOfTheDay && !isGeneratingPick && currentTab === 'overview') {
-      setIsGeneratingPick(true);
-      const genPick = async () => {
-        try {
-          const sample = [...books].sort(() => Math.random() - 0.5).slice(0, 50);
-          const pick = await getPickOfTheDay(sample);
-          if (pick) {
-            const matchedBook = books.find(b => b.title === pick.title && b.author === pick.author) || sample[0];
-            setPickOfTheDay({ book: matchedBook, reason: pick.reason });
-          } else {
-            setPickOfTheDay({ book: sample[0], reason: "A standout volume randomly selected from your archives." });
-          }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          setIsGeneratingPick(false);
-        }
-      };
-      genPick();
+      generateNewPick();
     }
   }, [books, currentTab, pickOfTheDay, isGeneratingPick]);
 
@@ -767,36 +782,43 @@ export default function LibraryView() {
               <Sparkles size={32} />
             </div>
             
+            <button 
+              onClick={() => generateNewPick()} 
+              className="absolute top-4 left-4 p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-full transition-colors z-20"
+              title="Get another recommendation"
+            >
+              <RefreshCw size={20} />
+            </button>
+            
             {isGeneratingPick ? (
               <div className="w-full flex flex-col items-center justify-center gap-4 py-8">
                 <Loader2 className="animate-spin text-primary" size={32} />
                 <p className="font-body-md text-on-surface-variant animate-pulse">Curating your pick of the day...</p>
               </div>
             ) : pickOfTheDay ? (
-              <div className="flex flex-col md:flex-row gap-8 w-full z-10">
-                <div className="w-24 md:w-32 flex-shrink-0 cursor-pointer" onClick={() => navigate(`/library/${id}/book/${pickOfTheDay.book.id}`)}>
-                  {pickOfTheDay.book.coverUrl ? (
-                    <img alt="Book Cover" className="w-full h-auto object-cover rounded-sm shadow-md border border-outline-variant/20 aspect-[2/3]" src={pickOfTheDay.book.coverUrl} />
+              <div className="flex flex-col md:flex-row gap-8 w-full z-10 w-full relative">
+                <div className="w-24 md:w-32 flex-shrink-0">
+                  {pickOfTheDay.coverUrl ? (
+                    <img alt="Book Cover" className="w-full h-auto object-cover rounded-sm shadow-md border border-outline-variant/20 aspect-[2/3]" src={pickOfTheDay.coverUrl} />
                   ) : (
                     <div className="w-full h-36 bg-surface-variant rounded-sm shadow-md border border-outline-variant/20 flex items-center justify-center p-2 text-center text-xs font-serif text-on-surface-variant">
-                      {pickOfTheDay.book.title}
+                      {pickOfTheDay.title}
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col justify-center">
-                  <h4 className="font-label-caps text-label-caps text-primary border border-primary/20 uppercase tracking-widest mb-3 flex items-center gap-2 bg-primary/5 px-3 py-1.5 rounded-sm inline-flex shadow-sm w-fit">
-                    <Sparkles size={16} />
-                    Curator's Pick
-                  </h4>
-                  <h3 className="font-headline-md text-headline-md text-primary mb-1">{toTitleCase(pickOfTheDay.book.title)}</h3>
-                  <p className="font-body-md text-on-surface-variant italic mb-4">{toTitleCase(pickOfTheDay.book.author)}</p>
-                  <div className="border-l-2 border-secondary/30 pl-4 py-1">
+                <div className="flex flex-col justify-center flex-1">
+                  <div className="flex items-center gap-2 mb-3">
+                    <h4 className="font-label-caps text-label-caps text-primary border border-primary/20 uppercase tracking-widest flex items-center gap-2 bg-primary/5 px-3 py-1.5 rounded-sm shadow-sm w-fit">
+                      <Sparkles size={16} />
+                      Curator's Pick
+                    </h4>
+                  </div>
+                  <h3 className="font-headline-md text-headline-md text-primary mb-1">{toTitleCase(pickOfTheDay.title)}</h3>
+                  <p className="font-body-md text-on-surface-variant italic mb-4">{toTitleCase(pickOfTheDay.author)}</p>
+                  <div className="border-l-2 border-secondary/30 pl-4 py-1 pr-8">
                     <p className="font-body-md text-body-md text-on-surface leading-relaxed">
                       "{pickOfTheDay.reason}"
                     </p>
-                  </div>
-                  <div className="mt-6 flex gap-3">
-                    <button onClick={() => navigate(`/library/${id}/book/${pickOfTheDay.book.id}`)} className="px-4 py-2 border border-primary text-primary font-body-md font-medium rounded hover:bg-primary/5 transition-colors">View Details</button>
                   </div>
                 </div>
               </div>
@@ -868,30 +890,17 @@ export default function LibraryView() {
             <div className="flex gap-6 overflow-x-auto no-scrollbar">
               <button 
                 onClick={() => setCurrentTab('overview')} 
-                className={`pb-3 font-label-caps uppercase tracking-wider text-sm transition-colors border-b-2 whitespace-nowrap ${currentTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'}`}
+                className={`pb-3 font-label-caps uppercase cursor-pointer tracking-wider text-sm transition-colors border-b-2 whitespace-nowrap ${currentTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'}`}
               >
                 Overview
               </button>
               <button 
                 onClick={() => setCurrentTab('collection')} 
-                className={`pb-3 font-label-caps uppercase tracking-wider text-sm transition-colors border-b-2 whitespace-nowrap ${currentTab === 'collection' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'}`}
+                className={`pb-3 font-label-caps uppercase cursor-pointer tracking-wider text-sm transition-colors border-b-2 whitespace-nowrap ${currentTab === 'collection' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'}`}
               >
                 Collection
               </button>
             </div>
-            
-            {currentTab === 'collection' && (
-              <div className="relative w-full sm:max-w-md pb-3">
-                <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-                <input 
-                  className="w-full pl-10 pr-4 py-2 bg-surface-container border border-outline-variant/50 rounded font-body-md text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors" 
-                  placeholder="Search collection..." 
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-            )}
           </div>
 
           {currentTab === 'overview' ? (
@@ -920,12 +929,24 @@ export default function LibraryView() {
           
           {/* Sort, Group, Filter Controls */}
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            {currentTab === 'collection' && (
+              <div className="relative w-full sm:w-64 max-w-full">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+                <input 
+                  className="w-full pl-9 pr-3 py-1.5 bg-surface-container border border-outline-variant/50 rounded-md font-body-md text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors" 
+                  placeholder="Search collection..." 
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            )}
             <div className="flex items-center gap-2 bg-surface px-3 py-1.5 rounded-md border border-outline-variant/40">
               <label className="text-xs font-label-caps text-on-surface-variant uppercase tracking-wider hidden sm:block">Sort by:</label>
               <select 
                 value={sortBy} 
                 onChange={e => handleSort(e.target.value as SortOption)}
-                className="bg-transparent border-none text-on-surface font-body-md text-sm focus:outline-none cursor-pointer max-w-[110px] appearance-none hover:text-primary transition-colors"
+                className="bg-transparent border-none text-on-surface font-body-md text-sm focus:outline-none cursor-pointer min-w-[125px] appearance-none hover:text-primary transition-colors"
                 style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0 center', backgroundRepeat: 'no-repeat', backgroundSize: '1em', paddingRight: '1.25rem' }}
               >
                 <option value="added">Recently Added</option>
@@ -952,7 +973,7 @@ export default function LibraryView() {
             </button>
           </div>
 
-          {/* View Modes and AI Picks */}
+          {/* View Modes */}
           <div className="flex items-center gap-3 w-full lg:w-auto lg:ml-auto">
             <div className="flex items-center bg-surface-container-lowest rounded-md p-1 border border-outline-variant/40 flex-shrink-0">
               <button
@@ -972,16 +993,6 @@ export default function LibraryView() {
                 <span className="hidden sm:inline">Table</span>
               </button>
             </div>
-            
-            <div className="w-[1px] h-6 bg-outline-variant/50 hidden sm:block mx-1"></div>
-
-            <button
-              onClick={() => setIsRecommendationsModalOpen(true)}
-              className="flex items-center gap-2 bg-surface text-primary px-3 sm:px-4 py-1.5 sm:py-2 rounded-md hover:bg-surface-container architectural-shadow transition-all font-body-md text-sm border border-outline-variant/50 flex-shrink-0 group ml-auto lg:ml-0"
-            >
-              <Sparkles className="w-4 h-4 group-hover:scale-110 transition-transform" />
-              <span>AI Picks</span>
-            </button>
           </div>
         </div>
 
@@ -1053,7 +1064,7 @@ export default function LibraryView() {
       <main ref={mainRef} className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col lg:flex-row gap-6 sm:gap-8">
         <div className="flex-1 min-w-0">
           {sortedBooks.length === 0 ? (
-            <div className="text-center py-24 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
+            <div className="text-center py-24 px-6 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
               <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/30 relative z-10">
                 <BookIcon size={36} className="text-on-surface-variant" strokeWidth={1.5} />
               </div>
@@ -1260,12 +1271,6 @@ export default function LibraryView() {
       </main>
       </>
       )}
-
-      <RecommendationsModal
-        isOpen={isRecommendationsModalOpen}
-        onClose={() => setIsRecommendationsModalOpen(false)}
-        libraryBooks={books.map(b => ({ title: b.title, author: b.author }))}
-      />
 
       <Chatbot libraryBooks={books.map(b => ({ title: b.title, author: b.author, genre: b.genre, description: b.description }))} />
 

@@ -1,27 +1,32 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster } from 'sonner';
 import { AnimatePresence } from 'motion/react';
-import Dashboard from './pages/Dashboard';
-import LibraryView from './pages/LibraryView';
-import BookDetailsView from './pages/BookDetailsView';
-import AddBookView from './pages/AddBookView';
-import Login from './pages/Login';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const LibraryView = lazy(() => import('./pages/LibraryView'));
+const BookDetailsView = lazy(() => import('./pages/BookDetailsView'));
+const AddBookView = lazy(() => import('./pages/AddBookView'));
+const Login = lazy(() => import('./pages/Login'));
+
+function LoadingScreen() {
+  return <div className="min-h-screen flex items-center justify-center bg-paper">Loading...</div>;
+}
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, isAuthReady } = useAuth();
   
   if (!isAuthReady) {
-    return <div className="min-h-screen flex items-center justify-center bg-paper">Loading...</div>;
+    return <LoadingScreen />;
   }
   
   if (!user) {
     return <Navigate to="/login" />;
   }
   
-  return <>{children}</>;
+  return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
 }
 
 function AnimatedRoutes() {
@@ -29,7 +34,11 @@ function AnimatedRoutes() {
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        <Route path="/login" element={<Login />} />
+        <Route path="/login" element={
+          <Suspense fallback={<LoadingScreen />}>
+            <Login />
+          </Suspense>
+        } />
         <Route path="/" element={
           <PrivateRoute>
             <Dashboard />

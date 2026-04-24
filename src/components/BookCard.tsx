@@ -10,12 +10,11 @@ type FirestoreDate = Timestamp | Date | string | number;
 interface BookCardProps {
   key?: React.Key;
   book: BookDetails & { id: string, addedBy: string, addedAt: FirestoreDate };
-  onDelete?: (id: string) => void;
   onClick?: () => void;
   canEdit: boolean;
 }
 
-export default function BookCard({ book, onDelete, onClick, canEdit }: BookCardProps) {
+export default function BookCard({ book, onClick, canEdit }: BookCardProps) {
   return (
     <div 
       onClick={onClick}
@@ -53,19 +52,6 @@ export default function BookCard({ book, onDelete, onClick, canEdit }: BookCardP
         <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
           <button className="w-full py-2 bg-transparent border border-on-primary text-on-primary font-label-caps text-label-caps rounded hover:bg-on-primary hover:text-primary transition-colors">VIEW DETAILS</button>
         </div>
-
-        {/* Delete Button */}
-        {canEdit && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete?.(book.id);
-            }}
-            className="absolute top-2 right-2 w-7 h-7 bg-error text-on-error rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-md z-30 hover:scale-110"
-          >
-            &times;
-          </button>
-        )}
       </div>
 
       {/* Book Metadata */}

@@ -307,12 +307,14 @@ export async function getPickOfTheDay(books: { title: string, author: string }[]
 
 ${bookList}
 
-Please pick exactly ONE book from this exact list to be the "Pick of the Day". 
-Explain in exactly 1-2 sentences WHY this specific book is a great read right now.
+Based on the themes and genres of these books, please recommend exactly ONE new book that I would enjoy reading. 
+CRITICAL RULE: The book you recommend MUST NOT be in the list above.
+
+Explain in exactly 1-2 sentences WHY this specific book is a great recommendation based on my current library.
 
 Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. The object MUST have:
-- title (the exact title from the list)
-- author (the exact author from the list)
+- title (the book title)
+- author (the book author)
 - reason (your 1-2 sentence explanation)`;
 
     const response = await ai.models.generateContent({

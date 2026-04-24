@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, or, getCountFromServer } from 'firebase/firestore';
 import { Link, Navigate } from 'react-router-dom';
-import { Book, Plus, Loader2, MoreHorizontal, Library as LibraryIcon } from 'lucide-react';
+import { Book, Plus, Loader2, Library as LibraryIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { toTitleCase } from '../lib/utils';
 import { generateLibraryHeroImage } from '../services/gemini';
@@ -190,7 +190,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : libraries.length === 0 && !isCreating ? (
-            <div className="text-center py-24 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
+            <div className="text-center py-24 px-6 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
               <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/50">
                 <LibraryIcon className="w-10 h-10 text-on-surface-variant" />
               </div>
@@ -231,9 +231,6 @@ export default function Dashboard() {
                         <div className="p-6 flex flex-col flex-grow justify-between bg-surface-container-lowest">
                           <div className="flex items-start justify-between">
                             <h3 className="font-headline-md text-headline-md text-on-surface group-hover:text-primary transition-colors line-clamp-1">{toTitleCase(lib.name)}</h3>
-                            <button className="text-on-surface-variant hover:text-primary transition-colors p-1" onClick={(e) => e.preventDefault()}>
-                              <MoreHorizontal className="w-5 h-5" />
-                            </button>
                           </div>
                           
                           <div className="flex items-center justify-between mt-6">

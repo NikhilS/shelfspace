@@ -2,14 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, getDoc, collection, query, onSnapshot, orderBy, updateDoc, Timestamp, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, onSnapshot, orderBy, updateDoc, Timestamp, setDoc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { generateBookInsights } from '../services/gemini';
 import { fetchAuthorBioFromWikipedia } from '../services/wikipediaApi';
 import { toast } from 'sonner';
 import Markdown from 'react-markdown';
 import { toTitleCase } from '../lib/utils';
 import { BookDetails } from '../services/bookApi';
-import { ArrowLeft, Edit2, Share2, Settings, Loader2, Book as BookIcon, User } from 'lucide-react';
+import { ArrowLeft, Edit2, Share2, Settings, Loader2, Book as BookIcon, User, Trash2, X, Save } from 'lucide-react';
 import AppLayout from '../components/AppLayout';
 
 type FirestoreDate = Timestamp | Date | string | number;
@@ -49,6 +49,11 @@ export default function BookDetailsView() {
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [isSavingReview, setIsSavingReview] = useState(false);
+
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [editForm, setEditForm] = useState<Partial<BookDetails>>({});
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
 
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
@@ -211,6 +216,45 @@ export default function BookDetailsView() {
     }
   };
 
+  const handleSaveDetails = async () => {
+    if (!book || !libraryId || !canEdit) return;
+    setIsSavingDetails(true);
+    try {
+      await updateDoc(doc(db, 'libraries', libraryId, 'books', book.id), editForm);
+      toast.success("Book details updated");
+      setIsEditingDetails(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `libraries/${libraryId}/books/${book.id}`);
+    } finally {
+      setIsSavingDetails(false);
+    }
+  };
+
+  const handleDeleteBook = async () => {
+    if (!book || !libraryId || !canEdit) return;
+    try {
+      await deleteDoc(doc(db, 'libraries', libraryId, 'books', book.id));
+      toast.success("Book deleted");
+      navigate(`/library/${libraryId}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `libraries/${libraryId}/books/${book.id}`);
+    }
+  };
+
+  const startEditing = () => {
+    setEditForm({
+      title: book?.title || '',
+      author: book?.author || '',
+      isbn: book?.isbn || '',
+      format: book?.format || 'physical',
+      publishedDate: book?.publishedDate || '',
+      coverUrl: book?.coverUrl || '',
+      genre: book?.genre || '',
+      series: book?.series || '',
+    });
+    setIsEditingDetails(true);
+  };
+
   if (isLoading) {
     return (
       <AppLayout sidebarActions={<></>}>
@@ -299,8 +343,28 @@ export default function BookDetailsView() {
                     </span>
                   )}
                 </div>
-                <h1 className="font-headline-xl text-headline-xl text-primary mb-2">{toTitleCase(book.title)}</h1>
-                <h2 className="font-headline-md text-headline-md text-secondary mb-6">by {toTitleCase(book.author)}</h2>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h1 className="font-headline-xl text-headline-xl text-primary mb-2">{toTitleCase(book.title)}</h1>
+                    <h2 className="font-headline-md text-headline-md text-secondary mb-6">by {toTitleCase(book.author)}</h2>
+                  </div>
+                  {canEdit && (
+                    <div className="flex flex-col sm:flex-row items-center gap-2 flex-shrink-0">
+                      <button 
+                        onClick={startEditing} 
+                        className="flex items-center gap-2 px-4 py-2 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors text-sm font-label-caps uppercase tracking-wider border border-outline-variant/30"
+                      >
+                        <Edit2 size={16} /> Edit
+                      </button>
+                      <button 
+                        onClick={() => setIsDeleting(true)} 
+                        className="flex items-center gap-2 px-4 py-2 text-error hover:bg-error/10 rounded-md transition-colors text-sm font-label-caps uppercase tracking-wider border border-error/30"
+                      >
+                        <Trash2 size={16} /> Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
                 
                 <div className="flex flex-wrap items-center gap-6 text-on-surface-variant text-[14px] font-body-md border-b border-surface-dim pb-6">
                   <div className="flex flex-col">
@@ -520,6 +584,81 @@ export default function BookDetailsView() {
             </div>
           </div>
         </div>
+
+      {isDeleting && (
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans text-left">
+          <div className="bg-surface rounded-[32px] p-8 max-w-sm w-full shadow-[0px_10px_40px_rgba(0,0,0,0.1)] border border-border/50">
+            <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center text-red-500 mb-5 border border-red-100">
+              <Trash2 size={24} strokeWidth={1.5} />
+            </div>
+            <h3 className="text-2xl font-serif font-medium text-ink mb-3 tracking-tight">Delete Book</h3>
+            <p className="text-muted mb-8 text-sm leading-relaxed">Are you sure you want to delete this book? This action cannot be undone.</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setIsDeleting(false)} className="px-5 py-3 text-ink font-medium hover:bg-paper border border-border rounded-xl transition-colors text-sm">Cancel</button>
+              <button onClick={handleDeleteBook} className="px-5 py-3 bg-red-500 text-white hover:bg-red-600 rounded-xl transition-colors font-medium text-sm shadow-sm">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEditingDetails && (
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans text-left overflow-y-auto">
+          <div className="bg-surface rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-[0px_10px_40px_rgba(0,0,0,0.1)] border border-border/50 my-8 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-serif font-medium text-ink tracking-tight">Edit Book Details</h3>
+              <button onClick={() => setIsEditingDetails(false)} className="text-on-surface-variant hover:text-on-surface p-1 rounded-full hover:bg-surface-container"><X size={20} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto no-scrollbar pb-4 space-y-4">
+              <div>
+                <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">Title</label>
+                <input value={editForm.title} onChange={e => setEditForm({...editForm, title: e.target.value})} className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">Author</label>
+                <input value={editForm.author} onChange={e => setEditForm({...editForm, author: e.target.value})} className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">Format</label>
+                  <select value={editForm.format} onChange={e => setEditForm({...editForm, format: e.target.value as 'physical'|'digital'})} className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary appearance-none">
+                    <option value="physical">Physical</option>
+                    <option value="digital">Digital</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">ISBN</label>
+                  <input value={editForm.isbn} onChange={e => setEditForm({...editForm, isbn: e.target.value})} className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">Genre</label>
+                  <input value={editForm.genre} onChange={e => setEditForm({...editForm, genre: e.target.value})} className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary" />
+                </div>
+                <div>
+                  <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">Published Date</label>
+                  <input value={editForm.publishedDate} onChange={e => setEditForm({...editForm, publishedDate: e.target.value})} className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">Series Name</label>
+                <input value={editForm.series} onChange={e => setEditForm({...editForm, series: e.target.value})} className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">Cover Image URL</label>
+                <input value={editForm.coverUrl} onChange={e => setEditForm({...editForm, coverUrl: e.target.value})} className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary" />
+              </div>
+            </div>
+            <div className="pt-4 border-t border-outline-variant/30 flex justify-end gap-3 mt-auto">
+              <button onClick={() => setIsEditingDetails(false)} className="px-4 py-2 text-on-surface hover:bg-surface-container rounded-md font-medium text-sm transition-colors border border-outline-variant/30">Cancel</button>
+              <button disabled={isSavingDetails} onClick={handleSaveDetails} className="px-4 py-2 bg-primary text-on-primary hover:bg-primary/90 rounded-md font-medium text-sm transition-colors shadow-sm flex items-center gap-2">
+                {isSavingDetails ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }
