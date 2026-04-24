@@ -440,39 +440,39 @@ export default function AddBookView() {
         </Link>
       }
     >
-      <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 max-w-[1200px] mx-auto w-full">
-        <div className="mb-8 flex flex-col gap-4 border-b border-surface-variant pb-8">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 min-w-0 max-w-[1200px] mx-auto w-full">
+        <div className="mb-6 sm:mb-8 flex flex-col gap-4 border-b border-surface-variant pb-6 sm:pb-8">
           <div>
-            <h2 className="font-headline-xl text-headline-xl text-primary-container mb-4">Add Books</h2>
-            <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">Grow your library by searching, scanning, or importing your collections.</p>
+            <h2 className="font-headline-lg sm:font-headline-xl text-headline-lg sm:text-headline-xl text-primary-container mb-2 sm:mb-4">Add Books</h2>
+            <p className="font-body-md sm:font-body-lg text-body-md sm:text-body-lg text-on-surface-variant max-w-2xl">Grow your library by searching, scanning, or importing your collections.</p>
           </div>
         </div>
 
-        <div className="bg-surface rounded-[32px] w-full flex flex-col overflow-hidden shadow-sm border border-outline-variant/30 relative">
-          <div className="px-6 py-4 bg-surface-container-lowest border-b border-outline-variant/30 overflow-x-auto custom-scrollbar">
-            <div className="flex bg-surface-variant/30 p-1 rounded-full w-max mx-auto sm:w-full border border-outline-variant/30">
+        <div className="bg-surface rounded-2xl sm:rounded-[32px] w-full flex flex-col overflow-hidden shadow-sm border border-outline-variant/30 relative">
+          <div className="px-2 sm:px-6 py-4 bg-surface-container-lowest border-b border-outline-variant/30 overflow-x-hidden">
+            <div className="grid grid-cols-2 sm:flex bg-surface-variant/30 p-1 rounded-2xl sm:rounded-full w-full mx-auto border border-outline-variant/30 gap-1 sm:gap-0">
               <button
-                className={`flex-1 py-2 px-4 sm:px-6 rounded-full flex items-center justify-center gap-2 text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'camera' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+                className={`py-2.5 sm:py-2 px-2 sm:px-6 rounded-xl sm:rounded-full flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold transition-all whitespace-nowrap sm:flex-1 ${activeTab === 'camera' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                 onClick={() => { setActiveTab('camera'); startCamera(); }}
               >
                 <Camera size={16} strokeWidth={2} /> <span className="hidden sm:inline">Scan / Upload</span>
                 <span className="sm:hidden">Scan</span>
               </button>
               <button
-                className={`flex-1 py-2 px-4 sm:px-6 rounded-full flex items-center justify-center gap-2 text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'csv' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+                className={`py-2.5 sm:py-2 px-2 sm:px-6 rounded-xl sm:rounded-full flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold transition-all whitespace-nowrap sm:flex-1 ${activeTab === 'csv' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                 onClick={() => { setActiveTab('csv'); stopCamera(); }}
               >
                 <FileText size={16} strokeWidth={2} /> <span className="hidden sm:inline">Import CSV</span>
                 <span className="sm:hidden">CSV</span>
               </button>
               <button
-                className={`flex-1 py-2 px-4 sm:px-6 rounded-full flex items-center justify-center gap-2 text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'search' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+                className={`py-2.5 sm:py-2 px-2 sm:px-6 rounded-xl sm:rounded-full flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold transition-all whitespace-nowrap sm:flex-1 ${activeTab === 'search' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                 onClick={() => { setActiveTab('search'); stopCamera(); }}
               >
                 <Search size={16} strokeWidth={2} /> Search
               </button>
               <button
-                className={`flex-1 py-2 px-4 sm:px-6 rounded-full flex items-center justify-center gap-2 text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'manual' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
+                className={`py-2.5 sm:py-2 px-2 sm:px-6 rounded-xl sm:rounded-full flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold transition-all whitespace-nowrap sm:flex-1 ${activeTab === 'manual' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
                 onClick={() => { setActiveTab('manual'); stopCamera(); }}
               >
                 <Plus size={16} strokeWidth={2} /> Manual
@@ -480,7 +480,7 @@ export default function AddBookView() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-surface-container-lowest custom-scrollbar min-h-[500px]">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-surface-container-lowest custom-scrollbar min-h-[500px]">
             {activeTab === 'search' && (
               <div className="space-y-6">
                 <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
@@ -508,23 +508,23 @@ export default function AddBookView() {
                     </div>
                   )}
                   {searchResults.map((book, idx) => (
-                    <div key={idx} className="bg-surface-container-low p-4 rounded-3xl shadow-sm border border-outline-variant/30 flex gap-4 items-center hover:shadow-md hover:border-outline-variant/60 transition-all">
+                    <div key={idx} className="bg-surface-container-low p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-sm border border-outline-variant/30 flex gap-3 sm:gap-4 items-center hover:shadow-md hover:border-outline-variant/60 transition-all">
                       {book.coverUrl ? (
-                        <img src={book.coverUrl} alt={book.title} className="w-16 h-24 object-cover rounded-xl shadow-[2px_4px_10px_rgb(26,47,75,0.1)]" referrerPolicy="no-referrer" />
+                        <img src={book.coverUrl} alt={book.title} className="w-12 h-18 sm:w-16 sm:h-24 object-cover rounded-lg sm:rounded-xl shadow-[2px_4px_10px_rgb(26,47,75,0.1)]" referrerPolicy="no-referrer" />
                       ) : (
-                        <div className="w-16 h-24 bg-surface-container rounded-xl flex items-center justify-center text-on-surface-variant border border-outline-variant/50">
-                          <BookPlus size={24} strokeWidth={1.5} />
+                        <div className="w-12 h-18 sm:w-16 sm:h-24 bg-surface-container rounded-lg sm:rounded-xl flex items-center justify-center text-on-surface-variant border border-outline-variant/50">
+                          <BookPlus className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={1.5} />
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-serif font-bold text-base sm:text-lg text-on-surface truncate tracking-tight">{toTitleCase(book.title)}</h4>
+                        <h4 className="font-serif font-bold text-sm sm:text-lg text-on-surface truncate tracking-tight">{toTitleCase(book.title)}</h4>
                         <p className="text-on-surface-variant text-xs sm:text-sm truncate mt-0.5 font-medium">{toTitleCase(book.author)}</p>
-                        {book.publishedDate && <p className="text-outline text-xs mt-1.5 truncate font-mono">{book.publishedDate}</p>}
+                        {book.publishedDate && <p className="text-outline text-[10px] sm:text-xs mt-1 sm:mt-1.5 truncate font-mono">{book.publishedDate}</p>}
                       </div>
                       <button
                         onClick={() => handleAdd(book)}
                         disabled={isAdding === (book.isbn || book.title)}
-                        className="bg-primary/10 text-primary px-5 py-2.5 rounded-full hover:bg-primary hover:text-on-primary transition-colors disabled:opacity-50 text-sm font-bold whitespace-nowrap flex-shrink-0"
+                        className="bg-primary/10 text-primary px-4 py-2 sm:px-5 sm:py-2.5 rounded-full hover:bg-primary hover:text-on-primary transition-colors disabled:opacity-50 text-xs sm:text-sm font-bold whitespace-nowrap flex-shrink-0"
                       >
                         {isAdding === (book.isbn || book.title) ? <Loader2 className="animate-spin" size={18} /> : 'Add'}
                       </button>
@@ -542,10 +542,10 @@ export default function AddBookView() {
                     <canvas ref={canvasRef} className="hidden" />
                     
                     {isCameraActive ? (
-                      <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-3 px-4">
+                      <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 flex flex-col sm:flex-row justify-center items-center gap-2 sm:gap-3 px-4">
                         <button
                           onClick={captureAndExtract}
-                          className="bg-surface/95 backdrop-blur-md text-on-surface px-6 py-3 rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all text-sm border border-outline-variant/40"
+                          className="bg-surface/95 backdrop-blur-md text-on-surface px-5 sm:px-6 py-2.5 sm:py-3 rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all text-sm border border-outline-variant/40 w-full sm:w-auto justify-center"
                         >
                           <Camera size={18} strokeWidth={2} /> Capture Shelf
                         </button>
@@ -558,7 +558,7 @@ export default function AddBookView() {
                         />
                         <button
                           onClick={() => imageInputRef.current?.click()}
-                          className="bg-primary text-on-primary px-6 py-3 rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-primary/90 hover:scale-105 transition-all text-sm border border-transparent"
+                          className="bg-primary text-on-primary px-5 sm:px-6 py-2.5 sm:py-3 rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-primary/90 hover:scale-105 transition-all text-sm border border-transparent w-full sm:w-auto justify-center"
                         >
                           <UploadCloud size={18} strokeWidth={2} /> Upload Photo
                         </button>
@@ -629,21 +629,21 @@ export default function AddBookView() {
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       {extractedBooks.map((book, idx) => (
-                        <label key={idx} className={`bg-surface-container-low/60 p-5 rounded-3xl border transition-all cursor-pointer flex gap-4 ${selectedExtracted.has(`${book.title}::${book.author}`) ? 'border-primary shadow-md bg-surface ring-1 ring-primary/20' : 'border-outline-variant/40 shadow-[0_2px_8px_rgb(26,47,75,0.02)] hover:shadow-md hover:border-outline-variant/80'}`}>
-                          <div className="pt-1">
+                        <label key={idx} className={`bg-surface-container-low/60 p-3 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all cursor-pointer flex gap-3 sm:gap-4 ${selectedExtracted.has(`${book.title}::${book.author}`) ? 'border-primary shadow-md bg-surface ring-1 ring-primary/20' : 'border-outline-variant/40 shadow-[0_2px_8px_rgb(26,47,75,0.02)] hover:shadow-md hover:border-outline-variant/80'}`}>
+                          <div className="pt-0.5 sm:pt-1">
                             <input 
                               type="checkbox"
                               checked={selectedExtracted.has(`${book.title}::${book.author}`)}
                               onChange={() => toggleSelect(book)}
-                              className="rounded border-outline-variant/60 text-primary focus:ring-primary/20 w-5 h-5 cursor-pointer mt-0.5"
+                              className="rounded border-outline-variant/60 text-primary focus:ring-primary/20 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer mt-0.5"
                             />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               {isAdding === book.title && <Loader2 className="animate-spin text-primary flex-shrink-0" size={14} />}
-                              <h4 className="font-serif font-bold text-base sm:text-lg text-on-surface truncate tracking-tight" title={book.title}>{toTitleCase(book.title)}</h4>
+                              <h4 className="font-serif font-bold text-sm sm:text-lg text-on-surface truncate tracking-tight" title={book.title}>{toTitleCase(book.title)}</h4>
                             </div>
                             <p className="text-on-surface-variant text-xs sm:text-sm truncate mt-0.5 font-medium" title={book.author}>{toTitleCase(book.author)}</p>
                             {book.isbn && book.isbn !== 'null' && <p className="text-outline text-xs mt-1.5 font-mono font-medium">ISBN: {book.isbn}</p>}
@@ -660,9 +660,9 @@ export default function AddBookView() {
             {activeTab === 'csv' && (
               <div className="space-y-6">
                 {extractedBooks.length === 0 ? (
-                  <div className="bg-surface-container-lowest p-12 rounded-3xl border-2 border-dashed border-outline-variant/60 flex flex-col items-center justify-center text-center">
-                    <div className="w-20 h-20 bg-surface-container-low rounded-full flex items-center justify-center text-primary mb-6 shadow-[0_2px_10px_rgb(26,47,75,0.04)] border border-outline-variant/40">
-                      <UploadCloud size={36} strokeWidth={2} />
+                  <div className="bg-surface-container-lowest p-6 sm:p-12 rounded-3xl border-2 border-dashed border-outline-variant/60 flex flex-col items-center justify-center text-center">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 bg-surface-container-low rounded-full flex items-center justify-center text-primary mb-6 shadow-[0_2px_10px_rgb(26,47,75,0.04)] border border-outline-variant/40">
+                      <UploadCloud className="w-8 h-8 sm:w-10 sm:h-10" strokeWidth={2} />
                     </div>
                     <h3 className="text-2xl sm:text-3xl font-serif font-bold text-on-surface mb-3 tracking-tight">Upload Library CSV</h3>
                     <p className="text-on-surface-variant text-sm sm:text-base mb-6 max-w-md font-medium leading-relaxed">
@@ -747,21 +747,21 @@ export default function AddBookView() {
                       )}
                     </div>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       {extractedBooks.map((book, idx) => (
-                        <label key={idx} className={`bg-surface-container-low/60 p-5 rounded-3xl border transition-all cursor-pointer flex gap-4 ${selectedExtracted.has(`${book.title}::${book.author}`) ? 'border-primary shadow-md bg-surface ring-1 ring-primary/20' : 'border-outline-variant/40 shadow-[0_2px_8px_rgb(26,47,75,0.02)] hover:shadow-md hover:border-outline-variant/80'}`}>
-                          <div className="pt-1">
+                        <label key={idx} className={`bg-surface-container-low/60 p-3 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all cursor-pointer flex gap-3 sm:gap-4 ${selectedExtracted.has(`${book.title}::${book.author}`) ? 'border-primary shadow-md bg-surface ring-1 ring-primary/20' : 'border-outline-variant/40 shadow-[0_2px_8px_rgb(26,47,75,0.02)] hover:shadow-md hover:border-outline-variant/80'}`}>
+                          <div className="pt-0.5 sm:pt-1">
                             <input 
                               type="checkbox"
                               checked={selectedExtracted.has(`${book.title}::${book.author}`)}
                               onChange={() => toggleSelect(book)}
-                              className="rounded border-outline-variant/60 text-primary focus:ring-primary/20 w-5 h-5 cursor-pointer mt-0.5"
+                              className="rounded border-outline-variant/60 text-primary focus:ring-primary/20 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer mt-0.5"
                             />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               {isAdding === book.title && <Loader2 className="animate-spin text-primary flex-shrink-0" size={14} />}
-                              <h4 className="font-serif font-bold text-base sm:text-lg text-on-surface truncate tracking-tight" title={book.title}>{toTitleCase(book.title)}</h4>
+                              <h4 className="font-serif font-bold text-sm sm:text-lg text-on-surface truncate tracking-tight" title={book.title}>{toTitleCase(book.title)}</h4>
                             </div>
                             <p className="text-on-surface-variant text-xs sm:text-sm truncate mt-0.5 font-medium" title={book.author}>{toTitleCase(book.author)}</p>
                             {book.isbn && book.isbn !== 'null' && <p className="text-outline text-xs mt-1.5 font-mono font-medium">ISBN: {book.isbn}</p>}
@@ -776,7 +776,7 @@ export default function AddBookView() {
             )}
 
             {activeTab === 'manual' && (
-              <div className="space-y-8 bg-surface-container-low/30 p-2 sm:p-4 rounded-3xl border border-outline-variant/30 mt-4">
+              <div className="space-y-6 sm:space-y-8 bg-surface-container-low/30 p-3 sm:p-6 rounded-xl sm:rounded-3xl border border-outline-variant/30 mt-2 sm:mt-4">
                 <div className="flex flex-col items-center mb-6">
                   {isCoverCameraActive ? (
                     <div className="w-full max-w-sm mx-auto aspect-[3/4] bg-on-surface rounded-3xl overflow-hidden relative shadow-[0_8px_30px_rgb(26,47,75,0.12)] border border-outline-variant/20 mb-4">

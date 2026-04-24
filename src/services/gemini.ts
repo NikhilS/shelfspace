@@ -298,6 +298,48 @@ export async function generateLibraryHeroImage(libraryName: string): Promise<str
   }
 }
 
+export async function getPickOfTheDay(books: { title: string, author: string }[]): Promise<{ title: string, author: string, reason: string } | null> {
+  try {
+    if (!books || books.length === 0) return null;
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const bookList = books.map((b, i) => `${i+1}. "${b.title}" by ${b.author}`).join('\n');
+    const prompt = `Act as an expert librarian. Here is a sample of books from my library:
+
+${bookList}
+
+Please pick exactly ONE book from this exact list to be the "Pick of the Day". 
+Explain in exactly 1-2 sentences WHY this specific book is a great read right now.
+
+Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. The object MUST have:
+- title (the exact title from the list)
+- author (the exact author from the list)
+- reason (your 1-2 sentence explanation)`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const text = response.text;
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.title && parsed.author && parsed.reason) {
+        return parsed as { title: string, author: string, reason: string };
+      }
+      return null;
+    } catch(e) {
+       return null;
+    }
+  } catch (err) {
+    console.error("Pick of the day error:", err);
+    return null;
+  }
+}
+
 async function compressImage(dataUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();

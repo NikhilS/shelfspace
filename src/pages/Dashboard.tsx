@@ -27,6 +27,7 @@ interface Library {
 export default function Dashboard() {
   const { user, logOut } = useAuth();
   const [libraries, setLibraries] = useState<Library[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newLibName, setNewLibName] = useState('');
@@ -63,6 +64,7 @@ export default function Dashboard() {
           };
         });
       });
+      setIsLoading(false);
 
       // Fetch accurate counts asynchronously
       try {
@@ -156,7 +158,7 @@ export default function Dashboard() {
                     value={newLibName}
                     onChange={(e) => setNewLibName(e.target.value)}
                     placeholder="Library Name (e.g. Private Study)"
-                    className="flex-1 bg-surface border border-outline-variant/50 rounded-md px-6 py-4 focus:outline-none focus:ring-0 focus:border-primary transition-all text-base sm:text-lg placeholder:text-outline"
+                    className="flex-1 bg-surface border border-outline-variant/70 rounded-md px-6 py-4 focus:outline-none focus:ring-0 focus:border-primary transition-all text-base sm:text-lg placeholder:text-on-surface-variant/70"
                     autoFocus
                     disabled={isSubmitting}
                   />
@@ -173,10 +175,24 @@ export default function Dashboard() {
             )}
           </AnimatePresence>
 
-          {libraries.length === 0 && !isCreating ? (
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="bg-surface-container-low rounded-lg overflow-hidden border border-transparent shadow-[0_8px_30px_rgba(26,47,75,0.02)] flex flex-col h-full animate-pulse">
+                  <div className="h-44 w-full bg-surface-variant/50"></div>
+                  <div className="p-6 flex flex-col flex-grow justify-between bg-surface-container-lowest">
+                    <div className="h-6 bg-surface-variant/50 rounded w-2/3 mb-4"></div>
+                    <div className="flex items-center justify-between mt-6">
+                      <div className="h-4 bg-surface-variant/50 rounded w-1/4"></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : libraries.length === 0 && !isCreating ? (
             <div className="text-center py-24 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
-              <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/30">
-                <LibraryIcon className="w-10 h-10 text-outline" />
+              <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/50">
+                <LibraryIcon className="w-10 h-10 text-on-surface-variant" />
               </div>
               <h3 className="text-2xl font-serif font-bold mb-3 text-primary tracking-tight">The Archives are Empty</h3>
               <p className="text-on-surface-variant text-lg max-w-md mx-auto mb-8">Establish your first collection to begin cataloging your physical volumes.</p>
@@ -206,7 +222,7 @@ export default function Dashboard() {
                             <img alt={lib.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" src={lib.heroImageUrl} />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center bg-surface-container">
-                               <Book className="w-12 h-12 text-outline-variant opacity-50 group-hover:scale-110 transition-transform duration-500" />
+                              <Book className="w-12 h-12 text-on-surface-variant opacity-70 group-hover:scale-110 transition-transform duration-500" />
                             </div>
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-primary/10 to-transparent mix-blend-multiply opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -215,19 +231,19 @@ export default function Dashboard() {
                         <div className="p-6 flex flex-col flex-grow justify-between bg-surface-container-lowest">
                           <div className="flex items-start justify-between">
                             <h3 className="font-headline-md text-headline-md text-on-surface group-hover:text-primary transition-colors line-clamp-1">{toTitleCase(lib.name)}</h3>
-                            <button className="text-outline hover:text-primary transition-colors p-1" onClick={(e) => e.preventDefault()}>
+                            <button className="text-on-surface-variant hover:text-primary transition-colors p-1" onClick={(e) => e.preventDefault()}>
                               <MoreHorizontal className="w-5 h-5" />
                             </button>
                           </div>
                           
                           <div className="flex items-center justify-between mt-6">
-                            <div className="flex items-center gap-2 text-outline flex-shrink-0">
+                            <div className="flex items-center gap-2 text-on-surface-variant flex-shrink-0">
                               <Book className="w-4 h-4" />
                               <span className="font-label-caps text-label-caps uppercase tracking-wider">{lib.volumeCount || 0} Volumes</span>
                             </div>
                             
                             {lib.ownerId !== user?.uid && (
-                              <div className="text-xs font-label-caps uppercase tracking-wider text-outline px-2 py-1 bg-surface-container rounded-sm border border-outline-variant/30 truncate max-w-[120px]">
+                              <div className="text-xs font-label-caps uppercase tracking-wider text-on-surface-variant px-2 py-1 bg-surface-container rounded-sm border border-outline-variant/50 truncate max-w-[120px]">
                                 By {toTitleCase(lib.ownerName)}
                               </div>
                             )}

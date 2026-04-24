@@ -123,7 +123,7 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 p-4 bg-accent text-white rounded-full shadow-xl hover:bg-accent/90 hover:scale-105 transition-all z-40 flex items-center justify-center"
+        className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 p-4 bg-primary text-white rounded-full shadow-xl hover:bg-primary/90 hover:scale-105 transition-all z-[100] flex items-center justify-center"
         aria-label="Open AI Librarian Chat"
       >
         <MessageSquare size={24} />
@@ -141,7 +141,7 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
             {/* Header */}
             <div className="bg-surface/50 px-5 py-4 border-b border-border/40 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-accent text-surface rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
+                <div className="p-2 bg-primary text-surface rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
                   <Bot size={20} strokeWidth={2} />
                 </div>
                 <div>
@@ -166,7 +166,7 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
                 >
                   <div className={`flex gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                      msg.role === 'user' ? 'bg-ink text-paper' : 'bg-accent text-white'
+                      msg.role === 'user' ? 'bg-ink text-paper' : 'bg-primary text-white'
                     }`}>
                       {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                     </div>
@@ -181,11 +181,11 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
               {isLoading && (
                 <div className="flex justify-start">
                   <div className="flex gap-2 max-w-[85%] flex-row">
-                    <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center shrink-0">
                       <Bot size={16} />
                     </div>
                     <div className="p-3 rounded-2xl bg-surface border border-border text-ink rounded-tl-sm flex items-center">
-                      <Loader2 size={16} className="animate-spin text-accent" />
+                      <Loader2 size={16} className="animate-spin text-primary" />
                     </div>
                   </div>
                 </div>
@@ -208,7 +208,7 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
                 <button
                   onClick={handleSend}
                   disabled={!input.trim() || isLoading}
-                  className="absolute right-2 p-2.5 text-surface bg-accent disabled:bg-surface disabled:text-muted hover:bg-accent/90 rounded-xl transition-all shadow-sm disabled:shadow-none"
+                  className="absolute right-2 p-2.5 text-surface bg-primary disabled:bg-surface disabled:text-muted hover:bg-primary/90 rounded-xl transition-all shadow-sm disabled:shadow-none"
                 >
                   <Send size={16} strokeWidth={2} />
                 </button>

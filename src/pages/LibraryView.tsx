@@ -6,7 +6,7 @@ import { doc, collection, query, onSnapshot, addDoc, deleteDoc, serverTimestamp,
 import { ArrowLeft, Plus, Share2, Settings, Trash2, X, Sparkles, LayoutGrid, List, Table as TableIcon, ArrowUpDown, ArrowUp, ArrowDown, LogOut, Search, Filter, Download, Book as BookIcon, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { GoogleGenAI, Type } from '@google/genai';
-import { enrichBooksMetadata } from '../services/gemini';
+import { enrichBooksMetadata, getPickOfTheDay } from '../services/gemini';
 import BookCard from '../components/BookCard';
 import RecommendationsModal from '../components/RecommendationsModal';
 import Chatbot from '../components/Chatbot';
@@ -38,6 +38,7 @@ interface Book extends BookDetails {
   id: string;
   addedBy: string;
   addedAt: FirestoreDate;
+  userStatuses?: Record<string, 'unset' | 'reading' | 'finished' | 'abandoned'>;
 }
 
 type SortOption = 'added' | 'title' | 'author';
@@ -50,6 +51,9 @@ export default function LibraryView() {
   
   const [library, setLibrary] = useState<Library | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
+  const [currentTab, setCurrentTab] = useState<'overview' | 'collection'>('overview');
+  const [pickOfTheDay, setPickOfTheDay] = useState<{book: Book, reason: string} | null>(null);
+  const [isGeneratingPick, setIsGeneratingPick] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [isRecommendationsModalOpen, setIsRecommendationsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -66,7 +70,7 @@ export default function LibraryView() {
 
   const [sortBy, setSortBy] = useState<SortOption>('added');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [viewMode, setViewMode] = useState<'standard' | 'table'>('table');
+  const [viewMode, setViewMode] = useState<'standard' | 'table'>('standard');
   const mainRef = useRef<HTMLElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,6 +81,49 @@ export default function LibraryView() {
   const [filterYearMax, setFilterYearMax] = useState('');
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (books.length > 0 && !pickOfTheDay && !isGeneratingPick && currentTab === 'overview') {
+      setIsGeneratingPick(true);
+      const genPick = async () => {
+        try {
+          const sample = [...books].sort(() => Math.random() - 0.5).slice(0, 50);
+          const pick = await getPickOfTheDay(sample);
+          if (pick) {
+            const matchedBook = books.find(b => b.title === pick.title && b.author === pick.author) || sample[0];
+            setPickOfTheDay({ book: matchedBook, reason: pick.reason });
+          } else {
+            setPickOfTheDay({ book: sample[0], reason: "A standout volume randomly selected from your archives." });
+          }
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setIsGeneratingPick(false);
+        }
+      };
+      genPick();
+    }
+  }, [books, currentTab, pickOfTheDay, isGeneratingPick]);
+
+  const topGenres = useMemo(() => {
+    const counts: Record<string, number> = {};
+    books.forEach(b => {
+      if (b.genre) counts[b.genre] = (counts[b.genre] || 0) + 1;
+    });
+    return Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 2);
+  }, [books]);
+
+  const readingBooks = useMemo(() => {
+    if (!user) return [];
+    return books.filter(b => b.userStatuses?.[user.uid] === 'reading').slice(0, 2);
+  }, [books, user]);
+
+  const lastCatalogedDate = useMemo(() => {
+    if (books.length === 0) return 'Never';
+    const latestTime = Math.max(...books.map(b => getFirestoreTime(b.addedAt)));
+    if (latestTime <= 0) return 'Unknown';
+    return new Date(latestTime).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }, [books]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -497,7 +544,21 @@ export default function LibraryView() {
   };
 
   if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-background text-on-background">Loading library...</div>;
+    return (
+      <AppLayout sidebarActions={<></>}>
+        <div className="flex-grow flex flex-col min-h-screen w-full bg-background animate-pulse">
+           <div className="w-full h-48 sm:h-64 bg-surface-variant/50 relative overflow-hidden"></div>
+           <div className="flex-grow flex flex-col w-full max-w-screen-2xl mx-auto px-4 sm:px-8 py-8 gap-8">
+              <div className="h-10 bg-surface-variant/50 w-64 rounded"></div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6 lg:gap-8">
+                 {[1, 2, 3, 4, 5, 6].map(i => (
+                    <div key={i} className="aspect-[2/3] bg-surface-variant/50 shadow-sm rounded-sm"></div>
+                 ))}
+              </div>
+           </div>
+        </div>
+      </AppLayout>
+    );
   }
 
   if (!library) return null;
@@ -603,7 +664,7 @@ export default function LibraryView() {
         {shelfBooksList.length === 0 && (
           <div className="col-span-full w-full py-12 flex flex-col items-center justify-center opacity-80 font-body-md text-sm pb-8 text-on-surface-variant">
             <div className="w-12 h-12 mb-3 border-2 border-dashed border-outline-variant/60 rounded-full flex items-center justify-center">
-              <BookIcon size={20} className="text-outline" />
+              <BookIcon size={20} className="text-on-surface-variant" />
             </div>
             {emptyMessage}
           </div>
@@ -611,6 +672,140 @@ export default function LibraryView() {
       </div>
     );
   };
+
+  const renderOverview = () => (
+    <div className="flex-grow p-4 sm:p-8 lg:p-12 w-full max-w-screen-2xl mx-auto">
+      <header className="mb-12">
+        <h2 className="font-headline-xl text-headline-xl text-primary mb-2">Library Overview</h2>
+        <p className="font-body-lg text-body-lg text-on-surface-variant">Your personal catalog of wisdom and narratives.</p>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* Stats Column (Spans 4 columns) */}
+        <div className="md:col-span-4 flex flex-col gap-6">
+          {/* Total Volumes Card */}
+          <div 
+            onClick={() => setCurrentTab('collection')}
+            className="bg-surface-container-low p-6 shadow-[0_4px_24px_rgba(26,47,75,0.04)] relative overflow-hidden group cursor-pointer hover:bg-surface-container transition-colors"
+          >
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <BookIcon className="w-16 h-16" />
+            </div>
+            <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest mb-2">Total Volumes</p>
+            <div className="flex items-baseline gap-2">
+              <span className="font-headline-xl text-[56px] leading-none text-primary">{books.length}</span>
+              <span className="font-body-md text-on-surface-variant">books</span>
+            </div>
+            <div className="mt-4 pt-4 border-t border-outline-variant/30 flex justify-between items-center">
+              <span className="font-body-md text-sm text-on-surface-variant">Last Cataloged</span>
+              <span className="font-body-md text-sm font-medium text-primary">{lastCatalogedDate}</span>
+            </div>
+          </div>
+
+          {/* Genre Stats Card */}
+          <div className="bg-surface p-6 border border-surface-variant relative shadow-sm">
+            <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest mb-6">Key Disciplines</p>
+            <div className="space-y-5">
+              {topGenres.length > 0 ? topGenres.map(([genre, count], idx) => (
+                <React.Fragment key={genre}>
+                  <div className="flex items-center justify-between group cursor-pointer" onClick={() => { setFilterGenre(genre); setCurrentTab('collection'); setIsFiltersOpen(true); }}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full ${idx === 0 ? 'bg-tertiary-fixed-dim/20 text-tertiary' : 'bg-secondary-container/20 text-secondary'} flex items-center justify-center`}>
+                        <Sparkles size={18} />
+                      </div>
+                      <span className="font-body-md font-medium text-on-surface group-hover:text-primary transition-colors">{genre}</span>
+                    </div>
+                    <span className="font-headline-md text-headline-md text-primary">{count}</span>
+                  </div>
+                  {idx === 0 && topGenres.length > 1 && <div className="w-full h-[1px] bg-surface-variant"></div>}
+                </React.Fragment>
+              )) : (
+                <p className="font-body-md text-on-surface-variant italic">No genres categorized yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Reading & Picks Column (Spans 8 columns) */}
+        <div className="md:col-span-8 flex flex-col gap-6">
+          {/* Currently Reading Card */}
+          {readingBooks.length > 0 ? readingBooks.map(book => (
+            <div key={`reading-${book.id}`} className="bg-surface-container-lowest p-8 shadow-[0_8px_32px_rgba(26,47,75,0.06)] border border-surface-variant flex flex-col md:flex-row gap-8 items-center">
+              <div className="w-32 md:w-40 flex-shrink-0 relative group cursor-pointer" onClick={() => navigate(`/library/${id}/book/${book.id}`)}>
+                <div className="absolute inset-0 bg-primary/10 -rotate-3 transform rounded-sm shadow-md"></div>
+                {book.coverUrl ? (
+                  <img alt={book.title} className="relative w-full h-auto object-cover rounded-sm shadow-lg border border-outline-variant/20 z-10 aspect-[2/3]" src={book.coverUrl} />
+                ) : (
+                  <div className="relative w-full h-48 sm:h-56 bg-surface-variant rounded-sm shadow-lg border border-outline-variant/20 z-10 flex items-center justify-center p-4 text-center">
+                    <span className="font-serif text-sm font-bold text-on-surface-variant font-headline-md">{book.title}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex-grow w-full">
+                <div className="flex justify-between items-start mb-2">
+                  <h4 className="font-label-caps text-label-caps text-primary border border-primary/20 uppercase tracking-widest bg-primary/5 px-3 py-1.5 rounded-sm inline-block shadow-sm">Currently Reading</h4>
+                </div>
+                <h3 className="font-headline-lg text-headline-lg text-primary mt-3 mb-1 line-clamp-2">{toTitleCase(book.title)}</h3>
+                <p className="font-body-lg text-body-lg text-on-surface-variant italic mb-6">{toTitleCase(book.author)}</p>
+                <div className="mt-auto flex justify-end">
+                  <button onClick={() => navigate(`/library/${id}/book/${book.id}`)} className="px-6 py-2 bg-primary text-on-primary font-body-md font-medium rounded hover:bg-primary/90 transition-colors shadow-sm">View Details</button>
+                </div>
+              </div>
+            </div>
+          )) : (
+            <div className="bg-surface-container-lowest p-8 shadow-[0_8px_32px_rgba(26,47,75,0.06)] border border-surface-variant flex flex-col gap-4 justify-center items-center text-center">
+              <BookIcon className="w-12 h-12 text-on-surface-variant opacity-70" />
+              <p className="font-body-lg text-on-surface-variant">You aren't currently reading any books in this library.</p>
+              <button onClick={() => setCurrentTab('collection')} className="px-6 py-2 bg-primary text-on-primary font-body-md font-medium rounded hover:bg-primary/90 transition-colors shadow-sm">Browse Collection</button>
+            </div>
+          )}
+
+          {/* Gemini Pick of the Day Card */}
+          <div className="bg-gradient-to-br from-surface-container-low to-surface border border-outline-variant/30 p-8 relative overflow-hidden min-h-[220px] flex items-center">
+            {/* Sparkle decorative element */}
+            <div className="absolute top-6 right-6 text-[#A8C7FA] opacity-50">
+              <Sparkles size={32} />
+            </div>
+            
+            {isGeneratingPick ? (
+              <div className="w-full flex flex-col items-center justify-center gap-4 py-8">
+                <Loader2 className="animate-spin text-primary" size={32} />
+                <p className="font-body-md text-on-surface-variant animate-pulse">Curating your pick of the day...</p>
+              </div>
+            ) : pickOfTheDay ? (
+              <div className="flex flex-col md:flex-row gap-8 w-full z-10">
+                <div className="w-24 md:w-32 flex-shrink-0 cursor-pointer" onClick={() => navigate(`/library/${id}/book/${pickOfTheDay.book.id}`)}>
+                  {pickOfTheDay.book.coverUrl ? (
+                    <img alt="Book Cover" className="w-full h-auto object-cover rounded-sm shadow-md border border-outline-variant/20 aspect-[2/3]" src={pickOfTheDay.book.coverUrl} />
+                  ) : (
+                    <div className="w-full h-36 bg-surface-variant rounded-sm shadow-md border border-outline-variant/20 flex items-center justify-center p-2 text-center text-xs font-serif text-on-surface-variant">
+                      {pickOfTheDay.book.title}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col justify-center">
+                  <h4 className="font-label-caps text-label-caps text-primary border border-primary/20 uppercase tracking-widest mb-3 flex items-center gap-2 bg-primary/5 px-3 py-1.5 rounded-sm inline-flex shadow-sm w-fit">
+                    <Sparkles size={16} />
+                    Curator's Pick
+                  </h4>
+                  <h3 className="font-headline-md text-headline-md text-primary mb-1">{toTitleCase(pickOfTheDay.book.title)}</h3>
+                  <p className="font-body-md text-on-surface-variant italic mb-4">{toTitleCase(pickOfTheDay.book.author)}</p>
+                  <div className="border-l-2 border-secondary/30 pl-4 py-1">
+                    <p className="font-body-md text-body-md text-on-surface leading-relaxed">
+                      "{pickOfTheDay.reason}"
+                    </p>
+                  </div>
+                  <div className="mt-6 flex gap-3">
+                    <button onClick={() => navigate(`/library/${id}/book/${pickOfTheDay.book.id}`)} className="px-4 py-2 border border-primary text-primary font-body-md font-medium rounded hover:bg-primary/5 transition-colors">View Details</button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <AppLayout
@@ -620,7 +815,7 @@ export default function LibraryView() {
             to="/"
             className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 font-serif text-lg tracking-tight"
           >
-            <ArrowLeft className="w-5 h-5 text-outline" />
+            <ArrowLeft className="w-5 h-5 text-on-surface-variant" />
             <span>Back to Libraries</span>
           </Link>
 
@@ -669,20 +864,41 @@ export default function LibraryView() {
         
         {/* Main Content Wrapper */}
         <div className="flex-grow flex flex-col w-full">
-          <div className="w-full px-4 sm:px-8 py-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-lowest">
-            <div className="relative w-full max-w-md hidden sm:block">
-              <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
-              <input 
-                className="w-full pl-10 pr-4 py-2 bg-surface-container border border-outline-variant/50 rounded font-body-md text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors" 
-                placeholder="Search collection..." 
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+          <div className="w-full px-4 sm:px-8 pt-4 border-b border-outline-variant/30 flex flex-col sm:flex-row justify-between sm:items-end gap-3 sm:gap-0 bg-surface-container-lowest">
+            <div className="flex gap-6 overflow-x-auto no-scrollbar">
+              <button 
+                onClick={() => setCurrentTab('overview')} 
+                className={`pb-3 font-label-caps uppercase tracking-wider text-sm transition-colors border-b-2 whitespace-nowrap ${currentTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'}`}
+              >
+                Overview
+              </button>
+              <button 
+                onClick={() => setCurrentTab('collection')} 
+                className={`pb-3 font-label-caps uppercase tracking-wider text-sm transition-colors border-b-2 whitespace-nowrap ${currentTab === 'collection' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'}`}
+              >
+                Collection
+              </button>
             </div>
+            
+            {currentTab === 'collection' && (
+              <div className="relative w-full sm:max-w-md pb-3">
+                <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+                <input 
+                  className="w-full pl-10 pr-4 py-2 bg-surface-container border border-outline-variant/50 rounded font-body-md text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors" 
+                  placeholder="Search collection..." 
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            )}
           </div>
 
-        <div className={`w-full h-48 sm:h-64 relative overflow-hidden ${!library.heroImageUrl ? 'bg-primary' : ''}`}>
+          {currentTab === 'overview' ? (
+            renderOverview()
+          ) : (
+            <>
+              <div className={`w-full h-48 sm:h-64 relative overflow-hidden ${!library.heroImageUrl ? 'bg-primary' : ''}`}>
 
           {library.heroImageUrl && (
             <img src={library.heroImageUrl} alt={library.name} className="w-full h-full object-cover" />
@@ -691,7 +907,7 @@ export default function LibraryView() {
           <div className="absolute bottom-6 left-6 sm:left-10 text-white">
             <h1 className="text-3xl sm:text-5xl font-serif font-medium tracking-tight drop-shadow-lg mb-2 leading-tight">{toTitleCase(library.name)}</h1>
             <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+              <div className="w-1.5 h-1.5 rounded-full bg-primary" />
               <p className="text-xs sm:text-sm font-sans font-medium uppercase tracking-wider text-white/90">
                 {books.length} {books.length === 1 ? 'volume' : 'volumes'} • {isOwner ? 'Owned by you' : `Shared by ${toTitleCase(library.ownerName)}`}
               </p>
@@ -705,7 +921,7 @@ export default function LibraryView() {
           {/* Sort, Group, Filter Controls */}
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
             <div className="flex items-center gap-2 bg-surface px-3 py-1.5 rounded-md border border-outline-variant/40">
-              <label className="text-xs font-label-caps text-outline uppercase tracking-wider hidden sm:block">Sort by:</label>
+              <label className="text-xs font-label-caps text-on-surface-variant uppercase tracking-wider hidden sm:block">Sort by:</label>
               <select 
                 value={sortBy} 
                 onChange={e => handleSort(e.target.value as SortOption)}
@@ -839,7 +1055,7 @@ export default function LibraryView() {
           {sortedBooks.length === 0 ? (
             <div className="text-center py-24 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
               <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/30 relative z-10">
-                <BookIcon size={36} className="text-outline" strokeWidth={1.5} />
+                <BookIcon size={36} className="text-on-surface-variant" strokeWidth={1.5} />
               </div>
               <h3 className="text-2xl font-serif font-bold mb-3 text-primary relative z-10 tracking-tight">No books found</h3>
               <p className="text-on-surface-variant text-lg max-w-md mx-auto relative z-10">
@@ -861,6 +1077,7 @@ export default function LibraryView() {
             </div>
           )}
         </div>
+
 
         {/* Settings Modal */}
         <AnimatePresence>
@@ -904,7 +1121,7 @@ export default function LibraryView() {
                     className="flex-1 bg-paper border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all"
                     required
                   />
-                  <button type="submit" className="bg-accent text-white px-6 py-3 rounded-xl text-sm font-medium hover:bg-opacity-90 transition-all shadow-sm">
+                  <button type="submit" className="bg-primary text-white px-6 py-3 rounded-xl text-sm font-medium hover:bg-opacity-90 transition-all shadow-sm">
                     Share
                   </button>
                 </form>
@@ -1041,7 +1258,9 @@ export default function LibraryView() {
           )}
         </AnimatePresence>
       </main>
-      
+      </>
+      )}
+
       <RecommendationsModal
         isOpen={isRecommendationsModalOpen}
         onClose={() => setIsRecommendationsModalOpen(false)}

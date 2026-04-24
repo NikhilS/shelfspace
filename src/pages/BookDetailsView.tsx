@@ -20,7 +20,7 @@ interface Book extends BookDetails {
   addedAt: FirestoreDate;
   synopsis?: string;
   authorBio?: string;
-  readingStatus?: 'unset' | 'reading' | 'finished' | 'abandoned';
+  userStatuses?: Record<string, 'unset' | 'reading' | 'finished' | 'abandoned'>;
 }
 
 interface Review {
@@ -212,7 +212,30 @@ export default function BookDetailsView() {
   };
 
   if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-background text-on-background">Loading...</div>;
+    return (
+      <AppLayout sidebarActions={<></>}>
+        <div className="flex-1 w-full bg-background animate-pulse px-4 sm:px-8 lg:px-12 py-6 sm:py-8 max-w-[1200px] mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
+            <div className="md:col-span-4 flex flex-col gap-6">
+               <div className="aspect-[2/3] w-full bg-surface-variant/50 rounded-lg"></div>
+               <div className="h-10 bg-surface-variant/50 rounded"></div>
+               <div className="h-10 bg-surface-variant/50 rounded"></div>
+            </div>
+            <div className="md:col-span-8 flex flex-col gap-8">
+               <div>
+                  <div className="h-12 bg-surface-variant/50 rounded w-3/4 mb-4"></div>
+                  <div className="h-6 bg-surface-variant/50 rounded w-1/2 mb-8"></div>
+                  <div className="flex gap-2">
+                     <div className="w-16 h-6 bg-surface-variant/50 rounded"></div>
+                     <div className="w-16 h-6 bg-surface-variant/50 rounded"></div>
+                  </div>
+               </div>
+               <div className="h-48 bg-surface-variant/50 rounded-lg"></div>
+            </div>
+          </div>
+        </div>
+      </AppLayout>
+    );
   }
 
   if (!book) return null;
@@ -224,7 +247,7 @@ export default function BookDetailsView() {
           to={`/library/${libraryId}`}
           className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 font-serif text-lg tracking-tight"
         >
-          <ArrowLeft className="w-5 h-5 text-outline" />
+          <ArrowLeft className="w-5 h-5 text-on-surface-variant" />
           <span>Back to Library</span>
         </Link>
       }
@@ -245,14 +268,14 @@ export default function BookDetailsView() {
                    </div>
                 )}
                 {/* Status Badge */}
-                {book.readingStatus && book.readingStatus !== 'unset' && (
+                {book.userStatuses?.[user?.uid || ''] && book.userStatuses?.[user?.uid || ''] !== 'unset' && (
                   <div className={`absolute top-4 right-4 font-label-caps text-label-caps px-3 py-1 rounded shadow-sm ${
-                    book.readingStatus === 'reading' ? 'bg-primary text-on-primary' :
-                    book.readingStatus === 'finished' ? 'bg-[#2f4d40] text-white' :
+                    book.userStatuses[user?.uid || ''] === 'reading' ? 'bg-primary text-on-primary' :
+                    book.userStatuses[user?.uid || ''] === 'finished' ? 'bg-[#2f4d40] text-white' :
                     'bg-error text-on-error'
                   }`}>
-                      {book.readingStatus === 'reading' ? 'READING' : 
-                       book.readingStatus === 'finished' ? 'FINISHED' : 
+                      {book.userStatuses[user?.uid || ''] === 'reading' ? 'READING' : 
+                       book.userStatuses[user?.uid || ''] === 'finished' ? 'FINISHED' : 
                        'ABANDONED'}
                   </div>
                 )}
@@ -281,17 +304,17 @@ export default function BookDetailsView() {
                 
                 <div className="flex flex-wrap items-center gap-6 text-on-surface-variant text-[14px] font-body-md border-b border-surface-dim pb-6">
                   <div className="flex flex-col">
-                    <span className="text-outline uppercase text-xs tracking-wider mb-1">Published</span>
+                    <span className="text-on-surface-variant uppercase text-xs tracking-wider mb-1">Published</span>
                     <span>{book.publishedDate || 'Unknown'}</span>
                   </div>
                   <div className="w-px h-8 bg-surface-variant hidden sm:block"></div>
                   <div className="flex flex-col">
-                    <span className="text-outline uppercase text-xs tracking-wider mb-1">Format</span>
+                    <span className="text-on-surface-variant uppercase text-xs tracking-wider mb-1">Format</span>
                     <span className="capitalize">{book.format || 'Physical'}</span>
                   </div>
                   <div className="w-px h-8 bg-surface-variant hidden sm:block"></div>
                   <div className="flex flex-col">
-                    <span className="text-outline uppercase text-xs tracking-wider mb-1">ISBN</span>
+                    <span className="text-on-surface-variant uppercase text-xs tracking-wider mb-1">ISBN</span>
                     <span>{book.isbn || 'Unknown'}</span>
                   </div>
                 </div>
@@ -299,17 +322,17 @@ export default function BookDetailsView() {
 
               {/* Reading Status */}
               <section className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-surface-container p-4 rounded-lg border border-outline-variant/30 w-fit">
-                <label htmlFor="readingStatus" className="font-label-caps text-label-caps text-outline uppercase tracking-wider">Reading Status</label>
+                <label htmlFor="readingStatus" className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Reading Status</label>
                 <select
                   id="readingStatus"
-                  value={book.readingStatus || 'unset'}
+                  value={book.userStatuses?.[user?.uid || ''] || 'unset'}
                   onChange={async (e) => {
-                    if (!libraryId || !bookId || !canEdit) return;
+                    if (!libraryId || !bookId || !user) return;
                     const newStatus = e.target.value;
                     try {
                       await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), {
-                        readingStatus: newStatus,
-                        addedBy: book.addedBy || user?.uid,
+                        [`userStatuses.${user.uid}`]: newStatus,
+                        addedBy: book.addedBy || user.uid,
                         addedAt: book.addedAt || serverTimestamp()
                       });
                       toast.success("Reading status updated");
@@ -337,7 +360,7 @@ export default function BookDetailsView() {
                        <Markdown>{book.synopsis}</Markdown>
                      </div>
                   ) : (
-                     <div className="flex items-center gap-2 text-outline"><Loader2 className="animate-spin" size={20}/> Fetching synopsis...</div>
+                     <div className="flex items-center gap-2 text-on-surface-variant"><Loader2 className="animate-spin" size={20}/> Fetching synopsis...</div>
                   )}
                 </div>
               </section>
@@ -346,7 +369,7 @@ export default function BookDetailsView() {
               <section className="bg-surface-container-lowest rounded-lg border border-surface-variant p-8 architectural-shadow">
                 <div className="flex flex-col sm:flex-row gap-6 items-start">
                   <div className="w-24 h-24 rounded-full overflow-hidden shrink-0 border-2 border-surface-container bg-surface flex items-center justify-center">
-                    <User className="w-12 h-12 text-outline" />
+                    <User className="w-12 h-12 text-on-surface-variant" />
                   </div>
                   <div>
                     <h3 className="font-headline-md text-[24px] text-primary mb-1">About {toTitleCase(book.author)}</h3>
@@ -356,7 +379,7 @@ export default function BookDetailsView() {
                            <Markdown>{book.authorBio}</Markdown>
                          </div>
                       ) : (
-                         <div className="flex items-center gap-2 text-outline"><Loader2 className="animate-spin" size={20}/> Fetching bio...</div>
+                         <div className="flex items-center gap-2 text-on-surface-variant"><Loader2 className="animate-spin" size={20}/> Fetching bio...</div>
                       )}
                     </div>
                   </div>
@@ -391,7 +414,7 @@ export default function BookDetailsView() {
                 {activeInsight && (
                   <div className="bg-surface-container-lowest rounded-lg p-6 sm:p-8 architectural-shadow border border-surface-variant">
                     {isGeneratingInsight ? (
-                      <div className="flex items-center gap-3 text-outline">
+                      <div className="flex items-center gap-3 text-on-surface-variant">
                         <Loader2 className="animate-spin" size={24} />
                         <p>Consulting the AI...</p>
                       </div>
@@ -408,7 +431,7 @@ export default function BookDetailsView() {
               <section className="mt-8 border-t border-surface-dim pt-12">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="font-headline-md text-[24px] text-primary">Reviews</h3>
-                  {canEdit && !isReviewing && !reviews.some(r => r.userId === user?.uid) && (book.readingStatus === 'finished' || book.readingStatus === 'abandoned') && (
+                  {canEdit && !isReviewing && !reviews.some(r => r.userId === user?.uid) && (book.userStatuses?.[user?.uid || ''] === 'finished' || book.userStatuses?.[user?.uid || ''] === 'abandoned') && (
                     <button
                       className="px-6 py-2 rounded-full font-label-caps text-label-caps bg-primary text-on-primary hover:bg-primary/90 transition-colors shadow-sm"
                       onClick={() => setIsReviewing(true)}
@@ -418,7 +441,7 @@ export default function BookDetailsView() {
                   )}
                 </div>
 
-                {isReviewing && (book.readingStatus === 'finished' || book.readingStatus === 'abandoned') && (
+                {isReviewing && (book.userStatuses?.[user?.uid || ''] === 'finished' || book.userStatuses?.[user?.uid || ''] === 'abandoned') && (
                   <div className="bg-surface-container rounded-lg p-6 mb-8 border border-surface-variant">
                     <div className="flex items-center gap-2 mb-4">
                       {[1, 2, 3, 4, 5].map((star) => (
@@ -483,7 +506,7 @@ export default function BookDetailsView() {
                               </div>
                             </div>
                           </div>
-                          <span className="text-xs text-outline uppercase tracking-wider">
+                          <span className="text-xs text-on-surface-variant uppercase tracking-wider">
                             {typeof review.createdAt === 'object' && review.createdAt !== null && 'toDate' in review.createdAt && typeof (review.createdAt as any).toDate === 'function' ? (review.createdAt as any).toDate().toLocaleDateString() : 'Just now'}
                           </span>
                         </div>
