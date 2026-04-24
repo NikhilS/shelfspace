@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -7,13 +7,13 @@ import { ArrowLeft, Plus, Share2, Settings, Trash2, X, Sparkles, LayoutGrid, Lis
 import { toast } from 'sonner';
 import { GoogleGenAI, Type } from '@google/genai';
 import { enrichBooksMetadata } from '../services/gemini';
-import AddBookModal from '../components/AddBookModal';
 import BookCard from '../components/BookCard';
 import RecommendationsModal from '../components/RecommendationsModal';
 import Chatbot from '../components/Chatbot';
 import { BookDetails, searchBookByTitleAndAuthor } from '../services/bookApi';
 import { toSentenceCase, toTitleCase } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import AppLayout from '../components/AppLayout';
 
 type FirestoreDate = Timestamp | Date | string | number;
 
@@ -51,7 +51,6 @@ export default function LibraryView() {
   const [library, setLibrary] = useState<Library | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isRecommendationsModalOpen, setIsRecommendationsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -71,6 +70,7 @@ export default function LibraryView() {
   const mainRef = useRef<HTMLElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [filterGenre, setFilterGenre] = useState('');
   const [filterAuthor, setFilterAuthor] = useState('');
   const [filterYearMin, setFilterYearMin] = useState('');
@@ -163,8 +163,11 @@ export default function LibraryView() {
 
       if (Object.keys(updates).length > 0) {
         hasUpdates = true;
-        updateDoc(doc(db, 'libraries', id, 'books', b.id), updates)
-          .catch(err => console.error("Error backfilling book data", err));
+        updateDoc(doc(db, 'libraries', id, 'books', b.id), {
+          ...updates,
+          addedBy: b.addedBy || user?.uid,
+          addedAt: b.addedAt || serverTimestamp()
+        }).catch(err => console.error("Error backfilling book data", err));
       }
     });
   }, [books, canEdit, id]);
@@ -196,8 +199,8 @@ export default function LibraryView() {
 
   const filteredBooks = useMemo(() => {
     return books.filter(book => {
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
+      if (deferredSearchQuery) {
+        const query = deferredSearchQuery.toLowerCase();
         const titleMatch = book.title?.toLowerCase().includes(query);
         const authorMatch = book.author?.toLowerCase().includes(query);
         if (!titleMatch && !authorMatch) return false;
@@ -221,7 +224,7 @@ export default function LibraryView() {
       
       return true;
     });
-  }, [books, searchQuery, filterGenre, filterAuthor, filterYearMin, filterYearMax]);
+  }, [books, deferredSearchQuery, filterGenre, filterAuthor, filterYearMin, filterYearMax]);
 
   const sortedBooks = useMemo(() => {
     const sorted = [...filteredBooks];
@@ -240,40 +243,6 @@ export default function LibraryView() {
   }, [filteredBooks, sortBy, sortOrder]);
 
   const bookIdsString = books.map(b => b.id).sort().join(',');
-
-  const handleAddBook = async (bookDetails: BookDetails) => {
-    if (!id || !user || !canEdit) return;
-    try {
-      let enrichedDetails = { ...bookDetails };
-      
-      // Attempt to quickly enrich genre/series if missing
-      if (!enrichedDetails.genre || !enrichedDetails.series) {
-        try {
-          const enrichments = await enrichBooksMetadata([{
-            id: 'temp', 
-            title: enrichedDetails.title, 
-            author: enrichedDetails.author,
-            description: enrichedDetails.description,
-            currentGenre: enrichedDetails.genre
-          }]);
-          if (enrichments.length > 0) {
-            enrichedDetails.genre = enrichedDetails.genre || enrichments[0].genre;
-            enrichedDetails.series = enrichedDetails.series || enrichments[0].series;
-          }
-        } catch (e) {
-          console.warn("Failed to enrich metadata on add", e);
-        }
-      }
-
-      await addDoc(collection(db, 'libraries', id, 'books'), {
-        ...enrichedDetails,
-        addedBy: user.uid,
-        addedAt: serverTimestamp()
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, `libraries/${id}/books`);
-    }
-  };
 
   const handleDeleteBook = (bookId: string) => {
     if (!id || !canEdit) return;
@@ -299,7 +268,12 @@ export default function LibraryView() {
   const handleUpdateBook = async (bookId: string, updatedData: Partial<Omit<Book, 'id'>>) => {
     if (!id || !canEdit) return;
     try {
-      await updateDoc(doc(db, 'libraries', id, 'books', bookId), updatedData);
+      const bookToUpdate = books.find(b => b.id === bookId);
+      await updateDoc(doc(db, 'libraries', id, 'books', bookId), {
+        ...updatedData,
+        addedBy: bookToUpdate?.addedBy || user?.uid,
+        addedAt: bookToUpdate?.addedAt || serverTimestamp()
+      });
       toast.success("Book updated");
       setSelectedBook(prev => prev && prev.id === bookId ? { ...prev, ...updatedData } : prev);
     } catch (error) {
@@ -450,7 +424,11 @@ export default function LibraryView() {
             }
 
             if (Object.keys(changes).length > 0) {
-              await updateDoc(doc(db, 'libraries', id, 'books', book.id), changes);
+              await updateDoc(doc(db, 'libraries', id, 'books', book.id), {
+                ...changes,
+                addedBy: book.addedBy || user?.uid,
+                addedAt: book.addedAt || serverTimestamp()
+              });
             }
           } catch (err: unknown) {
              currentErrors.push({ title: book.title, error: err instanceof Error ? err.message : "Failed to fetch ISBN" });
@@ -475,7 +453,11 @@ export default function LibraryView() {
                  if (!book.genre) changes.genre = enriched.genre;
                  if (!book.series) changes.series = enriched.series;
                  if (Object.keys(changes).length > 0) {
-                   await updateDoc(doc(db, 'libraries', id, 'books', book.id), changes);
+                   await updateDoc(doc(db, 'libraries', id, 'books', book.id), {
+                     ...changes,
+                     addedBy: book.addedBy || user?.uid,
+                     addedAt: book.addedAt || serverTimestamp()
+                   });
                    updatedCount++;
                  }
                }
@@ -515,7 +497,7 @@ export default function LibraryView() {
   };
 
   if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-paper text-ink">Loading library...</div>;
+    return <div className="min-h-screen flex items-center justify-center bg-background text-on-background">Loading library...</div>;
   }
 
   if (!library) return null;
@@ -619,9 +601,9 @@ export default function LibraryView() {
           ))}
         </AnimatePresence>
         {shelfBooksList.length === 0 && (
-          <div className="col-span-full w-full py-12 flex flex-col items-center justify-center opacity-40 font-sans text-sm pb-8 text-ink/70">
-            <div className="w-12 h-12 mb-3 border-2 border-dashed border-ink/40 rounded-full flex items-center justify-center">
-              <BookIcon size={20} className="text-ink/60" />
+          <div className="col-span-full w-full py-12 flex flex-col items-center justify-center opacity-80 font-body-md text-sm pb-8 text-on-surface-variant">
+            <div className="w-12 h-12 mb-3 border-2 border-dashed border-outline-variant/60 rounded-full flex items-center justify-center">
+              <BookIcon size={20} className="text-outline" />
             </div>
             {emptyMessage}
           </div>
@@ -631,42 +613,26 @@ export default function LibraryView() {
   };
 
   return (
-    <div className="bg-background text-on-background font-body-md text-body-md antialiased flex min-h-screen relative w-full overflow-x-hidden">
-      
-      {/* Mobile Nav Overlay */}
-      {isMobileNavOpen && (
-        <div 
-          className="fixed inset-0 bg-black/40 z-40 md:hidden backdrop-blur-sm"
-          onClick={() => setIsMobileNavOpen(false)}
-        />
-      )}
-
-      {/* SideNavBar Component */}
-      <nav className={`fixed left-0 top-0 flex flex-col h-screen w-64 py-8 border-r border-outline-variant/30 bg-surface shadow-md md:shadow-none z-50 transition-transform duration-300 ease-in-out md:translate-x-0 ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="px-6 mb-8 flex flex-col gap-1">
-          <Link to="/" className="text-2xl font-serif font-bold text-primary font-headline-md text-headline-md tracking-tight">Athenaeum</Link>
-          <span className="text-on-surface-variant font-body-md text-body-md opacity-80">Modern Archivist</span>
-        </div>
-        
-        <div className="flex-grow flex flex-col gap-2">
+    <AppLayout
+      sidebarActions={
+        <>
           <Link 
             to="/"
-            onClick={() => setIsMobileNavOpen(false)}
             className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 font-serif text-lg tracking-tight"
           >
-            <span className="material-symbols-outlined text-primary">arrow_back</span>
+            <ArrowLeft className="w-5 h-5 text-outline" />
             <span>Back to Libraries</span>
           </Link>
 
           {canEdit && (
             <button 
               onClick={() => {
-                setIsAddModalOpen(true);
+                navigate(`/library/${id}/add`);
                 setIsMobileNavOpen(false);
               }}
               className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
             >
-              <span className="material-symbols-outlined text-primary">add</span>
+              <Plus className="w-5 h-5 text-primary" />
               <span>Add Book</span>
             </button>
           )}
@@ -679,7 +645,7 @@ export default function LibraryView() {
               }}
               className={`flex items-center gap-3 pl-6 py-3 transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight ${isAdvancedSettingsOpen ? 'bg-surface-container text-primary border-r-2 border-primary' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
             >
-              <span className="material-symbols-outlined text-primary">settings</span>
+              <Settings className="w-5 h-5 opacity-80" />
               <span>Settings</span>
             </button>
           )}
@@ -692,39 +658,22 @@ export default function LibraryView() {
               }}
               className={`flex items-center gap-3 pl-6 py-3 transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight ${isSettingsOpen ? 'bg-surface-container text-primary border-r-2 border-primary' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
             >
-              <span className="material-symbols-outlined text-primary">share</span>
+              <Share2 className="w-5 h-5 opacity-80" />
               <span>Share</span>
             </button>
           )}
-        </div>
+        </>
+      }
+    >
+      <div className="flex-grow flex flex-col min-h-screen w-full">
         
-        <div className="mt-auto">
-          <button 
-            onClick={logOut}
-            className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
-          >
-            <span className="material-symbols-outlined text-primary">logout</span>
-            <span>Logout</span>
-          </button>
-        </div>
-      </nav>
-
-      {/* Main Content Wrapper */}
-      <div className="flex-grow flex flex-col md:ml-64 min-h-screen w-full lg:w-[calc(100%-16rem)]">
-        
-        {/* TopAppBar Component */}
-        <header className="flex justify-between items-center w-full px-4 sm:px-8 h-16 border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md shadow-[0_4px_20px_rgba(26,47,75,0.02)] z-10 sticky top-0">
-          <div className="flex-1 flex items-center max-w-2xl gap-3">
-            <button 
-              className="md:hidden p-2 -ml-2 text-on-surface hover:text-primary rounded-full hover:bg-surface-container transition-colors flex items-center justify-center"
-              onClick={() => setIsMobileNavOpen(true)}
-            >
-              <span className="material-symbols-outlined">menu</span>
-            </button>
+        {/* Main Content Wrapper */}
+        <div className="flex-grow flex flex-col w-full">
+          <div className="w-full px-4 sm:px-8 py-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-lowest">
             <div className="relative w-full max-w-md hidden sm:block">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+              <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
               <input 
-                className="w-full pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant/50 rounded-DEFAULT font-body-md text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors" 
+                className="w-full pl-10 pr-4 py-2 bg-surface-container border border-outline-variant/50 rounded font-body-md text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors" 
                 placeholder="Search collection..." 
                 type="text"
                 value={searchQuery}
@@ -732,17 +681,6 @@ export default function LibraryView() {
               />
             </div>
           </div>
-          
-          <div className="flex-none ml-4 group cursor-pointer relative">
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full object-cover border border-outline-variant/50 group-hover:border-primary transition-colors" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-surface-container border border-outline-variant/50 flex items-center justify-center text-primary font-bold shadow-sm group-hover:border-primary transition-colors">
-                {user?.email?.[0].toUpperCase() || 'U'}
-              </div>
-            )}
-          </div>
-        </header>
 
         <div className={`w-full h-48 sm:h-64 relative overflow-hidden ${!library.heroImageUrl ? 'bg-primary' : ''}`}>
 
@@ -783,7 +721,7 @@ export default function LibraryView() {
                   onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
                   className="p-0.5 text-on-surface hover:text-primary transition-colors rounded-full hover:bg-surface-container"
                 >
-                  <span className="material-symbols-outlined text-sm">{sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>
+                  {sortOrder === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
                 </button>
               )}
             </div>
@@ -792,7 +730,7 @@ export default function LibraryView() {
               onClick={() => setIsFiltersOpen(!isFiltersOpen)}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-body-md transition-all border ${isFiltersOpen || searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax ? 'bg-primary text-on-primary border-primary shadow-sm' : 'bg-surface text-on-surface border-outline-variant/60 hover:border-outline-variant hover:shadow-sm'}`}
             >
-              <span className="material-symbols-outlined text-sm">filter_list</span>
+              <Filter className="w-4 h-4" />
               <span className="hidden sm:inline">Filters</span>
               {(searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax) && <span className="w-1.5 h-1.5 rounded-full bg-surface"></span>}
             </button>
@@ -806,7 +744,7 @@ export default function LibraryView() {
                 className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'standard' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
                 title="Grid View"
               >
-                <span className="material-symbols-outlined text-sm">grid_view</span>
+                <LayoutGrid className="w-4 h-4" />
                 <span className="hidden sm:inline">Grid</span>
               </button>
               <button
@@ -814,7 +752,7 @@ export default function LibraryView() {
                 className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'table' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
                 title="Table View"
               >
-                <span className="material-symbols-outlined text-sm">table_rows</span>
+                <TableIcon className="w-4 h-4" />
                 <span className="hidden sm:inline">Table</span>
               </button>
             </div>
@@ -825,7 +763,7 @@ export default function LibraryView() {
               onClick={() => setIsRecommendationsModalOpen(true)}
               className="flex items-center gap-2 bg-surface text-primary px-3 sm:px-4 py-1.5 sm:py-2 rounded-md hover:bg-surface-container architectural-shadow transition-all font-body-md text-sm border border-outline-variant/50 flex-shrink-0 group ml-auto lg:ml-0"
             >
-              <span className="material-symbols-outlined text-sm group-hover:scale-110 transition-transform">auto_awesome</span>
+              <Sparkles className="w-4 h-4 group-hover:scale-110 transition-transform" />
               <span>AI Picks</span>
             </button>
           </div>
@@ -899,19 +837,18 @@ export default function LibraryView() {
       <main ref={mainRef} className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col lg:flex-row gap-6 sm:gap-8">
         <div className="flex-1 min-w-0">
           {sortedBooks.length === 0 ? (
-            <div className="text-center py-32 bg-surface/40 backdrop-blur-sm rounded-3xl shadow-sm border border-border/40 relative overflow-hidden">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-accent/5 to-transparent pointer-events-none" />
-              <div className="w-24 h-24 bg-paper/80 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-border/30 relative z-10">
-                <BookIcon size={36} className="text-accent/80" strokeWidth={1.5} />
+            <div className="text-center py-24 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
+              <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/30 relative z-10">
+                <BookIcon size={36} className="text-outline" strokeWidth={1.5} />
               </div>
-              <h3 className="text-3xl font-serif font-bold mb-3 text-ink relative z-10 tracking-tight">No books found</h3>
-              <p className="text-muted text-lg max-w-md mx-auto relative z-10">
+              <h3 className="text-2xl font-serif font-bold mb-3 text-primary relative z-10 tracking-tight">No books found</h3>
+              <p className="text-on-surface-variant text-lg max-w-md mx-auto relative z-10">
                 {books.length === 0 ? "This library is empty. Let's add some great reads to your collection." : "No books match your current filters."}
               </p>
               {books.length === 0 && canEdit && (
                 <button
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="mt-8 inline-flex items-center gap-2 bg-accent text-white px-6 py-3 rounded-full hover:bg-accent/90 hover:shadow-lg hover:shadow-accent/30 hover:-translate-y-0.5 transition-all font-sans text-sm font-bold relative z-10"
+                  onClick={() => navigate(`/library/${id}/add`)}
+                  className="mt-8 inline-flex items-center gap-2 bg-primary text-on-primary px-6 py-3 rounded-md hover:bg-primary/90 transition-all font-body-md text-sm font-bold relative z-10 architectural-shadow"
                 >
                   <Plus size={18} strokeWidth={2.5} />
                   Add Your First Book
@@ -1104,13 +1041,6 @@ export default function LibraryView() {
           )}
         </AnimatePresence>
       </main>
-
-      <AddBookModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onAddBook={handleAddBook}
-        existingBooks={books}
-      />
       
       <RecommendationsModal
         isOpen={isRecommendationsModalOpen}
@@ -1201,7 +1131,8 @@ export default function LibraryView() {
           </motion.div>
         )}
       </AnimatePresence>
+        </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }

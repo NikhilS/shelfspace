@@ -1,6 +1,7 @@
 import { useAuth } from '../contexts/AuthContext';
 import { Navigate, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
+import { User, Book, CheckCircle, ScanBarcode, Camera, ArrowRight, Library, BarChart } from 'lucide-react';
 
 export default function Login() {
   const { user, isAuthReady, signIn } = useAuth();
@@ -27,7 +28,7 @@ export default function Login() {
         </div>
         <div className="flex items-center gap-4">
           <button aria-label="Account" onClick={signIn} className="hover:bg-surface-container transition-colors p-2 rounded-full flex items-center justify-center group">
-            <span className="material-symbols-outlined text-primary group-hover:opacity-80 transition-opacity">account_circle</span>
+            <User className="w-6 h-6 text-primary group-hover:opacity-80 transition-opacity" />
           </button>
         </div>
       </nav>
@@ -75,13 +76,13 @@ export default function Login() {
             <div className="absolute bottom-8 right-8 bg-surface/85 backdrop-blur-md p-6 rounded-lg shadow-lg border border-surface-variant max-w-[280px]">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-16 bg-surface-variant rounded flex-shrink-0 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-on-surface-variant">book</span>
+                  <Book className="w-6 h-6 text-on-surface-variant" />
                 </div>
                 <div>
                   <p className="font-headline-md text-headline-md text-primary leading-none mb-1">The Secret History</p>
                   <p className="font-body-md text-body-md text-on-surface-variant text-sm">Donna Tartt</p>
                   <div className="mt-2 inline-flex items-center gap-1 bg-tertiary-container/10 text-on-tertiary-container font-label-caps text-label-caps px-2 py-0.5 rounded-sm">
-                    <span className="material-symbols-outlined text-[14px]">check_circle</span> Added to Shelf
+                    <CheckCircle className="w-3.5 h-3.5" /> Added to Shelf
                   </div>
                 </div>
               </div>
@@ -102,7 +103,7 @@ export default function Login() {
               <div className="md:col-span-8 bg-surface rounded-xl p-8 architectural-shadow border border-surface-variant flex flex-col sm:flex-row items-center gap-8 overflow-hidden relative">
                 <div className="flex-1 flex flex-col items-start z-10">
                   <div className="w-12 h-12 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center mb-4">
-                    <span className="material-symbols-outlined">barcode_scanner</span>
+                    <ScanBarcode className="w-6 h-6" />
                   </div>
                   <h3 className="font-headline-md text-headline-md text-primary mb-2">Instant ISBN Scanning</h3>
                   <p className="font-body-md text-body-md text-on-surface-variant">Add volumes to your catalog instantly. A single scan retrieves high-resolution covers, publication details, and full metadata.</p>
@@ -126,13 +127,13 @@ export default function Login() {
               <div className="md:col-span-4 bg-surface rounded-xl p-8 architectural-shadow border border-surface-variant flex flex-col items-start relative overflow-hidden group">
                 <div className="absolute inset-0 bg-gradient-to-br from-secondary/5 to-transparent z-0"></div>
                 <div className="w-12 h-12 bg-secondary-container text-on-secondary-container rounded-full flex items-center justify-center mb-4 z-10">
-                  <span className="material-symbols-outlined">photo_camera</span>
+                  <Camera className="w-6 h-6" />
                 </div>
                 <h3 className="font-headline-md text-headline-md text-primary mb-2 z-10">Shelf Vision AI</h3>
                 <p className="font-body-md text-body-md text-on-surface-variant z-10 mb-6">Photograph an entire shelf. Our AI extracts titles and authors, importing dozens of books in seconds.</p>
                 <div className="mt-auto w-full flex justify-end z-10">
                   <button onClick={signIn} className="w-10 h-10 rounded-full border border-secondary flex items-center justify-center text-secondary group-hover:bg-secondary group-hover:text-on-secondary transition-colors">
-                    <span className="material-symbols-outlined">arrow_forward</span>
+                    <ArrowRight className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -140,7 +141,7 @@ export default function Login() {
               {/* Feature 3: Elegant Organization (Small) */}
               <div className="md:col-span-5 bg-surface rounded-xl p-8 architectural-shadow border border-surface-variant flex flex-col items-start relative">
                 <div className="w-12 h-12 bg-tertiary-container text-on-tertiary-container rounded-full flex items-center justify-center mb-4">
-                  <span className="material-symbols-outlined">shelves</span>
+                  <Library className="w-6 h-6" />
                 </div>
                 <h3 className="font-headline-md text-headline-md text-primary mb-2">Tactile Organization</h3>
                 <p className="font-body-md text-body-md text-on-surface-variant">Sort by genre, reading status, or custom collections. A minimalist interface inspired by ledger lines and fine stationery.</p>
@@ -163,7 +164,7 @@ export default function Login() {
                 <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-primary-container rounded-full blur-3xl opacity-50"></div>
                 <div className="flex-1 flex flex-col items-start z-10">
                   <div className="w-12 h-12 bg-primary-fixed text-on-primary-fixed rounded-full flex items-center justify-center mb-4">
-                    <span className="material-symbols-outlined">bar_chart</span>
+                    <BarChart className="w-6 h-6" />
                   </div>
                   <h3 className="font-headline-md text-headline-md text-surface-container-lowest mb-2">Quiet Insights</h3>
                   <p className="font-body-md text-body-md text-primary-fixed-dim">Track your reading habits without the noise of social networks. View pages read, genres explored, and reading streaks in elegant, subdued charts.</p>

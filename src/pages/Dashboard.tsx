@@ -3,12 +3,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, or, getCountFromServer } from 'firebase/firestore';
 import { Link, Navigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Book, Plus, Loader2, MoreHorizontal, Library as LibraryIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { toTitleCase } from '../lib/utils';
 import { generateLibraryHeroImage } from '../services/gemini';
 import { motion, AnimatePresence } from 'motion/react';
 import { Timestamp } from 'firebase/firestore';
+import AppLayout from '../components/AppLayout';
 
 type FirestoreDate = Timestamp | Date | string | number;
 
@@ -30,7 +31,6 @@ export default function Dashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newLibName, setNewLibName] = useState('');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -119,96 +119,25 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="bg-background text-on-background font-body-md text-body-md antialiased flex min-h-screen relative w-full overflow-x-hidden">
-      
-      {/* Mobile Nav Overlay */}
-      {isMobileNavOpen && (
-        <div 
-          className="fixed inset-0 bg-black/40 z-40 md:hidden backdrop-blur-sm"
-          onClick={() => setIsMobileNavOpen(false)}
-        />
-      )}
-
-      {/* SideNavBar Component */}
-      <nav className={`fixed left-0 top-0 flex flex-col h-screen w-64 py-8 border-r border-outline-variant/30 bg-surface shadow-md md:shadow-none z-50 transition-transform duration-300 ease-in-out md:translate-x-0 ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="px-6 mb-8 flex flex-col gap-1">
-          <Link to="/" className="text-2xl font-serif font-bold text-primary font-headline-md text-headline-md tracking-tight">Athenaeum</Link>
-          <span className="text-on-surface-variant font-body-md text-body-md opacity-80">Modern Archivist</span>
-        </div>
-        
-        <div className="flex-grow flex flex-col gap-2">
-          <button 
-            onClick={() => {
-              setIsCreating(true);
-              setIsMobileNavOpen(false);
-            }}
-            className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
-          >
-            <span className="material-symbols-outlined text-primary">add_circle</span>
-            <span>Create Library</span>
-          </button>
-          
-          <Link 
-            to="/"
-            onClick={() => setIsMobileNavOpen(false)}
-            className="flex items-center gap-3 text-primary font-bold border-l-2 border-primary pl-6 py-3 bg-surface-container-low hover:bg-surface-container transition-colors duration-200 font-serif text-lg tracking-tight"
-          >
-            <span className="material-symbols-outlined text-primary">library_books</span>
-            <span>My Libraries</span>
-          </Link>
-        </div>
-        
-        <div className="mt-auto">
-          <button 
-            onClick={logOut}
-            className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
-          >
-            <span className="material-symbols-outlined text-primary">logout</span>
-            <span>Logout</span>
-          </button>
-        </div>
-      </nav>
-
-      {/* Main Content Wrapper */}
-      <div className="flex-grow flex flex-col md:ml-64 min-h-screen w-full lg:w-[calc(100%-16rem)]">
-        
-        {/* TopAppBar Component */}
-        <header className="flex justify-between items-center w-full px-4 sm:px-8 h-16 border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md shadow-[0_4px_20px_rgba(26,47,75,0.02)] z-10 sticky top-0">
-          <div className="flex-1 flex items-center max-w-2xl gap-3">
-            <button 
-              className="md:hidden p-2 -ml-2 text-on-surface hover:text-primary rounded-full hover:bg-surface-container transition-colors flex items-center justify-center"
-              onClick={() => setIsMobileNavOpen(true)}
-            >
-              <span className="material-symbols-outlined">menu</span>
-            </button>
-            <div className="relative w-full max-w-md">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
-              <input 
-                className="w-full pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant/50 rounded-DEFAULT font-body-md text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors" 
-                placeholder="Search libraries..." 
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-          
-          <div className="flex-none ml-4 group cursor-pointer relative">
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full object-cover border border-outline-variant/50 group-hover:border-primary transition-colors" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-surface-container border border-outline-variant/50 flex items-center justify-center text-primary font-bold shadow-sm group-hover:border-primary transition-colors">
-                {user?.email?.[0].toUpperCase() || 'U'}
-              </div>
-            )}
-          </div>
-        </header>
-
+    <AppLayout
+      sidebarActions={
+        <button 
+          onClick={() => setIsCreating(true)}
+          className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
+        >
+          <Plus className="text-primary w-5 h-5" />
+          <span>Create Library</span>
+        </button>
+      }
+    >
+      <div className="flex-grow flex flex-col min-h-screen w-full">
         {/* Main Canvas */}
         <main className="flex-grow p-4 sm:p-8 lg:p-12 max-w-[1200px] mx-auto w-full">
-          <div className="mb-12">
-            <h2 className="font-headline-xl text-headline-xl text-primary-container mb-4">My Libraries</h2>
-            <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">Your curated collections, meticulously organized for deep focus and easy retrieval.</p>
+          <div className="mb-8 flex flex-col gap-4">
+            <div>
+              <h2 className="font-headline-xl text-headline-xl text-primary-container mb-4">My Libraries</h2>
+              <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">Your curated collections, meticulously organized for deep focus and easy retrieval.</p>
+            </div>
           </div>
 
           <AnimatePresence>
@@ -247,7 +176,7 @@ export default function Dashboard() {
           {libraries.length === 0 && !isCreating ? (
             <div className="text-center py-24 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
               <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/30">
-                <span className="material-symbols-outlined text-4xl text-outline">library_add</span>
+                <LibraryIcon className="w-10 h-10 text-outline" />
               </div>
               <h3 className="text-2xl font-serif font-bold mb-3 text-primary tracking-tight">The Archives are Empty</h3>
               <p className="text-on-surface-variant text-lg max-w-md mx-auto mb-8">Establish your first collection to begin cataloging your physical volumes.</p>
@@ -255,14 +184,14 @@ export default function Dashboard() {
                 onClick={() => setIsCreating(true)}
                 className="bg-primary text-on-primary px-6 py-3 rounded-md font-body-md hover:bg-primary/90 transition-all architectural-shadow flex items-center gap-2 mx-auto"
               >
-                <span className="material-symbols-outlined text-sm">add</span>
+                <Plus className="w-4 h-4" />
                 Create Library
               </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <AnimatePresence>
-                {libraries.filter(lib => lib.name.toLowerCase().includes(searchQuery.toLowerCase())).map((lib, index) => (
+                {libraries.map((lib, index) => (
                   <motion.div 
                     key={lib.id}
                     initial={{ opacity: 0, y: 10 }}
@@ -277,7 +206,7 @@ export default function Dashboard() {
                             <img alt={lib.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" src={lib.heroImageUrl} />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center bg-surface-container">
-                               <span className="material-symbols-outlined text-5xl text-outline-variant opacity-50 group-hover:scale-110 transition-transform duration-500">menu_book</span>
+                               <Book className="w-12 h-12 text-outline-variant opacity-50 group-hover:scale-110 transition-transform duration-500" />
                             </div>
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-primary/10 to-transparent mix-blend-multiply opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -287,13 +216,13 @@ export default function Dashboard() {
                           <div className="flex items-start justify-between">
                             <h3 className="font-headline-md text-headline-md text-on-surface group-hover:text-primary transition-colors line-clamp-1">{toTitleCase(lib.name)}</h3>
                             <button className="text-outline hover:text-primary transition-colors p-1" onClick={(e) => e.preventDefault()}>
-                              <span className="material-symbols-outlined">more_horiz</span>
+                              <MoreHorizontal className="w-5 h-5" />
                             </button>
                           </div>
                           
                           <div className="flex items-center justify-between mt-6">
                             <div className="flex items-center gap-2 text-outline flex-shrink-0">
-                              <span className="material-symbols-outlined text-sm">auto_stories</span>
+                              <Book className="w-4 h-4" />
                               <span className="font-label-caps text-label-caps uppercase tracking-wider">{lib.volumeCount || 0} Volumes</span>
                             </div>
                             
@@ -313,6 +242,6 @@ export default function Dashboard() {
           )}
         </main>
       </div>
-    </div>
+    </AppLayout>
   );
 }

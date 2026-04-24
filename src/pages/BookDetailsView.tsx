@@ -4,11 +4,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, getDoc, collection, query, onSnapshot, orderBy, updateDoc, Timestamp, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { generateBookInsights } from '../services/gemini';
+import { fetchAuthorBioFromWikipedia } from '../services/wikipediaApi';
 import { toast } from 'sonner';
 import Markdown from 'react-markdown';
 import { toTitleCase } from '../lib/utils';
 import { BookDetails } from '../services/bookApi';
-import { ArrowLeft, Edit2, Share2, Settings, Loader2 } from 'lucide-react';
+import { ArrowLeft, Edit2, Share2, Settings, Loader2, Book as BookIcon, User } from 'lucide-react';
+import AppLayout from '../components/AppLayout';
 
 type FirestoreDate = Timestamp | Date | string | number;
 
@@ -18,6 +20,7 @@ interface Book extends BookDetails {
   addedAt: FirestoreDate;
   synopsis?: string;
   authorBio?: string;
+  readingStatus?: 'unset' | 'reading' | 'finished' | 'abandoned';
 }
 
 interface Review {
@@ -129,14 +132,27 @@ export default function BookDetailsView() {
       
       if (!book.authorBio) {
          try {
-            const bio = await generateBookInsights(book.title, book.author, 'author_bio');
-            updatesNeeded.authorBio = bio;
+            // First try Wikipedia
+            let bio = await fetchAuthorBioFromWikipedia(book.author);
+            
+            // Fallback to Gemini if Wikipedia returns nothing
+            if (!bio) {
+              bio = await generateBookInsights(book.title, book.author, 'author_bio');
+            }
+            
+            if (bio) {
+               updatesNeeded.authorBio = bio;
+            }
          } catch(e) {}
       }
       
       if (Object.keys(updatesNeeded).length > 0) {
          try {
-           await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), updatesNeeded);
+           await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), {
+             ...updatesNeeded,
+             addedBy: book.addedBy || user?.uid,
+             addedAt: book.addedAt || serverTimestamp()
+           });
          } catch(e) { console.error(e); }
       }
     };
@@ -202,89 +218,20 @@ export default function BookDetailsView() {
   if (!book) return null;
 
   return (
-    <div className="bg-background text-on-background font-body-md text-body-md antialiased flex min-h-screen relative w-full overflow-x-hidden">
-      
-      {/* Mobile Nav Overlay */}
-      {isMobileNavOpen && (
-        <div 
-          className="fixed inset-0 bg-black/40 z-40 md:hidden backdrop-blur-sm"
-          onClick={() => setIsMobileNavOpen(false)}
-        />
-      )}
-
-      {/* SideNavBar Component */}
-      <nav className={`fixed left-0 top-0 flex flex-col h-screen w-64 py-8 border-r border-outline-variant/30 bg-surface shadow-md md:shadow-none z-50 transition-transform duration-300 ease-in-out md:translate-x-0 ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="px-6 mb-8 flex flex-col gap-1">
-          <Link to="/" className="text-2xl font-headline-md italic text-primary tracking-tight">Athenaeum</Link>
-          <span className="text-on-surface-variant font-body-md text-sm opacity-80">Modern Archivist</span>
-        </div>
-        
-        <div className="flex-grow flex flex-col gap-2">
-          <Link 
-            to={`/library/${libraryId}`}
-            onClick={() => setIsMobileNavOpen(false)}
-            className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 font-serif text-lg tracking-tight"
-          >
-            <span className="material-symbols-outlined text-primary">arrow_back</span>
-            <span>Back to Library</span>
-          </Link>
-        </div>
-        
-        <div className="mt-auto">
-          <button 
-            onClick={logOut}
-            className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
-          >
-            <span className="material-symbols-outlined text-primary">logout</span>
-            <span>Logout</span>
-          </button>
-        </div>
-      </nav>
-
-      {/* Main Content Wrapper */}
-      <main className="flex-1 flex flex-col md:ml-64 pt-16 md:pt-0 min-h-screen">
-        
-        {/* TopNavBar */}
-        <header className="flex justify-between items-center h-16 px-8 fixed md:sticky top-0 w-full md:w-auto z-40 bg-surface/80 backdrop-blur-md border-b border-outline-variant/30 shadow-[0_8px_30px_rgb(26,47,75,0.04)] font-body-md text-on-background">
-          <div className="flex items-center space-x-6 w-1/3">
-            <button 
-              className="md:hidden p-2 -ml-2 text-on-surface hover:text-primary rounded-full hover:bg-surface-container transition-colors flex items-center justify-center"
-              onClick={() => setIsMobileNavOpen(true)}
-            >
-              <span className="material-symbols-outlined">menu</span>
-            </button>
-          </div>
-          <div className="text-2xl font-headline-md italic text-primary w-1/3 text-center md:block">Athenaeum</div>
-          <div className="flex items-center justify-end space-x-6 w-1/3 ml-auto text-outline">
-            <button className="hover:text-primary transition-colors duration-200 ease-in-out">
-              <span className="material-symbols-outlined">notifications</span>
-            </button>
-            <button className="hover:text-primary transition-colors duration-200 ease-in-out">
-              <span className="material-symbols-outlined">settings</span>
-            </button>
-            <div className="h-8 w-8 rounded-full bg-surface-variant overflow-hidden">
-               {user?.photoURL ? (
-                 <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-               ) : (
-                 <div className="w-full h-full flex items-center justify-center text-primary font-bold">
-                   {user?.email?.[0]?.toUpperCase() || 'U'}
-                 </div>
-               )}
-            </div>
-          </div>
-        </header>
-
-        {/* Canvas */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 md:py-16 max-w-[1200px] mx-auto w-full">
+    <AppLayout
+      sidebarActions={
+        <Link 
+          to={`/library/${libraryId}`}
+          className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 font-serif text-lg tracking-tight"
+        >
+          <ArrowLeft className="w-5 h-5 text-outline" />
+          <span>Back to Library</span>
+        </Link>
+      }
+    >
+      <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 max-w-[1200px] mx-auto w-full">
           
-          {/* Breadcrumbs */}
-          <nav className="flex items-center space-x-2 text-on-surface-variant mb-8 text-sm">
-            <Link className="hover:text-primary transition-colors" to={`/library/${libraryId}`}>Library</Link>
-            <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-            <span className="hover:text-primary transition-colors">{book.genre || 'Collection'}</span>
-            <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-            <span className="text-primary font-medium">{book.title}</span>
-          </nav>
+
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
             {/* Left Column */}
@@ -294,13 +241,21 @@ export default function BookDetailsView() {
                    <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
                 ) : (
                    <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                     <span className="material-symbols-outlined text-primary opacity-50" style={{ fontSize: '64px' }}>book</span>
+                     <BookIcon className="w-16 h-16 text-primary opacity-50" />
                    </div>
                 )}
-                {/* Status Badge - Static for now or dynamically set based on reading status */}
-                <div className="absolute top-4 right-4 bg-primary text-on-primary font-label-caps text-label-caps px-3 py-1 rounded">
-                    READING
-                </div>
+                {/* Status Badge */}
+                {book.readingStatus && book.readingStatus !== 'unset' && (
+                  <div className={`absolute top-4 right-4 font-label-caps text-label-caps px-3 py-1 rounded shadow-sm ${
+                    book.readingStatus === 'reading' ? 'bg-primary text-on-primary' :
+                    book.readingStatus === 'finished' ? 'bg-[#2f4d40] text-white' :
+                    'bg-error text-on-error'
+                  }`}>
+                      {book.readingStatus === 'reading' ? 'READING' : 
+                       book.readingStatus === 'finished' ? 'FINISHED' : 
+                       'ABANDONED'}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -342,6 +297,37 @@ export default function BookDetailsView() {
                 </div>
               </div>
 
+              {/* Reading Status */}
+              <section className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-surface-container p-4 rounded-lg border border-outline-variant/30 w-fit">
+                <label htmlFor="readingStatus" className="font-label-caps text-label-caps text-outline uppercase tracking-wider">Reading Status</label>
+                <select
+                  id="readingStatus"
+                  value={book.readingStatus || 'unset'}
+                  onChange={async (e) => {
+                    if (!libraryId || !bookId || !canEdit) return;
+                    const newStatus = e.target.value;
+                    try {
+                      await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), {
+                        readingStatus: newStatus,
+                        addedBy: book.addedBy || user?.uid,
+                        addedAt: book.addedAt || serverTimestamp()
+                      });
+                      toast.success("Reading status updated");
+                    } catch (err) {
+                      toast.error("Failed to update status");
+                    }
+                  }}
+                  disabled={!canEdit}
+                  className="px-4 py-2 bg-surface text-on-surface border border-outline-variant/60 rounded focus:ring-1 focus:ring-primary focus:outline-none cursor-pointer disabled:opacity-50 appearance-none min-w-[180px] text-sm font-medium"
+                  style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1em' }}
+                >
+                  <option value="unset">Not Started</option>
+                  <option value="reading">Currently Reading</option>
+                  <option value="finished">Finished</option>
+                  <option value="abandoned">Abandoned</option>
+                </select>
+              </section>
+
               {/* Synopsis */}
               <section>
                 <h3 className="font-headline-md text-[24px] text-primary mb-4">Synopsis</h3>
@@ -360,7 +346,7 @@ export default function BookDetailsView() {
               <section className="bg-surface-container-lowest rounded-lg border border-surface-variant p-8 architectural-shadow">
                 <div className="flex flex-col sm:flex-row gap-6 items-start">
                   <div className="w-24 h-24 rounded-full overflow-hidden shrink-0 border-2 border-surface-container bg-surface flex items-center justify-center">
-                    <span className="material-symbols-outlined text-outline" style={{ fontSize: '48px'}}>person</span>
+                    <User className="w-12 h-12 text-outline" />
                   </div>
                   <div>
                     <h3 className="font-headline-md text-[24px] text-primary mb-1">About {toTitleCase(book.author)}</h3>
@@ -422,7 +408,7 @@ export default function BookDetailsView() {
               <section className="mt-8 border-t border-surface-dim pt-12">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="font-headline-md text-[24px] text-primary">Reviews</h3>
-                  {canEdit && !isReviewing && !reviews.some(r => r.userId === user?.uid) && (
+                  {canEdit && !isReviewing && !reviews.some(r => r.userId === user?.uid) && (book.readingStatus === 'finished' || book.readingStatus === 'abandoned') && (
                     <button
                       className="px-6 py-2 rounded-full font-label-caps text-label-caps bg-primary text-on-primary hover:bg-primary/90 transition-colors shadow-sm"
                       onClick={() => setIsReviewing(true)}
@@ -432,7 +418,7 @@ export default function BookDetailsView() {
                   )}
                 </div>
 
-                {isReviewing && (
+                {isReviewing && (book.readingStatus === 'finished' || book.readingStatus === 'abandoned') && (
                   <div className="bg-surface-container rounded-lg p-6 mb-8 border border-surface-variant">
                     <div className="flex items-center gap-2 mb-4">
                       {[1, 2, 3, 4, 5].map((star) => (
@@ -511,7 +497,6 @@ export default function BookDetailsView() {
             </div>
           </div>
         </div>
-      </main>
-    </div>
+    </AppLayout>
   );
 }

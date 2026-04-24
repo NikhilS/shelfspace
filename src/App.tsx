@@ -7,6 +7,7 @@ import { AnimatePresence } from 'motion/react';
 import Dashboard from './pages/Dashboard';
 import LibraryView from './pages/LibraryView';
 import BookDetailsView from './pages/BookDetailsView';
+import AddBookView from './pages/AddBookView';
 import Login from './pages/Login';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -37,6 +38,11 @@ function AnimatedRoutes() {
         <Route path="/library/:id" element={
           <PrivateRoute>
             <LibraryView />
+          </PrivateRoute>
+        } />
+        <Route path="/library/:id/add" element={
+          <PrivateRoute>
+            <AddBookView />
           </PrivateRoute>
         } />
         <Route path="/library/:libraryId/book/:bookId" element={

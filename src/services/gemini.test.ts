@@ -87,7 +87,7 @@ describe('gemini service', () => {
         text: JSON.stringify(mockResult)
       });
 
-      const result = await extractBooksFromCsv('title,author\nDune,Frank Herbert', 'csv text');
+      const result = await extractBooksFromCsv('title,author\nDune,Frank Herbert');
       expect(result).toHaveLength(1);
       expect(result[0].title).toBe('Dune');
     });
