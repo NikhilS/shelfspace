@@ -10,7 +10,7 @@ import { enrichBooksMetadata, getPickOfTheDay } from '../services/gemini';
 import BookCard from '../components/BookCard';
 import Chatbot from '../components/Chatbot';
 import { BookDetails, searchBookByTitleAndAuthor } from '../services/bookApi';
-import { toSentenceCase, toTitleCase } from '../lib/utils';
+import { toTitleCase } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import AppLayout from '../components/AppLayout';
 
@@ -130,7 +130,7 @@ export default function LibraryView() {
       
       let attempts = 0;
       while (pick && attempts < 3) {
-        const alreadyExists = books.some(b => b.title.toLowerCase() === pick!.title.toLowerCase() && b.author.toLowerCase() === pick!.author.toLowerCase());
+        const alreadyExists = books.some(b => (b.title || '').toLowerCase() === (pick!.title || '').toLowerCase() && (b.author || '').toLowerCase() === (pick!.author || '').toLowerCase());
         if (!alreadyExists) break;
         pick = await getPickOfTheDay(sample);
         attempts++;
@@ -547,8 +547,8 @@ export default function LibraryView() {
                const book = missingMetadataBooks.find(b => b.id === enriched.id);
                if (book) {
                  const changes: Partial<Omit<Book, 'id'>> = {};
-                 if (!book.genre) changes.genre = enriched.genre;
-                 if (!book.series) changes.series = enriched.series;
+                 if (!book.genre && enriched.genre) changes.genre = enriched.genre.substring(0, 100);
+                 if (!book.series && enriched.series) changes.series = enriched.series.substring(0, 100);
                  if (Object.keys(changes).length > 0) {
                    await updateDoc(doc(db, 'libraries', id, 'books', book.id), {
                      ...changes
@@ -645,7 +645,7 @@ export default function LibraryView() {
               <tbody className="divide-y divide-surface-variant/60">
                 <AnimatePresence>
                   {shelfBooksList.map((book, idx) => {
-                    const hash = book.title.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                    const hash = (book.title || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
                     const gradients = [
                       'from-[#2f4d40] to-[#163428]',
                       'from-[#7d5633] to-[#2e1500]',

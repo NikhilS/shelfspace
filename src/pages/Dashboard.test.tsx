@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import Dashboard from './Dashboard';
@@ -73,6 +73,11 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Test Library')).toBeInTheDocument();
     });
+    
+    // Wait for the async getCountFromServer state updates
+    await waitFor(() => {
+      expect(screen.getByText('5 Volumes')).toBeInTheDocument();
+    });
   });
 
   it('can create a new library', async () => {
@@ -82,6 +87,11 @@ describe('Dashboard', () => {
     });
 
     renderDashboard();
+
+    // Wait for the async getCountFromServer state updates to settle before proceeding
+    await waitFor(() => {
+      expect(screen.getByText('5 Volumes')).toBeInTheDocument();
+    });
     
     // Open form
     const createBtn = screen.getByText('Create Library');
@@ -93,12 +103,20 @@ describe('Dashboard', () => {
     
     // Submit
     const submitBtn = screen.getByText('Create Collection');
-    fireEvent.click(submitBtn);
-
-    // Wait for addDoc to be called
     const { addDoc } = await import('firebase/firestore');
+    
+    await act(async () => {
+      fireEvent.click(submitBtn);
+      // Let the promise queue drain so addDoc and its finally blocks run
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    // Verify
+    expect(addDoc).toHaveBeenCalled();
+
+    // Verify form disappeared, waiting for AnimatePresence exit animations
     await waitFor(() => {
-      expect(addDoc).toHaveBeenCalled();
+      expect(screen.queryByPlaceholderText('Library Name (e.g. Private Study)')).not.toBeInTheDocument();
     });
   });
 });

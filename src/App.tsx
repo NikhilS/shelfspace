@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster } from 'sonner';
-import { AnimatePresence } from 'motion/react';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const LibraryView = lazy(() => import('./pages/LibraryView'));
@@ -32,35 +31,33 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function AnimatedRoutes() {
   const location = useLocation();
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
-        <Route path="/login" element={
-          <Suspense fallback={<LoadingScreen />}>
-            <Login />
-          </Suspense>
-        } />
-        <Route path="/" element={
-          <PrivateRoute>
-            <Dashboard />
-          </PrivateRoute>
-        } />
-        <Route path="/library/:id" element={
-          <PrivateRoute>
-            <LibraryView />
-          </PrivateRoute>
-        } />
-        <Route path="/library/:id/add" element={
-          <PrivateRoute>
-            <AddBookView />
-          </PrivateRoute>
-        } />
-        <Route path="/library/:libraryId/book/:bookId" element={
-          <PrivateRoute>
-            <BookDetailsView />
-          </PrivateRoute>
-        } />
-      </Routes>
-    </AnimatePresence>
+    <Routes location={location} key={location.pathname}>
+      <Route path="/login" element={
+        <Suspense fallback={<LoadingScreen />}>
+          <Login />
+        </Suspense>
+      } />
+      <Route path="/" element={
+        <PrivateRoute>
+          <Dashboard />
+        </PrivateRoute>
+      } />
+      <Route path="/library/:id" element={
+        <PrivateRoute>
+          <LibraryView />
+        </PrivateRoute>
+      } />
+      <Route path="/library/:id/add" element={
+        <PrivateRoute>
+          <AddBookView />
+        </PrivateRoute>
+      } />
+      <Route path="/library/:libraryId/book/:bookId" element={
+        <PrivateRoute>
+          <BookDetailsView />
+        </PrivateRoute>
+      } />
+    </Routes>
   );
 }
 

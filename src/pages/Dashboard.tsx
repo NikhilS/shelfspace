@@ -40,7 +40,7 @@ export default function Dashboard() {
       collection(db, 'libraries'),
       or(
         where('ownerId', '==', user.uid),
-        where('sharedWith', 'array-contains', user.email)
+        where('sharedWith', 'array-contains', user.email?.toLowerCase() || '')
       )
     );
 

@@ -13,29 +13,57 @@ export function handleGeminiError(error: unknown): never {
 
 export async function extractBooksFromImage(base64Image: string, mimeType: string): Promise<{ title: string, author: string, isbn?: string, genre?: string }[]> {
   try {
+    if (!base64Image || base64Image === 'data:,') {
+      throw new Error("Invalid image data provided.");
+    }
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType,
-              data: base64Image.split(',')[1] || base64Image,
+    
+    // First attempt with pro
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Image.split(',')[1] || base64Image,
+              },
             },
-          },
-          {
-            text: "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects, where each object has a 'title' string, an 'author' string, an 'isbn' string (if visible on the spine or back cover, otherwise null), and a 'genre' string (infer from title/author if possible, e.g. 'Science Fiction', 'Fantasy', 'Non-fiction', etc.). Do not include markdown formatting like ```json. Just the raw JSON array.",
-          },
-        ],
-      },
-      config: {
-        responseMimeType: "application/json",
-      }
-    });
+            {
+              text: "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects, where each object has a 'title' string, an 'author' string, an 'isbn' string (if visible on the spine or back cover, otherwise null), and a 'genre' string (infer from title/author if possible, e.g. 'Science Fiction', 'Fantasy', 'Non-fiction', etc.). Do not include markdown formatting like ```json. Just the raw JSON array.",
+            },
+          ],
+        },
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
+    } catch (e: any) {
+      console.warn("Retrying with flash model due to internal server error:", e);
+      response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Image.split(',')[1] || base64Image,
+              },
+            },
+            {
+              text: "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects, where each object has a 'title' string, an 'author' string, an 'isbn' string (if visible on the spine or back cover, otherwise null), and a 'genre' string (infer from title/author if possible, e.g. 'Science Fiction', 'Fantasy', 'Non-fiction', etc.). Do not include markdown formatting like ```json. Just the raw JSON array.",
+            },
+          ],
+        },
+      });
+    }
 
-    const text = response.text;
+    let text = response.text;
     if (!text) return [];
+    
+    text = text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
     
     try {
       const parsed = JSON.parse(text);

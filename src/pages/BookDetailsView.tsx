@@ -229,7 +229,15 @@ export default function BookDetailsView() {
     if (!book || !libraryId || !canEdit) return;
     setIsSavingDetails(true);
     try {
-      await updateDoc(doc(db, 'libraries', libraryId, 'books', book.id), editForm);
+      const cleanForm = Object.fromEntries(
+        Object.entries(editForm).filter(([_, v]) => v !== undefined && v !== null && v !== '')
+      );
+      if (cleanForm.genre && typeof cleanForm.genre === 'string') cleanForm.genre = cleanForm.genre.substring(0, 100);
+      if (cleanForm.author && typeof cleanForm.author === 'string') cleanForm.author = cleanForm.author.substring(0, 500);
+      if (cleanForm.series && typeof cleanForm.series === 'string') cleanForm.series = cleanForm.series.substring(0, 100);
+      if (cleanForm.title && typeof cleanForm.title === 'string') cleanForm.title = cleanForm.title.substring(0, 500);
+      
+      await updateDoc(doc(db, 'libraries', libraryId, 'books', book.id), cleanForm);
       toast.success("Book details updated");
       setIsEditingDetails(false);
     } catch (error) {

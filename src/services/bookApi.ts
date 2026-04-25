@@ -103,10 +103,11 @@ export async function searchBookByIsbn(isbn: string): Promise<BookDetails | null
   return null;
 }
 
-export async function searchBookByTitleAndAuthor(title: string, author: string): Promise<BookDetails[]> {
+export async function searchBookByTitleAndAuthor(title: string | null | undefined, author: string | null | undefined): Promise<BookDetails[]> {
+  if (!title && !author) return [];
   let results: BookDetails[] = [];
   try {
-    const q = encodeURIComponent(`intitle:"${title}"+inauthor:"${author}"`);
+    const q = encodeURIComponent(`intitle:"${title || ''}"+inauthor:"${author || ''}"`);
     const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5`);
     if (response.ok) {
       const data = await response.json();
@@ -131,7 +132,8 @@ export async function searchBookByTitleAndAuthor(title: string, author: string):
   return results;
 }
 
-export async function searchBookByTitle(query: string): Promise<BookDetails[]> {
+export async function searchBookByTitle(query: string | null | undefined): Promise<BookDetails[]> {
+  if (!query) return [];
   let results: BookDetails[] = [];
   const normalizedQuery = query.toLowerCase().trim();
 
@@ -220,8 +222,8 @@ export async function searchBookByTitle(query: string): Promise<BookDetails[]> {
 
   // Sort results to prioritize exact matches
   return results.sort((a, b) => {
-    const aTitle = a.title.toLowerCase();
-    const bTitle = b.title.toLowerCase();
+    const aTitle = (a.title || '').toLowerCase();
+    const bTitle = (b.title || '').toLowerCase();
     
     const aExact = aTitle === normalizedQuery;
     const bExact = bTitle === normalizedQuery;

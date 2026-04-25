@@ -181,8 +181,8 @@ service cloud.firestore {
         allow read: if canReadBooks();
         allow create: if canEditBooks() && isValidBook(request.resource.data) && request.resource.data.addedBy == request.auth.uid;
         allow update: if canEditBooks() && isValidBook(request.resource.data) &&
-                      (request.resource.data.addedAt == resource.data.addedAt || resource.data.addedAt is string) &&
-                      (request.resource.data.addedBy == resource.data.addedBy || !('addedBy' in resource.data));
+                      (!('addedAt' in resource.data) || request.resource.data.addedAt == resource.data.addedAt || resource.data.addedAt is string) &&
+                      (!('addedBy' in resource.data) || request.resource.data.addedBy == resource.data.addedBy);
         allow delete: if canEditBooks();
 
         match /reviews/{reviewId} {

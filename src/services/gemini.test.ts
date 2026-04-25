@@ -19,6 +19,7 @@ describe('gemini service', () => {
     vi.clearAllMocks();
     process.env.GEMINI_API_KEY = 'test-key';
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
