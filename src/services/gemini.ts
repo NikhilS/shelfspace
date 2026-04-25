@@ -302,7 +302,9 @@ export async function getPickOfTheDay(books: { title: string, author: string }[]
   try {
     if (!books || books.length === 0) return null;
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const bookList = books.map((b, i) => `${i+1}. "${b.title}" by ${b.author}`).join('\n');
+    // Randomize the books we send to the AI to get varied recommendations, max 50 books
+    const sampleBooks = [...books].sort(() => 0.5 - Math.random()).slice(0, 50);
+    const bookList = sampleBooks.map((b, i) => `${i+1}. "${b.title}" by ${b.author}`).join('\n');
     const prompt = `Act as an expert librarian. Here is a sample of books from my library:
 
 ${bookList}
@@ -317,17 +319,30 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
 - author (the book author)
 - reason (your 1-2 sentence explanation)`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      }
-    });
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+    } catch (e: any) {
+      console.warn("Fallback to pro model due to error in pick of the day:", e);
+      response = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+    }
 
-    const text = response.text;
+    let text = response.text;
     if (!text) return null;
     try {
+      text = text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
       const parsed = JSON.parse(text);
       if (parsed.title && parsed.author && parsed.reason) {
         return parsed as { title: string, author: string, reason: string };

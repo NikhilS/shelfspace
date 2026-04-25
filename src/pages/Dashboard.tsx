@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, or, getCountFromServer } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, or, getCountFromServer, updateDoc, doc } from 'firebase/firestore';
 import { Link, Navigate } from 'react-router-dom';
 import { Book, Plus, Loader2, Library as LibraryIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -96,19 +96,32 @@ export default function Dashboard() {
 
     setIsSubmitting(true);
     try {
-      const heroImageUrl = await generateLibraryHeroImage(newLibName.trim());
-
-      await addDoc(collection(db, 'libraries'), {
+      const docRef = await addDoc(collection(db, 'libraries'), {
         name: newLibName.trim(),
         ownerId: user.uid,
         ownerName: user.displayName || user.email || 'Unknown',
         sharedWith: [],
         createdAt: serverTimestamp(),
-        heroImageUrl: heroImageUrl || null
+        heroImageUrl: null
       });
+      const libNameForImage = newLibName.trim();
       setNewLibName('');
       setIsCreating(false);
       toast.success('Library created successfully');
+      
+      // Generate hero image in background
+      generateLibraryHeroImage(libNameForImage).then(async (url) => {
+        if (url) {
+          try {
+            await updateDoc(doc(db, 'libraries', docRef.id), {
+              heroImageUrl: url
+            });
+          } catch(e) {
+            console.error("Failed to save hero image", e);
+          }
+        }
+      }).catch(console.error);
+      
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'libraries');
     } finally {

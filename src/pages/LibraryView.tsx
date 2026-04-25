@@ -69,6 +69,48 @@ export default function LibraryView() {
   const [sortBy, setSortBy] = useState<SortOption>('added');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'standard' | 'table'>('standard');
+  const [selectedBooks, setSelectedBooks] = useState<Set<string>>(new Set());
+
+  const toggleBookSelection = (e: React.MouseEvent, bookId: string) => {
+    e.stopPropagation();
+    const newSelected = new Set(selectedBooks);
+    if (newSelected.has(bookId)) {
+        newSelected.delete(bookId);
+    } else {
+        newSelected.add(bookId);
+    }
+    setSelectedBooks(newSelected);
+  };
+
+  const toggleAllBooks = (shelfBooksList: Book[]) => {
+    const listIds = shelfBooksList.map(b => b.id);
+    const allSelected = listIds.every(id => selectedBooks.has(id));
+    const newSelected = new Set(selectedBooks);
+    if (allSelected) {
+        listIds.forEach(id => newSelected.delete(id));
+    } else {
+        listIds.forEach(id => newSelected.add(id));
+    }
+    setSelectedBooks(newSelected);
+  };
+
+  const handleBulkStatusChange = async (newStatus: string) => {
+    if (selectedBooks.size === 0 || !user || !id) return;
+    try {
+      const promises = Array.from(selectedBooks).map(bookId => {
+        const bookRef = doc(db, 'libraries', id, 'books', bookId);
+        return updateDoc(bookRef, {
+          [`userStatuses.${user.uid}`]: newStatus
+        });
+      });
+      await Promise.all(promises);
+      toast.success(`Updated status for ${selectedBooks.size} books`);
+      setSelectedBooks(new Set());
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `libraries/${id}/books`);
+    }
+  };
+
   const mainRef = useRef<HTMLElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -78,7 +120,6 @@ export default function LibraryView() {
   const [filterYearMin, setFilterYearMin] = useState('');
   const [filterYearMax, setFilterYearMax] = useState('');
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const generateNewPick = async () => {
     if (books.length === 0 || isGeneratingPick) return;
@@ -143,14 +184,15 @@ export default function LibraryView() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (libraryToDelete) setLibraryToDelete(null);
+        if (libraryToDelete) setLibraryToDelete(false);
         else if (bookToDelete) setBookToDelete(null);
         else if (isSettingsOpen) setIsSettingsOpen(false);
+        else if (isAdvancedSettingsOpen) setIsAdvancedSettingsOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [libraryToDelete, bookToDelete, isSettingsOpen]);
+  }, [libraryToDelete, bookToDelete, isSettingsOpen, isAdvancedSettingsOpen]);
 
   useEffect(() => {
     // Resize observer removed as we now use CSS grid
@@ -226,9 +268,7 @@ export default function LibraryView() {
       if (Object.keys(updates).length > 0) {
         hasUpdates = true;
         updateDoc(doc(db, 'libraries', id, 'books', b.id), {
-          ...updates,
-          addedBy: b.addedBy || user?.uid,
-          addedAt: b.addedAt || serverTimestamp()
+          ...updates
         }).catch(err => console.error("Error backfilling book data", err));
       }
     });
@@ -330,11 +370,8 @@ export default function LibraryView() {
   const handleUpdateBook = async (bookId: string, updatedData: Partial<Omit<Book, 'id'>>) => {
     if (!id || !canEdit) return;
     try {
-      const bookToUpdate = books.find(b => b.id === bookId);
       await updateDoc(doc(db, 'libraries', id, 'books', bookId), {
-        ...updatedData,
-        addedBy: bookToUpdate?.addedBy || user?.uid,
-        addedAt: bookToUpdate?.addedAt || serverTimestamp()
+        ...updatedData
       });
       toast.success("Book updated");
       setSelectedBook(prev => prev && prev.id === bookId ? { ...prev, ...updatedData } : prev);
@@ -487,9 +524,7 @@ export default function LibraryView() {
 
             if (Object.keys(changes).length > 0) {
               await updateDoc(doc(db, 'libraries', id, 'books', book.id), {
-                ...changes,
-                addedBy: book.addedBy || user?.uid,
-                addedAt: book.addedAt || serverTimestamp()
+                ...changes
               });
             }
           } catch (err: unknown) {
@@ -516,9 +551,7 @@ export default function LibraryView() {
                  if (!book.series) changes.series = enriched.series;
                  if (Object.keys(changes).length > 0) {
                    await updateDoc(doc(db, 'libraries', id, 'books', book.id), {
-                     ...changes,
-                     addedBy: book.addedBy || user?.uid,
-                     addedAt: book.addedAt || serverTimestamp()
+                     ...changes
                    });
                    updatedCount++;
                  }
@@ -592,12 +625,19 @@ export default function LibraryView() {
               <thead>
                 <tr className="bg-surface-container-low border-b border-surface-variant">
                   <th className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/2 cursor-pointer hover:bg-surface-variant/30 transition-colors" onClick={() => handleSort('title')}>
-                    <div className="flex items-center gap-2">Title <SortIcon column="title" /></div>
+                    <div className="flex items-center gap-4">
+                      {user && (
+                         <div className={`w-8 flex items-center justify-center flex-shrink-0 transition-opacity ${selectedBooks.size > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={(e) => { e.stopPropagation(); toggleAllBooks(shelfBooksList); }}>
+                           <input type="checkbox" checked={selectedBooks.size > 0 && shelfBooksList.length > 0 && shelfBooksList.every(b => selectedBooks.has(b.id))} ref={el => { if (el) el.indeterminate = selectedBooks.size > 0 && !shelfBooksList.every(b => selectedBooks.has(b.id)); }} onChange={() => {}} className="pointer-events-none w-4 h-4 accent-primary" />
+                         </div>
+                      )}
+                      <div className="flex items-center gap-2">Title <SortIcon column="title" /></div>
+                    </div>
                   </th>
                   <th className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/4 cursor-pointer hover:bg-surface-variant/30 transition-colors" onClick={() => handleSort('author')}>
                     <div className="flex items-center gap-2">Author <SortIcon column="author" /></div>
                   </th>
-                  <th className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right cursor-pointer hover:bg-surface-variant/30 transition-colors" onClick={() => handleSort('added')}>
+                  <th className="hidden sm:table-cell py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right cursor-pointer hover:bg-surface-variant/30 transition-colors" onClick={() => handleSort('added')}>
                     <div className="flex items-center gap-2 justify-end">Added <SortIcon column="added" /></div>
                   </th>
                 </tr>
@@ -621,24 +661,37 @@ export default function LibraryView() {
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 10 }}
-                        transition={{ duration: 0.2, delay: idx * 0.02 }}
+                        transition={{ duration: 0.2 }}
                         onClick={() => navigate(`/library/${id}/book/${book.id}`)}
                         className="group hover:bg-surface-container-low/50 transition-colors cursor-pointer"
                       >
                         <td className="py-4 px-6">
-                          <div className="flex items-center gap-4">
-                            <div className="h-12 w-8 bg-surface-variant rounded-sm shadow-sm flex-shrink-0 overflow-hidden relative border border-outline-variant/30">
-                              {book.coverUrl ? (
-                                <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
-                              ) : (
-                                <div className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-80`}></div>
-                              )}
+                          <div className="flex items-center gap-4 group/cover">
+                            <div 
+                              className="h-12 w-8 flex-shrink-0 relative overflow-hidden rounded-sm cursor-pointer"
+                              onClick={(e) => toggleBookSelection(e, book.id)}
+                            >
+                               {/* Checkbox Layer */}
+                               {user && (
+                                   <div className={`absolute inset-0 z-20 flex items-center justify-center transition-all ${(selectedBooks.size > 0 || selectedBooks.has(book.id)) ? 'opacity-100 bg-transparent' : 'opacity-0 group-hover/cover:opacity-100 hover:bg-surface-variant/30'}`}>
+                                       <input type="checkbox" checked={selectedBooks.has(book.id)} onChange={() => {}} className="pointer-events-none w-4 h-4 accent-primary" />
+                                   </div>
+                               )}
+                               
+                               {/* Cover Layer */}
+                               <div className={`absolute inset-0 bg-surface-variant shadow-sm border border-outline-variant/30 transition-opacity ${user && (selectedBooks.size > 0 || selectedBooks.has(book.id)) ? 'opacity-0' : 'opacity-100 group-hover/cover:opacity-0'}`}>
+                                 {book.coverUrl ? (
+                                   <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                                 ) : (
+                                   <div className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-80`}></div>
+                                 )}
+                               </div>
                             </div>
                             <span className="font-headline-md text-[18px] sm:text-[20px] text-on-surface line-clamp-2 max-w-lg leading-snug">{toTitleCase(book.title)}</span>
                           </div>
                         </td>
                         <td className="py-4 px-6 font-body-md text-body-md text-on-surface-variant">{toTitleCase(book.author)}</td>
-                        <td className="py-4 px-6 text-right font-body-md text-outline whitespace-nowrap">
+                        <td className="hidden sm:table-cell py-4 px-6 text-right font-body-md text-outline whitespace-nowrap">
                           {book.addedAt && getFirestoreTime(book.addedAt) > 0
                             ? new Date(getFirestoreTime(book.addedAt)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
                             : 'Unknown'}
@@ -670,9 +723,9 @@ export default function LibraryView() {
               initial={{ opacity: 0, y: 15, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.35, delay: idx * 0.05, ease: [0.25, 0.1, 0.25, 1.0] }}
+              transition={{ duration: 0.35, delay: Math.min(idx, 15) * 0.03, ease: [0.25, 0.1, 0.25, 1.0] }}
             >
-              <BookCard book={book} onDelete={handleDeleteBook} onClick={() => navigate(`/library/${id}/book/${book.id}`)} canEdit={canEdit} />
+              <BookCard book={book} onClick={() => navigate(`/library/${id}/book/${book.id}`)} canEdit={canEdit} />
             </motion.div>
           ))}
         </AnimatePresence>
@@ -797,7 +850,7 @@ export default function LibraryView() {
               </div>
             ) : pickOfTheDay ? (
               <div className="flex flex-col md:flex-row gap-8 w-full z-10 w-full relative">
-                <div className="w-24 md:w-32 flex-shrink-0">
+                <div className="w-24 md:w-32 flex-shrink-0 mt-10 md:mt-8 z-0">
                   {pickOfTheDay.coverUrl ? (
                     <img alt="Book Cover" className="w-full h-auto object-cover rounded-sm shadow-md border border-outline-variant/20 aspect-[2/3]" src={pickOfTheDay.coverUrl} />
                   ) : (
@@ -845,7 +898,6 @@ export default function LibraryView() {
             <button 
               onClick={() => {
                 navigate(`/library/${id}/add`);
-                setIsMobileNavOpen(false);
               }}
               className="flex items-center gap-3 text-on-surface hover:text-primary pl-6 py-3 hover:bg-surface-container transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight"
             >
@@ -858,7 +910,6 @@ export default function LibraryView() {
             <button 
               onClick={() => {
                 setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen);
-                setIsMobileNavOpen(false);
               }}
               className={`flex items-center gap-3 pl-6 py-3 transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight ${isAdvancedSettingsOpen ? 'bg-surface-container text-primary border-r-2 border-primary' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
             >
@@ -871,7 +922,6 @@ export default function LibraryView() {
             <button 
               onClick={() => {
                 setIsSettingsOpen(!isSettingsOpen);
-                setIsMobileNavOpen(false);
               }}
               className={`flex items-center gap-3 pl-6 py-3 transition-colors duration-200 w-full text-left font-serif text-lg tracking-tight ${isSettingsOpen ? 'bg-surface-container text-primary border-r-2 border-primary' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
             >
@@ -1088,9 +1138,11 @@ export default function LibraryView() {
             </div>
           )}
         </div>
+      </main>
+      </>
+      )}
 
-
-        {/* Settings Modal */}
+      {/* Settings Modal */}
         <AnimatePresence>
           {isSettingsOpen && isOwner && (
             <motion.div 
@@ -1098,7 +1150,7 @@ export default function LibraryView() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-sans" 
+              className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans" 
               onClick={() => setIsSettingsOpen(false)}
             >
               <motion.div 
@@ -1167,7 +1219,7 @@ export default function LibraryView() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-sans" 
+              className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans" 
               onClick={() => setIsAdvancedSettingsOpen(false)}
             >
               <motion.div 
@@ -1268,9 +1320,37 @@ export default function LibraryView() {
             </motion.div>
           )}
         </AnimatePresence>
-      </main>
-      </>
-      )}
+
+      {/* Bulk Actions Bar */}
+      <AnimatePresence>
+        {selectedBooks.size > 0 && (
+          <motion.div 
+             initial={{ y: 100, opacity: 0 }}
+             animate={{ y: 0, opacity: 1 }}
+             exit={{ y: 100, opacity: 0 }}
+             className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-surface border border-outline-variant/30 px-6 py-4 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.1)] flex items-center gap-6 z-[60] architectural-shadow"
+          >
+             <span className="font-headline-md text-sm text-on-surface whitespace-nowrap">{selectedBooks.size} selected</span>
+             <div className="flex items-center gap-3 border-l border-outline-variant/30 pl-6">
+                 <span className="text-sm font-label-caps text-on-surface-variant uppercase tracking-wider hidden sm:inline">Set Status</span>
+                 <select 
+                    className="bg-surface-container-low border border-outline-variant/50 rounded-lg px-4 py-2 text-sm font-body-md text-on-surface outline-none cursor-pointer hover:bg-surface-container transition-colors shadow-sm min-w-[140px]"
+                    onChange={(e) => handleBulkStatusChange(e.target.value)}
+                    value=""
+                 >
+                    <option value="" disabled>Choose...</option>
+                    <option value="reading">Currently Reading</option>
+                    <option value="finished">Finished</option>
+                    <option value="abandoned">Abandoned</option>
+                    <option value="unset">Remove Status</option>
+                 </select>
+             </div>
+             <button onClick={() => setSelectedBooks(new Set())} className="ml-2 p-2 hover:bg-surface-variant/50 rounded-full transition-colors text-on-surface-variant hover:text-on-surface" title="Clear selection">
+               <X size={18} strokeWidth={2} />
+             </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Chatbot libraryBooks={books.map(b => ({ title: b.title, author: b.author, genre: b.genre, description: b.description }))} />
 

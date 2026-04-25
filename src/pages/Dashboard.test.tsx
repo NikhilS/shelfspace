@@ -26,7 +26,9 @@ vi.mock('firebase/firestore', () => ({
     });
     return vi.fn();
   }),
-  addDoc: vi.fn(),
+  addDoc: vi.fn(() => Promise.resolve({ id: 'new-doc-id' })),
+  updateDoc: vi.fn(),
+  doc: vi.fn(),
   serverTimestamp: vi.fn(),
   getCountFromServer: vi.fn(() => Promise.resolve({ data: () => ({ count: 5 }) })),
 }));
@@ -73,7 +75,7 @@ describe('Dashboard', () => {
     });
   });
 
-  it('can open Create Library form', async () => {
+  it('can create a new library', async () => {
     (useAuth as any).mockReturnValue({
       user: { uid: 'user1', email: 'test@example.com', displayName: 'Test User' },
       logOut: vi.fn(),
@@ -81,12 +83,22 @@ describe('Dashboard', () => {
 
     renderDashboard();
     
+    // Open form
     const createBtn = screen.getByText('Create Library');
     fireEvent.click(createBtn);
 
-    // Form should appear with the input
+    // Type name
+    const input = await screen.findByPlaceholderText('Library Name (e.g. Private Study)');
+    fireEvent.change(input, { target: { value: 'New Test Library' } });
+    
+    // Submit
+    const submitBtn = screen.getByText('Create Collection');
+    fireEvent.click(submitBtn);
+
+    // Wait for addDoc to be called
+    const { addDoc } = await import('firebase/firestore');
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('Library Name (e.g. Private Study)')).toBeInTheDocument();
+      expect(addDoc).toHaveBeenCalled();
     });
   });
 });

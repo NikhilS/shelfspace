@@ -44,7 +44,7 @@ export default function AppLayout({ children, sidebarActions }: AppLayoutProps) 
           </Link>
           
           {sidebarActions && (
-             <div className="mt-4 flex flex-col gap-2">
+             <div className="mt-4 flex flex-col gap-2" onClick={() => setIsMobileNavOpen(false)}>
                 <div className="px-6 text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-1 mt-2">Actions</div>
                 {sidebarActions}
              </div>
@@ -66,25 +66,27 @@ export default function AppLayout({ children, sidebarActions }: AppLayoutProps) 
       <main className="flex-1 min-w-0 flex flex-col md:ml-64 pt-16 md:pt-0 min-h-screen">
         
         {/* TopNavBar */}
-        <header className="flex justify-between items-center h-16 px-8 fixed md:sticky top-0 w-full md:w-auto mx-auto md:mx-0 z-40 bg-background md:bg-surface/80 backdrop-blur-md border-b border-outline-variant/30 shadow-[0_8px_30px_rgb(26,47,75,0.04)] font-body-md text-on-background">
-          <div className="flex items-center space-x-6 w-1/3">
-            <button 
-              className="md:hidden p-2 -ml-2 text-on-surface hover:text-primary rounded-full hover:bg-surface-container transition-colors flex items-center justify-center"
-              onClick={() => setIsMobileNavOpen(true)}
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-          </div>
-          <div className="text-2xl font-headline-md italic text-primary w-1/3 text-center md:block">Athenaeum</div>
-          <div className="flex items-center justify-end space-x-6 w-1/3 ml-auto text-on-surface-variant">
-            <div className="h-8 w-8 rounded-full bg-surface-variant overflow-hidden">
-               {user?.photoURL ? (
-                 <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-               ) : (
-                 <div className="w-full h-full flex items-center justify-center text-primary font-bold">
-                   {user?.email?.[0]?.toUpperCase() || 'U'}
-                 </div>
-               )}
+        <header className="flex flex-col fixed md:sticky top-0 w-full md:w-auto mx-auto md:mx-0 z-40 bg-background md:bg-surface/80 backdrop-blur-md border-b border-outline-variant/30 shadow-[0_8px_30px_rgb(26,47,75,0.04)] font-body-md text-on-background">
+          <div className="flex justify-between items-center h-16 px-4 md:px-8 w-full">
+            <div className="flex items-center space-x-6 w-1/3">
+              <button 
+                className="md:hidden p-2 -ml-2 text-on-surface hover:text-primary rounded-full hover:bg-surface-container transition-colors flex items-center justify-center"
+                onClick={() => setIsMobileNavOpen(true)}
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="text-2xl font-headline-md italic text-primary w-1/3 text-center md:block">Athenaeum</div>
+            <div className="flex items-center justify-end space-x-6 w-1/3 ml-auto text-on-surface-variant">
+              <div className="h-8 w-8 rounded-full bg-surface-variant overflow-hidden">
+                 {user?.photoURL ? (
+                   <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                 ) : (
+                   <div className="w-full h-full flex items-center justify-center text-primary font-bold">
+                     {user?.email?.[0]?.toUpperCase() || 'U'}
+                   </div>
+                 )}
+              </div>
             </div>
           </div>
         </header>

@@ -118,37 +118,46 @@ export default function BookDetailsView() {
   useEffect(() => {
     if (!book || !canEdit || !libraryId || !bookId) return;
 
-    const generateMissing = async () => {
+      const generateMissing = async () => {
       if (hasAttemptedGeneration.current) return;
       hasAttemptedGeneration.current = true;
 
-      let updatesNeeded: Partial<Book> = {};
+      const promises: Promise<void>[] = [];
+      const updatesNeeded: Partial<Book> = {};
       
       if (!book.synopsis) {
         if (book.description) {
           updatesNeeded.synopsis = book.description;
         } else {
-           try {
-              const syn = await generateBookInsights(book.title, book.author, 'summary');
-              updatesNeeded.synopsis = syn;
-           } catch(e) {}
+           promises.push((async () => {
+             try {
+                const syn = await generateBookInsights(book.title, book.author, 'summary');
+                if (syn) updatesNeeded.synopsis = syn;
+             } catch(e) {}
+           })());
         }
       }
       
       if (!book.authorBio) {
-         try {
-            // First try Wikipedia
-            let bio = await fetchAuthorBioFromWikipedia(book.author);
-            
-            // Fallback to Gemini if Wikipedia returns nothing
-            if (!bio) {
-              bio = await generateBookInsights(book.title, book.author, 'author_bio');
-            }
-            
-            if (bio) {
-               updatesNeeded.authorBio = bio;
-            }
-         } catch(e) {}
+         promises.push((async () => {
+           try {
+              // First try Wikipedia
+              let bio = await fetchAuthorBioFromWikipedia(book.author);
+              
+              // Fallback to Gemini if Wikipedia returns nothing
+              if (!bio) {
+                bio = await generateBookInsights(book.title, book.author, 'author_bio');
+              }
+              
+              if (bio) {
+                 updatesNeeded.authorBio = bio;
+              }
+           } catch(e) {}
+         })());
+      }
+      
+      if (promises.length > 0) {
+        await Promise.all(promises);
       }
       
       if (Object.keys(updatesNeeded).length > 0) {
