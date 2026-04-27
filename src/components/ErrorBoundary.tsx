@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, {ErrorInfo, ReactNode} from 'react';
 
 interface Props {
   children?: ReactNode;
@@ -14,28 +14,34 @@ export class ErrorBoundary extends React.Component<Props, State> {
     super(props);
     this.state = {
       hasError: false,
-      error: null
+      error: null,
     };
   }
 
   componentDidMount() {
-    window.addEventListener('unhandledrejection', this.handleUnhandledRejection);
+    window.addEventListener(
+      'unhandledrejection',
+      this.handleUnhandledRejection,
+    );
   }
 
   componentWillUnmount() {
-    window.removeEventListener('unhandledrejection', this.handleUnhandledRejection);
+    window.removeEventListener(
+      'unhandledrejection',
+      this.handleUnhandledRejection,
+    );
   }
 
   handleUnhandledRejection = (event: PromiseRejectionEvent) => {
     if (event.reason instanceof Error) {
-      this.setState({ hasError: true, error: event.reason });
+      this.setState({hasError: true, error: event.reason});
     } else if (typeof event.reason === 'string') {
-      this.setState({ hasError: true, error: new Error(event.reason) });
+      this.setState({hasError: true, error: new Error(event.reason)});
     }
   };
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return {hasError: true, error};
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -44,20 +50,23 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
-      let errorMessage = this.state.error?.message || 'An unexpected error occurred.';
+      let errorMessage =
+        this.state.error?.message || 'An unexpected error occurred.';
       try {
         const parsed = JSON.parse(errorMessage);
         if (parsed.error && parsed.operationType) {
           errorMessage = `Firestore Error (${parsed.operationType}): ${parsed.error}`;
         }
-      } catch (e) {
+      } catch {
         // Not a JSON error, use as is
       }
 
       return (
         <div className="min-h-screen flex items-center justify-center bg-paper p-4">
           <div className="bg-surface p-8 rounded-xl shadow-lg max-w-lg w-full">
-            <h2 className="text-2xl font-bold text-red-600 mb-4">Something went wrong</h2>
+            <h2 className="text-2xl font-bold text-red-600 mb-4">
+              Something went wrong
+            </h2>
             <div className="bg-red-50 p-4 rounded-md text-red-800 text-sm font-mono break-words mb-6">
               {errorMessage}
             </div>

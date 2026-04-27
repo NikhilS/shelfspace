@@ -1,2 +1,2 @@
-import { useZxing } from 'react-zxing';
+import {useZxing} from 'react-zxing';
 console.log(Object.keys(useZxing));

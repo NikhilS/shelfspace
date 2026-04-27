@@ -1,28 +1,154 @@
-import { GoogleGenAI } from "@google/genai";
+import {GoogleGenAI} from '@google/genai';
 import Papa from 'papaparse';
 
-export function handleGeminiError(error: unknown): never {
-  console.error("Error calling Gemini:", error);
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const status = typeof error === 'object' && error !== null && 'status' in error ? error.status : undefined;
-  if (status === 429 || errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('quota')) {
-    throw new Error("The AI service has exceeded its quota limit. Please try again later.");
-  }
-  throw new Error("Failed to communicate with the AI service. Please try again.");
+export async function generateClusterNames(
+  clusters: {id: number; books: {title: string; author?: string}[]}[],
+): Promise<Record<number, string>> {
+  try {
+    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+
+    // Group books to avoid massive prompts just in case
+    const prompt = `I have clustered a library of books into thematic constellations. For each cluster, I will provide a list of books. 
+Your task is to provide a short, captivating, and thematic name for each cluster (1 to 3 words max). 
+
+Respond ONLY with a valid JSON object.
+Use the exact integer ID as the string key. 
+Example Output:
+{
+  "0": "Sci-Fi Epics",
+  "1": "High Fantasy"
 }
 
-export async function extractBooksFromImage(base64Image: string, mimeType: string): Promise<{ title: string, author: string, isbn?: string, genre?: string }[]> {
+Clusters:
+${clusters
+  .map(
+    c =>
+      `ID ${c.id}:\n${c.books
+        .slice(0, 15)
+        .map(b => `- ${b.title} ${b.author ? `by ${b.author}` : ''}`)
+        .join('\n')}`,
+  )
+  .join('\n\n')}
+`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.7,
+      },
+    });
+
+    const text = response.text
+      ? response.text
+          .replace(/```json/gi, '')
+          .replace(/```/g, '')
+          .trim()
+      : '{}';
+    const rawResult = JSON.parse(text);
+
+    // Clean up keys in case model returns "Cluster 0" instead of "0"
+    const result: Record<number, string> = {};
+    for (const key of Object.keys(rawResult)) {
+      const numericMatch = key.match(/\d+/);
+      if (numericMatch) {
+        result[parseInt(numericMatch[0], 10)] = rawResult[key];
+      }
+    }
+
+    return result;
+  } catch (err) {
+    console.error('Failed to generate cluster names:', err);
+    return {};
+  }
+}
+
+export function handleGeminiError(error: unknown): never {
+  console.error('Error calling Gemini:', error);
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const status =
+    typeof error === 'object' && error !== null && 'status' in error
+      ? error.status
+      : undefined;
+  if (
+    status === 429 ||
+    errorMessage.includes('429') ||
+    errorMessage.includes('RESOURCE_EXHAUSTED') ||
+    errorMessage.includes('quota')
+  ) {
+    throw new Error(
+      'The AI service has exceeded its quota limit. Please try again later.',
+    );
+  }
+  throw new Error(
+    'Failed to communicate with the AI service. Please try again.',
+  );
+}
+
+export async function generateBookEmbeddings(
+  texts: string[],
+  onProgress?: (completed: number, total: number) => void,
+): Promise<number[][]> {
+  try {
+    if (!texts || texts.length === 0) return [];
+    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+
+    const embeddings: number[][] = new Array(texts.length).fill([]);
+
+    const BATCH_SIZE = 10;
+    let completedCount = 0;
+    for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+      const batchTexts = texts.slice(i, i + BATCH_SIZE);
+      const batchPromises = batchTexts.map(async (text, index) => {
+        let embedResponse;
+        try {
+          embedResponse = await ai.models.embedContent({
+            model: 'gemini-embedding-2-preview',
+            contents: text,
+          });
+        } catch (err: any) {
+          console.warn('Failed to embed text: ', err);
+          // Not throwing, just letting the empty embedding be handled
+        }
+
+        if (
+          embedResponse &&
+          embedResponse.embeddings &&
+          embedResponse.embeddings.length > 0
+        ) {
+          embeddings[i + index] = embedResponse.embeddings[0].values || [];
+        }
+      });
+
+      await Promise.all(batchPromises);
+      completedCount += batchTexts.length;
+      if (onProgress) {
+        onProgress(completedCount, texts.length);
+      }
+    }
+
+    return embeddings;
+  } catch (error) {
+    handleGeminiError(error);
+  }
+}
+
+export async function extractBooksFromImage(
+  base64Image: string,
+  mimeType: string,
+): Promise<{title: string; author: string; isbn?: string}[]> {
   try {
     if (!base64Image || base64Image === 'data:,') {
-      throw new Error("Invalid image data provided.");
+      throw new Error('Invalid image data provided.');
     }
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    
+    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+
     // First attempt with pro
     let response;
     try {
       response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: 'gemini-3.1-pro-preview',
         contents: {
           parts: [
             {
@@ -32,18 +158,21 @@ export async function extractBooksFromImage(base64Image: string, mimeType: strin
               },
             },
             {
-              text: "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects, where each object has a 'title' string, an 'author' string, an 'isbn' string (if visible on the spine or back cover, otherwise null), and a 'genre' string (infer from title/author if possible, e.g. 'Science Fiction', 'Fantasy', 'Non-fiction', etc.). Do not include markdown formatting like ```json. Just the raw JSON array.",
+              text: "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects, where each object has a 'title' string, an 'author' string, and an 'isbn' string (if visible on the spine or back cover, otherwise null). Do not include markdown formatting like ```json. Just the raw JSON array.",
             },
           ],
         },
         config: {
-          responseMimeType: "application/json",
-        }
+          responseMimeType: 'application/json',
+        },
       });
     } catch (e: any) {
-      console.warn("Retrying with flash model due to internal server error:", e);
+      console.warn(
+        'Retrying with flash model due to internal server error:',
+        e,
+      );
       response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: 'gemini-3-flash-preview',
         contents: {
           parts: [
             {
@@ -53,7 +182,7 @@ export async function extractBooksFromImage(base64Image: string, mimeType: strin
               },
             },
             {
-              text: "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects, where each object has a 'title' string, an 'author' string, an 'isbn' string (if visible on the spine or back cover, otherwise null), and a 'genre' string (infer from title/author if possible, e.g. 'Science Fiction', 'Fantasy', 'Non-fiction', etc.). Do not include markdown formatting like ```json. Just the raw JSON array.",
+              text: "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects, where each object has a 'title' string, an 'author' string, and an 'isbn' string (if visible on the spine or back cover, otherwise null). Do not include markdown formatting like ```json. Just the raw JSON array.",
             },
           ],
         },
@@ -62,9 +191,12 @@ export async function extractBooksFromImage(base64Image: string, mimeType: strin
 
     let text = response.text;
     if (!text) return [];
-    
-    text = text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
-    
+
+    text = text
+      .replace(/^```json\n?/, '')
+      .replace(/\n?```$/, '')
+      .trim();
+
     try {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) {
@@ -72,7 +204,7 @@ export async function extractBooksFromImage(base64Image: string, mimeType: strin
       }
       return [];
     } catch (e) {
-      console.error("Failed to parse Gemini response:", e);
+      console.error('Failed to parse Gemini response:', e);
       return [];
     }
   } catch (error) {
@@ -80,23 +212,30 @@ export async function extractBooksFromImage(base64Image: string, mimeType: strin
   }
 }
 
-export async function extractBooksFromCsv(csvText: string): Promise<{ title: string, author: string, isbn?: string, genre?: string, format?: 'physical' | 'digital' }[]> {
+export async function extractBooksFromCsv(csvText: string): Promise<
+  {
+    title: string;
+    author: string;
+    isbn?: string;
+    format?: 'physical' | 'digital';
+  }[]
+> {
   try {
     // 1. Parse CSV locally using PapaParse
     const parsed = Papa.parse(csvText, {
       header: false,
       skipEmptyLines: true,
     });
-    
+
     const rows = parsed.data as string[][];
     if (rows.length === 0) return [];
 
     // Extract first 3 rows to give structural context
     const sampleRows = rows.slice(0, 3);
-    
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: 'gemini-3.1-pro-preview',
       contents: `You are a data mapping assistant. I am providing you with the first few rows of a CSV file parsed as JSON arrays.
       
       CSV Sample Rows:
@@ -108,7 +247,6 @@ export async function extractBooksFromCsv(csvText: string): Promise<{ title: str
          - title (required. name of the book, usually the most prominent text)
          - author (required. author or creator of the book)
          - isbn (optional. prefer ISBN13 if multiple exist)
-         - genre (optional. categories, bookshelves, tags)
          - format (optional. binding, format - e.g., 'physical', 'digital', 'paperback', 'kindle')
 
       If an optional attribute is not present in any column, set its index to null.
@@ -120,39 +258,48 @@ export async function extractBooksFromCsv(csvText: string): Promise<{ title: str
           "title": number | null,
           "author": number | null,
           "isbn": number | null,
-          "genre": number | null,
           "format": number | null
         }
       }`,
       config: {
-        responseMimeType: "application/json",
-      }
+        responseMimeType: 'application/json',
+      },
     });
 
     const text = response.text;
     if (!text) return [];
-    
+
     let schema;
     try {
       schema = JSON.parse(text);
     } catch (e) {
-      console.error("Failed to parse Gemini schema response:", e);
+      console.error('Failed to parse Gemini schema response:', e);
       return [];
     }
 
-    const { hasHeaderRow, columnMap } = schema;
-    
-    if (!columnMap || typeof columnMap !== 'object' || typeof columnMap.title !== 'number' || typeof columnMap.author !== 'number') {
+    const {hasHeaderRow, columnMap} = schema;
+
+    if (
+      !columnMap ||
+      typeof columnMap !== 'object' ||
+      typeof columnMap.title !== 'number' ||
+      typeof columnMap.author !== 'number'
+    ) {
       return [];
     }
 
-    const books: { title: string, author: string, isbn?: string, genre?: string, format?: 'physical' | 'digital' }[] = [];
+    const books: {
+      title: string;
+      author: string;
+      isbn?: string;
+      format?: 'physical' | 'digital';
+    }[] = [];
     const startIndex = hasHeaderRow ? 1 : 0;
 
     for (let i = startIndex; i < rows.length; i++) {
       const row = rows[i];
       if (!row || row.length === 0) continue;
-      
+
       const titleIndex = columnMap.title;
       if (typeof titleIndex !== 'number' || !row[titleIndex]?.trim()) continue;
 
@@ -162,25 +309,32 @@ export async function extractBooksFromCsv(csvText: string): Promise<{ title: str
         const cleaned = rawIsbn.replace(/[^0-9X]/gi, '');
         if (cleaned.length >= 10) isbn = cleaned;
       }
-      
+
       let format: 'physical' | 'digital' | undefined = undefined;
       if (typeof columnMap.format === 'number') {
         const fVal = (row[columnMap.format] || '').toLowerCase();
         if (fVal) {
-           if (fVal.includes('kindle') || fVal.includes('ebook') || fVal.includes('digital') || fVal.includes('audiobook')) {
-             format = 'digital';
-           } else {
-             format = 'physical';
-           }
+          if (
+            fVal.includes('kindle') ||
+            fVal.includes('ebook') ||
+            fVal.includes('digital') ||
+            fVal.includes('audiobook')
+          ) {
+            format = 'digital';
+          } else {
+            format = 'physical';
+          }
         }
       }
 
       books.push({
         title: row[titleIndex].trim(),
-        author: typeof columnMap.author === 'number' ? (row[columnMap.author] || 'Unknown').trim() : 'Unknown',
+        author:
+          typeof columnMap.author === 'number'
+            ? (row[columnMap.author] || 'Unknown').trim()
+            : 'Unknown',
         isbn: isbn,
-        genre: typeof columnMap.genre === 'number' ? row[columnMap.genre]?.trim() : undefined,
-        format: format
+        format: format,
       });
     }
 
@@ -190,35 +344,35 @@ export async function extractBooksFromCsv(csvText: string): Promise<{ title: str
   }
 }
 
-export async function enrichBooksMetadata(books: { id: string, title: string, author: string, description?: string, currentGenre?: string }[]): Promise<{ id: string, genre: string, series: string }[]> {
+export async function enrichBooksMetadata(
+  books: {id: string; title: string; author: string; description?: string}[],
+): Promise<{id: string; series: string}[]> {
   try {
     if (!books || books.length === 0) return [];
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    
+    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+
     const prompt = `Act as an expert librarian. I have a list of books. For each book, please determine:
-    1. The primary literary genre (be specific but use standard categories like 'Science Fiction', 'High Fantasy', 'Historical Fiction', 'Thriller', 'Biography', etc.).
-    2. The book series it belongs to. If it is a standalone book, return 'Standalone'.
+    1. The book series it belongs to. If it is a standalone book, return 'Standalone'.
 
     Here are the books:
-    ${JSON.stringify(books.map(b => ({ id: b.id, title: b.title, author: b.author }))) }
+    ${JSON.stringify(books.map(b => ({id: b.id, title: b.title, author: b.author})))}
 
     Return ONLY a JSON array of objects. Do not include markdown formatting like \`\`\`json. Each object MUST have:
     - id (exactly matching the provided id)
-    - genre (the literary genre)
     - series (the series name, or 'Standalone')
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        responseMimeType: "application/json",
-      }
+        responseMimeType: 'application/json',
+      },
     });
 
     const text = response.text;
     if (!text) return [];
-    
+
     try {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) {
@@ -226,7 +380,7 @@ export async function enrichBooksMetadata(books: { id: string, title: string, au
       }
       return [];
     } catch (e) {
-      console.error("Failed to parse Gemini response:", e);
+      console.error('Failed to parse Gemini response:', e);
       return [];
     }
   } catch (error) {
@@ -234,12 +388,16 @@ export async function enrichBooksMetadata(books: { id: string, title: string, au
   }
 }
 
-export async function generateLibraryRecommendations(libraryBooks: { title: string, author: string }[]): Promise<string> {
+export async function generateLibraryRecommendations(
+  libraryBooks: {title: string; author: string}[],
+): Promise<string> {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
     // Limit to 100 books to provide more context for recommendations
     const limitedBooks = libraryBooks.slice(0, 100);
-    const bookList = limitedBooks.map(b => `"${b.title}" by ${b.author}`).join('\n');
+    const bookList = limitedBooks
+      .map(b => `"${b.title}" by ${b.author}`)
+      .join('\n');
     const prompt = `Act as an expert librarian. Here is a list of books in my library:
     
 ${bookList}
@@ -249,18 +407,25 @@ For each recommendation, provide the Title, Author, and a brief 2-3 sentence exp
 Format the response with simple markdown (use ## for the book titles).`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: 'gemini-3.1-pro-preview',
       contents: prompt,
     });
 
-    return response.text || "I'm sorry, I couldn't generate recommendations at the moment.";
+    return (
+      response.text ||
+      "I'm sorry, I couldn't generate recommendations at the moment."
+    );
   } catch (error) {
     handleGeminiError(error);
   }
 }
-export async function generateBookInsights(title: string, author: string, type: 'summary' | 'catchup' | 'similar' | 'author_bio'): Promise<string> {
+export async function generateBookInsights(
+  title: string,
+  author: string,
+  type: 'summary' | 'catchup' | 'similar' | 'author_bio',
+): Promise<string> {
   try {
-    let prompt = "";
+    let prompt = '';
     switch (type) {
       case 'summary':
         prompt = `Act as an expert librarian and literary critic. Provide a compelling, spoiler-free summary of the book "${title}" by ${author}. 
@@ -282,21 +447,26 @@ export async function generateBookInsights(title: string, author: string, type: 
         break;
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: 'gemini-3.1-pro-preview',
       contents: prompt,
     });
 
-    return response.text || "I'm sorry, I couldn't generate insights for this book at the moment.";
+    return (
+      response.text ||
+      "I'm sorry, I couldn't generate insights for this book at the moment."
+    );
   } catch (error) {
     handleGeminiError(error);
   }
 }
 
-export async function generateLibraryHeroImage(libraryName: string): Promise<string | null> {
+export async function generateLibraryHeroImage(
+  libraryName: string,
+): Promise<string | null> {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
@@ -308,9 +478,9 @@ export async function generateLibraryHeroImage(libraryName: string): Promise<str
       },
       config: {
         imageConfig: {
-          aspectRatio: "16:9"
-        }
-      }
+          aspectRatio: '16:9',
+        },
+      },
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -321,18 +491,22 @@ export async function generateLibraryHeroImage(libraryName: string): Promise<str
     }
     return null;
   } catch (error) {
-    console.error("Error generating library hero image:", error);
+    console.error('Error generating library hero image:', error);
     return null;
   }
 }
 
-export async function getPickOfTheDay(books: { title: string, author: string }[]): Promise<{ title: string, author: string, reason: string } | null> {
+export async function getPickOfTheDay(
+  books: {title: string; author: string}[],
+): Promise<{title: string; author: string; reason: string} | null> {
   try {
     if (!books || books.length === 0) return null;
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
     // Randomize the books we send to the AI to get varied recommendations, max 50 books
     const sampleBooks = [...books].sort(() => 0.5 - Math.random()).slice(0, 50);
-    const bookList = sampleBooks.map((b, i) => `${i+1}. "${b.title}" by ${b.author}`).join('\n');
+    const bookList = sampleBooks
+      .map((b, i) => `${i + 1}. "${b.title}" by ${b.author}`)
+      .join('\n');
     const prompt = `Act as an expert librarian. Here is a sample of books from my library:
 
 ${bookList}
@@ -350,37 +524,40 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
     let response;
     try {
       response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: 'gemini-3-flash-preview',
         contents: prompt,
         config: {
-          responseMimeType: "application/json"
-        }
+          responseMimeType: 'application/json',
+        },
       });
     } catch (e: any) {
-      console.warn("Fallback to pro model due to error in pick of the day:", e);
+      console.warn('Fallback to pro model due to error in pick of the day:', e);
       response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: 'gemini-3.1-pro-preview',
         contents: prompt,
         config: {
-          responseMimeType: "application/json"
-        }
+          responseMimeType: 'application/json',
+        },
       });
     }
 
     let text = response.text;
     if (!text) return null;
     try {
-      text = text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+      text = text
+        .replace(/^```json\n?/, '')
+        .replace(/\n?```$/, '')
+        .trim();
       const parsed = JSON.parse(text);
       if (parsed.title && parsed.author && parsed.reason) {
-        return parsed as { title: string, author: string, reason: string };
+        return parsed as {title: string; author: string; reason: string};
       }
       return null;
-    } catch(e) {
-       return null;
+    } catch (e) {
+      return null;
     }
   } catch (err) {
-    console.error("Pick of the day error:", err);
+    console.error('Pick of the day error:', err);
     return null;
   }
 }
@@ -395,13 +572,13 @@ async function compressImage(dataUrl: string): Promise<string> {
       const scale = Math.min(1, maxWidth / img.width);
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
-      
+
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         resolve(dataUrl);
         return;
       }
-      
+
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       // Compress as JPEG with 0.6 quality (should easily fit in 1MB)
       resolve(canvas.toDataURL('image/jpeg', 0.6));

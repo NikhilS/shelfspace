@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchAuthorBioFromWikipedia } from './wikipediaApi';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import {fetchAuthorBioFromWikipedia} from './wikipediaApi';
 
 describe('wikipediaApi', () => {
   beforeEach(() => {
@@ -20,28 +20,30 @@ describe('wikipediaApi', () => {
   });
 
   it('returns author bio on successful fetch', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as import('vitest').Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         query: {
           pages: {
             '123': {
-              extract: 'George Orwell was an English novelist.'
-            }
-          }
-        }
-      })
+              extract: 'George Orwell was an English novelist.',
+            },
+          },
+        },
+      }),
     });
 
     const result = await fetchAuthorBioFromWikipedia('George Orwell');
     expect(result).toBe('George Orwell was an English novelist.');
     expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('George%20Orwell'));
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('George%20Orwell'),
+    );
   });
 
   it('returns null if fetch fails', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: false
+    (global.fetch as import('vitest').Mock).mockResolvedValueOnce({
+      ok: false,
     });
 
     const result = await fetchAuthorBioFromWikipedia('Failed Author');
@@ -49,17 +51,17 @@ describe('wikipediaApi', () => {
   });
 
   it('returns null if page ID is -1', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as import('vitest').Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         query: {
           pages: {
             '-1': {
-              title: "Unknown Author 123"
-            }
-          }
-        }
-      })
+              title: 'Unknown Author 123',
+            },
+          },
+        },
+      }),
     });
 
     const result = await fetchAuthorBioFromWikipedia('Unknown Author 123');
@@ -67,7 +69,9 @@ describe('wikipediaApi', () => {
   });
 
   it('returns null if network error happens', async () => {
-    (global.fetch as any).mockRejectedValueOnce(new Error('Network Error'));
+    (global.fetch as import('vitest').Mock).mockRejectedValueOnce(
+      new Error('Network Error'),
+    );
 
     const result = await fetchAuthorBioFromWikipedia('Error Author');
     expect(result).toBeNull();

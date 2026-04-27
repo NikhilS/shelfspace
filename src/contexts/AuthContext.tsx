@@ -1,7 +1,13 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import React, {createContext, useContext, useEffect, useState} from 'react';
+import {
+  User,
+  onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+} from 'firebase/auth';
+import {doc, setDoc, getDoc} from 'firebase/firestore';
+import {auth, db, handleFirestoreError, OperationType} from '../firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -12,14 +18,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({children}: {children: React.ReactNode}) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async currentUser => {
       setUser(currentUser);
-      
+
       if (currentUser) {
         // Ensure user document exists
         try {
@@ -31,17 +37,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               email: currentUser.email,
               displayName: currentUser.displayName || '',
               photoURL: currentUser.photoURL || '',
-              createdAt: new Date()
+              createdAt: new Date(),
             });
           }
         } catch (error) {
-          console.error("Error ensuring user document:", error);
+          console.error('Error ensuring user document:', error);
           setIsAuthReady(true);
-          handleFirestoreError(error, OperationType.CREATE, `users/${currentUser.uid}`);
+          handleFirestoreError(
+            error,
+            OperationType.CREATE,
+            `users/${currentUser.uid}`,
+          );
           return;
         }
       }
-      
+
       setIsAuthReady(true);
     });
 
@@ -53,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await signInWithPopup(auth, provider);
     } catch (error) {
-      console.error("Error signing in with Google", error);
+      console.error('Error signing in with Google', error);
       throw error;
     }
   };
@@ -62,13 +72,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await signOut(auth);
     } catch (error) {
-      console.error("Error signing out", error);
+      console.error('Error signing out', error);
       throw error;
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthReady, signIn, logOut }}>
+    <AuthContext.Provider value={{user, isAuthReady, signIn, logOut}}>
       {children}
     </AuthContext.Provider>
   );

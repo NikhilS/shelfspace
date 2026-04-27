@@ -1,20 +1,20 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import {render, screen, fireEvent} from '@testing-library/react';
+import {BrowserRouter} from 'react-router-dom';
+import {vi, describe, it, expect, beforeEach} from 'vitest';
 import AppLayout from './AppLayout';
-import { useAuth } from '../contexts/AuthContext';
+import {useAuth} from '../contexts/AuthContext';
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
-const renderAppLayout = (props: { sidebarActions?: React.ReactNode } = {}) => {
+const renderAppLayout = (props: {sidebarActions?: React.ReactNode} = {}) => {
   return render(
     <BrowserRouter>
       <AppLayout sidebarActions={props.sidebarActions}>
         <div data-testid="child-content">Child Content</div>
       </AppLayout>
-    </BrowserRouter>
+    </BrowserRouter>,
   );
 };
 
@@ -23,8 +23,8 @@ describe('AppLayout', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useAuth as any).mockReturnValue({
-      user: { uid: 'user1', email: 'test@example.com', photoURL: null },
+    (useAuth as import('vitest').Mock).mockReturnValue({
+      user: {uid: 'user1', email: 'test@example.com', photoURL: null},
       logOut: mockLogOut,
     });
   });
@@ -50,7 +50,7 @@ describe('AppLayout', () => {
   });
 
   it('renders sidebar actions if provided', () => {
-    renderAppLayout({ sidebarActions: <button>Custom Action</button> });
+    renderAppLayout({sidebarActions: <button>Custom Action</button>});
     expect(screen.getByText('Custom Action')).toBeInTheDocument();
   });
 });

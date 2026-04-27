@@ -41,9 +41,24 @@
         "isbn": { "type": "string" },
         "coverUrl": { "type": "string" },
         "publishedDate": { "type": "string" },
-        "genre": { "type": "string" },
+        "genres": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "series": { "type": "string" },
+        "description": { "type": "string" },
+        "synopsis": { "type": "string" },
+        "authorBio": { "type": "string" },
+        "embedding": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "Generated semantic vector embedding of the book description for clustering."
+        },
         "format": { "type": "string", "enum": ["physical", "digital"] },
+        "userStatuses": { 
+          "type": "object",
+          "additionalProperties": { "type": "string", "enum": ["unset", "reading", "finished", "abandoned"] }
+        },
         "addedAt": { "type": "string", "format": "date-time" },
         "addedBy": { "type": "string" }
       },

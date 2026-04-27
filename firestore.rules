@@ -32,7 +32,7 @@ service cloud.firestore {
     //   - isbn: string (optional, max 50 chars) - Book ISBN
     //   - coverUrl: string (optional, max 1048576 chars) - Book cover URL or base64
     //   - publishedDate: string (optional, max 50 chars) - Publication date
-    //   - genre: string (optional, max 100 chars) - Book genre
+    //   - genres: list of strings (optional, max 20 items) - Book genres
     //   - addedAt: timestamp (required) - Time added
     //   - addedBy: string (required) - User ID who added the book
     //
@@ -117,7 +117,7 @@ service cloud.firestore {
              isValidOptionalString('isbn', 0, 50) &&
              isValidOptionalString('coverUrl', 0, 1048576) &&
              isValidOptionalString('publishedDate', 0, 50) &&
-             isValidOptionalString('genre', 0, 100) &&
+             (!( 'genres' in data ) || isValidList(data.genres, 20)) &&
              isValidOptionalString('series', 0, 100) &&
              isValidOptionalString('format', 0, 50);
     }

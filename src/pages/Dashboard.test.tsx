@@ -1,8 +1,8 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import {render, screen, fireEvent, waitFor, act} from '@testing-library/react';
+import {BrowserRouter} from 'react-router-dom';
+import {vi, describe, it, expect, beforeEach} from 'vitest';
 import Dashboard from './Dashboard';
-import { useAuth } from '../contexts/AuthContext';
+import {useAuth} from '../contexts/AuthContext';
 
 // Mock contexts and Firebase
 vi.mock('../contexts/AuthContext', () => ({
@@ -12,7 +12,7 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('../firebase', () => ({
   db: {},
   handleFirestoreError: vi.fn(),
-  OperationType: { LIST: 'LIST', CREATE: 'CREATE' },
+  OperationType: {LIST: 'LIST', CREATE: 'CREATE'},
 }));
 
 vi.mock('firebase/firestore', () => ({
@@ -22,26 +22,37 @@ vi.mock('firebase/firestore', () => ({
   or: vi.fn(),
   onSnapshot: vi.fn((query, callback) => {
     callback({
-      forEach: (cb: any) => cb({ id: 'lib1', data: () => ({ name: 'Test Library', ownerId: 'user1', ownerName: 'User One', sharedWith: [] }) })
+      forEach: (cb: unknown) =>
+        cb({
+          id: 'lib1',
+          data: () => ({
+            name: 'Test Library',
+            ownerId: 'user1',
+            ownerName: 'User One',
+            sharedWith: [],
+          }),
+        }),
     });
     return vi.fn();
   }),
-  addDoc: vi.fn(() => Promise.resolve({ id: 'new-doc-id' })),
+  addDoc: vi.fn(() => Promise.resolve({id: 'new-doc-id'})),
   updateDoc: vi.fn(),
   doc: vi.fn(),
   serverTimestamp: vi.fn(),
-  getCountFromServer: vi.fn(() => Promise.resolve({ data: () => ({ count: 5 }) })),
+  getCountFromServer: vi.fn(() => Promise.resolve({data: () => ({count: 5})})),
 }));
 
 vi.mock('../services/gemini', () => ({
-  generateLibraryHeroImage: vi.fn().mockResolvedValue('http://example.com/image.png')
+  generateLibraryHeroImage: vi
+    .fn()
+    .mockResolvedValue('http://example.com/image.png'),
 }));
 
 const renderDashboard = () => {
   return render(
     <BrowserRouter>
       <Dashboard />
-    </BrowserRouter>
+    </BrowserRouter>,
   );
 };
 
@@ -51,7 +62,7 @@ describe('Dashboard', () => {
   });
 
   it('redirects to login if user is not authenticated', () => {
-    (useAuth as any).mockReturnValue({ user: null });
+    (useAuth as unknown).mockReturnValue({user: null});
     renderDashboard();
     // Navigate is used, so in a real router test it navigates off.
     // We check if "My Libraries" header does not render since it should return <Navigate>
@@ -59,13 +70,13 @@ describe('Dashboard', () => {
   });
 
   it('renders libraries if user is authenticated', async () => {
-    (useAuth as any).mockReturnValue({
-      user: { uid: 'user1', email: 'test@example.com', displayName: 'Test User' },
+    (useAuth as unknown).mockReturnValue({
+      user: {uid: 'user1', email: 'test@example.com', displayName: 'Test User'},
       logOut: vi.fn(),
     });
 
     renderDashboard();
-    
+
     // Check if the title is rendered
     expect(screen.getAllByText('My Libraries').length).toBeGreaterThan(0);
 
@@ -73,7 +84,7 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Test Library')).toBeInTheDocument();
     });
-    
+
     // Wait for the async getCountFromServer state updates
     await waitFor(() => {
       expect(screen.getByText('5 Volumes')).toBeInTheDocument();
@@ -81,8 +92,8 @@ describe('Dashboard', () => {
   });
 
   it('can create a new library', async () => {
-    (useAuth as any).mockReturnValue({
-      user: { uid: 'user1', email: 'test@example.com', displayName: 'Test User' },
+    (useAuth as unknown).mockReturnValue({
+      user: {uid: 'user1', email: 'test@example.com', displayName: 'Test User'},
       logOut: vi.fn(),
     });
 
@@ -92,19 +103,21 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('5 Volumes')).toBeInTheDocument();
     });
-    
+
     // Open form
     const createBtn = screen.getByText('Create Library');
     fireEvent.click(createBtn);
 
     // Type name
-    const input = await screen.findByPlaceholderText('Library Name (e.g. Private Study)');
-    fireEvent.change(input, { target: { value: 'New Test Library' } });
-    
+    const input = await screen.findByPlaceholderText(
+      'Library Name (e.g. Private Study)',
+    );
+    fireEvent.change(input, {target: {value: 'New Test Library'}});
+
     // Submit
     const submitBtn = screen.getByText('Create Collection');
-    const { addDoc } = await import('firebase/firestore');
-    
+    const {addDoc} = await import('firebase/firestore');
+
     await act(async () => {
       fireEvent.click(submitBtn);
       // Let the promise queue drain so addDoc and its finally blocks run
@@ -116,7 +129,9 @@ describe('Dashboard', () => {
 
     // Verify form disappeared, waiting for AnimatePresence exit animations
     await waitFor(() => {
-      expect(screen.queryByPlaceholderText('Library Name (e.g. Private Study)')).not.toBeInTheDocument();
+      expect(
+        screen.queryByPlaceholderText('Library Name (e.g. Private Study)'),
+      ).not.toBeInTheDocument();
     });
   });
 });

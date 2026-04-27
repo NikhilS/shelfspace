@@ -1,32 +1,34 @@
 import React from 'react';
-import { BookDetails } from '../services/bookApi';
-import { Book as BookIcon } from 'lucide-react';
-import { toTitleCase } from '../lib/utils';
+import {BookDetails} from '../services/bookApi';
+import {Book as BookIcon} from 'lucide-react';
+import {toTitleCase} from '../lib/utils';
 
-import { Timestamp } from 'firebase/firestore';
+import {Timestamp} from 'firebase/firestore';
 
 type FirestoreDate = Timestamp | Date | string | number;
 
 interface BookCardProps {
   key?: React.Key;
-  book: BookDetails & { id: string, addedBy: string, addedAt: FirestoreDate };
+  book: BookDetails & {id: string; addedBy: string; addedAt: FirestoreDate};
   onClick?: () => void;
   canEdit: boolean;
 }
 
-export default function BookCard({ book, onClick, canEdit }: BookCardProps) {
+export default function BookCard({book, onClick}: BookCardProps) {
   return (
-    <div 
+    <div
       onClick={onClick}
-      className={`group cursor-pointer flex flex-col h-full`}
+      className={'group cursor-pointer flex flex-col h-full'}
     >
       {/* Book Cover */}
-      <div 
-        className={`relative aspect-[2/3] mb-4 bg-surface-container rounded-lg shadow-[0_4px_12px_rgba(26,47,75,0.08)] overflow-hidden transform transition-transform duration-300 group-hover:-translate-y-1`}
+      <div
+        className={
+          'relative aspect-[2/3] mb-4 bg-surface-container rounded-lg shadow-[0_4px_12px_rgba(26,47,75,0.08)] overflow-hidden transform transition-transform duration-300 group-hover:-translate-y-1'
+        }
       >
         {book.coverUrl ? (
-          <img 
-            src={book.coverUrl} 
+          <img
+            src={book.coverUrl}
             alt={book.title}
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
@@ -44,20 +46,30 @@ export default function BookCard({ book, onClick, canEdit }: BookCardProps) {
               </p>
             </div>
             <div className="flex justify-between items-end">
-              <BookIcon size={16} className="text-primary/40" strokeWidth={1.5} />
+              <BookIcon
+                size={16}
+                className="text-primary/40"
+                strokeWidth={1.5}
+              />
             </div>
           </div>
         )}
-        
+
         <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-          <button className="w-full py-2 bg-transparent border border-on-primary text-on-primary font-label-caps text-label-caps rounded hover:bg-on-primary hover:text-primary transition-colors">VIEW DETAILS</button>
+          <button className="w-full py-2 bg-transparent border border-on-primary text-on-primary font-label-caps text-label-caps rounded hover:bg-on-primary hover:text-primary transition-colors">
+            VIEW DETAILS
+          </button>
         </div>
       </div>
 
       {/* Book Metadata */}
       <div className="mt-auto pl-1 pr-1">
-        <h3 className="font-headline-md text-base leading-tight text-on-surface line-clamp-1 tracking-tight">{toTitleCase(book.title)}</h3>
-        <p className="font-body-md text-sm text-on-surface-variant line-clamp-1 mt-1">{toTitleCase(book.author)}</p>
+        <h3 className="font-headline-md text-base leading-tight text-on-surface line-clamp-1 tracking-tight">
+          {toTitleCase(book.title)}
+        </h3>
+        <p className="font-body-md text-sm text-on-surface-variant line-clamp-1 mt-1">
+          {toTitleCase(book.author)}
+        </p>
       </div>
     </div>
   );
