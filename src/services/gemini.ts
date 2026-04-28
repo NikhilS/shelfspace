@@ -107,7 +107,7 @@ export async function generateBookEmbeddings(
             model: 'gemini-embedding-2-preview',
             contents: text,
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.warn('Failed to embed text: ', err);
           // Not throwing, just letting the empty embedding be handled
         }
@@ -166,7 +166,7 @@ export async function extractBooksFromImage(
           responseMimeType: 'application/json',
         },
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.warn(
         'Retrying with flash model due to internal server error:',
         e,
@@ -203,7 +203,7 @@ export async function extractBooksFromImage(
         return parsed;
       }
       return [];
-    } catch (e) {
+    } catch (e: unknown) {
       console.error('Failed to parse Gemini response:', e);
       return [];
     }
@@ -530,7 +530,7 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
           responseMimeType: 'application/json',
         },
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.warn('Fallback to pro model due to error in pick of the day:', e);
       response = await ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
@@ -553,7 +553,7 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
         return parsed as {title: string; author: string; reason: string};
       }
       return null;
-    } catch (e) {
+    } catch {
       return null;
     }
   } catch (err) {
@@ -563,7 +563,7 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
 }
 
 async function compressImage(dataUrl: string): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');

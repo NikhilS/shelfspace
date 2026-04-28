@@ -26,7 +26,6 @@ import {
   getDoc,
   updateDoc,
   Timestamp,
-  writeBatch,
 } from 'firebase/firestore';
 import {
   ArrowLeft,
@@ -287,21 +286,13 @@ export default function LibraryView() {
   const handleBulkStatusChange = async (newStatus: string) => {
     if (selectedBooks.size === 0 || !user || !id) return;
     try {
-      const batch = writeBatch(db);
-      let count = 0;
-
-      Array.from(selectedBooks).forEach(bookId => {
+      const promises = Array.from(selectedBooks).map(bookId => {
         const bookRef = doc(db, 'libraries', id, 'books', bookId);
-        batch.update(bookRef, {
+        return updateDoc(bookRef, {
           [`userStatuses.${user.uid}`]: newStatus,
         });
-        count++;
       });
-
-      if (count > 0) {
-        await batch.commit();
-      }
-
+      await Promise.all(promises);
       toast.success(`Updated status for ${selectedBooks.size} books`);
       setSelectedBooks(new Set());
     } catch (error) {
@@ -728,6 +719,8 @@ export default function LibraryView() {
     if (!id || !isOwner) return;
 
     try {
+      const {writeBatch, collection, getDocs} =
+        await import('firebase/firestore');
       const batch = writeBatch(db);
 
       // Delete all books in the library
@@ -835,9 +828,6 @@ export default function LibraryView() {
       const batchSize = 10;
       for (let i = 0; i < booksToSync.length; i += batchSize) {
         const batch = booksToSync.slice(i, i + batchSize);
-        const fbBatch = writeBatch(db);
-        let fbBatchUpdates = 0;
-
         // First, check ISBNs via normal API
         await Promise.all(
           batch.map(async book => {
@@ -877,10 +867,9 @@ export default function LibraryView() {
               }
 
               if (Object.keys(changes).length > 0) {
-                fbBatch.update(doc(db, 'libraries', id, 'books', book.id), {
+                await updateDoc(doc(db, 'libraries', id, 'books', book.id), {
                   ...changes,
                 });
-                fbBatchUpdates++;
               }
             } catch (err: unknown) {
               currentErrors.push({
@@ -912,10 +901,12 @@ export default function LibraryView() {
                   if (!book.series && enriched.series)
                     changes.series = enriched.series.substring(0, 100);
                   if (Object.keys(changes).length > 0) {
-                    fbBatch.update(doc(db, 'libraries', id, 'books', book.id), {
-                      ...changes,
-                    });
-                    fbBatchUpdates++;
+                    await updateDoc(
+                      doc(db, 'libraries', id, 'books', book.id),
+                      {
+                        ...changes,
+                      },
+                    );
                     updatedCount++;
                   }
                 }
@@ -924,10 +915,6 @@ export default function LibraryView() {
           } catch (err: unknown) {
             console.error('Batch enrichment failed', err);
           }
-        }
-
-        if (fbBatchUpdates > 0) {
-          await fbBatch.commit();
         }
 
         // Progress update
@@ -972,9 +959,6 @@ export default function LibraryView() {
       const batchSize = 10;
       for (let i = 0; i < books.length; i += batchSize) {
         const batch = books.slice(i, i + batchSize);
-        const fbBatch = writeBatch(db);
-        let batchHasUpdates = false;
-
         await Promise.all(
           batch.map(async book => {
             try {
@@ -999,11 +983,10 @@ export default function LibraryView() {
               const changes = computeResyncChanges(book, resultData || {});
 
               if (Object.keys(changes).length > 0) {
-                fbBatch.update(
+                await updateDoc(
                   doc(db, 'libraries', id, 'books', book.id),
                   changes,
                 );
-                batchHasUpdates = true;
                 updatedCount++;
               }
             } catch (err: unknown) {
@@ -1013,10 +996,6 @@ export default function LibraryView() {
             }
           }),
         );
-
-        if (batchHasUpdates) {
-          await fbBatch.commit();
-        }
 
         if (i + batchSize < books.length) {
           await new Promise(resolve => setTimeout(resolve, 1000));

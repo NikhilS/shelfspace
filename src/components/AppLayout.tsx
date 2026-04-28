@@ -1,7 +1,7 @@
 import React, {useState, useEffect} from 'react';
 import {Link, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
-import {Library, LogOut, Menu, Bookmark} from 'lucide-react';
+import {Library, LogOut, Menu} from 'lucide-react';
 import {motion, AnimatePresence} from 'motion/react';
 
 interface AppLayoutProps {
@@ -67,21 +67,6 @@ export default function AppLayout({children, sidebarActions}: AppLayoutProps) {
               className={`w-5 h-5 ${isHome ? 'text-primary' : 'text-on-surface-variant'}`}
             />
             <span>My Libraries</span>
-          </Link>
-
-          <Link
-            to="/wishlist"
-            onClick={() => setIsMobileNavOpen(false)}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-serif text-lg tracking-tight ${
-              location.pathname.startsWith('/wishlist')
-                ? 'text-primary font-bold bg-primary/5 shadow-sm'
-                : 'text-on-surface hover:text-primary hover:bg-surface-container'
-            }`}
-          >
-            <Bookmark
-              className={`w-5 h-5 ${location.pathname.startsWith('/wishlist') ? 'text-primary' : 'text-on-surface-variant'}`}
-            />
-            <span>My Wishlist</span>
           </Link>
 
           {sidebarActions && (

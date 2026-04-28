@@ -96,7 +96,8 @@ export async function searchBookByIsbn(
         };
       }
     }
-  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (_error) {
     // Silently fallback to OpenLibrary if Google Books fails (e.g., ad blocker)
   }
 
@@ -132,8 +133,8 @@ export async function searchBookByIsbn(
         };
       }
     }
-  } catch (error) {
-    console.error('OpenLibrary ISBN search failed:', error);
+  } catch (_error) {
+    console.error('OpenLibrary ISBN search failed:', _error);
   }
 
   return null;
@@ -174,8 +175,8 @@ export async function searchBookByTitleAndAuthor(
         );
       }
     }
-  } catch (error) {
-    console.error('Google Books search failed:', error);
+  } catch (_error) {
+    console.error('Google Books search failed:', _error);
   }
   return results;
 }
@@ -253,7 +254,8 @@ export async function searchBookByTitle(
         }
       }
     }
-  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (_error) {
     // Silently fallback to OpenLibrary if Google Books fails (e.g., ad blocker)
   }
 
@@ -291,8 +293,8 @@ export async function searchBookByTitle(
           );
         }
       }
-    } catch (error) {
-      console.error('OpenLibrary title search failed:', error);
+    } catch (_error) {
+      console.error('OpenLibrary title search failed:', _error);
     }
   }
 

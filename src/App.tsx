@@ -10,7 +10,6 @@ const BookDetailsView = lazy(() => import('./pages/BookDetailsView'));
 const AddBookView = lazy(() => import('./pages/AddBookView'));
 const ConstellationMap = lazy(() => import('./pages/ConstellationMap'));
 const Login = lazy(() => import('./pages/Login'));
-const WishlistRedirect = lazy(() => import('./components/WishlistRedirect'));
 
 function LoadingScreen() {
   return (
@@ -64,14 +63,6 @@ function AnimatedRoutes() {
         element={
           <PrivateRoute>
             <Dashboard />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/wishlist"
-        element={
-          <PrivateRoute>
-            <WishlistRedirect />
           </PrivateRoute>
         }
       />

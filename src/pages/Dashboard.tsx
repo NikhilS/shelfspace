@@ -33,8 +33,7 @@ interface Library {
   sharedWith: string[];
   createdAt: FirestoreDate;
   heroImageUrl?: string;
-  volumeCount?: number;
-  isWishlist?: boolean;
+  volumeCount?: number; // Added to match mock, would normally be computed
 }
 
 export default function Dashboard() {
@@ -63,12 +62,10 @@ export default function Dashboard() {
         const libs: Library[] = [];
         snapshot.forEach(doc => {
           const data = doc.data();
-          if (!data.isWishlist) {
-            libs.push({
-              id: doc.id,
-              ...data,
-            } as Library);
-          }
+          libs.push({
+            id: doc.id,
+            ...data,
+          } as Library);
         });
 
         // Optimistically update libraries, retaining previous volumeCounts to prevent flickering
