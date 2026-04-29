@@ -13,9 +13,9 @@ This file tracks feature ideas, planned improvements, and requested features for
 - [x] Upgrade book covers to use high-resolution versions.
 - [x] Rename the "resync missing metadata" feature to "backfill missing metadata".
 - [x] Add a new "resync all metadata" feature that refetches everything for all books.
-- [ ] Consider replacing the single 'genre' field with multiple categories, mirroring the Google Books API.
+- [x] Consider replacing the single 'genre' field with multiple categories, mirroring the Google Books API.
 - [ ] Normalize categories into a standard taxonomy.
-- [ ] Once we have normalized categories, add some visualizations to the home page (e.g., a pie chart).
+- [x] Once we have normalized categories, add some visualizations to the home page (e.g., a pie chart).
 
 ## Completed
 - [x] Configure PWA installation

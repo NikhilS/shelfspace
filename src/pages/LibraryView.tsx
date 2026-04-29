@@ -65,6 +65,14 @@ import {computeResyncChanges} from '../lib/metadataUtils';
 import {toTitleCase} from '../lib/utils';
 import {motion, AnimatePresence} from 'motion/react';
 import AppLayout from '../components/AppLayout';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  Legend,
+} from 'recharts';
 
 type FirestoreDate = Timestamp | Date | string | number;
 
@@ -390,18 +398,19 @@ export default function LibraryView() {
     }
   }, [books, currentTab, pickOfTheDay, isGeneratingPick]);
 
-  const topGenres = useMemo(() => {
+  const topCategories = useMemo(() => {
     const counts: Record<string, number> = {};
     books.forEach(b => {
-      if (b.genres && b.genres.length > 0) {
-        b.genres.forEach(g => {
-          counts[g] = (counts[g] || 0) + 1;
-        });
+      const mainCategory =
+        b.genres && b.genres.length > 0 ? b.genres[0] : b.genre;
+      if (mainCategory) {
+        counts[mainCategory] = (counts[mainCategory] || 0) + 1;
       }
     });
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 2);
+      .slice(0, 7)
+      .map(([name, value]) => ({name, value}));
   }, [books]);
 
   const readingBooks = useMemo(() => {
@@ -547,6 +556,7 @@ export default function LibraryView() {
     const genres = new Set<string>();
     books.forEach(b => {
       if (b.genres) b.genres.forEach(g => genres.add(g));
+      else if (b.genre) genres.add(b.genre);
     });
     return Array.from(genres).sort();
   }, [books]);
@@ -568,8 +578,12 @@ export default function LibraryView() {
         if (!titleMatch && !authorMatch) return false;
       }
 
-      if (filterGenre && (!book.genres || !book.genres.includes(filterGenre))) {
-        return false;
+      if (filterGenre) {
+        const hasGenreList = book.genres && book.genres.includes(filterGenre);
+        const hasLegacyGenre = book.genre === filterGenre;
+        if (!hasGenreList && !hasLegacyGenre) {
+          return false;
+        }
       }
 
       if (filterAuthor && book.author !== filterAuthor) {
@@ -1303,46 +1317,71 @@ export default function LibraryView() {
             </div>
           </div>
 
-          {/* Genre Stats Card */}
-          <div className="bg-surface p-6 border border-surface-variant relative shadow-sm">
+          {/* Top Categories Pie Chart Card */}
+          <div className="bg-surface p-6 border border-surface-variant relative shadow-sm flex-grow">
             <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest mb-6">
-              Key Disciplines
+              Top Categories
             </p>
-            <div className="space-y-5">
-              {topGenres.length > 0 ? (
-                topGenres.map(([genre, count], idx) => (
-                  <React.Fragment key={genre}>
-                    <div
-                      className="flex items-center justify-between group cursor-pointer"
-                      onClick={() => {
-                        setFilterGenre(genre);
+            <div className="w-full h-80">
+              {topCategories.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart cursor="pointer">
+                    <Pie
+                      data={topCategories}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="45%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      onClick={data => {
+                        setFilterGenre(data.name);
                         setCurrentTab('collection');
                         setIsFiltersOpen(true);
                       }}
+                      className="cursor-pointer outline-none"
                     >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-full ${idx === 0 ? 'bg-tertiary-fixed-dim/20 text-tertiary' : 'bg-secondary-container/20 text-secondary'} flex items-center justify-center`}
-                        >
-                          <Sparkles size={18} />
-                        </div>
-                        <span className="font-body-md font-medium text-on-surface group-hover:text-primary transition-colors">
-                          {genre}
-                        </span>
-                      </div>
-                      <span className="font-headline-md text-headline-md text-primary">
-                        {count}
-                      </span>
-                    </div>
-                    {idx === 0 && topGenres.length > 1 && (
-                      <div className="w-full h-[1px] bg-surface-variant"></div>
-                    )}
-                  </React.Fragment>
-                ))
+                      {topCategories.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={
+                            [
+                              '#2f4d40',
+                              '#7d5633',
+                              '#021a35',
+                              '#8397b8',
+                              '#a3a099',
+                              '#8a7122',
+                              '#82312a',
+                            ][index % 7]
+                          }
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor:
+                          'var(--color-surface-container-high, #fff)',
+                        border: '1px solid var(--color-surface-variant, #ccc)',
+                        borderRadius: '4px',
+                        color: 'var(--color-on-surface, #000)',
+                      }}
+                      itemStyle={{color: 'var(--color-on-surface, #000)'}}
+                    />
+                    <Legend
+                      verticalAlign="bottom"
+                      wrapperStyle={{fontSize: '12px', paddingTop: '10px'}}
+                      iconType="circle"
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               ) : (
-                <p className="font-body-md text-on-surface-variant italic">
-                  No genres categorized yet.
-                </p>
+                <div className="flex h-full items-center justify-center">
+                  <p className="font-body-md text-on-surface-variant italic">
+                    No categories found yet.
+                  </p>
+                </div>
               )}
             </div>
           </div>
