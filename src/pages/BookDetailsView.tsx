@@ -378,9 +378,7 @@ export default function BookDetailsView() {
       publishedDate: book?.publishedDate || '',
       coverUrl: book?.coverUrl || '',
       genresInput:
-        book?.genres && book?.genres.length > 0
-          ? book.genres.join(', ')
-          : book?.genre || '',
+        book?.genres && book?.genres.length > 0 ? book.genres.join(', ') : '',
       series: book?.series || '',
     });
     setIsEditingDetails(true);
@@ -470,16 +468,10 @@ export default function BookDetailsView() {
             {/* Header Info */}
             <div>
               <div className="flex flex-wrap gap-2 mb-4">
-                {book.genres && book.genres.length > 0 ? (
+                {book.genres && book.genres.length > 0 && (
                   <span className="bg-tertiary-container/10 text-tertiary-container font-label-caps text-label-caps px-3 py-1 rounded-[0.125rem]">
                     {book.genres[0].toUpperCase()}
                   </span>
-                ) : (
-                  book.genre && (
-                    <span className="bg-tertiary-container/10 text-tertiary-container font-label-caps text-label-caps px-3 py-1 rounded-[0.125rem]">
-                      {book.genre.toUpperCase()}
-                    </span>
-                  )
                 )}
                 {book.series && book.series !== 'Standalone' && (
                   <span className="bg-secondary-container/10 text-secondary-container font-label-caps text-label-caps px-3 py-1 rounded-[0.125rem]">
@@ -603,25 +595,19 @@ export default function BookDetailsView() {
                 )}
               </div>
 
-              {((book.genres && book.genres.length > 0) || book.genre) && (
+              {book.genres && book.genres.length > 0 && (
                 <div className="mt-8 pt-4 border-t border-surface-variant flex items-center flex-wrap gap-2">
                   <span className="font-label-caps text-on-surface-variant uppercase text-[10px] tracking-wider mr-2">
                     All Categories:
                   </span>
-                  {book.genres && book.genres.length > 0
-                    ? book.genres.map((g, idx) => (
-                        <span
-                          key={idx}
-                          className="text-xs text-on-surface-variant px-2 py-0.5 border border-outline-variant/30 rounded-sm bg-surface-variant/30"
-                        >
-                          {g}
-                        </span>
-                      ))
-                    : book.genre && (
-                        <span className="text-xs text-on-surface-variant px-2 py-0.5 border border-outline-variant/30 rounded-sm bg-surface-variant/30">
-                          {book.genre}
-                        </span>
-                      )}
+                  {book.genres.map((g, idx) => (
+                    <span
+                      key={idx}
+                      className="text-xs text-on-surface-variant px-2 py-0.5 border border-outline-variant/30 rounded-sm bg-surface-variant/30"
+                    >
+                      {g}
+                    </span>
+                  ))}
                 </div>
               )}
             </section>

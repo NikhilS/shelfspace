@@ -46,7 +46,7 @@ describe('gemini service', () => {
   describe('extractBooksFromImage', () => {
     it('returns array of books when valid JSON is generated', async () => {
       const mockResult = [
-        {title: 'The Hobbit', author: 'J.R.R. Tolkien', genre: 'Fantasy'},
+        {title: 'The Hobbit', author: 'J.R.R. Tolkien', genres: ['Fantasy']},
       ];
 
       mockGenerateContent.mockResolvedValueOnce({
@@ -101,7 +101,7 @@ describe('gemini service', () => {
           title: 0,
           author: 1,
           isbn: null,
-          genre: null,
+          genres: null,
           format: null,
         },
       };

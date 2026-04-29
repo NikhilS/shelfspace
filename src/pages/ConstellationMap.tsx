@@ -13,7 +13,7 @@ import {db, handleFirestoreError, OperationType} from '../firebase';
 import {generateBookEmbeddings, generateClusterNames} from '../services/gemini';
 import {ArrowLeft, Loader2, Maximize, RefreshCw} from 'lucide-react';
 import {UMAP} from 'umap-js';
-import {dbscan} from '../lib/clustering';
+import {kmeans} from '../lib/clustering';
 import {
   ScatterChart,
   Scatter,
@@ -98,7 +98,6 @@ export default function ConstellationMap() {
             if (b.author) parts.push(`by ${b.author}`);
             if (b.genres && b.genres.length > 0)
               parts.push(`[${b.genres.join(', ')}]`);
-            else if (b.genre) parts.push(`[${b.genre}]`);
             if (b.synopsis) parts.push(b.synopsis);
             else if (b.description) parts.push(b.description);
             return parts.join(' - ');
@@ -165,25 +164,12 @@ export default function ConstellationMap() {
         setProgress('Clustering to find relationships...');
         await new Promise(r => setTimeout(r, 100));
 
-        // Use DBSCAN to cluster on the 2D UMAP space
-        // Try to estimate eps dynamically based on spread
-        let maxDist = 0;
-        for (let i = 0; i < fittings.length; i++) {
-          for (let j = i + 1; j < fittings.length; j++) {
-            const dx = fittings[i][0] - fittings[j][0];
-            const dy = fittings[i][1] - fittings[j][1];
-            const d = Math.sqrt(dx * dx + dy * dy);
-            if (d > maxDist) maxDist = d;
-          }
-        }
-
-        const eps = Math.max(0.5, maxDist * 0.1); // 10% of max spread
-        const minPts = Math.min(
-          3,
-          Math.max(2, Math.floor(validBooks.length * 0.05)),
+        // Use K-Means to cluster on the 2D UMAP space
+        const targetK = Math.min(
+          12,
+          Math.max(2, Math.floor(validBooks.length / 8)),
         );
-
-        const clusters = dbscan(fittings, eps, minPts);
+        const clusters = kmeans(fittings, targetK);
 
         const newPlotData = validBooks.map((book, idx) => ({
           x: fittings[idx][0],

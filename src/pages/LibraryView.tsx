@@ -401,8 +401,7 @@ export default function LibraryView() {
   const topCategories = useMemo(() => {
     const counts: Record<string, number> = {};
     books.forEach(b => {
-      const mainCategory =
-        b.genres && b.genres.length > 0 ? b.genres[0] : b.genre;
+      const mainCategory = b.genres && b.genres.length > 0 ? b.genres[0] : null;
       if (mainCategory) {
         counts[mainCategory] = (counts[mainCategory] || 0) + 1;
       }
@@ -556,7 +555,6 @@ export default function LibraryView() {
     const genres = new Set<string>();
     books.forEach(b => {
       if (b.genres) b.genres.forEach(g => genres.add(g));
-      else if (b.genre) genres.add(b.genre);
     });
     return Array.from(genres).sort();
   }, [books]);
@@ -580,8 +578,7 @@ export default function LibraryView() {
 
       if (filterGenre) {
         const hasGenreList = book.genres && book.genres.includes(filterGenre);
-        const hasLegacyGenre = book.genre === filterGenre;
-        if (!hasGenreList && !hasLegacyGenre) {
+        if (!hasGenreList) {
           return false;
         }
       }

@@ -5,7 +5,6 @@ export interface BookDetails {
   coverUrl: string;
   publishedDate: string;
   genres?: string[];
-  genre?: string; // Legacy
   series?: string;
   description?: string;
   synopsis?: string;
