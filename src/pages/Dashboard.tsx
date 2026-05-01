@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import React, {useState, useEffect} from 'react';
 import {useAuth} from '../contexts/AuthContext';
 import {db, handleFirestoreError, OperationType} from '../firebase';
@@ -21,7 +20,7 @@ import {toTitleCase} from '../lib/utils';
 import {generateLibraryHeroImage} from '../services/gemini';
 import {motion, AnimatePresence} from 'motion/react';
 import {Timestamp} from 'firebase/firestore';
-import AppLayout from '../components/AppLayout';
+import SidebarActions from '../components/SidebarActions';
 
 type FirestoreDate = Timestamp | Date | string | number;
 
@@ -37,13 +36,12 @@ interface Library {
 }
 
 export default function Dashboard() {
-  const {user, logOut} = useAuth();
+  const {user} = useAuth();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newLibName, setNewLibName] = useState('');
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -155,17 +153,16 @@ export default function Dashboard() {
   }
 
   return (
-    <AppLayout
-      sidebarActions={
+    <>
+      <SidebarActions>
         <button
           onClick={() => setIsCreating(true)}
-          className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight"
+          className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
         >
-          <Plus className="text-primary w-5 h-5 flex-shrink-0" />
+          <Plus className="text-on-surface-variant w-5 h-5 flex-shrink-0" />
           <span>Create Library</span>
         </button>
-      }
-    >
+      </SidebarActions>
       <div className="flex-grow flex flex-col min-h-screen w-full">
         {/* Main Canvas */}
         <main className="flex-grow p-4 sm:p-8 lg:p-12 max-w-[1200px] mx-auto w-full">
@@ -333,6 +330,6 @@ export default function Dashboard() {
           )}
         </main>
       </div>
-    </AppLayout>
+    </>
   );
 }

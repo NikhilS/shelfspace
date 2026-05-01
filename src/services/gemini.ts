@@ -422,12 +422,14 @@ Format the response with simple markdown (use ## for the book titles).`;
 export async function generateBookInsights(
   title: string,
   author: string,
-  type: 'summary' | 'catchup' | 'similar' | 'author_bio',
+  type: 'summary' | 'catchup' | 'similar' | 'author_bio' | 'synopsis',
+  signal?: AbortSignal,
 ): Promise<string> {
   try {
     let prompt = '';
     switch (type) {
       case 'summary':
+      case 'synopsis':
         prompt = `Act as an expert librarian and literary critic. Provide a compelling, spoiler-free summary of the book "${title}" by ${author}. 
         Focus on the premise, the main themes, the setting, and the general tone of the book. 
         Why might someone want to read this? Keep it concise (around 2-3 paragraphs) and engaging. Format with simple markdown (use ## for headings if needed).`;
@@ -448,16 +450,23 @@ export async function generateBookInsights(
     }
 
     const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
-      contents: prompt,
-    });
+    const response = await ai.models.generateContent(
+      {
+        model: 'gemini-3.1-pro-preview',
+        contents: prompt,
+        config: {
+          systemInstruction: 'You are an expert librarian.',
+        },
+      },
+      {signal},
+    );
 
     return (
       response.text ||
       "I'm sorry, I couldn't generate insights for this book at the moment."
     );
   } catch (error) {
+    if (signal?.aborted) throw new Error('Aborted');
     handleGeminiError(error);
   }
 }

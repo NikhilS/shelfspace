@@ -25,7 +25,10 @@ export default function Chatbot({libraryBooks}: ChatbotProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatRef = useRef<unknown>(null);
+  const chatRef =
+    useRef<any /* eslint-disable-line @typescript-eslint/no-explicit-any */>(
+      null,
+    );
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({behavior: 'smooth'});

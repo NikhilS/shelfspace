@@ -1,11 +1,25 @@
 import {initializeApp} from 'firebase/app';
 import {getAuth} from 'firebase/auth';
-import {getFirestore, getDocFromServer, doc} from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  getDocFromServer,
+  doc,
+} from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = initializeFirestore(
+  app,
+  {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+    }),
+  },
+  firebaseConfig.firestoreDatabaseId,
+);
 
 // Validate Connection to Firestore
 async function testConnection() {

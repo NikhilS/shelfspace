@@ -18,9 +18,10 @@ export default function BarcodeScanner({
         onScan(result.getText());
       }
     },
-    onError(error: Error | string) {
+    onError(error: unknown) {
       if (!errorMsg) {
-        const msg = typeof error === 'string' ? error : error.message;
+        const msg =
+          typeof error === 'string' ? error : (error as Error)?.message;
         if (
           msg.includes('video source') ||
           msg.includes('Permission') ||

@@ -132,6 +132,12 @@ service cloud.firestore {
              (!( 'updatedAt' in data ) || data.updatedAt is timestamp);
     }
 
+    function isValidAllowedDuplicate(data) {
+      return hasRequiredFields(['bookIds', 'createdAt']) &&
+             isValidList(data.bookIds, 100) &&
+             data.createdAt is number;
+    }
+
     // ===============================================================
     // Access Rules
     // ===============================================================
@@ -160,6 +166,27 @@ service cloud.firestore {
                     request.resource.data.ownerId == resource.data.ownerId &&
                     request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if canEditLibrary();
+
+      match /allowedDuplicates/{allowedId} {
+        function canReadSub() {
+          let library = get(/databases/$(database)/documents/libraries/$(libraryId));
+          return isAuthenticated() && (
+            library.data.ownerId == request.auth.uid ||
+            (request.auth.token.email in library.data.get('sharedWith', []))
+          );
+        }
+        function canEditSub() {
+          let library = get(/databases/$(database)/documents/libraries/$(libraryId));
+          return isAuthenticated() && (
+            library.data.ownerId == request.auth.uid ||
+            (request.auth.token.email in library.data.get('sharedWith', []))
+          );
+        }
+        allow read: if canReadSub();
+        allow create: if canEditSub() && isValidAllowedDuplicate(request.resource.data);
+        allow update: if canEditSub() && isValidAllowedDuplicate(request.resource.data);
+        allow delete: if canEditSub();
+      }
 
       match /books/{bookId} {
         function canReadBooks() {

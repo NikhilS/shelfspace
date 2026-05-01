@@ -1,15 +1,14 @@
 import React, {useState, useEffect} from 'react';
-import {Link, useLocation} from 'react-router-dom';
+import {Link, useLocation, Outlet} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {Library, LogOut, Menu} from 'lucide-react';
 import {motion, AnimatePresence} from 'motion/react';
 
 interface AppLayoutProps {
-  children: React.ReactNode;
-  sidebarActions?: React.ReactNode;
+  children?: React.ReactNode;
 }
 
-export default function AppLayout({children, sidebarActions}: AppLayoutProps) {
+export default function AppLayout({children}: AppLayoutProps) {
   const {user, logOut} = useAuth();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const location = useLocation();
@@ -57,37 +56,31 @@ export default function AppLayout({children, sidebarActions}: AppLayoutProps) {
           <Link
             to="/"
             onClick={() => setIsMobileNavOpen(false)}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-serif text-lg tracking-tight ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-serif text-lg tracking-tight w-full text-left cursor-pointer ${
               isHome
                 ? 'text-primary font-bold bg-primary/5 shadow-sm'
                 : 'text-on-surface hover:text-primary hover:bg-surface-container'
             }`}
           >
             <Library
-              className={`w-5 h-5 ${isHome ? 'text-primary' : 'text-on-surface-variant'}`}
+              className={`w-5 h-5 flex-shrink-0 ${isHome ? 'text-primary' : 'text-on-surface-variant'}`}
             />
             <span>My Libraries</span>
           </Link>
 
-          {sidebarActions && (
-            <div
-              className="mt-6 flex flex-col gap-2"
-              onClick={() => setIsMobileNavOpen(false)}
-            >
-              <div className="px-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-[0.2em] mb-2 mt-2">
-                Actions
-              </div>
-              {sidebarActions}
-            </div>
-          )}
+          <div
+            id="sidebar-actions-root"
+            className="contents"
+            onClick={() => setIsMobileNavOpen(false)}
+          />
         </div>
 
         <div className="mt-auto px-4">
           <button
             onClick={logOut}
-            className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight"
+            className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
           >
-            <LogOut className="text-on-surface-variant w-5 h-5" />
+            <LogOut className="text-on-surface-variant flex-shrink-0 w-5 h-5" />
             <span>Logout</span>
           </button>
         </div>
@@ -131,7 +124,7 @@ export default function AppLayout({children, sidebarActions}: AppLayoutProps) {
           </div>
         </header>
 
-        {children}
+        {children || <Outlet />}
       </main>
     </div>
   );

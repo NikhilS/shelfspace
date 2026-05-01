@@ -63,10 +63,12 @@ function getHighResCoverUrl(url: string | undefined): string {
 
 export async function searchBookByIsbn(
   isbn: string,
+  signal?: AbortSignal,
 ): Promise<BookDetails | null> {
   try {
     let response = await fetch(
       `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`,
+      {signal},
     );
     if (response.ok) {
       let data = await response.json();
@@ -75,6 +77,7 @@ export async function searchBookByIsbn(
       if (!data.items || data.items.length === 0) {
         response = await fetch(
           `https://www.googleapis.com/books/v1/volumes?q=${isbn}`,
+          {signal},
         );
         data = await response.json();
       }
@@ -105,6 +108,7 @@ export async function searchBookByIsbn(
     // Use isbn= parameter for exact ISBN matching
     let response = await fetch(
       `https://openlibrary.org/search.json?isbn=${isbn}&limit=1`,
+      {signal},
     );
     if (response.ok) {
       let data = await response.json();
@@ -113,6 +117,7 @@ export async function searchBookByIsbn(
       if (!data.docs || data.docs.length === 0) {
         response = await fetch(
           `https://openlibrary.org/search.json?q=${isbn}&limit=1`,
+          {signal},
         );
         data = await response.json();
       }
@@ -142,6 +147,7 @@ export async function searchBookByIsbn(
 export async function searchBookByTitleAndAuthor(
   title: string | null | undefined,
   author: string | null | undefined,
+  signal?: AbortSignal,
 ): Promise<BookDetails[]> {
   if (!title && !author) return [];
   let results: BookDetails[] = [];
@@ -151,6 +157,7 @@ export async function searchBookByTitleAndAuthor(
     );
     const response = await fetch(
       `https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5`,
+      {signal},
     );
     if (response.ok) {
       const data = await response.json();
@@ -182,6 +189,7 @@ export async function searchBookByTitleAndAuthor(
 
 export async function searchBookByTitle(
   query: string | null | undefined,
+  signal?: AbortSignal,
 ): Promise<BookDetails[]> {
   if (!query) return [];
   let results: BookDetails[] = [];
@@ -191,6 +199,7 @@ export async function searchBookByTitle(
     // Try intitle: first for exact title matches
     const response = await fetch(
       `https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(query)}&maxResults=10`,
+      {signal},
     );
     if (response.ok) {
       const data = await response.json();
@@ -220,6 +229,7 @@ export async function searchBookByTitle(
     if (results.length < 5) {
       const fallbackResponse = await fetch(
         `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=10`,
+        {signal},
       );
       if (fallbackResponse.ok) {
         const fallbackData = await fallbackResponse.json();

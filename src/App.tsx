@@ -1,8 +1,9 @@
 import React, {Suspense, lazy} from 'react';
-import {BrowserRouter, Routes, Route, Navigate} from 'react-router-dom';
+import {BrowserRouter, Routes, Route, Navigate, Outlet} from 'react-router-dom';
 import {AuthProvider, useAuth} from './contexts/AuthContext';
 import {ErrorBoundary} from './components/ErrorBoundary';
 import {Toaster} from 'sonner';
+import AppLayout from './components/AppLayout';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const LibraryView = lazy(() => import('./pages/LibraryView'));
@@ -10,6 +11,7 @@ const BookDetailsView = lazy(() => import('./pages/BookDetailsView'));
 const AddBookView = lazy(() => import('./pages/AddBookView'));
 const ConstellationMap = lazy(() => import('./pages/ConstellationMap'));
 const Login = lazy(() => import('./pages/Login'));
+const SpruceUpView = lazy(() => import('./pages/SpruceUpView'));
 
 function LoadingScreen() {
   return (
@@ -19,15 +21,15 @@ function LoadingScreen() {
   );
 }
 
-function PageWrapper({children}: {children: React.ReactNode}) {
+function PageWrapper({children}: {children?: React.ReactNode}) {
   return (
     <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
-      {children}
+      {children || <Outlet />}
     </div>
   );
 }
 
-function PrivateRoute({children}: {children: React.ReactNode}) {
+function PrivateRoute({children}: {children?: React.ReactNode}) {
   const {user, isAuthReady} = useAuth();
 
   if (!isAuthReady) {
@@ -39,9 +41,7 @@ function PrivateRoute({children}: {children: React.ReactNode}) {
   }
 
   return (
-    <Suspense fallback={<LoadingScreen />}>
-      <PageWrapper>{children}</PageWrapper>
-    </Suspense>
+    <Suspense fallback={<LoadingScreen />}>{children || <Outlet />}</Suspense>
   );
 }
 
@@ -58,46 +58,29 @@ function AnimatedRoutes() {
           </Suspense>
         }
       />
+
       <Route
-        path="/"
         element={
           <PrivateRoute>
-            <Dashboard />
+            <AppLayout>
+              <PageWrapper />
+            </AppLayout>
           </PrivateRoute>
         }
-      />
-      <Route
-        path="/library/:id"
-        element={
-          <PrivateRoute>
-            <LibraryView />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/library/:id/add"
-        element={
-          <PrivateRoute>
-            <AddBookView />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/library/:id/constellation"
-        element={
-          <PrivateRoute>
-            <ConstellationMap />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/library/:libraryId/book/:bookId"
-        element={
-          <PrivateRoute>
-            <BookDetailsView />
-          </PrivateRoute>
-        }
-      />
+      >
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/library/:id" element={<LibraryView />} />
+        <Route path="/library/:id/add" element={<AddBookView />} />
+        <Route
+          path="/library/:id/constellation"
+          element={<ConstellationMap />}
+        />
+        <Route path="/library/:id/spruce-up" element={<SpruceUpView />} />
+        <Route
+          path="/library/:libraryId/book/:bookId"
+          element={<BookDetailsView />}
+        />
+      </Route>
     </Routes>
   );
 }

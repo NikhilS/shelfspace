@@ -1,17 +1,16 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-floating-promises */
-import React, {useState, useEffect, useMemo, useRef} from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-floating-promises */
+import React, {useState, useEffect} from 'react';
 import {useParams, Link} from 'react-router-dom';
 import {
   collection,
-  getDocs,
   doc,
   writeBatch,
-  updateDoc,
   deleteField,
+  getDocs,
 } from 'firebase/firestore';
-import {db, handleFirestoreError, OperationType} from '../firebase';
+import {db} from '../firebase';
 import {generateBookEmbeddings, generateClusterNames} from '../services/gemini';
-import {ArrowLeft, Loader2, Maximize, RefreshCw} from 'lucide-react';
+import {ArrowLeft, Loader2, RefreshCw} from 'lucide-react';
 import {UMAP} from 'umap-js';
 import {kmeans} from '../lib/clustering';
 import {
@@ -24,7 +23,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import AppLayout from '../components/AppLayout';
+import SidebarActions from '../components/SidebarActions';
 import {BookDetails} from '../services/bookApi';
 
 interface BookDoc extends BookDetails {
@@ -286,17 +285,16 @@ export default function ConstellationMap() {
   };
 
   return (
-    <AppLayout
-      sidebarActions={
+    <>
+      <SidebarActions>
         <Link
           to={`/library/${libraryId}`}
-          className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 font-serif text-lg tracking-tight"
+          className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
         >
           <ArrowLeft className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
           <span>Back to Library</span>
         </Link>
-      }
-    >
+      </SidebarActions>
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="mb-8 flex flex-col md:flex-row justify-between items-start gap-4">
           <div>
@@ -419,6 +417,6 @@ export default function ConstellationMap() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </>
   );
 }

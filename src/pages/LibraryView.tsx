@@ -1,4 +1,5 @@
-/* eslint-disable @typescript-eslint/no-floating-promises, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-floating-promises, @typescript-eslint/no-explicit-any */
 import React, {
   useState,
   useEffect,
@@ -18,12 +19,7 @@ import {db, handleFirestoreError, OperationType} from '../firebase';
 import {
   doc,
   collection,
-  query,
   onSnapshot,
-  addDoc,
-  deleteDoc,
-  serverTimestamp,
-  getDoc,
   updateDoc,
   Timestamp,
 } from 'firebase/firestore';
@@ -36,12 +32,10 @@ import {
   X,
   Sparkles,
   LayoutGrid,
-  List,
   Table as TableIcon,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  LogOut,
   Search,
   Filter,
   Download,
@@ -50,9 +44,9 @@ import {
   AlertCircle,
   RefreshCw,
   Map,
+  Wand2,
 } from 'lucide-react';
 import {toast} from 'sonner';
-import {GoogleGenAI, Type} from '@google/genai';
 import {enrichBooksMetadata, getPickOfTheDay} from '../services/gemini';
 import BookCard from '../components/BookCard';
 import Chatbot from '../components/Chatbot';
@@ -64,7 +58,8 @@ import {
 import {computeResyncChanges} from '../lib/metadataUtils';
 import {toTitleCase} from '../lib/utils';
 import {motion, AnimatePresence} from 'motion/react';
-import AppLayout from '../components/AppLayout';
+import SidebarActions from '../components/SidebarActions';
+import {TableVirtuoso, VirtuosoGrid} from 'react-virtuoso';
 import {
   PieChart,
   Pie,
@@ -106,11 +101,10 @@ interface Book extends BookDetails {
 }
 
 type SortOption = 'added' | 'title' | 'author';
-type GroupOption = 'none' | 'author' | 'genre' | 'series' | 'lucky';
 
 export default function LibraryView() {
   const {id} = useParams<{id: string}>();
-  const {user, logOut} = useAuth();
+  const {user} = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -245,8 +239,8 @@ export default function LibraryView() {
     reason: string;
   } | null>(null);
   const [isGeneratingPick, setIsGeneratingPick] = useState(false);
-  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isBooksLoading, setIsBooksLoading] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
   const [isBackfilling, setIsBackfilling] = useState(false);
@@ -263,7 +257,6 @@ export default function LibraryView() {
   const [resyncAllCompleted, setResyncAllCompleted] = useState(0);
 
   const [shareEmail, setShareEmail] = useState('');
-  const [bookToDelete, setBookToDelete] = useState<string | null>(null);
   const [libraryToDelete, setLibraryToDelete] = useState<boolean>(false);
 
   const [selectedBooks, setSelectedBooks] = useState<Set<string>>(new Set());
@@ -363,7 +356,7 @@ export default function LibraryView() {
   };
 
   useEffect(() => {
-    if (isLoading || !id) return;
+    if (isLoading || isBooksLoading || !id) return;
 
     // Restore scroll position
     const savedScroll = sessionStorage.getItem(`library_scroll_${id}`);
@@ -385,7 +378,7 @@ export default function LibraryView() {
       clearTimeout(timeoutId);
       window.removeEventListener('scroll', handleScroll);
     };
-  }, [id, isLoading]);
+  }, [id, isLoading, isBooksLoading]);
 
   useEffect(() => {
     if (
@@ -401,11 +394,13 @@ export default function LibraryView() {
   const topCategories = useMemo(() => {
     const counts: Record<string, number> = {};
     books.forEach(b => {
-      const mainCategory = b.genres && b.genres.length > 0 ? b.genres[0] : null;
-      if (mainCategory) {
-        counts[mainCategory] = (counts[mainCategory] || 0) + 1;
+      if (b.genres && Array.isArray(b.genres)) {
+        b.genres.forEach(g => {
+          counts[g] = (counts[g] || 0) + 1;
+        });
       }
     });
+
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 7)
@@ -434,14 +429,13 @@ export default function LibraryView() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (libraryToDelete) setLibraryToDelete(false);
-        else if (bookToDelete) setBookToDelete(null);
         else if (isSettingsOpen) setIsSettingsOpen(false);
         else if (isAdvancedSettingsOpen) setIsAdvancedSettingsOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [libraryToDelete, bookToDelete, isSettingsOpen, isAdvancedSettingsOpen]);
+  }, [libraryToDelete, isSettingsOpen, isAdvancedSettingsOpen]);
 
   useEffect(() => {
     // Resize observer removed as we now use CSS grid
@@ -449,6 +443,8 @@ export default function LibraryView() {
 
   useEffect(() => {
     if (!id || !user) return;
+    setIsLoading(true);
+    setIsBooksLoading(true);
 
     const libRef = doc(db, 'libraries', id);
     const unsubscribeLib = onSnapshot(
@@ -473,7 +469,50 @@ export default function LibraryView() {
       snapshot => {
         const bks: Book[] = [];
         snapshot.forEach(doc => {
-          bks.push({id: doc.id, ...doc.data()} as Book);
+          const data = doc.data();
+          let parsedGenres: string[] = [];
+          const rawGenres =
+            data.genres ||
+            data.genre ||
+            data.categories ||
+            data.category ||
+            data.Genres ||
+            data.Category ||
+            data.tags ||
+            data.Tags ||
+            data.subjects ||
+            data.Subjects ||
+            data.topics ||
+            data.Topics ||
+            data.Tag ||
+            data.Subject ||
+            data.Topic;
+
+          if (rawGenres) {
+            let tempGenres: any[] = [];
+            if (Array.isArray(rawGenres)) {
+              tempGenres = rawGenres;
+            } else if (typeof rawGenres === 'string') {
+              tempGenres = [rawGenres];
+            } else if (typeof rawGenres === 'object' && rawGenres !== null) {
+              tempGenres = Object.values(rawGenres);
+            }
+
+            const result = new Set<string>();
+            tempGenres.forEach((g: any) => {
+              if (typeof g === 'string') {
+                // Handle both / and commas which are common delimiters
+                const splits = g
+                  .split(/[/,;]/)
+                  .map((s: string) => s.trim())
+                  .filter(Boolean);
+                splits.forEach((s: string) => result.add(s));
+              }
+            });
+            parsedGenres = Array.from(result);
+          }
+
+          bks.push({id: doc.id, ...data, genres: parsedGenres} as Book);
         });
         const getTime = (dateObj: FirestoreDate | undefined) => {
           if (!dateObj) return 0;
@@ -490,8 +529,10 @@ export default function LibraryView() {
         // Sort by addedAt descending
         bks.sort((a, b) => getTime(b.addedAt) - getTime(a.addedAt));
         setBooks(bks);
+        setIsBooksLoading(false);
       },
       error => {
+        setIsBooksLoading(false);
         handleFirestoreError(
           error,
           OperationType.LIST,
@@ -511,37 +552,6 @@ export default function LibraryView() {
     library?.sharedWith.includes(user?.email || '');
   const isOwner = library?.ownerId === user?.uid;
 
-  useEffect(() => {
-    // Backfill any books that have addedAt as a string (without the time) to a full Timestamp at midnight
-    // AND backfill any books missing 'format' to 'physical'
-    if (!canEdit || books.length === 0 || !id) return;
-
-    let hasUpdates = false;
-
-    books.forEach(b => {
-      const updates: Partial<Book> = {};
-
-      if (typeof b.addedAt === 'string') {
-        const d = new Date(b.addedAt);
-        if (!isNaN(d.getTime())) {
-          d.setHours(0, 0, 0, 0);
-          updates.addedAt = Timestamp.fromDate(d);
-        }
-      }
-
-      if (!b.format) {
-        updates.format = 'physical';
-      }
-
-      if (Object.keys(updates).length > 0) {
-        hasUpdates = true;
-        updateDoc(doc(db, 'libraries', id, 'books', b.id), {
-          ...updates,
-        }).catch(err => console.error('Error backfilling book data', err));
-      }
-    });
-  }, [books, canEdit, id]);
-
   const handleSort = (option: SortOption) => {
     if (sortBy === option) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -554,7 +564,9 @@ export default function LibraryView() {
   const availableGenres = useMemo(() => {
     const genres = new Set<string>();
     books.forEach(b => {
-      if (b.genres) b.genres.forEach(g => genres.add(g));
+      if (b.genres) {
+        b.genres.forEach(g => genres.add(g));
+      }
     });
     return Array.from(genres).sort();
   }, [books]);
@@ -577,7 +589,7 @@ export default function LibraryView() {
       }
 
       if (filterGenre) {
-        const hasGenreList = book.genres && book.genres.includes(filterGenre);
+        const hasGenreList = book.genres?.includes(filterGenre);
         if (!hasGenreList) {
           return false;
         }
@@ -637,58 +649,6 @@ export default function LibraryView() {
     }
     return sorted;
   }, [filteredBooks, sortBy, sortOrder]);
-
-  const bookIdsString = books
-    .map(b => b.id)
-    .sort()
-    .join(',');
-
-  const handleDeleteBook = (bookId: string) => {
-    if (!id || !canEdit) return;
-    setBookToDelete(bookId);
-  };
-
-  const confirmDeleteBook = async () => {
-    if (!id || !canEdit || !bookToDelete) return;
-
-    try {
-      await deleteDoc(doc(db, 'libraries', id, 'books', bookToDelete));
-      toast.success('Book removed');
-      if (selectedBook?.id === bookToDelete) {
-        setSelectedBook(null);
-      }
-    } catch (error) {
-      handleFirestoreError(
-        error,
-        OperationType.DELETE,
-        `libraries/${id}/books/${bookToDelete}`,
-      );
-    } finally {
-      setBookToDelete(null);
-    }
-  };
-
-  const handleUpdateBook = async (
-    bookId: string,
-    updatedData: Partial<Omit<Book, 'id'>>,
-  ) => {
-    if (!id || !canEdit) return;
-    try {
-      await updateDoc(doc(db, 'libraries', id, 'books', bookId), {
-        ...updatedData,
-      });
-      toast.success('Book updated');
-      setSelectedBook(prev =>
-        prev && prev.id === bookId ? {...prev, ...updatedData} : prev,
-      );
-    } catch (error) {
-      handleFirestoreError(
-        error,
-        OperationType.UPDATE,
-        `libraries/${id}/books/${bookId}`,
-      );
-    }
-  };
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1024,24 +984,42 @@ export default function LibraryView() {
     }
   };
 
-  if (isLoading) {
+  if ((isLoading || isBooksLoading) && books.length === 0) {
     return (
-      <AppLayout sidebarActions={<></>}>
-        <div className="flex-grow flex flex-col min-h-screen w-full bg-background animate-pulse">
-          <div className="w-full h-48 sm:h-64 bg-surface-variant/50 relative overflow-hidden"></div>
-          <div className="flex-grow flex flex-col w-full max-w-screen-2xl mx-auto px-4 sm:px-8 py-8 gap-8">
-            <div className="h-10 bg-surface-variant/50 w-64 rounded"></div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6 lg:gap-8">
-              {[1, 2, 3, 4, 5, 6].map(i => (
-                <div
-                  key={i}
-                  className="aspect-[2/3] bg-surface-variant/50 shadow-sm rounded-sm"
-                ></div>
-              ))}
+      <>
+        <SidebarActions>
+          <></>
+        </SidebarActions>
+        <div className="flex-grow flex flex-col items-center justify-center min-h-[80vh] w-full bg-background relative overflow-hidden">
+          <div className="flex flex-col items-center justify-center p-12 max-w-sm text-center">
+            <div className="relative w-16 h-16 mb-8 flex items-center justify-center">
+              <motion.div
+                className="absolute inset-0 border-2 border-primary/20 rounded-full"
+                animate={{scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5]}}
+                transition={{duration: 2, repeat: Infinity, ease: 'easeInOut'}}
+              />
+              <motion.div
+                className="absolute inset-2 border-2 border-primary/40 rounded-full"
+                animate={{scale: [1, 1.1, 1], opacity: [0.3, 0.8, 0.3]}}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                  delay: 0.2,
+                }}
+              />
+              <BookIcon className="w-6 h-6 text-primary animate-pulse relative z-10" />
             </div>
+            <h2 className="font-serif text-2xl font-medium text-primary mb-2 italic tracking-tight">
+              Opening the vaults...
+            </h2>
+            <p className="font-body-md text-on-surface-variant text-sm max-w-xs leading-relaxed">
+              Fetching catalog, blowing off dust, and retrieving your reading
+              history.
+            </p>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
@@ -1064,158 +1042,40 @@ export default function LibraryView() {
 
       return (
         <div className="bg-surface-container-lowest rounded-xl border border-surface-variant overflow-hidden shadow-[0_2px_12px_rgba(2,26,53,0.03)]">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-surface-container-low border-b border-surface-variant">
-                  <th
-                    className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/2 cursor-pointer hover:bg-surface-variant/30 transition-colors"
-                    onClick={() => handleSort('title')}
-                  >
-                    <div className="flex items-center gap-4">
-                      {user && (
-                        <div
-                          className={`w-8 flex items-center justify-center flex-shrink-0 transition-opacity ${selectedBooks.size > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                          onClick={e => {
-                            e.stopPropagation();
-                            toggleAllBooks(shelfBooksList);
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={
-                              selectedBooks.size > 0 &&
-                              shelfBooksList.length > 0 &&
-                              shelfBooksList.every(b => selectedBooks.has(b.id))
-                            }
-                            ref={el => {
-                              if (el)
-                                el.indeterminate =
-                                  selectedBooks.size > 0 &&
-                                  !shelfBooksList.every(b =>
-                                    selectedBooks.has(b.id),
-                                  );
-                            }}
-                            onChange={() => {}}
-                            className="pointer-events-none w-4 h-4 accent-primary"
-                          />
+          <div className="overflow-x-auto min-h-[500px]">
+            {shelfBooksList.length === 0 ? (
+              <table className="w-full table-fixed text-left border-collapse">
+                <thead>
+                  <tr className="bg-surface-container-low border-b border-surface-variant shadow-sm h-14">
+                    <th
+                      className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-2/3 sm:w-1/2 cursor-pointer hover:bg-surface-variant/30 transition-colors"
+                      onClick={() => handleSort('title')}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          Title <SortIcon column="title" />
                         </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        Title <SortIcon column="title" />
                       </div>
-                    </div>
-                  </th>
-                  <th
-                    className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/4 cursor-pointer hover:bg-surface-variant/30 transition-colors"
-                    onClick={() => handleSort('author')}
-                  >
-                    <div className="flex items-center gap-2">
-                      Author <SortIcon column="author" />
-                    </div>
-                  </th>
-                  <th
-                    className="hidden sm:table-cell py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right cursor-pointer hover:bg-surface-variant/30 transition-colors"
-                    onClick={() => handleSort('added')}
-                  >
-                    <div className="flex items-center gap-2 justify-end">
-                      Added <SortIcon column="added" />
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-variant/60">
-                <AnimatePresence>
-                  {shelfBooksList.map((book, idx) => {
-                    const hash = (book.title || '')
-                      .split('')
-                      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                    const gradients = [
-                      'from-[#2f4d40] to-[#163428]',
-                      'from-[#7d5633] to-[#2e1500]',
-                      'from-[#021a35] to-[#041c37]',
-                      'from-[#8397b8] to-[#4b5f7e]',
-                      'from-[#e5e2dc] to-[#dcdad4]',
-                    ];
-                    const gradientClass = gradients[hash % gradients.length];
-
-                    return (
-                      <motion.tr
-                        key={book.id}
-                        initial={{opacity: 0, x: -10}}
-                        animate={{opacity: 1, x: 0}}
-                        exit={{opacity: 0, x: 10}}
-                        transition={{duration: 0.2}}
-                        onClick={() =>
-                          navigate(`/library/${id}/book/${book.id}`, {
-                            state: {from: location.pathname + location.search},
-                          })
-                        }
-                        className="group hover:bg-surface-container-low/50 transition-colors cursor-pointer"
-                      >
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-4 group/cover">
-                            <div
-                              className="h-12 w-8 flex-shrink-0 relative overflow-hidden rounded-sm cursor-pointer"
-                              onClick={e => toggleBookSelection(e, book.id)}
-                            >
-                              {/* Checkbox Layer */}
-                              {user && (
-                                <div
-                                  className={`absolute inset-0 z-20 flex items-center justify-center transition-all ${selectedBooks.size > 0 || selectedBooks.has(book.id) ? 'opacity-100 bg-transparent' : 'opacity-0 group-hover/cover:opacity-100 hover:bg-surface-variant/30'}`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedBooks.has(book.id)}
-                                    onChange={() => {}}
-                                    className="pointer-events-none w-4 h-4 accent-primary"
-                                  />
-                                </div>
-                              )}
-
-                              {/* Cover Layer */}
-                              <div
-                                className={`absolute inset-0 bg-surface-variant shadow-sm border border-outline-variant/30 transition-opacity ${user && (selectedBooks.size > 0 || selectedBooks.has(book.id)) ? 'opacity-0' : 'opacity-100 group-hover/cover:opacity-0'}`}
-                              >
-                                {book.coverUrl ? (
-                                  <img
-                                    src={book.coverUrl}
-                                    alt={book.title}
-                                    className="w-full h-full object-cover"
-                                    referrerPolicy="no-referrer"
-                                    loading="lazy"
-                                  />
-                                ) : (
-                                  <div
-                                    className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-80`}
-                                  ></div>
-                                )}
-                              </div>
-                            </div>
-                            <span className="font-headline-md text-[18px] sm:text-[20px] text-on-surface line-clamp-2 max-w-lg leading-snug">
-                              {toTitleCase(book.title)}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-4 px-6 font-body-md text-body-md text-on-surface-variant">
-                          {toTitleCase(book.author)}
-                        </td>
-                        <td className="hidden sm:table-cell py-4 px-6 text-right font-body-md text-outline whitespace-nowrap">
-                          {book.addedAt && getFirestoreTime(book.addedAt) > 0
-                            ? new Date(
-                                getFirestoreTime(book.addedAt),
-                              ).toLocaleDateString(undefined, {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                              })
-                            : 'Unknown'}
-                        </td>
-                      </motion.tr>
-                    );
-                  })}
-                </AnimatePresence>
-                {shelfBooksList.length === 0 && (
+                    </th>
+                    <th
+                      className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/3 sm:w-1/4 cursor-pointer hover:bg-surface-variant/30 transition-colors"
+                      onClick={() => handleSort('author')}
+                    >
+                      <div className="flex items-center gap-2">
+                        Author <SortIcon column="author" />
+                      </div>
+                    </th>
+                    <th
+                      className="hidden sm:table-cell sm:w-1/4 py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right cursor-pointer hover:bg-surface-variant/30 transition-colors"
+                      onClick={() => handleSort('added')}
+                    >
+                      <div className="flex items-center gap-2 justify-end">
+                        Added <SortIcon column="added" />
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
                   <tr>
                     <td
                       colSpan={3}
@@ -1224,60 +1084,244 @@ export default function LibraryView() {
                       {emptyMessage}
                     </td>
                   </tr>
+                </tbody>
+              </table>
+            ) : (
+              <TableVirtuoso
+                data={shelfBooksList}
+                useWindowScroll
+                className="w-full text-left border-collapse"
+                components={{
+                  Table: ({...props}) => (
+                    <table
+                      {...props}
+                      className="w-full table-fixed text-left border-collapse"
+                    />
+                  ),
+                  TableHead: React.forwardRef((props, ref) => (
+                    <thead {...props} ref={ref as any} />
+                  )),
+                  TableRow: ({item: _item, ...props}) => (
+                    <tr
+                      {...props}
+                      className="group hover:bg-surface-container-low/50 transition-colors cursor-pointer border-b border-surface-variant/60"
+                    />
+                  ),
+                  TableBody: React.forwardRef((props, ref) => (
+                    <tbody {...props} ref={ref as any} />
+                  )),
+                }}
+                fixedHeaderContent={() => (
+                  <tr className="bg-surface-container-low border-b border-surface-variant shadow-sm h-14">
+                    <th
+                      className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-2/3 sm:w-1/2 cursor-pointer hover:bg-surface-variant/30 transition-colors bg-surface-container-low"
+                      onClick={() => handleSort('title')}
+                    >
+                      <div className="flex items-center gap-4">
+                        {user && (
+                          <div
+                            className={`w-8 flex items-center justify-center flex-shrink-0 transition-opacity ${selectedBooks.size > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                            onClick={e => {
+                              e.stopPropagation();
+                              toggleAllBooks(shelfBooksList);
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={
+                                selectedBooks.size > 0 &&
+                                shelfBooksList.length > 0 &&
+                                shelfBooksList.every(b =>
+                                  selectedBooks.has(b.id),
+                                )
+                              }
+                              ref={el => {
+                                if (el)
+                                  el.indeterminate =
+                                    selectedBooks.size > 0 &&
+                                    !shelfBooksList.every(b =>
+                                      selectedBooks.has(b.id),
+                                    );
+                              }}
+                              onChange={() => {}}
+                              className="pointer-events-none w-4 h-4 accent-primary"
+                            />
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          Title <SortIcon column="title" />
+                        </div>
+                      </div>
+                    </th>
+                    <th
+                      className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/3 sm:w-1/4 cursor-pointer hover:bg-surface-variant/30 transition-colors bg-surface-container-low"
+                      onClick={() => handleSort('author')}
+                    >
+                      <div className="flex items-center gap-2">
+                        Author <SortIcon column="author" />
+                      </div>
+                    </th>
+                    <th
+                      className="hidden sm:table-cell sm:w-1/4 py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right cursor-pointer hover:bg-surface-variant/30 transition-colors bg-surface-container-low"
+                      onClick={() => handleSort('added')}
+                    >
+                      <div className="flex items-center gap-2 justify-end">
+                        Added <SortIcon column="added" />
+                      </div>
+                    </th>
+                  </tr>
                 )}
-              </tbody>
-            </table>
+                itemContent={(_index, book) => {
+                  const hash = (book.title || '')
+                    .split('')
+                    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                  const gradients = [
+                    'from-[#2f4d40] to-[#163428]',
+                    'from-[#7d5633] to-[#2e1500]',
+                    'from-[#021a35] to-[#041c37]',
+                    'from-[#8397b8] to-[#4b5f7e]',
+                    'from-[#e5e2dc] to-[#dcdad4]',
+                  ];
+                  const gradientClass = gradients[hash % gradients.length];
+
+                  return (
+                    <>
+                      <td
+                        className="py-4 px-6"
+                        onClick={() =>
+                          navigate(`/library/${id}/book/${book.id}`, {
+                            state: {from: location.pathname + location.search},
+                          })
+                        }
+                      >
+                        <div className="flex items-center gap-4 group/cover">
+                          <div
+                            className="h-12 w-8 flex-shrink-0 relative overflow-hidden rounded-sm cursor-pointer"
+                            onClick={e => {
+                              e.stopPropagation();
+                              toggleBookSelection(e, book.id);
+                            }}
+                          >
+                            {/* Checkbox Layer */}
+                            {user && (
+                              <div
+                                className={`absolute inset-0 z-20 flex items-center justify-center transition-all ${selectedBooks.size > 0 || selectedBooks.has(book.id) ? 'opacity-100 bg-transparent' : 'opacity-0 group-hover/cover:opacity-100 hover:bg-surface-variant/30'}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedBooks.has(book.id)}
+                                  onChange={() => {}}
+                                  className="pointer-events-none w-4 h-4 accent-primary"
+                                />
+                              </div>
+                            )}
+
+                            {/* Cover Layer */}
+                            <div
+                              className={`absolute inset-0 bg-surface-variant shadow-sm border border-outline-variant/30 transition-opacity ${user && (selectedBooks.size > 0 || selectedBooks.has(book.id)) ? 'opacity-0' : 'opacity-100 group-hover/cover:opacity-0'}`}
+                            >
+                              {book.coverUrl ? (
+                                <img
+                                  src={book.coverUrl}
+                                  alt={book.title}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div
+                                  className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-80`}
+                                ></div>
+                              )}
+                            </div>
+                          </div>
+                          <span className="font-headline-md text-[18px] sm:text-[20px] text-on-surface line-clamp-2 max-w-lg leading-snug">
+                            {toTitleCase(book.title)}
+                          </span>
+                        </div>
+                      </td>
+                      <td
+                        className="py-4 px-6 font-body-md text-body-md text-on-surface-variant"
+                        onClick={() =>
+                          navigate(`/library/${id}/book/${book.id}`, {
+                            state: {from: location.pathname + location.search},
+                          })
+                        }
+                      >
+                        {toTitleCase(book.author)}
+                      </td>
+                      <td
+                        className="hidden sm:table-cell py-4 px-6 text-right font-body-md text-outline whitespace-nowrap"
+                        onClick={() =>
+                          navigate(`/library/${id}/book/${book.id}`, {
+                            state: {from: location.pathname + location.search},
+                          })
+                        }
+                      >
+                        {book.addedAt && getFirestoreTime(book.addedAt) > 0
+                          ? new Date(
+                              getFirestoreTime(book.addedAt),
+                            ).toLocaleDateString(undefined, {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })
+                          : 'Unknown'}
+                      </td>
+                    </>
+                  );
+                }}
+              />
+            )}
           </div>
         </div>
       );
     }
 
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-        <AnimatePresence>
-          {shelfBooksList.map((book, idx) => (
-            <motion.div
-              key={book.id}
-              initial={{opacity: 0, y: 15, scale: 0.98}}
-              animate={{opacity: 1, y: 0, scale: 1}}
-              exit={{opacity: 0, scale: 0.9}}
-              transition={{
-                duration: 0.35,
-                delay: Math.min(idx, 15) * 0.03,
-                ease: [0.25, 0.1, 0.25, 1.0],
-              }}
-            >
+      <div className="w-full h-full min-h-[500px]">
+        {shelfBooksList.length === 0 ? (
+          <div className="w-full py-12 flex flex-col items-center justify-center opacity-80 font-body-md text-sm pb-8 text-on-surface-variant">
+            <div className="w-12 h-12 mb-3 border-2 border-dashed border-outline-variant/60 rounded-full flex items-center justify-center">
+              <BookIcon size={20} className="text-on-surface-variant" />
+            </div>
+            {emptyMessage}
+          </div>
+        ) : (
+          <VirtuosoGrid
+            useWindowScroll
+            data={shelfBooksList}
+            listClassName="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 pb-24"
+            itemContent={(_index, book) => (
               <BookCard
+                canEdit={!!canEdit}
                 book={book}
                 onClick={() =>
                   navigate(`/library/${id}/book/${book.id}`, {
                     state: {from: location.pathname + location.search},
                   })
                 }
-                canEdit={canEdit}
               />
-            </motion.div>
-          ))}
-        </AnimatePresence>
-        {shelfBooksList.length === 0 && (
-          <div className="col-span-full w-full py-12 flex flex-col items-center justify-center opacity-80 font-body-md text-sm pb-8 text-on-surface-variant">
-            <div className="w-12 h-12 mb-3 border-2 border-dashed border-outline-variant/60 rounded-full flex items-center justify-center">
-              <BookIcon size={20} className="text-on-surface-variant" />
-            </div>
-            {emptyMessage}
-          </div>
+            )}
+          />
         )}
       </div>
     );
   };
 
   const renderOverview = () => (
-    <div className="flex-grow p-4 sm:p-8 lg:p-12 w-full max-w-screen-2xl mx-auto">
-      <header className="mb-12">
-        <h2 className="font-headline-xl text-headline-xl text-primary mb-2">
+    <motion.div
+      initial={{opacity: 0, y: 10}}
+      animate={{opacity: 1, y: 0}}
+      transition={{duration: 0.4, ease: 'easeOut'}}
+      className="flex-grow p-4 sm:p-8 lg:p-12 w-full max-w-screen-2xl mx-auto"
+    >
+      <header className="mb-12 relative">
+        <div className="absolute -top-6 left-0 w-16 h-[2px] bg-primary/20"></div>
+        <h2 className="font-serif text-[48px] sm:text-[64px] font-medium leading-[0.95] tracking-tight text-primary mb-4 italic">
           Library Overview
         </h2>
-        <p className="font-body-lg text-body-lg text-on-surface-variant">
+        <p className="font-body-lg text-[18px] sm:text-[20px] text-on-surface-variant max-w-2xl text-balance">
           Your personal catalog of wisdom and narratives.
         </p>
       </header>
@@ -1315,64 +1359,73 @@ export default function LibraryView() {
           </div>
 
           {/* Top Categories Pie Chart Card */}
-          <div className="bg-surface p-6 border border-surface-variant relative shadow-sm flex-grow">
-            <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest mb-6">
+          <div className="bg-surface p-6 border border-surface-variant relative shadow-sm flex-grow flex flex-col min-w-0">
+            <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest mb-6 text-left">
               Top Categories
             </p>
-            <div className="w-full h-80">
+            <div
+              className="w-full flex-grow relative"
+              style={{minHeight: '320px'}}
+            >
               {topCategories.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart cursor="pointer">
-                    <Pie
-                      data={topCategories}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="45%"
-                      innerRadius={50}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      onClick={data => {
-                        setFilterGenre(data.name);
-                        setCurrentTab('collection');
-                        setIsFiltersOpen(true);
-                      }}
-                      className="cursor-pointer outline-none"
-                    >
-                      {topCategories.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={
-                            [
-                              '#2f4d40',
-                              '#7d5633',
-                              '#021a35',
-                              '#8397b8',
-                              '#a3a099',
-                              '#8a7122',
-                              '#82312a',
-                            ][index % 7]
+                <div className="absolute inset-0 w-full h-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={topCategories}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={90}
+                        paddingAngle={5}
+                        isAnimationActive={true}
+                        onClick={data => {
+                          if (data && data.name) {
+                            setFilterGenre(data.name);
+                            setCurrentTab('collection');
+                            setIsFiltersOpen(true);
                           }
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor:
-                          'var(--color-surface-container-high, #fff)',
-                        border: '1px solid var(--color-surface-variant, #ccc)',
-                        borderRadius: '4px',
-                        color: 'var(--color-on-surface, #000)',
-                      }}
-                      itemStyle={{color: 'var(--color-on-surface, #000)'}}
-                    />
-                    <Legend
-                      verticalAlign="bottom"
-                      wrapperStyle={{fontSize: '12px', paddingTop: '10px'}}
-                      iconType="circle"
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+                        }}
+                        className="cursor-pointer outline-none"
+                      >
+                        {topCategories.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={
+                              [
+                                '#2f4d40',
+                                '#7d5633',
+                                '#021a35',
+                                '#8397b8',
+                                '#a3a099',
+                                '#8a7122',
+                                '#82312a',
+                              ][index % 7]
+                            }
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor:
+                            'var(--color-surface-container-high, #fff)',
+                          border:
+                            '1px solid var(--color-surface-variant, #ccc)',
+                          borderRadius: '4px',
+                          color: 'var(--color-on-surface, #000)',
+                        }}
+                        itemStyle={{color: 'var(--color-on-surface, #000)'}}
+                      />
+                      <Legend
+                        verticalAlign="bottom"
+                        wrapperStyle={{fontSize: '12px', paddingTop: '10px'}}
+                        iconType="circle"
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <p className="font-body-md text-on-surface-variant italic">
@@ -1519,16 +1572,16 @@ export default function LibraryView() {
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 
   return (
-    <AppLayout
-      sidebarActions={
+    <>
+      <SidebarActions>
         <>
           <Link
             to="/"
-            className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 font-serif text-lg tracking-tight"
+            className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
           >
             <ArrowLeft className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
             <span>Back to Libraries</span>
@@ -1536,9 +1589,9 @@ export default function LibraryView() {
 
           <Link
             to={`/library/${id}/constellation`}
-            className="flex items-center gap-3 text-on-surface hover:text-tertiary px-4 py-3 rounded-xl hover:bg-tertiary-container/30 transition-all duration-200 font-serif text-lg tracking-tight"
+            className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
           >
-            <Map className="w-5 h-5 text-tertiary flex-shrink-0" />
+            <Map className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
             <span>Constellation Map</span>
           </Link>
 
@@ -1549,11 +1602,21 @@ export default function LibraryView() {
                   state: {from: location.pathname + location.search},
                 });
               }}
-              className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight"
+              className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
             >
-              <Plus className="w-5 h-5 text-primary flex-shrink-0" />
+              <Plus className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
               <span>Add Book</span>
             </button>
+          )}
+
+          {canEdit && (
+            <Link
+              to={`/library/${id}/spruce-up`}
+              className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
+            >
+              <Wand2 className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
+              <span>Spruce Up Library</span>
+            </Link>
           )}
 
           {canEdit && (
@@ -1561,9 +1624,9 @@ export default function LibraryView() {
               onClick={() => {
                 setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen);
               }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-left font-serif text-lg tracking-tight ${isAdvancedSettingsOpen ? 'bg-surface-container text-primary shadow-sm' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer ${isAdvancedSettingsOpen ? 'bg-surface-container text-primary shadow-sm' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
             >
-              <Settings className="w-5 h-5 opacity-80 flex-shrink-0" />
+              <Settings className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
               <span>Settings</span>
             </button>
           )}
@@ -1573,15 +1636,14 @@ export default function LibraryView() {
               onClick={() => {
                 setIsSettingsOpen(!isSettingsOpen);
               }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-left font-serif text-lg tracking-tight ${isSettingsOpen ? 'bg-surface-container text-primary shadow-sm' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer ${isSettingsOpen ? 'bg-surface-container text-primary shadow-sm' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
             >
-              <Share2 className="w-5 h-5 opacity-80 flex-shrink-0" />
+              <Share2 className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
               <span>Share</span>
             </button>
           )}
         </>
-      }
-    >
+      </SidebarActions>
       <div className="flex-grow flex flex-col min-h-screen w-full">
         {/* Main Content Wrapper */}
         <div className="flex-grow flex flex-col w-full">
@@ -1607,30 +1669,36 @@ export default function LibraryView() {
           ) : (
             <>
               <div
-                className={`w-full h-48 sm:h-64 relative overflow-hidden ${!library.heroImageUrl ? 'bg-primary' : ''}`}
+                className={`w-full h-[280px] sm:h-[400px] relative overflow-hidden flex items-end ${!library.heroImageUrl ? 'bg-[#021a35]' : ''}`}
               >
                 {library.heroImageUrl && (
                   <img
                     src={library.heroImageUrl}
                     alt={library.name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover absolute inset-0"
                   />
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                <div className="absolute bottom-6 left-6 sm:left-10 text-white">
-                  <h1 className="text-3xl sm:text-5xl font-serif font-medium tracking-tight drop-shadow-lg mb-2 leading-tight">
-                    {toTitleCase(library.name)}
-                  </h1>
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                    <p className="text-xs sm:text-sm font-sans font-medium uppercase tracking-wider text-white/90">
-                      {books.length} {books.length === 1 ? 'volume' : 'volumes'}{' '}
-                      •{' '}
-                      {isOwner
-                        ? 'Owned by you'
-                        : `Shared by ${toTitleCase(library.ownerName)}`}
-                    </p>
-                  </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#021a35] via-[#021a35]/40 to-transparent opacity-90" />
+                <div className="relative z-10 w-full max-w-[1200px] mx-auto px-6 sm:px-10 pb-10 sm:pb-16 text-white translate-y-4">
+                  <motion.div
+                    initial={{opacity: 0, y: 10}}
+                    animate={{opacity: 1, y: 0}}
+                    transition={{delay: 0.1, duration: 0.5}}
+                  >
+                    <h1 className="text-[48px] sm:text-[72px] font-serif font-medium tracking-[-0.03em] drop-shadow-md mb-2 leading-[0.95]">
+                      {toTitleCase(library.name)}
+                    </h1>
+                    <div className="flex items-center gap-3">
+                      <div className="w-[1px] h-4 bg-white/40" />
+                      <p className="text-[12px] sm:text-[14px] font-mono font-medium tracking-[0.15em] uppercase text-white/80">
+                        {books.length}{' '}
+                        {books.length === 1 ? 'volume' : 'volumes'} •{' '}
+                        {isOwner
+                          ? 'Owned by you'
+                          : `Shared by ${toTitleCase(library.ownerName)}`}
+                      </p>
+                    </div>
+                  </motion.div>
                 </div>
               </div>
 
@@ -2156,52 +2224,6 @@ export default function LibraryView() {
             }))}
           />
 
-          {/* Delete Book Confirmation Modal */}
-          <AnimatePresence>
-            {bookToDelete && (
-              <motion.div
-                initial={{opacity: 0}}
-                animate={{opacity: 1}}
-                exit={{opacity: 0}}
-                transition={{duration: 0.2}}
-                className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans"
-              >
-                <motion.div
-                  initial={{scale: 0.95, opacity: 0, y: 10}}
-                  animate={{scale: 1, opacity: 1, y: 0}}
-                  exit={{scale: 0.95, opacity: 0, y: 10}}
-                  transition={{duration: 0.3, ease: 'easeOut'}}
-                  className="bg-surface rounded-[32px] p-8 max-w-sm w-full shadow-[0px_10px_40px_rgba(0,0,0,0.1)] border border-border/50"
-                >
-                  <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center text-red-500 mb-5 border border-red-100">
-                    <Trash2 size={24} strokeWidth={1.5} />
-                  </div>
-                  <h3 className="text-2xl font-serif font-medium text-ink mb-3 tracking-tight">
-                    Remove Book
-                  </h3>
-                  <p className="text-muted mb-8 text-sm leading-relaxed">
-                    Are you sure you want to remove this book from your library?
-                    This action cannot be undone.
-                  </p>
-                  <div className="flex justify-end gap-3">
-                    <button
-                      onClick={() => setBookToDelete(null)}
-                      className="px-5 py-3 text-ink font-medium hover:bg-paper border border-border rounded-xl transition-colors text-sm"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={confirmDeleteBook}
-                      className="px-5 py-3 bg-red-500 text-white hover:bg-red-600 rounded-xl transition-colors font-medium text-sm shadow-sm"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {/* Delete Library Confirmation Modal */}
           <AnimatePresence>
             {libraryToDelete && (
@@ -2296,6 +2318,6 @@ export default function LibraryView() {
           </AnimatePresence>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

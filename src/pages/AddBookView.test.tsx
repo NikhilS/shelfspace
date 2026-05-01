@@ -6,7 +6,7 @@ import AddBookView from './AddBookView';
 import {useAuth} from '../contexts/AuthContext';
 import {BrowserRouter} from 'react-router-dom';
 import {extractBooksFromImage} from '../services/gemini';
-import {addDoc} from 'firebase/firestore';
+import {writeBatch} from 'firebase/firestore';
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
-    ...(actual as unknown),
+    ...(actual as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */,
     useParams: () => ({id: 'lib123'}),
     useNavigate: () => vi.fn(),
   };
@@ -35,22 +35,37 @@ vi.mock('../services/bookApi', () => ({
 vi.mock('firebase/firestore', async importOriginal => {
   const actual = await importOriginal();
   return {
-    ...(actual as unknown),
+    ...(actual as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */,
     getFirestore: vi.fn(),
     collection: vi.fn(),
     doc: vi.fn(),
+    writeBatch: vi.fn(() => ({set: vi.fn(), commit: vi.fn()})),
     addDoc: vi.fn(() => Promise.resolve({id: 'doc123'})),
     getDocs: vi.fn(() => Promise.resolve({docs: []})),
+    onSnapshot: vi.fn((_ref, cb) => {
+      cb({docs: []});
+      return () => {};
+    }),
     serverTimestamp: vi.fn(),
     setDoc: vi.fn(),
   };
 });
 
+vi.mock('../firebase', () => ({
+  db: {},
+}));
+
 describe('AddBookView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (useAuth as unknown).mockReturnValue({
-      user: {uid: 'user1', email: 'test@example.com', displayName: 'Test User'},
+    (
+      useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
+    ).mockReturnValue({
+      user: {
+        uid: 'user1',
+        email: 'test@example.com',
+        displayName: 'Test User',
+      },
     });
 
     // Mock getUserMedia
@@ -112,7 +127,7 @@ describe('AddBookView', () => {
     // Mock canvas context
     HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
       drawImage: vi.fn(),
-    }) as unknown;
+    } as unknown as CanvasRenderingContext2D);
     HTMLCanvasElement.prototype.toDataURL = vi
       .fn()
       .mockReturnValue('data:image/png;base64,mocked');
@@ -126,7 +141,7 @@ describe('AddBookView', () => {
     fireEvent.click(addButton);
 
     await waitFor(() => {
-      expect(addDoc).toHaveBeenCalledTimes(1);
+      expect(writeBatch).toHaveBeenCalledTimes(1);
     });
 
     await waitFor(() => {
@@ -162,7 +177,7 @@ describe('AddBookView', () => {
     fireEvent.click(addButton2);
 
     await waitFor(() => {
-      expect(addDoc).toHaveBeenCalledTimes(2);
+      expect(writeBatch).toHaveBeenCalledTimes(2);
     });
   });
 });

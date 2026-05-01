@@ -1,5 +1,7 @@
-/* eslint-disable @typescript-eslint/no-floating-promises, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
-import React, {useState, useEffect, useRef} from 'react';
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import {motion} from 'motion/react';
+/* eslint-disable @typescript-eslint/no-floating-promises, @typescript-eslint/no-explicit-any */
+import React, {useState, useEffect} from 'react';
 import {useParams, Link, useNavigate, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {db, handleFirestoreError, OperationType} from '../firebase';
@@ -12,13 +14,11 @@ import {
   orderBy,
   updateDoc,
   Timestamp,
-  setDoc,
   addDoc,
   serverTimestamp,
   deleteDoc,
 } from 'firebase/firestore';
 import {generateBookInsights} from '../services/gemini';
-import {fetchAuthorBioFromWikipedia} from '../services/wikipediaApi';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {toTitleCase} from '../lib/utils';
@@ -26,8 +26,6 @@ import {BookDetails} from '../services/bookApi';
 import {
   ArrowLeft,
   Edit2,
-  Share2,
-  Settings,
   Loader2,
   Book as BookIcon,
   User,
@@ -35,7 +33,7 @@ import {
   X,
   Save,
 } from 'lucide-react';
-import AppLayout from '../components/AppLayout';
+import SidebarActions from '../components/SidebarActions';
 
 type FirestoreDate = Timestamp | Date | string | number;
 
@@ -59,7 +57,7 @@ interface Review {
 
 export default function BookDetailsView() {
   const {libraryId, bookId} = useParams<{libraryId: string; bookId: string}>();
-  const {user, logOut} = useAuth();
+  const {user} = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -87,17 +85,15 @@ export default function BookDetailsView() {
   >({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
 
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
-  const hasAttemptedGeneration = useRef(false);
 
   useEffect(() => {
     if (!libraryId || !user) return;
 
     // Fetch Library to check permissions
-    const checkPerms = async () => {
-      try {
-        const libDoc = await getDoc(doc(db, 'libraries', libraryId));
+    const unsubscribe = onSnapshot(
+      doc(db, 'libraries', libraryId),
+      libDoc => {
         if (libDoc.exists()) {
           const data = libDoc.data();
           setCanEdit(
@@ -105,11 +101,13 @@ export default function BookDetailsView() {
               (data.sharedWith && data.sharedWith.includes(user.email || '')),
           );
         }
-      } catch (err) {
-        console.error('Error fetching library perms:', err);
-      }
-    };
-    checkPerms();
+      },
+      error => {
+        console.error('Error fetching library perms:', error);
+      },
+    );
+
+    return () => unsubscribe();
   }, [libraryId, user]);
 
   useEffect(() => {
@@ -168,93 +166,75 @@ export default function BookDetailsView() {
     };
   }, [libraryId, bookId, navigate]);
 
-  // Separate effect for auto-generating missing data
   useEffect(() => {
-    if (!book || !canEdit || !libraryId || !bookId) return;
+    if (!book || !libraryId || !bookId || !canEdit) return;
 
-    const generateMissing = async () => {
-      if (hasAttemptedGeneration.current) return;
-      hasAttemptedGeneration.current = true;
+    // We only want to fire off the generation if synopsis or authorBio is missing
+    const needsSynopsis = !book.synopsis;
+    const needsBio = !book.authorBio;
 
-      const promises: Promise<void>[] = [];
-      const updatesNeeded: Partial<Book> = {};
+    if (!needsSynopsis && !needsBio) return;
 
-      if (!book.synopsis) {
-        if (book.description) {
-          updatesNeeded.synopsis = book.description;
-        } else {
-          promises.push(
-            (async () => {
-              try {
-                const syn = await generateBookInsights(
-                  book.title,
-                  book.author,
-                  'summary',
-                );
-                if (syn) updatesNeeded.synopsis = syn;
-              } catch (e) {
-                console.error('Error generating synopsis:', e);
-              }
-            })(),
+    const abortController = new AbortController();
+
+    const generateMissingInfo = async () => {
+      try {
+        const updates: Partial<Book> = {};
+
+        if (needsSynopsis) {
+          const synopsis = await generateBookInsights(
+            book.title,
+            book.author,
+            'synopsis',
+            abortController.signal,
+          );
+          if (abortController.signal.aborted) return;
+          if (synopsis) updates.synopsis = synopsis;
+        }
+
+        if (needsBio) {
+          const authorBio = await generateBookInsights(
+            book.title,
+            book.author,
+            'author_bio',
+            abortController.signal,
+          );
+          if (abortController.signal.aborted) return;
+          if (authorBio) updates.authorBio = authorBio;
+        }
+
+        if (
+          Object.keys(updates).length > 0 &&
+          !abortController.signal.aborted
+        ) {
+          await updateDoc(
+            doc(db, 'libraries', libraryId, 'books', bookId),
+            updates,
           );
         }
-      }
-
-      if (!book.authorBio) {
-        promises.push(
-          (async () => {
-            try {
-              // First try Wikipedia
-              let bio = await fetchAuthorBioFromWikipedia(book.author);
-
-              // Fallback to Gemini if Wikipedia returns nothing
-              if (!bio) {
-                bio = await generateBookInsights(
-                  book.title,
-                  book.author,
-                  'author_bio',
-                );
-              }
-
-              if (bio) {
-                updatesNeeded.authorBio = bio;
-              }
-            } catch (e) {
-              console.error('Error generating/fetching bio:', e);
-            }
-          })(),
-        );
-      }
-
-      if (promises.length > 0) {
-        await Promise.all(promises);
-      }
-
-      if (Object.keys(updatesNeeded).length > 0) {
-        try {
-          await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), {
-            ...updatesNeeded,
-            addedBy: book.addedBy || user?.uid,
-            addedAt: book.addedAt || serverTimestamp(),
-          });
-        } catch (e) {
-          console.error(e);
+      } catch (error: any) {
+        if (error.message !== 'Aborted') {
+          console.error('Failed to auto-generate missing book info:', error);
         }
       }
     };
 
-    if (!book.synopsis || !book.authorBio) {
-      generateMissing();
-    }
+    // Debounce the generation. If the user browses through 20 books quickly,
+    // we don't fire 20 requests. We only fire if they stay on this book for 1.5 seconds.
+    const timeoutId = setTimeout(generateMissingInfo, 1500);
+
+    return () => {
+      clearTimeout(timeoutId);
+      abortController.abort();
+    };
   }, [
-    book?.synopsis,
-    book?.description,
-    book?.authorBio,
     book?.title,
     book?.author,
-    canEdit,
+    book?.synopsis,
+    book?.authorBio,
     libraryId,
     bookId,
+    canEdit,
   ]);
 
   const handleGenerateInsight = async (type: 'catchup' | 'similar') => {
@@ -267,7 +247,7 @@ export default function BookDetailsView() {
     try {
       const content = await generateBookInsights(book.title, book.author, type);
       setInsightContent(content);
-    } catch (error: unknown) {
+    } catch (error) {
       toast.error('Failed to generate insights. Please try again.');
       setActiveInsight(null);
     } finally {
@@ -319,7 +299,7 @@ export default function BookDetailsView() {
     try {
       const cleanForm: any = Object.fromEntries(
         Object.entries(editForm).filter(
-          ([_, v]) => v !== undefined && v !== null && v !== '',
+          ([, v]) => v !== undefined && v !== null && v !== '',
         ),
       );
       if (cleanForm.genresInput) {
@@ -386,46 +366,55 @@ export default function BookDetailsView() {
 
   if (isLoading) {
     return (
-      <AppLayout sidebarActions={<></>}>
-        <div className="flex-1 w-full bg-background animate-pulse px-4 sm:px-8 lg:px-12 py-6 sm:py-8 max-w-[1200px] mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
+      <>
+        <SidebarActions>
+          <></>
+        </SidebarActions>
+        <div className="flex-1 w-full bg-background px-4 sm:px-8 lg:px-12 py-6 sm:py-8 max-w-[1200px] mx-auto relative overflow-hidden">
+          <div className="absolute inset-0 bg-surface-variant/20 animate-pulse pointer-events-none" />
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12 relative z-10">
             <div className="md:col-span-4 flex flex-col gap-6">
-              <div className="aspect-[2/3] w-full bg-surface-variant/50 rounded-lg"></div>
-              <div className="h-10 bg-surface-variant/50 rounded"></div>
-              <div className="h-10 bg-surface-variant/50 rounded"></div>
+              <div className="aspect-[2/3] w-full bg-surface-variant/40 animate-pulse rounded-lg"></div>
+              <div className="h-10 bg-surface-variant/40 animate-pulse rounded"></div>
+              <div className="h-10 bg-surface-variant/40 animate-pulse rounded"></div>
             </div>
             <div className="md:col-span-8 flex flex-col gap-8">
               <div>
-                <div className="h-12 bg-surface-variant/50 rounded w-3/4 mb-4"></div>
-                <div className="h-6 bg-surface-variant/50 rounded w-1/2 mb-8"></div>
+                <div className="h-12 bg-surface-variant/40 animate-pulse rounded w-3/4 mb-4"></div>
+                <div className="h-6 bg-surface-variant/40 animate-pulse rounded w-1/2 mb-8"></div>
                 <div className="flex gap-2">
-                  <div className="w-16 h-6 bg-surface-variant/50 rounded"></div>
-                  <div className="w-16 h-6 bg-surface-variant/50 rounded"></div>
+                  <div className="w-16 h-6 bg-surface-variant/40 animate-pulse rounded"></div>
+                  <div className="w-16 h-6 bg-surface-variant/40 animate-pulse rounded"></div>
                 </div>
               </div>
-              <div className="h-48 bg-surface-variant/50 rounded-lg"></div>
+              <div className="h-48 bg-surface-variant/40 animate-pulse rounded-lg"></div>
+              <div className="h-32 bg-surface-variant/40 animate-pulse rounded-lg"></div>
             </div>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (!book) return null;
 
   return (
-    <AppLayout
-      sidebarActions={
+    <>
+      <SidebarActions>
         <Link
           to={backUrl}
-          className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 font-serif text-lg tracking-tight"
+          className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
         >
           <ArrowLeft className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
           <span>Back to Library</span>
         </Link>
-      }
-    >
-      <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 max-w-[1200px] mx-auto w-full">
+      </SidebarActions>
+      <motion.div
+        initial={{opacity: 0, y: 10}}
+        animate={{opacity: 1, y: 0}}
+        transition={{duration: 0.4}}
+        className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 max-w-[1200px] mx-auto w-full"
+      >
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
           {/* Left Column */}
           <div className="md:col-span-4 flex flex-col gap-6">
@@ -556,7 +545,7 @@ export default function BookDetailsView() {
                       },
                     );
                     toast.success('Reading status updated');
-                  } catch (err) {
+                  } catch (error) {
                     toast.error('Failed to update status');
                   }
                 }}
@@ -801,7 +790,7 @@ export default function BookDetailsView() {
             </section>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {isDeleting && (
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans text-left">
@@ -979,6 +968,6 @@ export default function BookDetailsView() {
           </div>
         </div>
       )}
-    </AppLayout>
+    </>
   );
 }

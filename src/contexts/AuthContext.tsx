@@ -6,7 +6,7 @@ import {
   GoogleAuthProvider,
   signOut,
 } from 'firebase/auth';
-import {doc, setDoc, getDoc} from 'firebase/firestore';
+import {doc, setDoc, getDoc, serverTimestamp} from 'firebase/firestore';
 import {auth, db, handleFirestoreError, OperationType} from '../firebase';
 
 interface AuthContextType {
@@ -37,7 +37,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
               email: currentUser.email,
               displayName: currentUser.displayName || '',
               photoURL: currentUser.photoURL || '',
-              createdAt: new Date(),
+              createdAt: serverTimestamp(),
             });
           }
         } catch (error) {

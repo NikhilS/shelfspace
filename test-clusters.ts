@@ -1,6 +1,6 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
-import {generateClusterNames} from './src/services/gemini.ts';
+import {generateClusterNames} from './src/services/gemini';
 
 const clusters = [
   {id: 0, books: [{title: 'Dune'}, {title: 'Foundation'}]},

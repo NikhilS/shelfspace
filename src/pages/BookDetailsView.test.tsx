@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import React from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import {render} from '@testing-library/react';
@@ -21,6 +20,7 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   query: vi.fn(),
   onSnapshot: vi.fn((_ref, cb) => {
+    cb();
     return () => {};
   }),
   orderBy: vi.fn(),

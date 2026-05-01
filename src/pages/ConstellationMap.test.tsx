@@ -30,7 +30,11 @@ vi.mock('recharts', () => ({
   YAxis: () => <div />,
   CartesianGrid: () => <div />,
   Tooltip: () => <div />,
-  ResponsiveContainer: ({children}: unknown) => <div>{children}</div>,
+  ResponsiveContainer: (
+    {
+      children,
+    }: any /* eslint-disable-line @typescript-eslint/no-explicit-any */,
+  ) => <div>{children}</div>,
   Cell: () => <div />,
 }));
 

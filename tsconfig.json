@@ -1,6 +1,18 @@
 {
   "extends": "./node_modules/gts/tsconfig-google.json",
   "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "rootDir": ".",
     "outDir": "build",
     "jsx": "react-jsx"
@@ -13,7 +25,8 @@
     "lib/**/*.ts",
     "lib/**/*.tsx",
     "*.ts",
-    "*.tsx"
+    "*.tsx",
+    "firebase-applet-config.json"
   ],
   "exclude": [
     "node_modules",

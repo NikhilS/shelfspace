@@ -8,10 +8,10 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
-const renderAppLayout = (props: {sidebarActions?: React.ReactNode} = {}) => {
+const renderAppLayout = () => {
   return render(
     <BrowserRouter>
-      <AppLayout sidebarActions={props.sidebarActions}>
+      <AppLayout>
         <div data-testid="child-content">Child Content</div>
       </AppLayout>
     </BrowserRouter>,
@@ -47,10 +47,5 @@ describe('AppLayout', () => {
     const logoutBtn = screen.getByText('Logout');
     fireEvent.click(logoutBtn);
     expect(mockLogOut).toHaveBeenCalledTimes(1);
-  });
-
-  it('renders sidebar actions if provided', () => {
-    renderAppLayout({sidebarActions: <button>Custom Action</button>});
-    expect(screen.getByText('Custom Action')).toBeInTheDocument();
   });
 });

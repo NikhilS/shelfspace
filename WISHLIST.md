@@ -4,6 +4,13 @@ This file tracks feature ideas, planned improvements, and requested features for
 
 ## Planned Features / Ideas
 - [ ] Add richer sharing modes (edit vs. view-only access).
+- [ ] Normalize categories into a [standard taxonomy](https://www.bisg.org/BISAC-Subject-Codes-main).
+- [ ] Once the app is a SPA, load the list of books once at startup and cache it in memory forever (till we add/remove a book etc).
+
+
+## Completed
+- [x] Configure PWA installation
+- [x] Create custom library-themed SVG favicon
 - [x] Build smarter book clustering and grouping.
   - **Proposed Approach:** Generate text embeddings (via Gemini `text-embedding-004`) based on book descriptions/genres. Use dimensionality reduction (UMAP/PCA) to plot similarities.
   - **Interaction:** Create a 2D "Constellation Map" view of the library where proximity equals semantic similarity. (Opting for 2D over 3D to avoid occlusion and improve mobile usability).
@@ -14,9 +21,4 @@ This file tracks feature ideas, planned improvements, and requested features for
 - [x] Rename the "resync missing metadata" feature to "backfill missing metadata".
 - [x] Add a new "resync all metadata" feature that refetches everything for all books.
 - [x] Consider replacing the single 'genre' field with multiple categories, mirroring the Google Books API.
-- [ ] Normalize categories into a standard taxonomy.
 - [x] Once we have normalized categories, add some visualizations to the home page (e.g., a pie chart).
-
-## Completed
-- [x] Configure PWA installation
-- [x] Create custom library-themed SVG favicon

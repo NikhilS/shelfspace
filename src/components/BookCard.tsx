@@ -54,12 +54,6 @@ export default function BookCard({book, onClick}: BookCardProps) {
             </div>
           </div>
         )}
-
-        <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-          <button className="w-full py-2 bg-transparent border border-on-primary text-on-primary font-label-caps text-label-caps rounded hover:bg-on-primary hover:text-primary transition-colors">
-            VIEW DETAILS
-          </button>
-        </div>
       </div>
 
       {/* Book Metadata */}

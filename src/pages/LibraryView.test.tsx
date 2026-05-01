@@ -1,7 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import React from 'react';
 import {describe, it, expect, vi} from 'vitest';
-import {render, screen, waitFor} from '@testing-library/react';
+import {render, screen} from '@testing-library/react';
 import LibraryView from './LibraryView';
 import {MemoryRouter, Route, Routes} from 'react-router-dom';
 
@@ -17,28 +16,37 @@ vi.mock('../firebase', () => ({
 
 vi.mock('firebase/firestore', () => {
   return {
-    doc: vi.fn(),
-    collection: vi.fn(),
+    doc: vi.fn((db, ...pathArgs) => ({path: pathArgs.join('/')})),
+    collection: vi.fn((db, ...pathArgs) => ({path: pathArgs.join('/')})),
     query: vi.fn(),
     onSnapshot: vi.fn((ref, callback) => {
-      // Very basic mock to trigger the data load depending on if it's the library doc or books collection
-      if (!ref) return () => {};
+      // Use setTimeout so the first render completes before we trigger the data.
       setTimeout(() => {
-        // If it's a collection simulation (books) vs doc simulation (library)
-        if (
-          ref.type === 'collection' ||
-          (ref.type === undefined && ref.toString().includes('books'))
-        ) {
+        if (ref.path && ref.path.includes('books')) {
           callback({
-            forEach: (cb: unknown) => {
-              cb({
+            docs: [
+              {
                 id: 'book1',
                 data: () => ({
                   title: 'Dune',
+                  genres: ['Sci-Fi', 'Fantasy'],
                   author: 'Frank Herbert',
                   addedAt: '2023-01-01',
                 }),
-              });
+              },
+              {
+                id: 'book2',
+                data: () => ({
+                  title: 'Foundation',
+                  genres: ['Sci-Fi', 'Classic'],
+                  author: 'Isaac Asimov',
+                  addedAt: '2023-01-01',
+                }),
+              },
+            ],
+            forEach: function (cb: (doc: unknown) => void) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (this as any).docs.forEach(cb);
             },
           });
         } else {
@@ -59,10 +67,22 @@ vi.mock('firebase/firestore', () => {
     deleteDoc: vi.fn(),
     serverTimestamp: vi.fn(),
     getDoc: vi.fn(),
-    updateDoc: vi.fn(),
+    updateDoc: vi.fn(() => Promise.resolve()),
     Timestamp: {
       fromDate: vi.fn(),
     },
+  };
+});
+
+vi.mock('recharts', async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const actual = (await vi.importActual('recharts')) as any;
+  return {
+    ...actual,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ResponsiveContainer: ({children}: any) => (
+      <div style={{width: 800, height: 800}}>{children}</div>
+    ),
   };
 });
 
@@ -76,5 +96,19 @@ describe('LibraryView', () => {
       </MemoryRouter>,
     );
     expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+  });
+
+  it('renders top categories after loading data', async () => {
+    render(
+      <MemoryRouter initialEntries={['/library/lib1']}>
+        <Routes>
+          <Route path="/library/:id" element={<LibraryView />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // Wait for the library to finish loading
+    const topCatCard = await screen.findByText(/Top Categories/i);
+    expect(topCatCard).toBeInTheDocument();
   });
 });
