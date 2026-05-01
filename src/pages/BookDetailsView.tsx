@@ -120,21 +120,22 @@ export default function BookDetailsView() {
       docSnap => {
         if (docSnap.exists()) {
           const bookData = {id: docSnap.id, ...docSnap.data()} as Book;
-          
+
           // Also fetch bookDetails which contains the heavy payload
-          getDoc(doc(db, 'libraries', libraryId, 'bookDetails', bookId)).then(detailsSnap => {
-            if (detailsSnap.exists()) {
-              setBook({ ...bookData, ...detailsSnap.data() });
-            } else {
+          getDoc(doc(db, 'libraries', libraryId, 'bookDetails', bookId))
+            .then(detailsSnap => {
+              if (detailsSnap.exists()) {
+                setBook({...bookData, ...detailsSnap.data()});
+              } else {
+                setBook(bookData);
+              }
+              setIsLoading(false);
+            })
+            .catch(err => {
+              console.error('Failed to fetch bookDetails', err);
               setBook(bookData);
-            }
-            setIsLoading(false);
-          }).catch(err => {
-            console.error('Failed to fetch bookDetails', err);
-            setBook(bookData);
-            setIsLoading(false);
-          });
-          
+              setIsLoading(false);
+            });
         } else {
           toast.error('Book not found');
           navigate(backUrl, {replace: true});
@@ -350,18 +351,29 @@ export default function BookDetailsView() {
       }
 
       const heavyData = {
-        synopsis, description, authorBio, embedding, clusterCoordinates, genres
+        synopsis,
+        description,
+        authorBio,
+        embedding,
+        clusterCoordinates,
+        genres,
       };
-      const cleanHeavyData = Object.fromEntries(Object.entries(heavyData).filter(([_, v]) => v !== undefined));
+      const cleanHeavyData = Object.fromEntries(
+        Object.entries(heavyData).filter(([_, v]) => v !== undefined),
+      );
       if (Object.keys(cleanHeavyData).length > 0) {
-         await updateDoc(
-           doc(db, 'libraries', libraryId, 'bookDetails', book.id),
-           cleanHeavyData
-         ).catch(async () => {
-             // If document doesn't exist yet, we must set it instead of update
-             const { setDoc } = await import('firebase/firestore');
-             await setDoc(doc(db, 'libraries', libraryId, 'bookDetails', book.id), cleanHeavyData, { merge: true });
-         });
+        await updateDoc(
+          doc(db, 'libraries', libraryId, 'bookDetails', book.id),
+          cleanHeavyData,
+        ).catch(async () => {
+          // If document doesn't exist yet, we must set it instead of update
+          const {setDoc} = await import('firebase/firestore');
+          await setDoc(
+            doc(db, 'libraries', libraryId, 'bookDetails', book.id),
+            cleanHeavyData,
+            {merge: true},
+          );
+        });
       }
 
       toast.success('Book details updated');

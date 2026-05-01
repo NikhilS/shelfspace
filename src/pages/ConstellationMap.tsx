@@ -152,10 +152,13 @@ export default function ConstellationMap() {
 
         setProgress('Projecting semantic space with UMAP...');
         const fittings = await new Promise<number[][]>((resolve, reject) => {
-          const worker = new Worker(new URL('../workers/umapWorker.ts', import.meta.url), {
-            type: 'module'
-          });
-          worker.onmessage = (e) => {
+          const worker = new Worker(
+            new URL('../workers/umapWorker.ts', import.meta.url),
+            {
+              type: 'module',
+            },
+          );
+          worker.onmessage = e => {
             if (e.data.error) {
               reject(new Error(e.data.error));
             } else {
@@ -163,11 +166,11 @@ export default function ConstellationMap() {
             }
             worker.terminate();
           };
-          worker.onerror = (err) => {
+          worker.onerror = err => {
             reject(err);
             worker.terminate();
           };
-          worker.postMessage({ embeddings: embeddingData, nNeighbors });
+          worker.postMessage({embeddings: embeddingData, nNeighbors});
         });
 
         setProgress('Clustering to find relationships...');

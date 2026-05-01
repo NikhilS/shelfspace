@@ -230,9 +230,13 @@ export default function SpruceUpView() {
       // Tier 2: Fallback to Gemini if still missing description
       if (!newData.description && !b.description && b.title) {
         try {
-          const geminiDesc = await generateBookInsights(b.title, b.author || 'Unknown', 'synopsis');
+          const geminiDesc = await generateBookInsights(
+            b.title,
+            b.author || 'Unknown',
+            'synopsis',
+          );
           if (geminiDesc) {
-             newData.description = geminiDesc;
+            newData.description = geminiDesc;
           }
         } catch (e) {
           console.warn('Gemini fallback failed', e);

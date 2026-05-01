@@ -85,6 +85,7 @@ export default function Dashboard() {
         });
       },
       error => {
+        setIsLoading(false);
         handleFirestoreError(error, OperationType.LIST, 'libraries');
       },
     );

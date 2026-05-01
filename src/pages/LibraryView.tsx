@@ -459,6 +459,7 @@ export default function LibraryView() {
         setIsLoading(false);
       },
       error => {
+        setIsLoading(false);
         handleFirestoreError(error, OperationType.GET, `libraries/${id}`);
       },
     );
@@ -1332,14 +1333,14 @@ export default function LibraryView() {
           {/* Total Volumes Card */}
           <div
             onClick={() => setCurrentTab('collection')}
-            className="bg-surface-container-low p-6 shadow-[0_4px_24px_rgba(26,47,75,0.04)] relative overflow-hidden group cursor-pointer hover:bg-surface-container transition-colors"
+            className="bg-surface-container-low p-6 shadow-[0_4px_24px_rgba(26,47,75,0.04)] overflow-hidden group cursor-pointer hover:bg-surface-container transition-colors flex flex-col"
           >
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <BookIcon className="w-16 h-16" />
+            <div className="flex items-center justify-between mb-2">
+              <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest">
+                Total Volumes
+              </p>
+              <BookIcon className="w-6 h-6 text-primary/40 group-hover:text-primary/60 transition-colors" />
             </div>
-            <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest mb-2">
-              Total Volumes
-            </p>
             <div className="flex items-baseline gap-2">
               <span className="font-headline-xl text-[56px] leading-none text-primary">
                 {books.length}
