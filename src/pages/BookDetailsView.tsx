@@ -17,6 +17,7 @@ import {
   addDoc,
   serverTimestamp,
   deleteDoc,
+  increment,
 } from 'firebase/firestore';
 import {generateBookInsights} from '../services/gemini';
 import {toast} from 'sonner';
@@ -119,12 +120,26 @@ export default function BookDetailsView() {
       docSnap => {
         if (docSnap.exists()) {
           const bookData = {id: docSnap.id, ...docSnap.data()} as Book;
-          setBook(bookData);
+          
+          // Also fetch bookDetails which contains the heavy payload
+          getDoc(doc(db, 'libraries', libraryId, 'bookDetails', bookId)).then(detailsSnap => {
+            if (detailsSnap.exists()) {
+              setBook({ ...bookData, ...detailsSnap.data() });
+            } else {
+              setBook(bookData);
+            }
+            setIsLoading(false);
+          }).catch(err => {
+            console.error('Failed to fetch bookDetails', err);
+            setBook(bookData);
+            setIsLoading(false);
+          });
+          
         } else {
           toast.error('Book not found');
           navigate(backUrl, {replace: true});
+          setIsLoading(false);
         }
-        setIsLoading(false);
       },
       error => {
         console.error('Book fetch error:', error);
@@ -317,10 +332,38 @@ export default function BookDetailsView() {
       if (cleanForm.title && typeof cleanForm.title === 'string')
         cleanForm.title = cleanForm.title.substring(0, 500);
 
-      await updateDoc(
-        doc(db, 'libraries', libraryId, 'books', book.id),
-        cleanForm,
-      );
+      const {
+        synopsis,
+        description,
+        authorBio,
+        embedding,
+        clusterCoordinates,
+        genres,
+        ...lightweightData
+      } = cleanForm;
+
+      if (Object.keys(lightweightData).length > 0) {
+        await updateDoc(
+          doc(db, 'libraries', libraryId, 'books', book.id),
+          lightweightData,
+        );
+      }
+
+      const heavyData = {
+        synopsis, description, authorBio, embedding, clusterCoordinates, genres
+      };
+      const cleanHeavyData = Object.fromEntries(Object.entries(heavyData).filter(([_, v]) => v !== undefined));
+      if (Object.keys(cleanHeavyData).length > 0) {
+         await updateDoc(
+           doc(db, 'libraries', libraryId, 'bookDetails', book.id),
+           cleanHeavyData
+         ).catch(async () => {
+             // If document doesn't exist yet, we must set it instead of update
+             const { setDoc } = await import('firebase/firestore');
+             await setDoc(doc(db, 'libraries', libraryId, 'bookDetails', book.id), cleanHeavyData, { merge: true });
+         });
+      }
+
       toast.success('Book details updated');
       setIsEditingDetails(false);
     } catch (error) {
@@ -338,6 +381,9 @@ export default function BookDetailsView() {
     if (!book || !libraryId || !canEdit) return;
     try {
       await deleteDoc(doc(db, 'libraries', libraryId, 'books', book.id));
+      await updateDoc(doc(db, 'libraries', libraryId), {
+        bookCount: increment(-1),
+      });
       toast.success('Book deleted');
       navigate(backUrl, {replace: true});
     } catch (error) {

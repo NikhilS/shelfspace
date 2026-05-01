@@ -32,7 +32,7 @@ interface Library {
   sharedWith: string[];
   createdAt: FirestoreDate;
   heroImageUrl?: string;
-  volumeCount?: number; // Added to match mock, would normally be computed
+  bookCount?: number;
 }
 
 export default function Dashboard() {
@@ -66,39 +66,23 @@ export default function Dashboard() {
           } as Library);
         });
 
-        // Optimistically update libraries, retaining previous volumeCounts to prevent flickering
-        setLibraries(prevLibs => {
-          return libs.map(lib => {
-            const prevLib = prevLibs.find(p => p.id === lib.id);
-            return {
-              ...lib,
-              volumeCount:
-                prevLib !== undefined && prevLib.volumeCount !== undefined
-                  ? prevLib.volumeCount
-                  : 0,
-            };
-          });
-        });
+        setLibraries(libs);
         setIsLoading(false);
 
-        // Fetch accurate counts asynchronously
-        try {
-          const updatedCounts = await Promise.all(
-            libs.map(async lib => {
-              const coll = collection(db, 'libraries', lib.id, 'books');
+        // Auto-migrate legacy libraries missing bookCount
+        libs.forEach(async lib => {
+          if (lib.bookCount === undefined) {
+            const coll = collection(db, 'libraries', lib.id, 'books');
+            try {
               const countSnap = await getCountFromServer(coll);
-              return {id: lib.id, count: countSnap.data().count};
-            }),
-          );
-          setLibraries(currentLibs => {
-            return currentLibs.map(lib => {
-              const update = updatedCounts.find(u => u.id === lib.id);
-              return update ? {...lib, volumeCount: update.count} : lib;
-            });
-          });
-        } catch (err) {
-          console.error('Failed to fetch volume counts', err);
-        }
+              await updateDoc(doc(db, 'libraries', lib.id), {
+                bookCount: countSnap.data().count,
+              });
+            } catch (e) {
+              console.error(`Failed to migrate bookCount for lib ${lib.id}`, e);
+            }
+          }
+        });
       },
       error => {
         handleFirestoreError(error, OperationType.LIST, 'libraries');
@@ -121,6 +105,7 @@ export default function Dashboard() {
         sharedWith: [],
         createdAt: serverTimestamp(),
         heroImageUrl: null,
+        bookCount: 0,
       });
       const libNameForImage = newLibName.trim();
       setNewLibName('');
@@ -310,7 +295,7 @@ export default function Dashboard() {
                             <div className="flex items-center gap-2 text-on-surface-variant flex-shrink-0">
                               <Book className="w-4 h-4" />
                               <span className="font-label-caps text-label-caps uppercase tracking-wider">
-                                {lib.volumeCount || 0} Volumes
+                                {lib.bookCount || 0} Volumes
                               </span>
                             </div>
 

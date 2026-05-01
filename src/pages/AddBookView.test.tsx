@@ -41,6 +41,8 @@ vi.mock('firebase/firestore', async importOriginal => {
     doc: vi.fn(),
     writeBatch: vi.fn(() => ({set: vi.fn(), commit: vi.fn()})),
     addDoc: vi.fn(() => Promise.resolve({id: 'doc123'})),
+    updateDoc: vi.fn(() => Promise.resolve()),
+    increment: vi.fn(),
     getDocs: vi.fn(() => Promise.resolve({docs: []})),
     onSnapshot: vi.fn((_ref, cb) => {
       cb({docs: []});

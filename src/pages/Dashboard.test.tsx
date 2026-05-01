@@ -39,6 +39,7 @@ vi.mock('firebase/firestore', async () => {
               name: 'Test Library',
               ownerId: 'user1',
               ownerName: 'User One',
+              bookCount: 5,
             }),
           }),
         empty: false,
@@ -83,6 +84,7 @@ describe('Dashboard', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByText('Test Library')).toBeInTheDocument();
+    expect(await screen.findByText('5 Volumes')).toBeInTheDocument();
   });
 
   it('can create a new library', async () => {

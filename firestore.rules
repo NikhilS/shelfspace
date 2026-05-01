@@ -188,6 +188,27 @@ service cloud.firestore {
         allow delete: if canEditSub();
       }
 
+      match /bookDetails/{bookId} {
+        function canReadBooks() {
+          let library = get(/databases/$(database)/documents/libraries/$(libraryId));
+          return isAuthenticated() && (
+            library.data.ownerId == request.auth.uid ||
+            (request.auth.token.email in library.data.get('sharedWith', []))
+          );
+        }
+
+        function canEditBooks() {
+          let library = get(/databases/$(database)/documents/libraries/$(libraryId));
+          return isAuthenticated() && (
+            library.data.ownerId == request.auth.uid ||
+            (request.auth.token.email in library.data.get('sharedWith', []))
+          );
+        }
+
+        allow read: if canReadBooks();
+        allow write: if canEditBooks();
+      }
+
       match /books/{bookId} {
         function canReadBooks() {
           let library = get(/databases/$(database)/documents/libraries/$(libraryId));

@@ -34,6 +34,8 @@ import {
   writeBatch,
   doc,
   onSnapshot,
+  increment,
+  updateDoc,
 } from 'firebase/firestore';
 import {db} from '../firebase';
 import {useAuth} from '../contexts/AuthContext';
@@ -185,14 +187,45 @@ export default function AddBookView() {
           cleanDetails.title = cleanDetails.title.substring(0, 500);
 
         const newDocRef = doc(collection(db, 'libraries', libraryId, 'books'));
+        
+        // Split heavy data from lightweight data
+        const {
+          synopsis,
+          description,
+          authorBio,
+          embedding,
+          clusterCoordinates,
+          genres,
+          ...lightweightData
+        } = cleanDetails;
+
         batchRef.set(newDocRef, {
-          ...cleanDetails,
+          ...lightweightData,
           addedBy: user.uid,
           addedAt: serverTimestamp(),
         });
+        
+        // Write heavy payload to bookDetails subcollection
+        const heavyData = {
+          synopsis, description, authorBio, embedding, clusterCoordinates, genres
+        };
+        // Clean out undefined values to avoid Firebase errors
+        const cleanHeavyData = Object.fromEntries(Object.entries(heavyData).filter(([_, v]) => v !== undefined));
+
+        if (Object.keys(cleanHeavyData).length > 0) {
+          const detailRef = doc(db, 'libraries', libraryId, 'bookDetails', newDocRef.id);
+          batchRef.set(detailRef, cleanHeavyData);
+        }
+
         finalCleanBooks.push(enrichedDetails);
       }
       await batchRef.commit();
+    }
+
+    if (finalCleanBooks.length > 0 && libraryId) {
+      await updateDoc(doc(db, 'libraries', libraryId), {
+        bookCount: increment(finalCleanBooks.length),
+      });
     }
 
     setExistingBooks(prev => [...prev, ...finalCleanBooks]);

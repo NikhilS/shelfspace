@@ -11,7 +11,6 @@ import {
 import {db} from '../firebase';
 import {generateBookEmbeddings, generateClusterNames} from '../services/gemini';
 import {ArrowLeft, Loader2, RefreshCw} from 'lucide-react';
-import {UMAP} from 'umap-js';
 import {kmeans} from '../lib/clustering';
 import {
   ScatterChart,
@@ -147,18 +146,29 @@ export default function ConstellationMap() {
           return;
         }
 
-        // Run UMAP
-        // Default UMAP params: nNeighbors: 15, minDist: 0.1
+        // Run UMAP in Web Worker to avoid blocking UI thread
         const nNeighbors = Math.min(15, Math.max(2, validBooks.length - 1));
-        const umap = new UMAP({
-          nNeighbors,
-          minDist: 0.1,
-          nComponents: 2,
-          nEpochs: 400,
-        });
-
         const embeddingData = validBooks.map(b => b.embedding as number[]);
-        const fittings = umap.fit(embeddingData);
+
+        setProgress('Projecting semantic space with UMAP...');
+        const fittings = await new Promise<number[][]>((resolve, reject) => {
+          const worker = new Worker(new URL('../workers/umapWorker.ts', import.meta.url), {
+            type: 'module'
+          });
+          worker.onmessage = (e) => {
+            if (e.data.error) {
+              reject(new Error(e.data.error));
+            } else {
+              resolve(e.data.reduced);
+            }
+            worker.terminate();
+          };
+          worker.onerror = (err) => {
+            reject(err);
+            worker.terminate();
+          };
+          worker.postMessage({ embeddings: embeddingData, nNeighbors });
+        });
 
         setProgress('Clustering to find relationships...');
         await new Promise(r => setTimeout(r, 100));

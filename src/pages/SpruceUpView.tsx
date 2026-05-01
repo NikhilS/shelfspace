@@ -9,6 +9,7 @@ import {
   updateDoc,
   addDoc,
   onSnapshot,
+  increment,
 } from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../firebase';
 import {
@@ -17,6 +18,7 @@ import {
   searchBookByTitleAndAuthor,
 } from '../services/bookApi';
 import {searchWikipediaForBook} from '../services/wikipediaApi';
+import {generateBookInsights} from '../services/gemini';
 import {Loader2, Trash2, Wand2, EyeOff, ArrowLeft} from 'lucide-react';
 import {motion} from 'motion/react';
 import {toast} from 'sonner';
@@ -168,6 +170,9 @@ export default function SpruceUpView() {
     try {
       setProcessingIds(prev => ({...prev, [id]: true}));
       await deleteDoc(doc(db, 'libraries', libraryId, 'books', id));
+      await updateDoc(doc(db, 'libraries', libraryId), {
+        bookCount: increment(-1),
+      });
       setBooks(prev => prev.filter(b => b.id !== id));
       toast.success('Book deleted');
     } catch (error) {
@@ -219,6 +224,18 @@ export default function SpruceUpView() {
         const wpDesc = await searchWikipediaForBook(b.title, b.author);
         if (wpDesc) {
           newData.description = wpDesc;
+        }
+      }
+
+      // Tier 2: Fallback to Gemini if still missing description
+      if (!newData.description && !b.description && b.title) {
+        try {
+          const geminiDesc = await generateBookInsights(b.title, b.author || 'Unknown', 'synopsis');
+          if (geminiDesc) {
+             newData.description = geminiDesc;
+          }
+        } catch (e) {
+          console.warn('Gemini fallback failed', e);
         }
       }
 
