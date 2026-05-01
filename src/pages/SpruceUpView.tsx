@@ -32,6 +32,7 @@ export default function SpruceUpView() {
     {},
   );
   const [fixingAll, setFixingAll] = useState(false);
+  const [fixingProgress, setFixingProgress] = useState(0);
 
   useEffect(() => {
     if (!libraryId) return;
@@ -275,6 +276,7 @@ export default function SpruceUpView() {
   const handleFixAllMetadata = async () => {
     if (fixingAll) return;
     setFixingAll(true);
+    setFixingProgress(0);
     let successCount = 0;
 
     try {
@@ -342,12 +344,14 @@ export default function SpruceUpView() {
               );
             } finally {
               setProcessingIds(prev => ({...prev, [b.id]: false}));
+              setFixingProgress(prev => prev + 1);
             }
           }),
         );
       }
     } finally {
       setFixingAll(false);
+      setFixingProgress(0);
       if (successCount > 0) {
         toast.success(`Fixed metadata for ${successCount} books`);
       }
@@ -483,7 +487,9 @@ export default function SpruceUpView() {
                     ) : (
                       <Wand2 className="w-4 h-4" />
                     )}
-                    Fix All Missing Metadata
+                    {fixingAll
+                      ? `Fixing (${fixingProgress}/${missingMetadata.length})`
+                      : 'Fix All Missing Metadata'}
                   </button>
                 )}
               </div>

@@ -1,52 +1,148 @@
 # Design Document: React Library & Book Tracking App
 
 ## Overview
-This application is a personal library and book tracking system built as a Single Page Application (SPA). It allows users to digitize their physical and digital libraries, track reading statuses, get AI-driven book recommendations, and visualize their library via clustering algorithms. 
+The Library & Book Tracking App is a comprehensive digital system designed for readers, bibliophiles, and collectors to catalog both their physical and digital bookshelves. Built as a Single Page Application (SPA), it goes beyond simple record-keeping by employing modern AI to intelligently enhance and analyze user data. Users can ingest books via barcode scanning, taking a picture of an entire physical bookshelf, or querying traditional book APIs. Once in the system, AI is used to backfill missing metadata, generate semantic embeddings for each book, and visually cluster the user's library into a spatial "Constellation Map."
 
-## Architectural Choices
-1. **Frontend Framework**: **React 19** with **Vite** as the bundler. Uses React Router for SPA navigation.
-2. **Styling and UI**: **TailwindCSS** for utility-first styling, paired with **lucide-react** for icons. Used **shadcn/ui** design patterns for some UI components. **Framer Motion** (`motion/react`) provides layout transition and animations. 
-3. **Backend / Data Layer**: **Firebase Firestore (NoSQL)** accessed directly from the client. The application relies on Firestore's real-time nature (`onSnapshot`) to sync state seamlessly. To provide high availability and a resilient user experience, Firestore offline persistence is fully enabled using `persistentLocalCache` with `persistentMultipleTabManager`. This allows the application to read from the local cache immediately, enabling snappy UI interactions and offline capabilities, syncing changes back to the cloud automatically once network connectivity is restored.
-4. **Authentication**: **Firebase Auth**, keeping user identities strictly secured and enabling fine-grained read/write logic via Firestore Rules.
-5. **AI Integrations**: The direct client SDK for Gemini (`@google/genai`) handles embedding generation, data extraction (from images/csv), missing metadata enrichment, and text generative features (like summaries/recommendations).
-6. **Data Processing (Client-Side)**:
-   - Uses `umap-js` to compute a 2-dimensional spatial projection (UMAP) of book embeddings directly in the browser to power the "Constellation Map".
-   - Uses `@zxing/browser` and `@zxing/library` to process and parse barcodes directly on the client without a backend dependency.
-   - Uses `papaparse` to handle bulk CSV importing on the client.
+## System Architecture Diagram
 
-## Data Model & Firestore Structure
-The NoSQL design prioritizes real-time sync and nested collections where applicable, following the `firebase-blueprint.json`:
+```mermaid
+flowchart TD
+    subgraph Client [React SPA Frontend]
+        UI[UI Components / Pages]
+        State[React State & Hooks]
+        Scanner[Camera/Image Scanner\n@zxing & Canvas]
+        UMAP[umap-js Clustering]
+        
+        UI <--> State
+        State <--> Scanner
+        State <--> UMAP
+    end
 
-- `/users/{userId}`: Root user profile document.
-- `/libraries/{libraryId}`: Contains library metadata (owner, share lists, hero image).
-   - `/libraries/{libraryId}/books/{bookId}`: Subcollection containing book documents (title, author, isbn, userStatuses, embedding).
-   - `/libraries/{libraryId}/books/{bookId}/reviews/{reviewId}`: Subcollection of reviews for a given book.
-   - `/libraries/{libraryId}/allowedDuplicates/{allowedId}`: Subcollection maintaining user's acknowledged duplicate books to prevent noisy warnings.
+    subgraph Firebase [Google Firebase]
+        Auth[Firebase Auth]
+        Firestore[(Firestore DB)]
+    end
+
+    subgraph External APIs [External Services]
+        Gemini[Google Gemini API]
+        BookAPI[OpenLibrary / Google Books]
+    end
+
+    Client <-->|Authentication| Auth
+    Client <-->|Realtime Sync & Cache| Firestore
+    Client <-->|Embeddings & Data Extraction| Gemini
+    Client <-->|Book Metadata| BookAPI
+```
+
+## Core Components & Capabilities
+
+### 1. Library Dashboard & Book Management
+The entry point provides an overview of all user libraries, which can be shared or private. Internally, the application leans heavily on localized component state and context providers to manage UI state, rather than weighty globals like Redux.
+
+### 2. Intelligent Ingestion Mechanisms
+Instead of just manual entry, users can input books through:
+- **Barcode Scanning**: Client-side parsing of video feeds.
+- **Spine/Bookshelf Scanning**: Taking a photo of a shelf and prompting an LLM to extract book titles and authors from the image.
+- **Bulk CSV Import**: Drag-and-drop parsing of existing GoodReads CSVs.
+
+### 3. "Spruce Up" Metadata Enrichment
+Often, imported or scanned books lack complete metadata (e.g., page counts, series names, synopses). The `SpruceUpView` component batches these deficient records and runs them through Gemini to predict or fetch the missing details, writing back the completed properties to Firestore.
+
+### 4. Semantic Clustering (Constellation Map)
+Each book is embedded as a 768-dimensional semantic vector based on its synopsis and keywords. We use UMAP (Uniform Manifold Approximation and Projection) to squash these vectors down to a 2D `[x,y]` coordinate, revealing stylistic or thematic groupings without explicit user tagging.
+
+## Architectural Choices & Tradeoffs
+
+### 1. Frontend Framework: React 19 + Vite + SPA
+- **Choice**: A purely client-rendered SPA.
+- **Alternative**: SSR/SSG frameworks like Next.js or Remix.
+- **Tradeoff**: We chose an SPA primarily because the app relies heavily on client device capabilities (camera access for scanning) and offline-first database synchronization (Firestore offline cache). SSR adds significant backend routing and state serialization complexity for little benefit, since the data is highly personalized and behind an authentication wall (SEO is irrelevant here).
+
+### 2. Backend & Data Layer: Firebase Firestore
+- **Choice**: Firebase Firestore with `persistentLocalCache`.
+- **Alternative**: A relational database (PostgreSQL) behind a REST/GraphQL API.
+- **Tradeoff**: Firestore allows the client to directly interact with the database via real-time WebSocket subscriptions. Offline caching is built-in. A NoSQL schema offers the flexibility to store complex AI-generated objects (like large float arrays for embeddings) without rigid schema migrations. The downside is that aggregating data (like "Total Book Count" queries) can become expensive if not denormalized carefully.
+
+### 3. AI Processing: Direct Client-to-Gemini
+- **Choice**: The `@google/genai` client SDK invokes Gemini directly from the browser.
+- **Alternative**: A dedicated backend Node.js proxy to shield the API.
+- **Tradeoff**: Direct client calls drastically simplify the architecture, bypassing the need for a dedicated backend service, scaling invisibly. However, it exposes the AI API key to the client. This is acceptable within the constraints of this AI Studio preview architecture, but would require careful locking down of the key via HTTP referrers or switching to Firebase App Check in a standard production rollout.
+
+### 4. Heavy Computation: Client-Side vs Server-Side UMAP
+- **Choice**: Running `umap-js` mathematically on the client thread.
+- **Alternative**: A Python/Flask microservice or Cloud Function to process UMAP.
+- **Tradeoff**: UMAP is an intensive $O(n \log n)$ algorithm. Doing it on the front end saves server costs and infrastructure. However, for users with massively large libraries (e.g., thousands of books), client-side UMAP may temporarily block the main JavaScript thread causing UI stutter. We made this tradeoff assuming personal libraries generally fall below 1,000 items, and client devices are increasingly powerful. We can eventually wrap the UMAP process in a Web Worker to mitigate blocking.
+
+## Data Model & Schema Definitions
+
+The NoSQL data model employs nested subcollections to securely scope data to libraries.
+
+```typescript
+// Core Data Interfaces representing our Firestore schema
+interface UserProfile {
+  id: string; // Firebase Auth UID
+  email: string;
+  name: string;
+  createdAt: Timestamp;
+}
+
+interface Library {
+  id: string;
+  name: string;
+  description?: string;
+  ownerId: string;           // Maps to UserProfile.id
+  sharedWith: string[];      // Array of emails allowed to view
+  createdAt: Timestamp;
+  // -> Subcollection: 'books'
+}
+
+interface Book {
+  id: string;
+  title: string;
+  author: string;
+  isbn?: string;
+  coverUrl?: string;
+  synopsis?: string;
+  genres: string[];          // Extracted by AI
+  
+  // An AI-generated 768-dimension vector representing the book's meaning
+  embedding?: number[];      
+  
+  // Location plotted on the Constellation map
+  clusterCoordinates?: { x: number; y: number }; 
+  
+  status: 'to-read' | 'reading' | 'completed' | 'abandoned';
+  rating?: number;
+}
+```
 
 ## Data Flows
 
-### 1. Library Synchronization & Data Store Caching
-- **Offline-First SPA Architecture**: Leveraging Firestore's built-in multi-tab persistent cache, data fetched from Firestore is cached locally. The SPA can load and render immediately using cached data while invisibly validating against the server in the background.
-- **On Dashboard Load**: The application listens to `/libraries` where `ownerId == userId` OR `sharedWith` includes the user's email. Local caches serve these queries nearly instantly to eliminate loading spinners.
-- **On Library View Load**: Real-time snapshot listeners bind to `/libraries/{libraryId}` and its `/books` subcollection. Edits to books or their statuses fire `updateDoc` events. Thanks to the persistent cache, writes are optimistically applied locally providing instant UI feedback, and are queued for background remote replication even if the user is temporarily offline.
+### 1. Library Synchronization
+Using Firestore's `onSnapshot()`, frontend React hooks bind directly to database queries.
+```tsx
+// Example of React syncing with Firestore real-time updates
+useEffect(() => {
+  const q = query(collection(db, 'libraries', libId, 'books'));
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    // When offline, this still fires instantly using cached data
+    const books = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    setBooks(books);
+  });
+  return () => unsubscribe();
+}, [libId]);
+```
 
-### 2. AI-Assisted Book Addition and Enrichment
-- **Manual Search**: Uses `src/services/bookApi.ts` to query external APIs (like OpenLibrary or Google Books).
-- **Barcode Scan**: Triggers ZXing barcode reader via user's camera -> Lookups barcode against OpenLibrary -> Inserts book to Firestore.
-- **Image Scanning / Bookshelf Processing**: The client snaps a photo using the device camera (`CameraScanner.tsx`). The image is sent to Gemini mapping pixels to a JSON array of `[{title, author, isbn}]`. The front-end renders these as potential imports, checks if they're already in the library, and then inserts.
-- **Enrichment**: Books added without a series or adequate metadata are batched and sent to Gemini via `enrichBooksMetadata()`. This runs synchronously on user action (e.g. during an explicit batch insert, or a manual "backfill missing metadata" button press) and not via background workers. Changed properties are synced back to the `/books` subcollection.
+### 2. Image-to-Book Pipeline
+1. **Capture**: User takes a photo of a shelf using a camera component.
+2. **Analysis**: Image is base64 encoded and passed to Gemini 2.5 Flash with the prompt: *"Extract physical books in this image, returning JSON with title and author."*
+3. **Reconciliation**: The client cross-references the returned JSON with the local library state to skip existing titles, preventing duplicates.
+4. **Enrichment**: Gemini creates a task to fetch ISBNs and synopses for newly inserted books.
 
-### 3. Embeddings and The Constellation Map
-1. Each book requires an `embedding` array. For missing embeddings, the client sends the book description to `gemini-embedding-2-preview` to generate semantic vectors.
-2. The user navigates to "Constellation Map".
-3. `umap-js` takes all `[1024]` length embedding arrays and reduces them to a `[X, Y]` coordinate.
-4. The client groups coordinates mathematically to define clusters, and calls `gemini-2.5-flash` to give the cluster a stylistic human-readable name.
-5. React uses Recharts (or standard SVG plotting) to plot these points, providing a "Galaxy" visualization of the user's library.
-
-## Security
-- API keys (like Gemini) are restricted via environment variables and build pipelines (with respect to preview environment norms). 
-- Firestore rules rigorously secure writes to only owners and specified roles, mitigating abuse and untrusted payloads via the client-side approach.
-
-## Future Extensibility
-- Due to the modular AI integration (`src/services/gemini.ts`), swapping the underlying prompt definitions or model versions is isolated to a single service file.
-- The SPA can be further progressed into a Progressive Web App (PWA) using `vite-plugin-pwa` to cache static frontend assets, complementing the existing offline Firestore capabilities for a true zero-network experience.
+### 3. The Constellation Map Flow
+1. Fetch all books for a specific library.
+2. Filter for books possessing an `embedding` vector. 
+3. Feed the array of arrays (e.g., `number[][]`) into the `UMAP` constructor.
+4. Run `umap.step()` sequentially to project the 768 dimensions onto 2 scalar dimensions.
+5. Apply a clustering algorithm (like K-Means heuristic or DBSCAN logic if needed, or simply visual grouping).
+6. Render the data points on an interactive canvas, allowing users to zoom, hover, and discover unexpected connections in their reading history.
