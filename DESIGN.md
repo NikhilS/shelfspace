@@ -30,13 +30,38 @@ flowchart TD
 
     subgraph External APIs [External Services]
         Gemini[Google Gemini API]
-        BookAPI[OpenLibrary / Google Books]
+        BookAPI[OpenLibrary / Wikipedia]
     end
 
     Client <-->|Authentication| Auth
     Client <-->|Realtime Sync & Cache| Firestore
     Client <-->|Embeddings & Extract| Gemini
     Client <-->|Free Tier Lookups| BookAPI
+```
+
+## Data Flow Diagram
+
+```mermaid
+flowchart TD
+    subgraph Operations [Data Flow & Caching]
+        A[User Actions/Inputs] --> B{Action Type}
+        
+        B -->|Fetch/Listen| C[Firestore Listeners]
+        C -->|onSnapshot / getDocs| D[Local React State]
+        
+        B -->|Add/Edit Book| E[External API / Gemini]
+        E -->|Metadata| F[Local Structuring]
+        F -->|Split Lightweight vs Heavy| G[(Firestore)]
+        
+        B -->|Constellation Map| H[UMAP Worker]
+        H -->|Compute 2D Coords| I[Component State]
+    end
+
+    subgraph Storage [Database Layout]
+        G --> L_Doc[Library Doc: Counts & Access]
+        G --> B_Doc[books subcollection: Basic List View]
+        G --> BD_Doc[bookDetails subcollection: Heavy Text]
+    end
 ```
 
 ## Core Components & Capabilities
@@ -68,7 +93,7 @@ Each book is embedded as a 768-dimensional semantic vector based on its synopsis
 ### 2. Backend & Data Layer: Firebase Firestore (with Heavy Data Separation)
 - **Choice**: Firebase Firestore, heavily normalizing data to separate UI state from heavy compute payloads.
 - **Alternative**: Storing everything iteratively in one giant `Book` document.
-- **Tradeoff**: Storing 768-float arrays (AI embeddings) and massive synopses inside the primary `Book` document destroys read performance and bandwidth for simple list queries. We strictly separate data into a lightweight `books` collection and a heavy `bookDetails` subcollection.
+- **Tradeoff**: Storing massive synopses inside the primary `Book` document destroys read performance and bandwidth for simple list queries. We strictly separate data into a lightweight `books` collection and a heavy `bookDetails` subcollection.
 
 ### 3. AI Processing: Direct Client-to-Gemini (Preview Phase)
 - **Choice**: The `@google/genai` client SDK invokes Gemini directly from the browser.
@@ -82,16 +107,17 @@ Each book is embedded as a 768-dimensional semantic vector based on its synopsis
 
 ## Data Model & Schema Definitions
 
-To ensure snappy performance and low bandwidth egress, the database schema strictly isolates heavy text and ML arrays from the critical rendering path.
+To ensure snappy performance and low bandwidth egress, the database schema strictly isolates heavy text and ML arrays from the critical rendering path. Note differences between intended vs actual current implementation (e.g., embeddings being written to `books` instead of `bookDetails` in some flows).
 
 ```typescript
 interface Library {
   id: string;
   name: string;
   ownerId: string;
-  sharedWith?: string[];     // Array of emails for shared access handling
-  bookCount: number;         // Denormalized counter updated via Firestore increment()
-  createdAt: Timestamp;
+  ownerName: string;
+  sharedWith: string[];      // Array of emails for shared access handling
+  bookCount?: number;        // Denormalized counter updated via Firestore increment()
+  createdAt: any;
 }
 
 // ---------------------------------------------------------
@@ -102,24 +128,29 @@ interface Book {
   id: string;
   title: string;
   author: string;
+  isbn?: string;
   coverUrl?: string;         
-  status: 'to-read' | 'reading' | 'completed';
-  rating?: number;
-  addedAt: Timestamp;
+  publishedDate?: string;
+  format?: 'physical' | 'digital';
+  addedBy: string;
+  addedAt: any;
+  userStatuses?: Record<string, 'unset' | 'reading' | 'finished' | 'abandoned'>;
+  
+  // NOTE: ConstellationMap currently computes and saves embeddings to 
+  // the `books` collection document, bypassing the `bookDetails` split.
+  embedding?: number[];
 }
 
 // ---------------------------------------------------------
-// Slow-path: Fetched ONLY when viewing a single book
-// or when running background Constellation Map clustering.
+// Slow-path: Fetched ONLY when viewing a single book details
 // ---------------------------------------------------------
 interface BookDetail {
   id: string;                // Matches parent Book ID
   synopsis?: string;
+  description?: string;
   authorBio?: string;
-  genres: string[];          
-  
-  // Massive payload: 768-dimension vector
-  embedding?: number[];      
+  genres?: string[];          
+  series?: string;
   
   // Maintained separately; UMAP projection coords
   clusterCoordinates?: { x: number; y: number }; 
