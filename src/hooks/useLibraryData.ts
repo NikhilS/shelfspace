@@ -1,9 +1,8 @@
 import {useState, useEffect} from 'react';
-import {doc, collection, onSnapshot} from 'firebase/firestore';
+import {doc, collection, onSnapshot, query, orderBy} from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../firebase';
 import {Library, Book} from '../types';
 import {toast} from 'sonner';
-import {getFirestoreTime} from '../lib/utils';
 
 export function useLibraryData(
   libraryId: string | undefined,
@@ -14,6 +13,7 @@ export function useLibraryData(
   const [books, setBooks] = useState<Book[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isBooksLoading, setIsBooksLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     if (!libraryId || !userId) return;
@@ -23,6 +23,7 @@ export function useLibraryData(
     const libRef = doc(db, 'libraries', libraryId);
     const unsubscribeLib = onSnapshot(
       libRef,
+      {includeMetadataChanges: true},
       docSnap => {
         if (docSnap.exists()) {
           setLibrary({id: docSnap.id, ...docSnap.data()} as Library);
@@ -43,9 +44,14 @@ export function useLibraryData(
     );
 
     const booksRef = collection(db, 'libraries', libraryId, 'books');
+    const q = query(booksRef, orderBy('addedAt', 'desc'));
+
     const unsubscribeBooks = onSnapshot(
-      booksRef,
+      q,
+      {includeMetadataChanges: true},
       snapshot => {
+        setIsSyncing(snapshot.metadata.hasPendingWrites);
+
         const bks: Book[] = [];
         snapshot.forEach(doc => {
           const data = doc.data();
@@ -55,17 +61,8 @@ export function useLibraryData(
             data.genre ||
             data.categories ||
             data.category ||
-            data.Genres ||
-            data.Category ||
             data.tags ||
-            data.Tags ||
-            data.subjects ||
-            data.Subjects ||
-            data.topics ||
-            data.Topics ||
-            data.Tag ||
-            data.Subject ||
-            data.Topic;
+            data.subjects;
 
           if (rawGenres) {
             let tempGenres: string[] = [];
@@ -93,10 +90,7 @@ export function useLibraryData(
           bks.push({id: doc.id, ...data, genres: parsedGenres} as Book);
         });
 
-        // Sort by addedAt descending
-        bks.sort(
-          (a, b) => getFirestoreTime(b.addedAt) - getFirestoreTime(a.addedAt),
-        );
+        // Sorting is already handled via query orderBy
         setBooks(bks);
         setIsBooksLoading(false);
       },
@@ -116,5 +110,5 @@ export function useLibraryData(
     };
   }, [libraryId, userId, navigate]);
 
-  return {library, books, isLoading, isBooksLoading};
+  return {library, books, isLoading, isBooksLoading, isSyncing};
 }

@@ -1,5 +1,13 @@
 import React, {useState, useRef, useEffect} from 'react';
-import {MessageSquare, X, Send, Loader2, Bot, User, WifiOff} from 'lucide-react';
+import {
+  MessageSquare,
+  X,
+  Send,
+  Loader2,
+  Bot,
+  User,
+  WifiOff,
+} from 'lucide-react';
 import {motion, AnimatePresence} from 'motion/react';
 import {GoogleGenAI, Chat} from '@google/genai';
 import Markdown from 'react-markdown';
@@ -98,7 +106,9 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
 
     try {
       let responseText = '';
-      const streamResponse = await chatRef.current.sendMessageStream(userText);
+      const streamResponse = await chatRef.current.sendMessageStream({
+        message: userText,
+      });
       const modelMessageId = (Date.now() + 1).toString();
       setMessages(prev => [
         ...prev,

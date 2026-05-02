@@ -1,21 +1,12 @@
-import {motion} from 'motion/react';
+import {motion, AnimatePresence} from 'motion/react';
 import React, {useState} from 'react';
 import {useParams, Link, useNavigate, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {db, handleFirestoreError, OperationType} from '../firebase';
-import {
-  doc,
-  collection,
-  updateDoc,
-  addDoc,
-  serverTimestamp,
-  setDoc,
-} from 'firebase/firestore';
+import {doc, updateDoc, serverTimestamp} from 'firebase/firestore';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {toTitleCase} from '../lib/utils';
-import {BookDetails} from '../services/bookApi';
-import {Book, BookDetailsPayload, FirestoreDate} from '../types';
 import {
   ArrowLeft,
   Edit2,
@@ -23,12 +14,11 @@ import {
   Book as BookIcon,
   User,
   Trash2,
-  X,
-  Save,
 } from 'lucide-react';
 import SidebarActions from '../components/SidebarActions';
-import {StarRating} from '../components/StarRating';
-import {useBook, Review} from './book-details/useBook';
+import {ReviewSection} from './book-details/ReviewSection';
+import {EditBookForm} from './book-details/EditBookForm';
+import {useBook} from './book-details/useBook';
 import {useBookInsights} from './book-details/useBookInsights';
 
 export default function BookDetailsView() {
@@ -59,170 +49,8 @@ export default function BookDetailsView() {
     handleGenerateInsight,
   } = useBookInsights(libraryId, book, canEdit);
 
-  const [isReviewing, setIsReviewing] = useState(false);
-  const [reviewRating, setReviewRating] = useState(0);
-  const [reviewText, setReviewText] = useState('');
-  const [isSavingReview, setIsSavingReview] = useState(false);
-
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [editForm, setEditForm] = useState<
-    Partial<BookDetails> & {genresInput?: string}
-  >({});
-  const [isSavingDetails, setIsSavingDetails] = useState(false);
-
-  const handleSaveReview = async () => {
-    if (!book || !libraryId || !user) return;
-    if (reviewRating === 0) {
-      toast.error('Please select a rating');
-      return;
-    }
-    if (!reviewText.trim()) {
-      toast.error('Please write a review');
-      return;
-    }
-
-    const tempReview: Review = {
-      id: `temp-${Date.now()}`,
-      userId: user.uid,
-      userName: user.displayName || user.email || 'Unknown User',
-      rating: reviewRating,
-      text: reviewText.trim(),
-      createdAt: new Date() as unknown as FirestoreDate,
-    };
-
-    const originalReviews = [...reviews];
-    setReviews(prev => [tempReview, ...prev]);
-    setIsReviewing(false);
-    setReviewRating(0);
-    setReviewText('');
-
-    setIsSavingReview(true);
-    try {
-      await addDoc(
-        collection(db, 'libraries', libraryId, 'books', book.id, 'reviews'),
-        {
-          userId: user.uid,
-          userName: user.displayName || user.email || 'Unknown User',
-          rating: tempReview.rating,
-          text: tempReview.text,
-          createdAt: serverTimestamp(),
-        },
-      );
-      toast.success('Review added');
-    } catch (error) {
-      setReviews(originalReviews);
-      setIsReviewing(true);
-      setReviewRating(tempReview.rating);
-      setReviewText(tempReview.text);
-      handleFirestoreError(
-        error,
-        OperationType.CREATE,
-        `libraries/${libraryId}/books/${book.id}/reviews`,
-      );
-    } finally {
-      setIsSavingReview(false);
-    }
-  };
-
-  const handleSaveDetails = async () => {
-    if (!book || !libraryId || !canEdit) return;
-
-    const originalBookBase = bookBase ? {...bookBase} : null;
-    const originalBookDetails = bookDetails ? {...bookDetails} : null;
-
-    setIsSavingDetails(true);
-    try {
-      const cleanForm: Record<string, string | string[] | undefined> =
-        Object.fromEntries(
-          Object.entries(editForm).filter(
-            ([, v]) => v !== undefined && v !== null && v !== '',
-          ),
-        );
-      if (cleanForm.genresInput && typeof cleanForm.genresInput === 'string') {
-        cleanForm.genres = cleanForm.genresInput
-          .split(',')
-          .map((g: string) => g.trim())
-          .filter(Boolean)
-          .slice(0, 20);
-        delete cleanForm.genresInput;
-      }
-      if (typeof cleanForm.author === 'string')
-        cleanForm.author = cleanForm.author.substring(0, 500);
-      if (typeof cleanForm.series === 'string')
-        cleanForm.series = cleanForm.series.substring(0, 100);
-      if (typeof cleanForm.title === 'string')
-        cleanForm.title = cleanForm.title.substring(0, 500);
-
-      const {
-        synopsis,
-        authorBio,
-        embedding,
-        clusterCoordinates,
-        ...lightweightData
-      } = cleanForm;
-
-      // Optimistic update
-      setBookBase(prev =>
-        prev ? ({...prev, ...lightweightData} as Book) : null,
-      );
-      setBookDetails(prev => ({
-        ...prev,
-        synopsis: synopsis as string | undefined,
-        authorBio: authorBio as string | undefined,
-        embedding: embedding as number[] | undefined,
-        clusterCoordinates: clusterCoordinates as
-          | {x: number; y: number}
-          | undefined,
-      }));
-      setIsEditingDetails(false);
-
-      if (Object.keys(lightweightData).length > 0) {
-        await updateDoc(
-          doc(db, 'libraries', libraryId, 'books', book.id),
-          lightweightData,
-        );
-      }
-
-      const heavyData: BookDetailsPayload = {
-        synopsis: synopsis as string | undefined,
-        authorBio: authorBio as string | undefined,
-        embedding: embedding as number[] | undefined,
-        clusterCoordinates: clusterCoordinates as
-          | {x: number; y: number}
-          | undefined,
-      };
-      const cleanHeavyData = Object.fromEntries(
-        Object.entries(heavyData).filter(([, v]) => v !== undefined),
-      );
-      if (Object.keys(cleanHeavyData).length > 0) {
-        await updateDoc(
-          doc(db, 'libraries', libraryId, 'bookDetails', book.id),
-          cleanHeavyData,
-        ).catch(async () => {
-          // If document doesn't exist yet, we must set it instead of update
-          await setDoc(
-            doc(db, 'libraries', libraryId, 'bookDetails', book.id),
-            cleanHeavyData,
-            {merge: true},
-          );
-        });
-      }
-
-      toast.success('Book details updated');
-    } catch (error) {
-      setBookBase(originalBookBase);
-      setBookDetails(originalBookDetails);
-      setIsEditingDetails(true);
-      handleFirestoreError(
-        error,
-        OperationType.UPDATE,
-        `libraries/${libraryId}/books/${book.id}`,
-      );
-    } finally {
-      setIsSavingDetails(false);
-    }
-  };
 
   const handleDeleteBook = async () => {
     if (!book || !libraryId || !canEdit) return;
@@ -243,17 +71,6 @@ export default function BookDetailsView() {
   };
 
   const startEditing = () => {
-    setEditForm({
-      title: book?.title || '',
-      author: book?.author || '',
-      isbn: book?.isbn || '',
-      format: book?.format || 'physical',
-      publishedDate: book?.publishedDate || '',
-      coverUrl: book?.coverUrl || '',
-      genresInput:
-        book?.genres && book?.genres.length > 0 ? book.genres.join(', ') : '',
-      series: book?.series || '',
-    });
     setIsEditingDetails(true);
   };
 
@@ -586,290 +403,73 @@ export default function BookDetailsView() {
             </section>
 
             {/* Reviews */}
-            <section className="mt-8 border-t border-surface-dim pt-12">
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="font-headline-md text-[24px] text-primary">
-                  Reviews
-                </h3>
-                {canEdit &&
-                  !isReviewing &&
-                  !reviews.some(r => r.userId === user?.uid) &&
-                  (book.userStatuses?.[user?.uid || ''] === 'finished' ||
-                    book.userStatuses?.[user?.uid || ''] === 'abandoned') && (
-                    <button
-                      className="px-6 py-2 rounded-full font-label-caps text-label-caps bg-primary text-on-primary hover:bg-primary/90 transition-colors shadow-sm"
-                      onClick={() => setIsReviewing(true)}
-                    >
-                      WRITE REVIEW
-                    </button>
-                  )}
-              </div>
-
-              {isReviewing &&
-                (book.userStatuses?.[user?.uid || ''] === 'finished' ||
-                  book.userStatuses?.[user?.uid || ''] === 'abandoned') && (
-                  <div className="bg-surface-container rounded-lg p-6 mb-8 border border-surface-variant">
-                    <div className="mb-4">
-                      <StarRating
-                        interactive
-                        rating={reviewRating}
-                        onRatingChange={setReviewRating}
-                        size="lg"
-                      />
-                    </div>
-                    <textarea
-                      value={reviewText}
-                      onChange={e => setReviewText(e.target.value)}
-                      placeholder="What did you think of this book?"
-                      className="w-full bg-surface-container-lowest border border-outline-variant/60 rounded-md p-4 text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all min-h-[120px] mb-6 resize-y"
-                    />
-                    <div className="flex justify-end gap-4">
-                      <button
-                        onClick={() => {
-                          setIsReviewing(false);
-                          setReviewRating(0);
-                          setReviewText('');
-                        }}
-                        className="px-6 py-2 text-sm font-label-caps text-outline border border-outline/50 rounded-full hover:bg-surface-variant transition-colors"
-                      >
-                        CANCEL
-                      </button>
-                      <button
-                        onClick={handleSaveReview}
-                        disabled={isSavingReview}
-                        className="px-6 py-2 bg-primary text-on-primary text-sm font-label-caps rounded-full hover:bg-primary/90 transition-all disabled:opacity-50 shadow-sm"
-                      >
-                        {isSavingReview ? 'SAVING...' : 'SAVE REVIEW'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-              <div className="space-y-6">
-                {reviews.length === 0 ? (
-                  <p className="text-on-surface-variant italic">
-                    No reviews yet.
-                  </p>
-                ) : (
-                  reviews.map(review => (
-                    <div
-                      key={review.id}
-                      className="bg-surface-container-lowest rounded-lg p-6 border border-surface-variant architectural-shadow"
-                    >
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                            {review.userName?.charAt(0)?.toUpperCase() || 'U'}
-                          </div>
-                          <div>
-                            <p className="font-medium text-primary">
-                              {review.userName}
-                            </p>
-                            <div className="flex items-center gap-1 mt-1 text-secondary">
-                              <StarRating rating={review.rating} size="sm" />
-                            </div>
-                          </div>
-                        </div>
-                        <span className="text-xs text-on-surface-variant uppercase tracking-wider">
-                          {typeof review.createdAt === 'object' &&
-                          review.createdAt !== null &&
-                          'toDate' in review.createdAt &&
-                          typeof (review.createdAt as {toDate: () => Date})
-                            .toDate === 'function'
-                            ? (review.createdAt as {toDate: () => Date})
-                                .toDate()
-                                .toLocaleDateString()
-                            : 'Just now'}
-                        </span>
-                      </div>
-                      <p className="text-on-surface leading-relaxed text-body-md whitespace-pre-wrap">
-                        {review.text}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
+            <ReviewSection
+              libraryId={libraryId!}
+              book={book}
+              reviews={reviews}
+              setReviews={setReviews}
+              canEdit={canEdit}
+            />
           </div>
         </div>
       </motion.div>
 
-      {isDeleting && (
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans text-left">
-          <div className="bg-surface rounded-[32px] p-8 max-w-sm w-full shadow-[0px_10px_40px_rgba(0,0,0,0.1)] border border-border/50">
-            <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center text-red-500 mb-5 border border-red-100">
-              <Trash2 size={24} strokeWidth={1.5} />
-            </div>
-            <h3 className="text-2xl font-serif font-medium text-ink mb-3 tracking-tight">
-              Delete Book
-            </h3>
-            <p className="text-muted mb-8 text-sm leading-relaxed">
-              Are you sure you want to delete this book? This action cannot be
-              undone.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setIsDeleting(false)}
-                className="px-5 py-3 text-ink font-medium hover:bg-paper border border-border rounded-xl transition-colors text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteBook}
-                className="px-5 py-3 bg-red-500 text-white hover:bg-red-600 rounded-xl transition-colors font-medium text-sm shadow-sm"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isEditingDetails && (
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans text-left overflow-y-auto">
-          <div className="bg-surface rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-[0px_10px_40px_rgba(0,0,0,0.1)] border border-border/50 my-8 flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-serif font-medium text-ink tracking-tight">
-                Edit Book Details
+      <AnimatePresence>
+        {isDeleting && (
+          <motion.div
+            initial={{opacity: 0}}
+            animate={{opacity: 1}}
+            exit={{opacity: 0}}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans text-left"
+          >
+            <motion.div
+              initial={{scale: 0.95, opacity: 0}}
+              animate={{scale: 1, opacity: 1}}
+              exit={{scale: 0.95, opacity: 0}}
+              className="bg-surface rounded-[32px] p-8 max-w-sm w-full shadow-[0px_10px_40px_rgba(0,0,0,0.1)] border border-surface-variant"
+            >
+              <div className="w-12 h-12 bg-error-container rounded-full flex items-center justify-center text-on-error-container mb-5 border border-error-container/50">
+                <Trash2 size={24} strokeWidth={1.5} />
+              </div>
+              <h3 className="text-2xl font-serif font-medium text-on-surface mb-3 tracking-tight">
+                Delete Book
               </h3>
-              <button
-                onClick={() => setIsEditingDetails(false)}
-                className="text-on-surface-variant hover:text-on-surface p-1 rounded-full hover:bg-surface-container"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto no-scrollbar pb-4 space-y-4">
-              <div>
-                <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">
-                  Title
-                </label>
-                <input
-                  value={editForm.title}
-                  onChange={e =>
-                    setEditForm({...editForm, title: e.target.value})
-                  }
-                  className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary"
-                />
+              <p className="text-on-surface-variant mb-8 text-sm leading-relaxed">
+                Are you sure you want to delete this book? This action cannot be
+                undone.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setIsDeleting(false)}
+                  className="px-5 py-3 text-on-surface font-medium hover:bg-surface-container border border-surface-variant rounded-xl transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteBook}
+                  className="px-5 py-3 bg-error text-on-error hover:bg-error/90 rounded-xl transition-colors font-medium text-sm shadow-sm"
+                >
+                  Delete
+                </button>
               </div>
-              <div>
-                <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">
-                  Author
-                </label>
-                <input
-                  value={editForm.author}
-                  onChange={e =>
-                    setEditForm({...editForm, author: e.target.value})
-                  }
-                  className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">
-                    Format
-                  </label>
-                  <select
-                    value={editForm.format}
-                    onChange={e =>
-                      setEditForm({
-                        ...editForm,
-                        format: e.target.value as 'physical' | 'digital',
-                      })
-                    }
-                    className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary appearance-none"
-                  >
-                    <option value="physical">Physical</option>
-                    <option value="digital">Digital</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">
-                    ISBN
-                  </label>
-                  <input
-                    value={editForm.isbn}
-                    onChange={e =>
-                      setEditForm({...editForm, isbn: e.target.value})
-                    }
-                    className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">
-                    Genres (comma separated)
-                  </label>
-                  <input
-                    value={editForm.genresInput || ''}
-                    onChange={e =>
-                      setEditForm({...editForm, genresInput: e.target.value})
-                    }
-                    className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">
-                    Published Date
-                  </label>
-                  <input
-                    value={editForm.publishedDate}
-                    onChange={e =>
-                      setEditForm({...editForm, publishedDate: e.target.value})
-                    }
-                    className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">
-                  Series Name
-                </label>
-                <input
-                  value={editForm.series}
-                  onChange={e =>
-                    setEditForm({...editForm, series: e.target.value})
-                  }
-                  className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-label-caps uppercase tracking-wider text-on-surface-variant mb-1">
-                  Cover Image URL
-                </label>
-                <input
-                  value={editForm.coverUrl}
-                  onChange={e =>
-                    setEditForm({...editForm, coverUrl: e.target.value})
-                  }
-                  className="w-full px-3 py-2 bg-surface-container border border-outline-variant/50 rounded-md text-sm text-on-surface focus:outline-none focus:border-primary"
-                />
-              </div>
-            </div>
-            <div className="pt-4 border-t border-outline-variant/30 flex justify-end gap-3 mt-auto">
-              <button
-                onClick={() => setIsEditingDetails(false)}
-                className="px-4 py-2 text-on-surface hover:bg-surface-container rounded-md font-medium text-sm transition-colors border border-outline-variant/30"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={isSavingDetails}
-                onClick={handleSaveDetails}
-                className="px-4 py-2 bg-primary text-on-primary hover:bg-primary/90 rounded-md font-medium text-sm transition-colors shadow-sm flex items-center gap-2"
-              >
-                {isSavingDetails ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isEditingDetails && (
+          <EditBookForm
+            libraryId={libraryId!}
+            book={book}
+            bookBase={bookBase}
+            bookDetails={bookDetails}
+            setBookBase={setBookBase}
+            setBookDetails={setBookDetails}
+            onClose={() => setIsEditingDetails(false)}
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 }

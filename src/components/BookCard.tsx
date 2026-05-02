@@ -2,19 +2,29 @@ import React from 'react';
 import {BookDetails} from '../services/bookApi';
 import {Book as BookIcon} from 'lucide-react';
 import {toTitleCase} from '../lib/utils';
-
-import {Timestamp} from 'firebase/firestore';
-
 import {FirestoreDate} from '../types';
 
 interface BookCardProps {
   key?: React.Key;
-  book: BookDetails & {id: string; addedBy: string | null; addedAt: FirestoreDate};
+  book: BookDetails & {
+    id: string;
+    addedBy: string | null;
+    addedAt: FirestoreDate;
+  };
   onClick?: () => void;
   canEdit: boolean;
+  isSelected?: boolean;
+  isSelectMode?: boolean;
+  onSelect?: (e: React.MouseEvent) => void;
 }
 
-export default function BookCard({book, onClick}: BookCardProps) {
+export default function BookCard({
+  book,
+  onClick,
+  isSelected,
+  isSelectMode,
+  onSelect,
+}: BookCardProps) {
   return (
     <div
       onClick={onClick}
@@ -22,10 +32,25 @@ export default function BookCard({book, onClick}: BookCardProps) {
     >
       {/* Book Cover */}
       <div
-        className={
-          'relative aspect-[2/3] mb-4 bg-surface-container rounded-lg shadow-[0_4px_12px_rgba(26,47,75,0.08)] overflow-hidden transform transition-transform duration-300 group-hover:-translate-y-1'
-        }
+        className={`relative aspect-[2/3] mb-4 bg-surface-container rounded-lg shadow-[0_4px_12px_rgba(26,47,75,0.08)] overflow-hidden transform transition-transform duration-300 group-hover:-translate-y-1 ${isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
       >
+        {onSelect && (
+          <div
+            className={`absolute top-2 left-2 z-20 flex items-center justify-center transition-opacity ${isSelected || isSelectMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+            onClick={e => {
+              e.stopPropagation();
+              onSelect(e);
+            }}
+          >
+            <div
+              className={`w-5 h-5 rounded-sm border ${isSelected ? 'bg-primary border-primary' : 'bg-surface/80 border-outline backdrop-blur-sm'} flex items-center justify-center shadow-sm`}
+            >
+              {isSelected && (
+                <span className="text-on-primary text-xs leading-none">✓</span>
+              )}
+            </div>
+          </div>
+        )}
         {book.coverUrl ? (
           <img
             src={book.coverUrl}

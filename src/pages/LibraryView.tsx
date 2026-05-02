@@ -2,18 +2,13 @@ import React, {useState, useEffect} from 'react';
 import {useParams, Link, useNavigate, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {db, handleFirestoreError, OperationType} from '../firebase';
-import {
-  doc,
-  updateDoc,
-  writeBatch,
-  getDocs,
-  collection,
-} from 'firebase/firestore';
+import {doc, updateDoc} from 'firebase/firestore';
 import {ArrowLeft, Plus, Share2, Settings, Map, Wand2} from 'lucide-react';
 import {toast} from 'sonner';
 import {toTitleCase, getFirestoreTime} from '../lib/utils';
 import SidebarActions from '../components/SidebarActions';
 import Chatbot from '../components/Chatbot';
+import {motion, AnimatePresence} from 'motion/react';
 
 // Hooks
 import {useLibraryData} from '../hooks/useLibraryData';
@@ -37,7 +32,7 @@ export default function LibraryView() {
   const location = useLocation();
 
   // Data fetching
-  const {library, books, isLoading, isBooksLoading} = useLibraryData(
+  const {library, books, isLoading, isBooksLoading, isSyncing} = useLibraryData(
     id,
     user?.uid,
     navigate,
@@ -120,12 +115,20 @@ export default function LibraryView() {
   const confirmDeleteLibrary = async () => {
     if (!id) return;
     try {
-      const batch = writeBatch(db);
-      const booksRef = collection(db, 'libraries', id, 'books');
-      const booksSnapshot = await getDocs(booksRef);
-      booksSnapshot.forEach(doc => batch.delete(doc.ref));
-      batch.delete(doc(db, 'libraries', id));
-      await batch.commit();
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not logged in');
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/libraries/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete library from server');
+      }
+
       toast.success('Library deleted');
       void navigate('/');
     } catch (error) {
@@ -276,66 +279,87 @@ export default function LibraryView() {
             </div>
           </div>
 
-          {filters.currentTab === 'overview' ? (
-            <ErrorBoundary name="Library Overview">
-              <LibraryOverview
-                books={books}
-                library={library}
-                user={user}
-                pickOfTheDay={picker.pickOfTheDay}
-                isGeneratingPick={picker.isGeneratingPick}
-                generateNewPick={picker.generateNewPick}
-                setCurrentTab={filters.setCurrentTab}
-                setFilterGenre={filters.setFilterGenre}
-                setIsFiltersOpen={filters.setIsFiltersOpen}
-              />
-            </ErrorBoundary>
-          ) : (
-            <>
-              <ErrorBoundary name="Library Collection Header">
-                <LibraryHeader
-                  library={library}
-                  books={books}
-                  isOwner={isOwner}
-                />
-              </ErrorBoundary>
-              <ErrorBoundary name="Library Collection Shelf">
-                <LibraryCollection
-                  libraryId={id!}
-                  books={books}
-                  sortedBooks={filters.sortedBooks}
-                  searchQuery={filters.searchQuery}
-                  setSearchQuery={filters.setSearchQuery}
-                  sortBy={filters.sortBy}
-                  setSortBy={filters.setSortBy}
-                  sortOrder={filters.sortOrder}
-                  setSortOrder={filters.setSortOrder}
-                  viewMode={filters.viewMode}
-                  setViewMode={filters.setViewMode}
-                  isFiltersOpen={filters.isFiltersOpen}
-                  setIsFiltersOpen={filters.setIsFiltersOpen}
-                  filterGenre={filters.filterGenre}
-                  setFilterGenre={filters.setFilterGenre}
-                  filterAuthor={filters.filterAuthor}
-                  setFilterAuthor={filters.setFilterAuthor}
-                  filterYearMin={filters.filterYearMin}
-                  setFilterYearMin={filters.setFilterYearMin}
-                  filterYearMax={filters.filterYearMax}
-                  setFilterYearMax={filters.setFilterYearMax}
-                  availableGenres={filters.availableGenres}
-                  availableAuthors={filters.availableAuthors}
-                  clearFilters={filters.clearFilters}
-                  canEdit={canEdit}
-                  selectedBooks={selection.selectedBooks}
-                  toggleBookSelection={selection.toggleBookSelection}
-                  toggleAllBooks={selection.toggleAllBooks}
-                  handleSort={filters.setSortBy}
-                  user={user}
-                  navigate={navigate}
-                />
-              </ErrorBoundary>
-            </>
-          )}
+          <div className="relative flex-grow flex flex-col">
+            <AnimatePresence mode="wait">
+              {filters.currentTab === 'overview' ? (
+                <motion.div
+                  key="overview"
+                  initial={{opacity: 0, x: -10}}
+                  animate={{opacity: 1, x: 0}}
+                  exit={{opacity: 0, x: 10}}
+                  transition={{duration: 0.2}}
+                  className="flex-grow flex flex-col"
+                >
+                  <ErrorBoundary name="Library Overview">
+                    <LibraryOverview
+                      books={books}
+                      library={library}
+                      user={user}
+                      pickOfTheDay={picker.pickOfTheDay}
+                      isGeneratingPick={picker.isGeneratingPick}
+                      generateNewPick={picker.generateNewPick}
+                      setCurrentTab={filters.setCurrentTab}
+                      setFilterGenre={filters.setFilterGenre}
+                      setIsFiltersOpen={filters.setIsFiltersOpen}
+                    />
+                  </ErrorBoundary>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="collection"
+                  initial={{opacity: 0, x: 10}}
+                  animate={{opacity: 1, x: 0}}
+                  exit={{opacity: 0, x: -10}}
+                  transition={{duration: 0.2}}
+                  className="flex-grow flex flex-col"
+                >
+                  <ErrorBoundary name="Library Collection Header">
+                    <LibraryHeader
+                      library={library}
+                      books={books}
+                      isOwner={isOwner}
+                      isSyncing={isSyncing}
+                    />
+                  </ErrorBoundary>
+                  <ErrorBoundary name="Library Collection Shelf">
+                    <LibraryCollection
+                      libraryId={id!}
+                      books={books}
+                      sortedBooks={filters.sortedBooks}
+                      searchQuery={filters.searchQuery}
+                      setSearchQuery={filters.setSearchQuery}
+                      sortBy={filters.sortBy}
+                      setSortBy={filters.setSortBy}
+                      sortOrder={filters.sortOrder}
+                      setSortOrder={filters.setSortOrder}
+                      viewMode={filters.viewMode}
+                      setViewMode={filters.setViewMode}
+                      isFiltersOpen={filters.isFiltersOpen}
+                      setIsFiltersOpen={filters.setIsFiltersOpen}
+                      filterGenre={filters.filterGenre}
+                      setFilterGenre={filters.setFilterGenre}
+                      filterAuthor={filters.filterAuthor}
+                      setFilterAuthor={filters.setFilterAuthor}
+                      filterYearMin={filters.filterYearMin}
+                      setFilterYearMin={filters.setFilterYearMin}
+                      filterYearMax={filters.filterYearMax}
+                      setFilterYearMax={filters.setFilterYearMax}
+                      availableGenres={filters.availableGenres}
+                      availableAuthors={filters.availableAuthors}
+                      clearFilters={filters.clearFilters}
+                      canEdit={canEdit}
+                      selectedBooks={selection.selectedBooks}
+                      toggleBookSelection={selection.toggleBookSelection}
+                      toggleAllBooks={selection.toggleAllBooks}
+                      handleSort={filters.setSortBy}
+                      user={user}
+                      navigate={navigate}
+                    />
+                  </ErrorBoundary>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           <LibrarySettingsModals
             isSettingsOpen={isSettingsOpen}

@@ -77,7 +77,9 @@ describe('SpruceUpView', () => {
 
     const createMockSnap = (docs: any[] = [], data: any = null) => ({
       docs,
-      forEach(cb: any) { docs.forEach(cb); },
+      forEach(cb: any) {
+        docs.forEach(cb);
+      },
       exists: () => data !== null,
       data: () => data,
     });
@@ -159,7 +161,9 @@ describe('SpruceUpView', () => {
 
     const createMockSnap = (docs: any[] = [], data: any = null) => ({
       docs,
-      forEach(cb: any) { docs.forEach(cb); },
+      forEach(cb: any) {
+        docs.forEach(cb);
+      },
       exists: () => data !== null,
       data: () => data,
     });
@@ -225,7 +229,9 @@ describe('SpruceUpView', () => {
 
     const createMockSnap = (docs: any[] = [], data: any = null) => ({
       docs,
-      forEach(cb: any) { docs.forEach(cb); },
+      forEach(cb: any) {
+        docs.forEach(cb);
+      },
       exists: () => data !== null,
       data: () => data,
     });

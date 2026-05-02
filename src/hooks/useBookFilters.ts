@@ -112,12 +112,29 @@ export function useBookFilters(books: Book[]) {
     return sorted;
   }, [filteredBooks, sortBy, sortOrder]);
 
+  const handleSort = (option: SortOption) => {
+    if (sortBy === option) {
+      setSearchParamsValue('order', sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSearchParams(
+        prev => {
+          prev.set('sort', option);
+          // Default to asc for title/author, desc for added
+          prev.set('order', option === 'added' ? 'desc' : 'asc');
+          return prev;
+        },
+        {replace: true},
+      );
+    }
+  };
+
   return {
     currentTab,
     setCurrentTab: (tab: 'overview' | 'collection') =>
       setSearchParamsValue('tab', tab),
     sortBy,
-    setSortBy: (sort: SortOption) => setSearchParamsValue('sort', sort),
+    setSortBy: handleSort,
+    handleSort,
     sortOrder,
     setSortOrder: (order: 'asc' | 'desc') =>
       setSearchParamsValue('order', order),

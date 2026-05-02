@@ -303,6 +303,11 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
             <BookCard
               canEdit={!!canEdit}
               book={book}
+              isSelected={selectedBooks.has(book.id)}
+              isSelectMode={selectedBooks.size > 0}
+              onSelect={
+                canEdit ? e => toggleBookSelection(e, book.id) : undefined
+              }
               onClick={() =>
                 navigate(`/library/${libraryId}/book/${book.id}`, {
                   state: {from: location.pathname + location.search},

@@ -50,10 +50,7 @@ describe('useSelection', () => {
 
   it('selects and deselects all books', () => {
     const {result} = renderHook(() => useSelection(libraryId, userId));
-    const books = [
-      {id: 'book1'} as any,
-      {id: 'book2'} as any,
-    ];
+    const books = [{id: 'book1'} as any, {id: 'book2'} as any];
 
     act(() => {
       result.current.toggleAllBooks(books);

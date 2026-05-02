@@ -52,14 +52,18 @@ export default function SpruceUpView() {
           <span>Back to Library</span>
         </Link>
       </SidebarActions>
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-display text-on-surface mb-2">
-          Spruce Up Library
-        </h1>
-        <p className="text-on-surface-variant max-w-2xl mb-8">
-          Find and fix issues with your library, such as duplicate entries and
-          missing metadata.
-        </p>
+      <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 min-w-0 max-w-[1200px] mx-auto w-full">
+        <div className="mb-6 sm:mb-8 flex flex-col gap-4 border-b border-surface-variant pb-6 sm:pb-8">
+          <div>
+            <h2 className="font-headline-lg sm:font-headline-xl text-headline-lg sm:text-headline-xl text-primary-container mb-2 sm:mb-4">
+              Spruce Up Library
+            </h2>
+            <p className="font-body-md sm:font-body-lg text-body-md sm:text-body-lg text-on-surface-variant max-w-2xl">
+              Find and fix issues with your library, such as duplicate entries
+              and missing metadata.
+            </p>
+          </div>
+        </div>
 
         <ErrorBoundary name="Spruce Up View Content">
           <motion.div

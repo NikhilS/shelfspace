@@ -15,7 +15,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ThrowError shouldThrow={false} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
     expect(screen.getByText('Component Content')).toBeInTheDocument();
   });
@@ -27,12 +27,12 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
     expect(screen.getByText(/unexpected error occurred/)).toBeInTheDocument();
-    
+
     consoleSpy.mockRestore();
   });
 
@@ -42,7 +42,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary fallback={<div>Custom Fallback</div>}>
         <ThrowError shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(screen.getByText('Custom Fallback')).toBeInTheDocument();
@@ -57,10 +57,12 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary name="Library Map">
         <ThrowError shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
-    expect(screen.getByText(/The Library Map failed to render/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/The Library Map failed to render/),
+    ).toBeInTheDocument();
 
     consoleSpy.mockRestore();
   });

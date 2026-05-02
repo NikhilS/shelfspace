@@ -175,7 +175,8 @@ export async function searchBookByTitleAndAuthor(
             const bookData = item.volumeInfo;
             return {
               title: bookData.title || title || 'Unknown Title',
-              author: bookData.authors?.join(', ') || author || 'Unknown Author',
+              author:
+                bookData.authors?.join(', ') || author || 'Unknown Author',
               isbn: extractIsbn(bookData.industryIdentifiers),
               coverUrl: getHighResCoverUrl(
                 bookData.imageLinks?.thumbnail ||

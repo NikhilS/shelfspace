@@ -61,22 +61,24 @@ describe('AuthContext', () => {
   });
 
   it('provides user when authenticated', async () => {
-    vi.mocked(onAuthStateChanged).mockImplementation(
-      ((
-        _auth: import('firebase/auth').Auth,
-        callback:
-          | ((user: import('firebase/auth').User | null) => void)
-          | import('firebase/auth').NextOrObserver<import('firebase/auth').User | null>,
-      ) => {
-        const cb =
-          typeof callback === 'function' ? callback : callback.next?.bind(callback);
-        cb?.({
-          uid: '123',
-          email: 'test@example.com',
-        } as import('firebase/auth').User);
-        return () => {};
-      }) as any,
-    );
+    vi.mocked(onAuthStateChanged).mockImplementation(((
+      _auth: import('firebase/auth').Auth,
+      callback:
+        | ((user: import('firebase/auth').User | null) => void)
+        | import('firebase/auth').NextOrObserver<
+            import('firebase/auth').User | null
+          >,
+    ) => {
+      const cb =
+        typeof callback === 'function'
+          ? callback
+          : callback.next?.bind(callback);
+      cb?.({
+        uid: '123',
+        email: 'test@example.com',
+      } as import('firebase/auth').User);
+      return () => {};
+    }) as any);
 
     vi.mocked(getDoc).mockResolvedValueOnce({
       exists: () => true,
@@ -95,21 +97,22 @@ describe('AuthContext', () => {
   });
 
   it('creates user doc if it does not exist', async () => {
-    vi.mocked(onAuthStateChanged).mockImplementation(
-      ((
-        _auth: any,
-        callback: any,
-      ) => {
-        const cb = typeof callback === 'function' ? callback : callback.next?.bind(callback);
-        cb?.({
-          uid: 'user456',
-          email: 'new@example.com',
-          displayName: 'New User',
-          photoURL: 'http://example.com/photo.jpg',
-        } as any);
-        return () => {};
-      }) as any,
-    );
+    vi.mocked(onAuthStateChanged).mockImplementation(((
+      _auth: any,
+      callback: any,
+    ) => {
+      const cb =
+        typeof callback === 'function'
+          ? callback
+          : callback.next?.bind(callback);
+      cb?.({
+        uid: 'user456',
+        email: 'new@example.com',
+        displayName: 'New User',
+        photoURL: 'http://example.com/photo.jpg',
+      } as any);
+      return () => {};
+    }) as any);
 
     vi.mocked(getDoc).mockResolvedValueOnce({
       exists: () => false,
@@ -136,16 +139,17 @@ describe('AuthContext', () => {
   });
 
   it('handles user sign out', async () => {
-    vi.mocked(onAuthStateChanged).mockImplementation(
-      ((
-        _auth: any,
-        callback: any,
-      ) => {
-        const cb = typeof callback === 'function' ? callback : callback.next?.bind(callback);
-        cb?.(null);
-        return () => {};
-      }) as any,
-    );
+    vi.mocked(onAuthStateChanged).mockImplementation(((
+      _auth: any,
+      callback: any,
+    ) => {
+      const cb =
+        typeof callback === 'function'
+          ? callback
+          : callback.next?.bind(callback);
+      cb?.(null);
+      return () => {};
+    }) as any);
 
     render(
       <AuthProvider>

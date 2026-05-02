@@ -2,17 +2,20 @@ import React from 'react';
 import {motion} from 'motion/react';
 import {Library, Book} from '../../types';
 import {toTitleCase} from '../../lib/utils';
+import {CloudUpload} from 'lucide-react';
 
 interface LibraryHeaderProps {
   library: Library;
   books: Book[];
   isOwner: boolean;
+  isSyncing?: boolean;
 }
 
 export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   library,
   books,
   isOwner,
+  isSyncing = false,
 }) => {
   return (
     <div
@@ -35,14 +38,20 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
           <h1 className="text-[48px] sm:text-[72px] font-serif font-medium tracking-[-0.03em] drop-shadow-md mb-2 leading-[0.95]">
             {toTitleCase(library.name)}
           </h1>
-          <div className="flex items-center gap-3">
-            <div className="w-[1px] h-4 bg-white/40" />
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="w-[1px] h-4 bg-white/40 hidden sm:block" />
             <p className="text-[12px] sm:text-[14px] font-mono font-medium tracking-[0.15em] uppercase text-white/80">
               {books.length} {books.length === 1 ? 'volume' : 'volumes'} •{' '}
               {isOwner
                 ? 'Owned by you'
                 : `Shared by ${toTitleCase(library.ownerName)}`}
             </p>
+            {isSyncing && (
+              <span className="flex items-center gap-1.5 text-[11px] sm:text-[13px] font-medium tracking-wide uppercase text-secondary bg-surface/10 px-2 py-0.5 rounded-full border border-white/10 backdrop-blur-sm">
+                <CloudUpload className="w-3.5 h-3.5" />
+                Syncing
+              </span>
+            )}
           </div>
         </motion.div>
       </div>

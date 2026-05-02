@@ -339,10 +339,7 @@ export function useSpruceUp(libraryId: string | undefined) {
     }
   };
 
-  const processBooksMetadata = async (
-    booksToProcess: Book[],
-    isForceResync: boolean,
-  ) => {
+  const processBooksMetadata = async (booksToProcess: Book[]) => {
     let successCount = 0;
     try {
       const concurrencyLimit = 5;
@@ -356,9 +353,7 @@ export function useSpruceUp(libraryId: string | undefined) {
         await Promise.all(
           chunk.map(async b => {
             try {
-              const bookArg = isForceResync
-                ? {title: b.title, author: b.author, isbn: b.isbn}
-                : b;
+              const bookArg = b;
 
               const enriched = await getTieredMetadata(bookArg);
 
@@ -366,20 +361,17 @@ export function useSpruceUp(libraryId: string | undefined) {
               const heavyData: BookDetailsPayload = {};
 
               if (enriched) {
-                if ((isForceResync || !b.coverUrl) && enriched.coverUrl)
+                if (!b.coverUrl && enriched.coverUrl)
                   newData.coverUrl = enriched.coverUrl;
-                if ((isForceResync || !b.synopsis) && enriched.synopsis) {
+                if (!b.synopsis && enriched.synopsis) {
                   heavyData.synopsis = enriched.synopsis;
                 }
-                if ((isForceResync || !b.authorBio) && enriched.authorBio)
+                if (!b.authorBio && enriched.authorBio)
                   heavyData.authorBio = enriched.authorBio;
-                if (
-                  (isForceResync || !b.publishedDate) &&
-                  enriched.publishedDate
-                )
+                if (!b.publishedDate && enriched.publishedDate)
                   newData.publishedDate = enriched.publishedDate;
                 if (
-                  (isForceResync || !b.genres || b.genres.length === 0) &&
+                  (!b.genres || b.genres.length === 0) &&
                   enriched.genres &&
                   enriched.genres.length > 0
                 )
@@ -391,38 +383,29 @@ export function useSpruceUp(libraryId: string | undefined) {
 
               let hasLegacyData = false;
 
-              if (!isForceResync) {
-                if (b._inBooks?.synopsis) {
-                  heavyData.synopsis = heavyData.synopsis || b.synopsis;
-                  hasLegacyData = true;
-                }
-                if (b._inBooks?.authorBio) {
-                  heavyData.authorBio = heavyData.authorBio || b.authorBio;
-                  hasLegacyData = true;
-                }
-                if (b._inBooks?.embedding) {
-                  heavyData.embedding = heavyData.embedding || b.embedding;
-                  hasLegacyData = true;
-                }
-                if (b._inBooks?.clusterCoordinates) {
-                  heavyData.clusterCoordinates =
-                    heavyData.clusterCoordinates || b.clusterCoordinates;
-                  hasLegacyData = true;
-                }
-              } else {
+              if (b._inBooks?.synopsis) {
+                heavyData.synopsis = heavyData.synopsis || b.synopsis;
+                hasLegacyData = true;
+              }
+              if (b._inBooks?.authorBio) {
+                heavyData.authorBio = heavyData.authorBio || b.authorBio;
+                hasLegacyData = true;
+              }
+              if (b._inBooks?.embedding) {
+                heavyData.embedding = heavyData.embedding || b.embedding;
+                hasLegacyData = true;
+              }
+              if (b._inBooks?.clusterCoordinates) {
+                heavyData.clusterCoordinates =
+                  heavyData.clusterCoordinates || b.clusterCoordinates;
                 hasLegacyData = true;
               }
 
-              if (
-                hasNewLightData ||
-                hasNewHeavyData ||
-                hasLegacyData ||
-                isForceResync
-              ) {
+              if (hasNewLightData || hasNewHeavyData || hasLegacyData) {
                 const batch = writeBatch(db);
 
                 const fbNewData: DocumentData = {...newData};
-                if (hasLegacyData || isForceResync) {
+                if (hasLegacyData) {
                   fbNewData.synopsis = deleteField();
                   fbNewData.authorBio = deleteField();
                   fbNewData.embedding = deleteField();
@@ -486,25 +469,21 @@ export function useSpruceUp(libraryId: string | undefined) {
       }
     } finally {
       if (successCount > 0) {
-        toast.success(
-          isForceResync
-            ? `Force resynced ${successCount} books`
-            : `Fixed metadata for ${successCount} books`,
-        );
+        toast.success(`Fixed metadata for ${successCount} books`);
       }
     }
   };
 
   const handleFixMetadata = async (b: Book) => {
     if (!libraryId || processingIds[b.id]) return;
-    await processBooksMetadata([b], false);
+    await processBooksMetadata([b]);
   };
 
   const handleFixAllMetadata = async () => {
     if (fixingAll || activeJob?.status === 'running') return;
     setFixingAll(true);
     setFixingProgress(0);
-    await processBooksMetadata(missingMetadata, false);
+    await processBooksMetadata(missingMetadata);
     setFixingAll(false);
     setFixingProgress(0);
   };

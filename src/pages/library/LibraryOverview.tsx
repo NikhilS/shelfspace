@@ -129,68 +129,65 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
               Top Categories
             </p>
             <div
-              className="w-full flex-grow relative"
-              style={{minHeight: '320px'}}
+              className="w-full flex-grow flex items-center justify-center"
+              style={{minHeight: '320px', height: '320px'}}
             >
               {topCategories.length > 0 ? (
-                <div className="absolute inset-0 w-full h-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={topCategories}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={90}
-                        paddingAngle={5}
-                        isAnimationActive={true}
-                        onClick={data => {
-                          if (data?.name) {
-                            setFilterGenre(data.name);
-                            setCurrentTab('collection');
-                            setIsFiltersOpen(true);
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={topCategories}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={5}
+                      isAnimationActive={false}
+                      onClick={data => {
+                        if (data?.name) {
+                          setFilterGenre(data.name);
+                          setCurrentTab('collection');
+                          setIsFiltersOpen(true);
+                        }
+                      }}
+                      className="cursor-pointer outline-none"
+                    >
+                      {topCategories.map((_, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={
+                            [
+                              '#2f4d40',
+                              '#7d5633',
+                              '#021a35',
+                              '#8397b8',
+                              '#a3a099',
+                              '#8a7122',
+                              '#82312a',
+                            ][index % 7]
                           }
-                        }}
-                        className="cursor-pointer outline-none"
-                      >
-                        {topCategories.map((_, index) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={
-                              [
-                                '#2f4d40',
-                                '#7d5633',
-                                '#021a35',
-                                '#8397b8',
-                                '#a3a099',
-                                '#8a7122',
-                                '#82312a',
-                              ][index % 7]
-                            }
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor:
-                            'var(--color-surface-container-high, #fff)',
-                          border:
-                            '1px solid var(--color-surface-variant, #ccc)',
-                          borderRadius: '4px',
-                          color: 'var(--color-on-surface, #000)',
-                        }}
-                        itemStyle={{color: 'var(--color-on-surface, #000)'}}
-                      />
-                      <Legend
-                        verticalAlign="bottom"
-                        wrapperStyle={{fontSize: '12px', paddingTop: '10px'}}
-                        iconType="circle"
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor:
+                          'var(--color-surface-container-high, #fff)',
+                        border: '1px solid var(--color-surface-variant, #ccc)',
+                        borderRadius: '4px',
+                        color: 'var(--color-on-surface, #000)',
+                      }}
+                      itemStyle={{color: 'var(--color-on-surface, #000)'}}
+                    />
+                    <Legend
+                      verticalAlign="bottom"
+                      wrapperStyle={{fontSize: '12px', paddingTop: '10px'}}
+                      iconType="circle"
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <p className="font-body-md text-on-surface-variant italic">

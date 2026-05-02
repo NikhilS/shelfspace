@@ -34,6 +34,44 @@ async function startServer() {
 
   app.use(express.json());
 
+  app.delete('/api/libraries/:libraryId', async (req, res) => {
+    const {libraryId} = req.params;
+
+    if (!libraryId) {
+      return res.status(400).json({error: 'Missing libraryId'});
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({error: 'Unauthorized'});
+    }
+
+    try {
+      const token = authHeader.split(' ')[1];
+      const decodedToken = await admin.auth().verifyIdToken(token);
+
+      const libRef = dbAdmin.collection('libraries').doc(libraryId);
+      const libSnap = await libRef.get();
+      if (!libSnap.exists) {
+        return res.status(404).json({error: 'Library not found'});
+      }
+      const libData = libSnap.data();
+      if (libData?.ownerId !== decodedToken.uid) {
+        return res
+          .status(403)
+          .json({error: 'Forbidden. Only the owner can delete.'});
+      }
+
+      // Use recursiveDelete to delete library and all subcollections efficiently
+      await dbAdmin.recursiveDelete(libRef);
+
+      return res.json({status: 'success'});
+    } catch (error) {
+      console.error('Failed to delete library:', error);
+      return res.status(500).json({error: 'Internal server error'});
+    }
+  });
+
   // API Routes
   app.post('/api/libraries/:libraryId/resync', async (req, res) => {
     const {libraryId} = req.params;
@@ -143,21 +181,31 @@ async function startServer() {
                         synopsis: b.synopsis,
                       };
 
-                  const enriched = await getTieredMetadata(bookArg as any);
+                  const enriched = await getTieredMetadata(
+                    bookArg as {
+                      title: string;
+                      author: string;
+                      isbn?: string;
+                      synopsis?: string;
+                    },
+                  );
 
                   if (enriched) {
-                    const newData: Record<string, any> = {};
-                    const heavyData: Record<string, any> = {};
+                    const newData: Record<string, unknown> = {};
+                    const heavyData: Record<string, unknown> = {};
 
                     if ((isForceResync || !b.coverUrl) && enriched.coverUrl)
                       newData.coverUrl = enriched.coverUrl;
                     if ((isForceResync || !b.synopsis) && enriched.synopsis)
                       heavyData.synopsis = enriched.synopsis;
                     if (
-                      (isForceResync || !(b as any).authorBio) &&
-                      (enriched as any).authorBio
+                      (isForceResync ||
+                        !(b as {authorBio?: string}).authorBio) &&
+                      (enriched as {authorBio?: string}).authorBio
                     )
-                      heavyData.authorBio = (enriched as any).authorBio;
+                      heavyData.authorBio = (
+                        enriched as {authorBio?: string}
+                      ).authorBio;
                     if (
                       (isForceResync || !b.publishedDate) &&
                       enriched.publishedDate

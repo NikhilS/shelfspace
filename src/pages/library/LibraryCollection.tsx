@@ -84,87 +84,88 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
   return (
     <>
       <div className="sticky top-0 z-40 flex flex-col shadow-[0_4px_20px_rgba(26,47,75,0.02)] border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md">
-        <div className="px-4 sm:px-8 min-h-16 py-2.5 flex flex-wrap lg:flex-nowrap items-center justify-between gap-y-3 gap-x-6 transition-all">
-          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-            <div className="relative w-full sm:w-64 max-w-full">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-              <input
-                className="w-full pl-9 pr-3 py-1.5 bg-surface-container border border-outline-variant/50 rounded-md font-body-md text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors"
-                placeholder="Search collection..."
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center gap-2 bg-surface px-3 py-1.5 rounded-md border border-outline-variant/40">
-              <label className="text-xs font-label-caps text-on-surface-variant uppercase tracking-wider hidden sm:block">
-                Sort by:
-              </label>
-              <select
-                value={sortBy}
-                onChange={e => handleSort(e.target.value as SortOption)}
-                className="bg-transparent border-none text-on-surface font-body-md text-sm focus:outline-none cursor-pointer min-w-[125px] appearance-none hover:text-primary transition-colors"
-                style={{
-                  backgroundImage:
-                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")",
-                  backgroundPosition: 'right 0 center',
-                  backgroundRepeat: 'no-repeat',
-                  backgroundSize: '1em',
-                  paddingRight: '1.25rem',
-                }}
-              >
-                <option value="added">Recently Added</option>
-                <option value="title">Title (A-Z)</option>
-                <option value="author">Author (A-Z)</option>
-              </select>
-              {sortBy !== 'added' && (
-                <button
-                  onClick={() =>
-                    setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-                  }
-                  className="p-0.5 text-on-surface hover:text-primary transition-colors rounded-full hover:bg-surface-container"
-                >
-                  {sortOrder === 'asc' ? (
-                    <ArrowUp className="w-4 h-4" />
-                  ) : (
-                    <ArrowDown className="w-4 h-4" />
-                  )}
-                </button>
-              )}
-            </div>
-            <button
-              onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-body-md transition-all border ${isFiltersOpen || searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax ? 'bg-primary text-on-primary border-primary shadow-sm' : 'bg-surface text-on-surface border-outline-variant/60 hover:border-outline-variant hover:shadow-sm'}`}
-            >
-              <Filter className="w-4 h-4" />
-              <span className="hidden sm:inline">Filters</span>
-              {(searchQuery ||
-                filterGenre ||
-                filterAuthor ||
-                filterYearMin ||
-                filterYearMax) && (
-                <span className="w-1.5 h-1.5 rounded-full bg-surface"></span>
-              )}
-            </button>
+        <div className="px-4 sm:px-8 min-h-16 py-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 transition-all">
+          <div className="relative w-full lg:w-[320px] lg:flex-shrink-0">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+            <input
+              className="w-full pl-9 pr-3 py-1.5 bg-surface-container border border-outline-variant/50 rounded-md font-body-md text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors"
+              placeholder="Search collection..."
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
           </div>
-          <div className="flex items-center gap-3 w-full lg:w-auto lg:ml-auto">
-            <div className="flex items-center bg-surface-container-lowest rounded-md p-1 border border-outline-variant/40 flex-shrink-0">
+          <div className="flex flex-wrap sm:flex-nowrap items-center justify-between w-full lg:w-auto gap-3">
+            <div className="flex items-center gap-2 flex-grow overflow-x-auto pb-1 -mb-1 hide-scrollbar">
+              <div className="flex items-center gap-2 bg-surface px-3 py-1.5 rounded-md border border-outline-variant/40 flex-shrink-0">
+                <label className="text-xs font-label-caps text-on-surface-variant uppercase tracking-wider hidden sm:block">
+                  Sort by:
+                </label>
+                <select
+                  value={sortBy}
+                  onChange={e => handleSort(e.target.value as SortOption)}
+                  className="bg-transparent border-none text-on-surface font-body-md text-sm focus:outline-none cursor-pointer min-w-[125px] appearance-none hover:text-primary transition-colors pr-6"
+                  style={{
+                    backgroundImage:
+                      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")",
+                    backgroundPosition: 'right 0 center',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundSize: '1em',
+                  }}
+                >
+                  <option value="added">Recently Added</option>
+                  <option value="title">Title (A-Z)</option>
+                  <option value="author">Author (A-Z)</option>
+                </select>
+                {sortBy !== 'added' && (
+                  <button
+                    onClick={() =>
+                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                    }
+                    className="p-0.5 text-on-surface hover:text-primary transition-colors rounded-full hover:bg-surface-container ml-1"
+                  >
+                    {sortOrder === 'asc' ? (
+                      <ArrowUp className="w-4 h-4" />
+                    ) : (
+                      <ArrowDown className="w-4 h-4" />
+                    )}
+                  </button>
+                )}
+              </div>
               <button
-                onClick={() => setViewMode('standard')}
-                className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'standard' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
-                title="Grid View"
+                onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+                className={`flex flex-shrink-0 items-center gap-2 px-3 py-1.5 rounded-md text-sm font-body-md transition-all border ${isFiltersOpen || searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax ? 'bg-primary text-on-primary border-primary shadow-sm' : 'bg-surface text-on-surface border-outline-variant/60 hover:border-outline-variant hover:shadow-sm'}`}
               >
-                <LayoutGrid className="w-4 h-4" />
-                <span className="hidden sm:inline">Grid</span>
+                <Filter className="w-4 h-4" />
+                <span className="hidden sm:inline">Filters</span>
+                {(searchQuery ||
+                  filterGenre ||
+                  filterAuthor ||
+                  filterYearMin ||
+                  filterYearMax) && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-surface"></span>
+                )}
               </button>
-              <button
-                onClick={() => setViewMode('table')}
-                className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'table' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
-                title="Table View"
-              >
-                <TableIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Table</span>
-              </button>
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0 sm:ml-auto">
+              <div className="flex items-center bg-surface-container-lowest rounded-md p-1 border border-outline-variant/40 flex-shrink-0">
+                <button
+                  onClick={() => setViewMode('standard')}
+                  className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'standard' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
+                  title="Grid View"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  <span className="hidden sm:inline">Grid</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'table' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
+                  title="Table View"
+                >
+                  <TableIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Table</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

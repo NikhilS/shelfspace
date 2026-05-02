@@ -37,21 +37,25 @@ service cloud.firestore {
 
     function isValidUserProfile(data) {
       return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
-             data.keys().size() <= 5 && 
+             data.keys().size() <= 6 && 
              data.uid == request.auth.uid &&
              data.email is string && data.email.size() <= 200 &&
-             data.createdAt is timestamp;
+             data.createdAt is timestamp &&
+             (!( 'displayName' in data ) || (data.displayName is string && data.displayName.size() <= 200)) &&
+             (!( 'photoURL' in data ) || (data.photoURL is string && data.photoURL.size() <= 2000));
     }
 
     function isValidLibrary(data) {
-      let required = ['name', 'ownerId', 'createdAt'];
+      let required = ['name', 'ownerId', 'ownerName', 'createdAt'];
       return data.keys().hasAll(required) &&
              data.keys().size() <= 10 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
              data.ownerId == request.auth.uid &&
+             data.ownerName is string && data.ownerName.size() <= 200 &&
              data.createdAt is timestamp &&
-             (!( 'sharedWith' in data ) || (data.sharedWith is list && data.sharedWith.size() <= 50)) &&
-             (!( 'heroImageUrl' in data ) || (data.heroImageUrl is string && data.heroImageUrl.size() <= 2000000));
+             (!( 'bookCount' in data ) || (data.bookCount is number)) &&
+             (!( 'sharedWith' in data ) || (data.sharedWith is list && data.sharedWith.size() <= 100)) &&
+             (!( 'heroImageUrl' in data ) || (data.heroImageUrl == null || (data.heroImageUrl is string && data.heroImageUrl.size() <= 2000000)));
     }
 
     function isValidBook(data) {
@@ -60,7 +64,7 @@ service cloud.firestore {
              data.keys().size() <= 20 &&
              data.title is string && data.title.size() > 0 && data.title.size() <= 2000 &&
              data.addedAt is timestamp &&
-             (data.addedBy is string && data.addedBy.size() <= 128) &&
+             data.addedBy is string && data.addedBy.size() <= 128 &&
              (!( 'author' in data ) || (data.author == null || data.author is string)) &&
              (!( 'isbn' in data ) || (data.isbn == null || data.isbn is string)) &&
              (!( 'coverUrl' in data ) || (data.coverUrl == null || data.coverUrl is string)) &&
@@ -75,6 +79,7 @@ service cloud.firestore {
       return data.keys().size() <= 10 &&
              (!( 'synopsis' in data ) || (data.synopsis == null || data.synopsis is string)) &&
              (!( 'authorBio' in data ) || (data.authorBio == null || data.authorBio is string)) &&
+             (!( 'clusterCoordinates' in data ) || (data.clusterCoordinates == null || data.clusterCoordinates is map)) &&
              (!( 'embedding' in data ) || (data.embedding == null || data.embedding is list));
     }
 
@@ -84,7 +89,8 @@ service cloud.firestore {
              data.userName is string && data.userName.size() <= 200 &&
              data.rating is number && data.rating >= 1 && data.rating <= 5 &&
              data.text is string && data.text.size() <= 5000 &&
-             data.createdAt is timestamp;
+             data.createdAt is timestamp &&
+             (!( 'updatedAt' in data ) || (data.updatedAt is timestamp));
     }
 
     function isValidAllowedDuplicate(data) {
@@ -96,7 +102,10 @@ service cloud.firestore {
     function isValidJob(data) {
       return data.keys().hasAll(['status', 'updatedAt']) &&
              data.status in ['running', 'completed', 'failed'] &&
-             data.updatedAt is timestamp;
+             data.updatedAt is timestamp &&
+             (!( 'progress' in data ) || (data.progress is number)) &&
+             (!( 'total' in data ) || (data.total is number)) &&
+             (!( 'error' in data ) || (data.error is string && data.error.size() <= 5000));
     }
 
     // ===============================================================
@@ -106,10 +115,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && isValidUserProfile(incoming());
-      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().uid == existing().uid;
+      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().uid == existing().uid && incoming().createdAt == existing().createdAt;
     }
 
     match /libraries/{libraryId} {
+      // Note: No get() calls here for allow list. Relies on resource.data filter natively.
       function canReadLibrary() {
         return isSignedIn() && (
           existing().ownerId == request.auth.uid ||
@@ -119,23 +129,22 @@ service cloud.firestore {
       function canEditLibrary() {
         return isSignedIn() && existing().ownerId == request.auth.uid;
       }
-      function canAccessLibraryResource() {
-        let library = get(/databases/$(database)/documents/libraries/$(libraryId));
-        return isSignedIn() && (
-          library.data.ownerId == request.auth.uid ||
-          (request.auth.token.email in library.data.get('sharedWith', []))
-        );
+      
+      // Anti-Cost-Explosion: Cache the get() call for Subcollections 
+      // where we undeniably need to verify parent access.
+      function getLibrary() {
+        return get(/databases/$(database)/documents/libraries/$(libraryId));
       }
-      function canModifyLibraryResource() {
-        let library = get(/databases/$(database)/documents/libraries/$(libraryId));
-        return isSignedIn() && (
+      function canAccessLibraryResource() {
+        let library = getLibrary();
+        return isSignedIn() && library != null && (
           library.data.ownerId == request.auth.uid ||
           (request.auth.token.email in library.data.get('sharedWith', []))
         );
       }
       function libraryOwnerOnly() {
-        let library = get(/databases/$(database)/documents/libraries/$(libraryId));
-        return isSignedIn() && library.data.ownerId == request.auth.uid;
+        let library = getLibrary();
+        return isSignedIn() && library != null && library.data.ownerId == request.auth.uid;
       }
 
       allow read: if canReadLibrary();
@@ -147,40 +156,39 @@ service cloud.firestore {
 
       match /books/{bookId} {
         allow read: if canAccessLibraryResource();
-        allow create: if canModifyLibraryResource() && isValidBook(incoming()) && incoming().addedBy == request.auth.uid;
-        allow update: if canModifyLibraryResource() && isValidBook(incoming()) &&
+        allow create: if canAccessLibraryResource() && isValidBook(incoming()) && incoming().addedBy == request.auth.uid;
+        allow update: if canAccessLibraryResource() && isValidBook(incoming()) &&
                       incoming().get('addedAt', null) == existing().get('addedAt', null) &&
                       incoming().get('addedBy', null) == existing().get('addedBy', null);
         allow delete: if libraryOwnerOnly();
 
         match /reviews/{reviewId} {
           allow read: if canAccessLibraryResource();
-          allow create: if canModifyLibraryResource() && isValidReview(incoming());
-          allow update: if canModifyLibraryResource() && isValidReview(incoming()) &&
+          allow create: if canAccessLibraryResource() && isValidReview(incoming());
+          allow update: if canAccessLibraryResource() && isValidReview(incoming()) &&
                         existing().userId == request.auth.uid &&
                         incoming().userId == existing().userId &&
                         incoming().createdAt == existing().createdAt;
-          allow delete: if canModifyLibraryResource() && existing().userId == request.auth.uid;
+          allow delete: if canAccessLibraryResource() && existing().userId == request.auth.uid;
         }
       }
 
       match /bookDetails/{bookId} {
         allow read: if canAccessLibraryResource();
-        allow create: if canModifyLibraryResource() && isValidBookDetails(incoming());
-        allow update: if canModifyLibraryResource() && isValidBookDetails(incoming());
+        allow create: if canAccessLibraryResource() && isValidBookDetails(incoming());
+        allow update: if canAccessLibraryResource() && isValidBookDetails(incoming());
         allow delete: if libraryOwnerOnly();
       }
 
       match /allowedDuplicates/{allowedId} {
         allow read: if canAccessLibraryResource();
-        allow create: if canModifyLibraryResource() && isValidAllowedDuplicate(incoming());
-        allow update: if canModifyLibraryResource() && isValidAllowedDuplicate(incoming());
+        allow create: if canAccessLibraryResource() && isValidAllowedDuplicate(incoming());
+        allow update: if canAccessLibraryResource() && isValidAllowedDuplicate(incoming());
         allow delete: if libraryOwnerOnly();
       }
 
       match /jobs/{jobId} {
         allow read: if canAccessLibraryResource();
-        // Server creates/updates jobs, but we'll allow client read
       }
     }
   }
