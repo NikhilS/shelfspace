@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {motion} from 'motion/react';
 /* eslint-disable @typescript-eslint/no-floating-promises, @typescript-eslint/no-explicit-any */
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useMemo} from 'react';
 import {useParams, Link, useNavigate, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {db, handleFirestoreError, OperationType} from '../firebase';
@@ -18,12 +18,14 @@ import {
   serverTimestamp,
   deleteDoc,
   increment,
+  setDoc,
 } from 'firebase/firestore';
 import {generateBookInsights} from '../services/gemini';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {toTitleCase} from '../lib/utils';
 import {BookDetails} from '../services/bookApi';
+import {Book, FirestoreDate, BookDetailsPayload} from '../types';
 import {
   ArrowLeft,
   Edit2,
@@ -35,17 +37,6 @@ import {
   Save,
 } from 'lucide-react';
 import SidebarActions from '../components/SidebarActions';
-
-type FirestoreDate = Timestamp | Date | string | number;
-
-interface Book extends BookDetails {
-  id: string;
-  addedBy: string;
-  addedAt: FirestoreDate;
-  synopsis?: string;
-  authorBio?: string;
-  userStatuses?: Record<string, 'unset' | 'reading' | 'finished' | 'abandoned'>;
-}
 
 interface Review {
   id: string;
@@ -64,9 +55,17 @@ export default function BookDetailsView() {
 
   const backUrl = location.state?.from || `/library/${libraryId}`;
 
-  const [book, setBook] = useState<Book | null>(null);
+  const [bookBase, setBookBase] = useState<Book | null>(null);
+  const [bookDetails, setBookDetails] = useState<BookDetailsPayload | null>(
+    null,
+  );
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const book = useMemo(() => {
+    if (!bookBase) return null;
+    return {...bookBase, ...bookDetails};
+  }, [bookBase, bookDetails]);
 
   const [activeInsight, setActiveInsight] = useState<
     'catchup' | 'similar' | null
@@ -120,22 +119,8 @@ export default function BookDetailsView() {
       docSnap => {
         if (docSnap.exists()) {
           const bookData = {id: docSnap.id, ...docSnap.data()} as Book;
-
-          // Also fetch bookDetails which contains the heavy payload
-          getDoc(doc(db, 'libraries', libraryId, 'bookDetails', bookId))
-            .then(detailsSnap => {
-              if (detailsSnap.exists()) {
-                setBook({...bookData, ...detailsSnap.data()});
-              } else {
-                setBook(bookData);
-              }
-              setIsLoading(false);
-            })
-            .catch(err => {
-              console.error('Failed to fetch bookDetails', err);
-              setBook(bookData);
-              setIsLoading(false);
-            });
+          setBookBase(bookData);
+          setIsLoading(false);
         } else {
           toast.error('Book not found');
           navigate(backUrl, {replace: true});
@@ -150,6 +135,21 @@ export default function BookDetailsView() {
           `libraries/${libraryId}/books/${bookId}`,
         );
         setIsLoading(false);
+      },
+    );
+
+    // Fetch Book Details
+    const unsubscribeDetails = onSnapshot(
+      doc(db, 'libraries', libraryId, 'bookDetails', bookId),
+      docSnap => {
+        if (docSnap.exists()) {
+          setBookDetails(docSnap.data() as BookDetailsPayload);
+        } else {
+          setBookDetails(null);
+        }
+      },
+      error => {
+        console.error('Book details fetch error:', error);
       },
     );
 
@@ -178,6 +178,7 @@ export default function BookDetailsView() {
 
     return () => {
       unsubscribeBook();
+      unsubscribeDetails();
       unsubscribeReviews();
     };
   }, [libraryId, bookId, navigate]);
@@ -223,13 +224,18 @@ export default function BookDetailsView() {
           Object.keys(updates).length > 0 &&
           !abortController.signal.aborted
         ) {
-          await updateDoc(
-            doc(db, 'libraries', libraryId, 'books', bookId),
-            updates,
+          const detailPayload: BookDetailsPayload = {
+            synopsis: updates.synopsis,
+            authorBio: updates.authorBio,
+          };
+          await setDoc(
+            doc(db, 'libraries', libraryId, 'bookDetails', bookId),
+            detailPayload,
+            {merge: true},
           );
         }
-      } catch (error: any) {
-        if (error.message !== 'Aborted') {
+      } catch (error: unknown) {
+        if (error instanceof Error && error.message !== 'Aborted') {
           console.error('Failed to auto-generate missing book info:', error);
         }
       }
@@ -282,6 +288,21 @@ export default function BookDetailsView() {
       return;
     }
 
+    const tempReview: Review = {
+      id: `temp-${Date.now()}`,
+      userId: user.uid,
+      userName: user.displayName || user.email || 'Unknown User',
+      rating: reviewRating,
+      text: reviewText.trim(),
+      createdAt: new Date() as any,
+    };
+
+    const originalReviews = [...reviews];
+    setReviews(prev => [tempReview, ...prev]);
+    setIsReviewing(false);
+    setReviewRating(0);
+    setReviewText('');
+
     setIsSavingReview(true);
     try {
       await addDoc(
@@ -289,16 +310,17 @@ export default function BookDetailsView() {
         {
           userId: user.uid,
           userName: user.displayName || user.email || 'Unknown User',
-          rating: reviewRating,
-          text: reviewText.trim(),
+          rating: tempReview.rating,
+          text: tempReview.text,
           createdAt: serverTimestamp(),
         },
       );
       toast.success('Review added');
-      setIsReviewing(false);
-      setReviewRating(0);
-      setReviewText('');
     } catch (error) {
+      setReviews(originalReviews);
+      setIsReviewing(true);
+      setReviewRating(tempReview.rating);
+      setReviewText(tempReview.text);
       handleFirestoreError(
         error,
         OperationType.CREATE,
@@ -311,14 +333,19 @@ export default function BookDetailsView() {
 
   const handleSaveDetails = async () => {
     if (!book || !libraryId || !canEdit) return;
+
+    const originalBookBase = bookBase ? {...bookBase} : null;
+    const originalBookDetails = bookDetails ? {...bookDetails} : null;
+
     setIsSavingDetails(true);
     try {
-      const cleanForm: any = Object.fromEntries(
-        Object.entries(editForm).filter(
-          ([, v]) => v !== undefined && v !== null && v !== '',
-        ),
-      );
-      if (cleanForm.genresInput) {
+      const cleanForm: Record<string, string | string[] | undefined> =
+        Object.fromEntries(
+          Object.entries(editForm).filter(
+            ([, v]) => v !== undefined && v !== null && v !== '',
+          ),
+        );
+      if (cleanForm.genresInput && typeof cleanForm.genresInput === 'string') {
         cleanForm.genres = cleanForm.genresInput
           .split(',')
           .map((g: string) => g.trim())
@@ -326,22 +353,35 @@ export default function BookDetailsView() {
           .slice(0, 20);
         delete cleanForm.genresInput;
       }
-      if (cleanForm.author && typeof cleanForm.author === 'string')
+      if (typeof cleanForm.author === 'string')
         cleanForm.author = cleanForm.author.substring(0, 500);
-      if (cleanForm.series && typeof cleanForm.series === 'string')
+      if (typeof cleanForm.series === 'string')
         cleanForm.series = cleanForm.series.substring(0, 100);
-      if (cleanForm.title && typeof cleanForm.title === 'string')
+      if (typeof cleanForm.title === 'string')
         cleanForm.title = cleanForm.title.substring(0, 500);
 
       const {
         synopsis,
-        description,
         authorBio,
         embedding,
         clusterCoordinates,
-        genres,
         ...lightweightData
       } = cleanForm;
+
+      // Optimistic update
+      setBookBase(prev =>
+        prev ? ({...prev, ...lightweightData} as Book) : null,
+      );
+      setBookDetails(prev => ({
+        ...prev,
+        synopsis: synopsis as string | undefined,
+        authorBio: authorBio as string | undefined,
+        embedding: embedding as number[] | undefined,
+        clusterCoordinates: clusterCoordinates as
+          | {x: number; y: number}
+          | undefined,
+      }));
+      setIsEditingDetails(false);
 
       if (Object.keys(lightweightData).length > 0) {
         await updateDoc(
@@ -350,13 +390,13 @@ export default function BookDetailsView() {
         );
       }
 
-      const heavyData = {
-        synopsis,
-        description,
-        authorBio,
-        embedding,
-        clusterCoordinates,
-        genres,
+      const heavyData: BookDetailsPayload = {
+        synopsis: synopsis as string | undefined,
+        authorBio: authorBio as string | undefined,
+        embedding: embedding as number[] | undefined,
+        clusterCoordinates: clusterCoordinates as
+          | {x: number; y: number}
+          | undefined,
       };
       const cleanHeavyData = Object.fromEntries(
         Object.entries(heavyData).filter(([_, v]) => v !== undefined),
@@ -367,7 +407,6 @@ export default function BookDetailsView() {
           cleanHeavyData,
         ).catch(async () => {
           // If document doesn't exist yet, we must set it instead of update
-          const {setDoc} = await import('firebase/firestore');
           await setDoc(
             doc(db, 'libraries', libraryId, 'bookDetails', book.id),
             cleanHeavyData,
@@ -377,8 +416,10 @@ export default function BookDetailsView() {
       }
 
       toast.success('Book details updated');
-      setIsEditingDetails(false);
     } catch (error) {
+      setBookBase(originalBookBase);
+      setBookDetails(originalBookDetails);
+      setIsEditingDetails(true);
       handleFirestoreError(
         error,
         OperationType.UPDATE,
@@ -392,18 +433,23 @@ export default function BookDetailsView() {
   const handleDeleteBook = async () => {
     if (!book || !libraryId || !canEdit) return;
     try {
+      // Optimistic navigation
+      toast.success('Book deleted');
+      navigate(backUrl, {replace: true});
+
       await deleteDoc(doc(db, 'libraries', libraryId, 'books', book.id));
       await updateDoc(doc(db, 'libraries', libraryId), {
         bookCount: increment(-1),
       });
-      toast.success('Book deleted');
-      navigate(backUrl, {replace: true});
     } catch (error) {
       handleFirestoreError(
         error,
         OperationType.DELETE,
         `libraries/${libraryId}/books/${book.id}`,
       );
+      toast.error('Failed to delete book');
+      // Navigation happened already, but Firestore delete failed.
+      // In a real app we might want to stay on page or show an error modal.
     }
   };
 
@@ -593,6 +639,20 @@ export default function BookDetailsView() {
                 onChange={async e => {
                   if (!libraryId || !bookId || !user) return;
                   const newStatus = e.target.value;
+                  const originalBookBase = bookBase ? {...bookBase} : null;
+
+                  // Optimistic update
+                  setBookBase(prev => {
+                    if (!prev) return null;
+                    return {
+                      ...prev,
+                      userStatuses: {
+                        ...(prev.userStatuses || {}),
+                        [user.uid]: newStatus,
+                      },
+                    };
+                  });
+
                   try {
                     await updateDoc(
                       doc(db, 'libraries', libraryId, 'books', bookId),
@@ -604,6 +664,7 @@ export default function BookDetailsView() {
                     );
                     toast.success('Reading status updated');
                   } catch (error) {
+                    setBookBase(originalBookBase);
                     toast.error('Failed to update status');
                   }
                 }}

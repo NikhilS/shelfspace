@@ -345,7 +345,7 @@ export async function extractBooksFromCsv(csvText: string): Promise<
 }
 
 export async function enrichBooksMetadata(
-  books: {id: string; title: string; author: string; description?: string}[],
+  books: {id: string; title: string; author: string; synopsis?: string}[],
 ): Promise<{id: string; series: string}[]> {
   try {
     if (!books || books.length === 0) return [];
@@ -572,6 +572,7 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
 }
 
 async function compressImage(dataUrl: string): Promise<string> {
+  if (typeof window === 'undefined') return dataUrl; // Skip compression on server for now
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {

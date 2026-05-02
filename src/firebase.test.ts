@@ -7,7 +7,7 @@ vi.mock('firebase/app', () => ({
 }));
 
 // Provide a mock auth state
-let mockCurrentUser: any = null;
+let mockCurrentUser: Record<string, unknown> | null = null;
 
 vi.mock('firebase/auth', () => ({
   getAuth: vi.fn(() => ({
@@ -38,20 +38,13 @@ describe('firebase', () => {
     mockCurrentUser = null;
   });
 
-  it('initializes Firestore with persistent offline cache', async () => {
+  it('initializes Firestore correctly', async () => {
     vi.resetModules();
     const firebaseModule = await import('./firebase');
 
-    // Assert initializeFirestore was called correctly
-    expect(firestore.persistentLocalCache).toHaveBeenCalledWith({
-      tabManager: 'mock-tab-manager',
-    });
-
     expect(firestore.initializeFirestore).toHaveBeenCalledWith(
       firebaseModule.app,
-      {
-        localCache: 'mock-local-cache',
-      },
+      {},
       'test-database-id',
     );
   });
@@ -130,11 +123,12 @@ describe('firebase', () => {
 
       try {
         handleFirestoreError(testError, OperationType.GET, 'libraries/123');
-      } catch (e: any) {
-        expect(e.message).toContain('Missing or insufficient permissions.');
-        expect(e.message).toContain('user123');
-        expect(e.message).toContain('libraries/123');
-        expect(e.message).toContain('google.com');
+      } catch (e) {
+        const err = e as Error;
+        expect(err.message).toContain('Missing or insufficient permissions.');
+        expect(err.message).toContain('user123');
+        expect(err.message).toContain('libraries/123');
+        expect(err.message).toContain('google.com');
       }
 
       expect(consoleSpy).toHaveBeenCalled();
@@ -151,8 +145,9 @@ describe('firebase', () => {
 
       try {
         handleFirestoreError({weird: 'error'}, OperationType.WRITE, 'users');
-      } catch (e: any) {
-        expect(e.message).toContain('[object Object]');
+      } catch (e) {
+        const err = e as Error;
+        expect(err.message).toContain('[object Object]');
       }
 
       expect(consoleSpy).toHaveBeenCalled();

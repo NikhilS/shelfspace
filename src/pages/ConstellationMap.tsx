@@ -61,13 +61,23 @@ export default function ConstellationMap() {
       try {
         setLoading(true);
         setProgress('Fetching library data...');
-        // 1. Fetch books
-        const snapshot = await getDocs(
-          collection(db, 'libraries', libraryId, 'books'),
-        );
+        // 1. Fetch books and their corresponding heavy details
+        const [booksSnapshot, detailsSnapshot] = await Promise.all([
+          getDocs(collection(db, 'libraries', libraryId, 'books')),
+          getDocs(collection(db, 'libraries', libraryId, 'bookDetails')),
+        ]);
+
+        const detailsMap = new Map();
+        detailsSnapshot.forEach(doc => detailsMap.set(doc.id, doc.data()));
+
         const allBooks: BookDoc[] = [];
-        snapshot.forEach(doc => {
-          allBooks.push({id: doc.id, ...doc.data()} as BookDoc);
+
+        booksSnapshot.forEach(docSnap => {
+          const bData = docSnap.data();
+          const detail = detailsMap.get(docSnap.id) || {};
+          const merged = {id: docSnap.id, ...bData, ...detail};
+
+          allBooks.push(merged as BookDoc);
         });
 
         if (!isMounted) return;
@@ -90,14 +100,13 @@ export default function ConstellationMap() {
           setProgress(
             `Generating AI embeddings for ${toEmbed.length} books... (0%)`,
           );
-          // Prepare text for embeddings (title + author + synopsis/description + genres)
+          // Prepare text for embeddings (title + author + synopsis + genres)
           const texts = toEmbed.map(b => {
             const parts = [b.title];
             if (b.author) parts.push(`by ${b.author}`);
             if (b.genres && b.genres.length > 0)
               parts.push(`[${b.genres.join(', ')}]`);
             if (b.synopsis) parts.push(b.synopsis);
-            else if (b.description) parts.push(b.description);
             return parts.join(' - ');
           });
 
@@ -121,8 +130,14 @@ export default function ConstellationMap() {
             const slice = toEmbed.slice(i, i + BATCH_SIZE);
             const eSlice = embeddings.slice(i, i + BATCH_SIZE);
             for (let j = 0; j < slice.length; j++) {
-              const ref = doc(db, 'libraries', libraryId, 'books', slice[j].id);
-              batch.update(ref, {embedding: eSlice[j]});
+              const ref = doc(
+                db,
+                'libraries',
+                libraryId,
+                'bookDetails',
+                slice[j].id,
+              );
+              batch.set(ref, {embedding: eSlice[j]}, {merge: true});
               slice[j].embedding = eSlice[j]; // Update local memory too
             }
             await batch.commit();
@@ -245,9 +260,12 @@ export default function ConstellationMap() {
         const batch = writeBatch(db);
         const slice = books.slice(i, i + BATCH_SIZE);
         for (let j = 0; j < slice.length; j++) {
-          batch.update(doc(db, 'libraries', libraryId, 'books', slice[j].id), {
-            embedding: deleteField(),
-          });
+          batch.update(
+            doc(db, 'libraries', libraryId, 'bookDetails', slice[j].id),
+            {
+              embedding: deleteField(),
+            },
+          );
         }
         await batch.commit();
       }

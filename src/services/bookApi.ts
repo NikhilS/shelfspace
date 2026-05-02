@@ -6,7 +6,6 @@ export interface BookDetails {
   publishedDate: string;
   genres?: string[];
   series?: string;
-  description?: string;
   synopsis?: string;
   format?: 'physical' | 'digital';
 }
@@ -39,6 +38,14 @@ interface IndustryIdentifier {
   identifier: string;
 }
 
+interface GoogleBooksResponse {
+  items?: GoogleBooksItem[];
+}
+
+interface OpenLibraryResponse {
+  docs?: OpenLibraryDoc[];
+}
+
 function extractIsbn(identifiers?: IndustryIdentifier[]): string {
   if (!identifiers) return '';
   const isbn13 = identifiers.find(id => id.type === 'ISBN_13');
@@ -61,25 +68,26 @@ function getHighResCoverUrl(url: string | undefined): string {
   return hiResUrl;
 }
 
+const getGoogleBooksUrl = (query: string): string => {
+  const apiKey = (process.env as unknown as {BOOKS_API_KEY?: string})
+    .BOOKS_API_KEY;
+  const baseUrl = `https://www.googleapis.com/books/v1/volumes?q=${query}`;
+  return apiKey ? `${baseUrl}&key=${apiKey}` : baseUrl;
+};
+
 export async function searchBookByIsbn(
   isbn: string,
   signal?: AbortSignal,
 ): Promise<BookDetails | null> {
   try {
-    let response = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`,
-      {signal},
-    );
+    let response = await fetch(getGoogleBooksUrl(`isbn:${isbn}`), {signal});
     if (response.ok) {
-      let data = await response.json();
+      let data = (await response.json()) as GoogleBooksResponse;
 
       // Fallback to general search if isbn: prefix fails
       if (!data.items || data.items.length === 0) {
-        response = await fetch(
-          `https://www.googleapis.com/books/v1/volumes?q=${isbn}`,
-          {signal},
-        );
-        data = await response.json();
+        response = await fetch(getGoogleBooksUrl(isbn), {signal});
+        data = (await response.json()) as GoogleBooksResponse;
       }
 
       if (data.items && data.items.length > 0) {
@@ -94,7 +102,7 @@ export async function searchBookByIsbn(
           ),
           publishedDate: bookData.publishedDate || '',
           genres: bookData.categories || undefined,
-          description: bookData.description || undefined,
+          synopsis: bookData.description || undefined,
         };
       }
     }
@@ -111,7 +119,7 @@ export async function searchBookByIsbn(
       {signal},
     );
     if (response.ok) {
-      let data = await response.json();
+      let data = (await response.json()) as OpenLibraryResponse;
 
       // Fallback to general search if isbn= prefix fails
       if (!data.docs || data.docs.length === 0) {
@@ -119,7 +127,7 @@ export async function searchBookByIsbn(
           `https://openlibrary.org/search.json?q=${isbn}&limit=1`,
           {signal},
         );
-        data = await response.json();
+        data = (await response.json()) as OpenLibraryResponse;
       }
 
       if (data.docs && data.docs.length > 0) {
@@ -155,12 +163,11 @@ export async function searchBookByTitleAndAuthor(
     const q = encodeURIComponent(
       `intitle:"${title || ''}"+inauthor:"${author || ''}"`,
     );
-    const response = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5`,
-      {signal},
-    );
+    const response = await fetch(getGoogleBooksUrl(`${q}&maxResults=5`), {
+      signal,
+    });
     if (response.ok) {
-      const data = await response.json();
+      const data = (await response.json()) as GoogleBooksResponse;
       if (data.items && data.items.length > 0) {
         results = await Promise.all(
           data.items.map(async (item: GoogleBooksItem) => {
@@ -175,7 +182,7 @@ export async function searchBookByTitleAndAuthor(
               ),
               publishedDate: bookData.publishedDate || '',
               genres: bookData.categories || undefined,
-              description: bookData.description || undefined,
+              synopsis: bookData.description || undefined,
             };
           }),
         );
@@ -198,11 +205,11 @@ export async function searchBookByTitle(
   try {
     // Try intitle: first for exact title matches
     const response = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(query)}&maxResults=10`,
+      getGoogleBooksUrl(`intitle:${encodeURIComponent(query)}&maxResults=10`),
       {signal},
     );
     if (response.ok) {
-      const data = await response.json();
+      const data = (await response.json()) as GoogleBooksResponse;
 
       if (data.items && data.items.length > 0) {
         results = await Promise.all(
@@ -218,7 +225,7 @@ export async function searchBookByTitle(
               ),
               publishedDate: bookData.publishedDate || '',
               genres: bookData.categories || undefined,
-              description: bookData.description || undefined,
+              synopsis: bookData.description || undefined,
             };
           }),
         );
@@ -228,11 +235,12 @@ export async function searchBookByTitle(
     // If intitle: yields nothing or few results, fallback to general search
     if (results.length < 5) {
       const fallbackResponse = await fetch(
-        `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=10`,
+        getGoogleBooksUrl(`${encodeURIComponent(query)}&maxResults=10`),
         {signal},
       );
       if (fallbackResponse.ok) {
-        const fallbackData = await fallbackResponse.json();
+        const fallbackData =
+          (await fallbackResponse.json()) as GoogleBooksResponse;
         if (fallbackData.items && fallbackData.items.length > 0) {
           const fallbackResults = await Promise.all(
             fallbackData.items.map(async (item: GoogleBooksItem) => {
@@ -247,7 +255,7 @@ export async function searchBookByTitle(
                 ),
                 publishedDate: bookData.publishedDate || '',
                 genres: bookData.categories || undefined,
-                description: bookData.description || undefined,
+                synopsis: bookData.description || undefined,
               };
             }),
           );
@@ -276,14 +284,14 @@ export async function searchBookByTitle(
         `https://openlibrary.org/search.json?title=${encodeURIComponent(query)}&limit=10`,
       );
       if (response.ok) {
-        let data = await response.json();
+        let data = (await response.json()) as OpenLibraryResponse;
 
         // Fallback to general search if title= prefix fails
         if (!data.docs || data.docs.length === 0) {
           response = await fetch(
             `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10`,
           );
-          data = await response.json();
+          data = (await response.json()) as OpenLibraryResponse;
         }
 
         if (data.docs && data.docs.length > 0) {

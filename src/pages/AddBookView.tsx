@@ -36,9 +36,11 @@ import {
   onSnapshot,
   increment,
   updateDoc,
+  DocumentData,
 } from 'firebase/firestore';
 import {db} from '../firebase';
 import {useAuth} from '../contexts/AuthContext';
+import {BookDetailsPayload} from '../types';
 import SidebarActions from '../components/SidebarActions';
 import BarcodeScanner from '../components/BarcodeScanner';
 import CameraScanner from '../components/CameraScanner';
@@ -116,7 +118,7 @@ export default function AddBookView() {
     isbn: '',
     genres: [],
     series: '',
-    description: '',
+    synopsis: '',
     publishedDate: '',
     coverUrl: '',
     format: 'physical',
@@ -137,7 +139,7 @@ export default function AddBookView() {
         id: i.toString(),
         title: b.title || '',
         author: b.author || '',
-        description: b.description || '',
+        synopsis: b.synopsis || '',
       }))
       .filter(
         b => b.title && enrichedBooks[parseInt(b.id)].series === undefined,
@@ -174,16 +176,17 @@ export default function AddBookView() {
           Object.entries(enrichedDetails).filter(
             ([, v]) => v !== undefined && v !== null && v !== '',
           ),
-        );
+        ) as Record<string, string | string[] | undefined>;
+
         if (cleanDetails.genres && Array.isArray(cleanDetails.genres))
           cleanDetails.genres = cleanDetails.genres
             .map((g: string) => g.substring(0, 100))
             .slice(0, 20);
-        if (cleanDetails.author && typeof cleanDetails.author === 'string')
+        if (typeof cleanDetails.author === 'string')
           cleanDetails.author = cleanDetails.author.substring(0, 500);
-        if (cleanDetails.series && typeof cleanDetails.series === 'string')
+        if (typeof cleanDetails.series === 'string')
           cleanDetails.series = cleanDetails.series.substring(0, 100);
-        if (cleanDetails.title && typeof cleanDetails.title === 'string')
+        if (typeof cleanDetails.title === 'string')
           cleanDetails.title = cleanDetails.title.substring(0, 500);
 
         const newDocRef = doc(collection(db, 'libraries', libraryId, 'books'));
@@ -191,11 +194,9 @@ export default function AddBookView() {
         // Split heavy data from lightweight data
         const {
           synopsis,
-          description,
           authorBio,
           embedding,
           clusterCoordinates,
-          genres,
           ...lightweightData
         } = cleanDetails;
 
@@ -206,13 +207,13 @@ export default function AddBookView() {
         });
 
         // Write heavy payload to bookDetails subcollection
-        const heavyData = {
-          synopsis,
-          description,
-          authorBio,
-          embedding,
-          clusterCoordinates,
-          genres,
+        const heavyData: BookDetailsPayload = {
+          synopsis: synopsis as string | undefined,
+          authorBio: authorBio as string | undefined,
+          embedding: embedding as number[] | undefined,
+          clusterCoordinates: clusterCoordinates as
+            | {x: number; y: number}
+            | undefined,
         };
         // Clean out undefined values to avoid Firebase errors
         const cleanHeavyData = Object.fromEntries(
@@ -327,23 +328,35 @@ export default function AddBookView() {
       selectedScanned.has(b.isbn || b.title),
     );
 
-    for (const b of booksToAdd) {
-      try {
-        await addBooks([b]);
-        successCount++;
-      } catch (error) {
-        console.error('Error in AddBookView');
-      }
-    }
+    const originalScanned = [...scannedBooks];
+    const originalSelected = new Set(selectedScanned);
 
-    toast.success(
-      `Successfully added ${successCount} out of ${booksToAdd.length} books`,
-    );
+    // Optimistic UI
     setScannedBooks(prev =>
       prev.filter(b => !selectedScanned.has(b.isbn || b.title)),
     );
     setSelectedScanned(new Set());
-    setIsAddingAll(false);
+
+    try {
+      for (const b of booksToAdd) {
+        try {
+          await addBooks([b]);
+          successCount++;
+        } catch (error) {
+          console.error('Error in AddBookView', error);
+        }
+      }
+
+      toast.success(
+        `Successfully added ${successCount} out of ${booksToAdd.length} books`,
+      );
+    } catch (error) {
+      setScannedBooks(originalScanned);
+      setSelectedScanned(originalSelected);
+      toast.error('Failed to add some books');
+    } finally {
+      setIsAddingAll(false);
+    }
   };
 
   const toggleSelectExtracted = (book: BookDetails) => {
@@ -367,23 +380,35 @@ export default function AddBookView() {
       selectedExtracted.has(b.isbn || b.title),
     );
 
-    for (const b of booksToAdd) {
-      try {
-        await addBooks([b]);
-        successCount++;
-      } catch (error) {
-        console.error('Failed to add extracted book', error);
-      }
-    }
+    const originalExtracted = [...extractedBooks];
+    const originalSelected = new Set(selectedExtracted);
 
-    toast.success(
-      `Successfully added ${successCount} out of ${booksToAdd.length} books`,
-    );
+    // Optimistic UI
     setExtractedBooks(prev =>
       prev.filter(b => !selectedExtracted.has(b.isbn || b.title)),
     );
     setSelectedExtracted(new Set());
-    setIsAddingAll(false);
+
+    try {
+      for (const b of booksToAdd) {
+        try {
+          await addBooks([b]);
+          successCount++;
+        } catch (error) {
+          console.error('Failed to add extracted book', error);
+        }
+      }
+
+      toast.success(
+        `Successfully added ${successCount} out of ${booksToAdd.length} books`,
+      );
+    } catch (error) {
+      setExtractedBooks(originalExtracted);
+      setSelectedExtracted(originalSelected);
+      toast.error('Failed to add some books');
+    } finally {
+      setIsAddingAll(false);
+    }
   };
 
   const handleManualAdd = async () => {
@@ -424,7 +449,7 @@ export default function AddBookView() {
         isbn: '',
         genres: [],
         series: '',
-        description: '',
+        synopsis: '',
         publishedDate: '',
         coverUrl: '',
         format: 'physical',
@@ -1009,14 +1034,14 @@ export default function AddBookView() {
 
                   <div>
                     <label className="block text-sm font-bold text-on-surface mb-1.5 ml-1">
-                      Description
+                      Synopsis
                     </label>
                     <textarea
-                      value={manualBook.description || ''}
+                      value={manualBook.synopsis || ''}
                       onChange={e =>
                         setManualBook(prev => ({
                           ...prev,
-                          description: e.target.value,
+                          synopsis: e.target.value,
                         }))
                       }
                       className="w-full bg-surface-container-low/60 border border-outline-variant/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium min-h-[120px] resize-y"

@@ -1,31 +1,58 @@
-import {BookDetails} from '../services/bookApi';
+import {
+  BookDetails,
+  searchBookByIsbn,
+  searchBookByTitleAndAuthor,
+} from '../services/bookApi';
+import {searchWikipediaForBook} from '../services/wikipediaApi';
+import {generateBookInsights} from '../services/gemini';
 
-export function computeResyncChanges(
-  book: Partial<{isbn: string; title: string}>,
-  resultData: Partial<BookDetails>,
+export async function getTieredMetadata(
+  book: Partial<{
+    isbn: string;
+    title: string;
+    author: string;
+    synopsis: string;
+  }>,
 ) {
-  const changes: Partial<BookDetails> = {};
+  let enriched: Partial<BookDetails> | null = null;
 
-  if (resultData) {
-    if (resultData.isbn && (!book.isbn || book.isbn === 'null')) {
-      changes.isbn = resultData.isbn;
-    }
-    if (resultData.genres) changes.genres = resultData.genres;
-    if (resultData.coverUrl) changes.coverUrl = resultData.coverUrl;
-    if (resultData.description) {
-      changes.description = resultData.description;
-      changes.synopsis = resultData.description;
-    }
-    if (resultData.publishedDate)
-      changes.publishedDate = resultData.publishedDate;
-    if (
-      resultData.title &&
-      book.title &&
-      resultData.title.length > book.title.length
-    ) {
-      changes.title = resultData.title;
+  if (book.isbn && book.isbn !== 'null') {
+    const res = await searchBookByIsbn(book.isbn);
+    if (res) enriched = res;
+  }
+
+  if (!enriched && book.title && book.author) {
+    const results = await searchBookByTitleAndAuthor(book.title, book.author);
+    if (results && results.length > 0) {
+      enriched = results[0];
     }
   }
 
-  return changes;
+  const resultData: Partial<BookDetails> = enriched ? {...enriched} : {};
+
+  // Tier 1: Wikipedia
+  if (!resultData.synopsis && !book.synopsis && book.title) {
+    const wpDesc = await searchWikipediaForBook(book.title, book.author);
+    if (wpDesc) {
+      resultData.synopsis = wpDesc;
+    }
+  }
+
+  // Tier 2: Gemini
+  if (!resultData.synopsis && !book.synopsis && book.title) {
+    try {
+      const geminiDesc = await generateBookInsights(
+        book.title,
+        book.author || 'Unknown',
+        'synopsis',
+      );
+      if (geminiDesc) {
+        resultData.synopsis = geminiDesc;
+      }
+    } catch (e) {
+      console.warn('Gemini fallback failed', e);
+    }
+  }
+
+  return resultData;
 }

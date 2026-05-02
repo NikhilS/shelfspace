@@ -166,7 +166,7 @@ export default function CSVImportTab({
             success = true;
           } catch (error) {
             retries--;
-            const e = error as any;
+            const e = error as Error & {response?: {status?: number}};
             if (
               retries > 0 &&
               (e?.message?.includes('429') || e?.response?.status === 429)

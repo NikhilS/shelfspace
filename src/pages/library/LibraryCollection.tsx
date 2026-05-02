@@ -1,0 +1,300 @@
+import React from 'react';
+import {
+  Search,
+  Filter,
+  LayoutGrid,
+  Table as TableIcon,
+  ArrowUp,
+  ArrowDown,
+  Book as BookIcon,
+  Plus,
+} from 'lucide-react';
+import {LibraryShelf} from './LibraryShelf';
+import {Book} from '../../types';
+import {SortOption} from '../../hooks/useBookFilters';
+import {User} from 'firebase/auth';
+import {NavigateFunction} from 'react-router-dom';
+
+interface LibraryCollectionProps {
+  libraryId: string;
+  books: Book[];
+  sortedBooks: Book[];
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  sortBy: SortOption;
+  setSortBy: (sort: SortOption) => void;
+  sortOrder: string;
+  setSortOrder: (order: string) => void;
+  viewMode: 'standard' | 'table';
+  setViewMode: (mode: 'standard' | 'table') => void;
+  isFiltersOpen: boolean;
+  setIsFiltersOpen: (open: boolean) => void;
+  filterGenre: string;
+  setFilterGenre: (genre: string) => void;
+  filterAuthor: string;
+  setFilterAuthor: (author: string) => void;
+  filterYearMin: string;
+  setFilterYearMin: (yr: string) => void;
+  filterYearMax: string;
+  setFilterYearMax: (yr: string) => void;
+  availableGenres: string[];
+  availableAuthors: string[];
+  clearFilters: () => void;
+  canEdit: boolean;
+  selectedBooks: Set<string>;
+  toggleBookSelection: (e: React.MouseEvent, bookId: string) => void;
+  toggleAllBooks: (books: Book[]) => void;
+  handleSort: (option: SortOption) => void;
+  user: User | null;
+  navigate: NavigateFunction;
+}
+
+export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
+  libraryId,
+  books,
+  sortedBooks,
+  searchQuery,
+  setSearchQuery,
+  sortBy,
+  sortOrder,
+  setSortOrder,
+  viewMode,
+  setViewMode,
+  isFiltersOpen,
+  setIsFiltersOpen,
+  filterGenre,
+  setFilterGenre,
+  filterAuthor,
+  setFilterAuthor,
+  filterYearMin,
+  setFilterYearMin,
+  filterYearMax,
+  setFilterYearMax,
+  availableGenres,
+  availableAuthors,
+  clearFilters,
+  canEdit,
+  selectedBooks,
+  toggleBookSelection,
+  toggleAllBooks,
+  handleSort,
+  user,
+  navigate,
+}) => {
+  return (
+    <>
+      <div className="sticky top-0 z-40 flex flex-col shadow-[0_4px_20px_rgba(26,47,75,0.02)] border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md">
+        <div className="px-4 sm:px-8 min-h-16 py-2.5 flex flex-wrap lg:flex-nowrap items-center justify-between gap-y-3 gap-x-6 transition-all">
+          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            <div className="relative w-full sm:w-64 max-w-full">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+              <input
+                className="w-full pl-9 pr-3 py-1.5 bg-surface-container border border-outline-variant/50 rounded-md font-body-md text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors"
+                placeholder="Search collection..."
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2 bg-surface px-3 py-1.5 rounded-md border border-outline-variant/40">
+              <label className="text-xs font-label-caps text-on-surface-variant uppercase tracking-wider hidden sm:block">
+                Sort by:
+              </label>
+              <select
+                value={sortBy}
+                onChange={e => handleSort(e.target.value as SortOption)}
+                className="bg-transparent border-none text-on-surface font-body-md text-sm focus:outline-none cursor-pointer min-w-[125px] appearance-none hover:text-primary transition-colors"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")",
+                  backgroundPosition: 'right 0 center',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: '1em',
+                  paddingRight: '1.25rem',
+                }}
+              >
+                <option value="added">Recently Added</option>
+                <option value="title">Title (A-Z)</option>
+                <option value="author">Author (A-Z)</option>
+              </select>
+              {sortBy !== 'added' && (
+                <button
+                  onClick={() =>
+                    setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                  }
+                  className="p-0.5 text-on-surface hover:text-primary transition-colors rounded-full hover:bg-surface-container"
+                >
+                  {sortOrder === 'asc' ? (
+                    <ArrowUp className="w-4 h-4" />
+                  ) : (
+                    <ArrowDown className="w-4 h-4" />
+                  )}
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-body-md transition-all border ${isFiltersOpen || searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax ? 'bg-primary text-on-primary border-primary shadow-sm' : 'bg-surface text-on-surface border-outline-variant/60 hover:border-outline-variant hover:shadow-sm'}`}
+            >
+              <Filter className="w-4 h-4" />
+              <span className="hidden sm:inline">Filters</span>
+              {(searchQuery ||
+                filterGenre ||
+                filterAuthor ||
+                filterYearMin ||
+                filterYearMax) && (
+                <span className="w-1.5 h-1.5 rounded-full bg-surface"></span>
+              )}
+            </button>
+          </div>
+          <div className="flex items-center gap-3 w-full lg:w-auto lg:ml-auto">
+            <div className="flex items-center bg-surface-container-lowest rounded-md p-1 border border-outline-variant/40 flex-shrink-0">
+              <button
+                onClick={() => setViewMode('standard')}
+                className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'standard' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
+                title="Grid View"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Grid</span>
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'table' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
+                title="Table View"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {isFiltersOpen && (
+          <div className="px-4 sm:px-8 py-4 bg-surface border-t border-outline-variant/40 flex flex-wrap gap-4 items-center animate-in slide-in-from-top-2 fade-in duration-200">
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={filterGenre}
+                onChange={e => setFilterGenre(e.target.value)}
+                className="px-4 py-2 bg-surface border border-outline-variant/60 rounded-md text-sm focus:outline-none focus:border-primary font-body-md text-on-surface appearance-none min-w-[120px]"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")",
+                  backgroundPosition: 'right 0.75rem center',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: '1em',
+                }}
+              >
+                <option value="">All Genres</option>
+                {availableGenres.map(genre => (
+                  <option key={genre} value={genre}>
+                    {genre}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={filterAuthor}
+                onChange={e => setFilterAuthor(e.target.value)}
+                className="px-4 py-2 bg-surface border border-outline-variant/60 rounded-md text-sm focus:outline-none focus:border-primary font-body-md text-on-surface appearance-none min-w-[120px] max-w-[200px] truncate"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")",
+                  backgroundPosition: 'right 0.75rem center',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: '1em',
+                }}
+              >
+                <option value="">All Authors</option>
+                {availableAuthors.map(author => (
+                  <option key={author} value={author}>
+                    {author}
+                  </option>
+                ))}
+              </select>
+
+              <div className="flex items-center gap-1.5 text-sm bg-surface border border-outline-variant/60 rounded-md px-3 py-1">
+                <input
+                  type="number"
+                  placeholder="Min Yr"
+                  value={filterYearMin}
+                  onChange={e => setFilterYearMin(e.target.value)}
+                  className="w-14 bg-transparent focus:outline-none text-on-surface text-center placeholder-on-surface-variant/70"
+                />
+                <span className="opacity-40">-</span>
+                <input
+                  type="number"
+                  placeholder="Max Yr"
+                  value={filterYearMax}
+                  onChange={e => setFilterYearMax(e.target.value)}
+                  className="w-14 bg-transparent focus:outline-none text-on-surface text-center placeholder-on-surface-variant/70"
+                />
+              </div>
+            </div>
+            {clearFilters && (
+              <button
+                onClick={clearFilters}
+                className="text-xs text-on-surface-variant hover:text-primary font-bold uppercase tracking-wider transition-colors px-2"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col lg:flex-row gap-6 sm:gap-8">
+        <div className="flex-1 min-w-0">
+          {sortedBooks.length === 0 ? (
+            <div className="text-center py-24 px-6 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
+              <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/30 relative z-10">
+                <BookIcon
+                  size={36}
+                  className="text-on-surface-variant"
+                  strokeWidth={1.5}
+                />
+              </div>
+              <h3 className="text-2xl font-serif font-bold mb-3 text-primary relative z-10 tracking-tight">
+                No books found
+              </h3>
+              <p className="text-on-surface-variant text-lg max-w-md mx-auto relative z-10">
+                {books.length === 0
+                  ? "This library is empty. Let's add some great reads to your collection."
+                  : 'No books match your current filters.'}
+              </p>
+              {books.length === 0 && canEdit && (
+                <button
+                  onClick={() => navigate(`/library/${libraryId}/add`)}
+                  className="mt-8 inline-flex items-center gap-2 bg-primary text-on-primary px-6 py-3 rounded-md hover:bg-primary/90 transition-all font-body-md text-sm font-bold relative z-10 architectural-shadow"
+                >
+                  <Plus size={18} strokeWidth={2.5} />
+                  Add Your First Book
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="mb-10 sm:mb-12 last:mb-0">
+              <LibraryShelf
+                books={sortedBooks}
+                viewMode={viewMode}
+                canEdit={canEdit}
+                libraryId={libraryId}
+                sortBy={sortBy}
+                sortOrder={sortOrder as 'asc' | 'desc'}
+                handleSort={handleSort}
+                selectedBooks={selectedBooks}
+                toggleBookSelection={toggleBookSelection}
+                toggleAllBooks={toggleAllBooks}
+                user={user}
+                emptyMessage={
+                  books.length === 0
+                    ? 'Empty Collection'
+                    : 'No results for these filters'
+                }
+              />
+            </div>
+          )}
+        </div>
+      </main>
+    </>
+  );
+};

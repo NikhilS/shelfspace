@@ -1,247 +1,186 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Document ID: {userId}
-    // Fields:
-    //   - uid: string (required) - User's ID
-    //   - email: string (required) - User's email
-    //   - displayName: string (optional) - User's name
-    //   - photoURL: string (optional) - User's photo URL
-    //   - createdAt: timestamp (required) - Creation time
-    //
-    // Collection: libraries
-    // Document ID: {libraryId}
-    // Fields:
-    //   - name: string (required, max 100 chars) - Library name
-    //   - ownerId: string (required) - Owner's user ID
-    //   - ownerName: string (optional, max 100 chars) - Owner's name
-    //   - sharedWith: list of strings (optional, max 50 items) - Emails of shared users
-    //   - heroImageUrl: string (optional, max 1048576 chars) - Library hero image base64
-    //   - createdAt: timestamp (required) - Creation time
-    //
-    // Collection: libraries/{libraryId}/books
-    // Document ID: {bookId}
-    // Fields:
-    //   - title: string (required, max 500 chars) - Book title
-    //   - author: string (optional, max 500 chars) - Book author
-    //   - isbn: string (optional, max 50 chars) - Book ISBN
-    //   - coverUrl: string (optional, max 1048576 chars) - Book cover URL or base64
-    //   - publishedDate: string (optional, max 50 chars) - Publication date
-    //   - genres: list of strings (optional, max 20 items) - Book genres
-    //   - addedAt: timestamp (required) - Time added
-    //   - addedBy: string (required) - User ID who added the book
-    //
-    // ===============================================================
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
     // ===============================================================
     // Helper Functions
     // ===============================================================
-    function isAuthenticated() {
+
+    function isSignedIn() {
       return request.auth != null;
     }
 
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.ownerId;
-    }
-
-    function uidUnchanged() {
-      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
-    }
-
-    function uidNotModified() {
-      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
-    }
-
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
-    }
-
-    function validStringLength(field, minLen, maxLen) {
-      return request.resource.data[field] is string &&
-        request.resource.data[field].size() >= minLen &&
-        request.resource.data[field].size() <= maxLen;
-    }
-
-    function isValidOptionalString(field, minLen, maxLen) {
-      return !(field in request.resource.data) ||
-             (request.resource.data[field] is string &&
-              request.resource.data[field].size() >= minLen &&
-              request.resource.data[field].size() <= maxLen);
-    }
-
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    function isValidList(list, maxSize) {
-      return list is list && list.size() <= maxSize;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     // ===============================================================
-    // Domain Validators
+    // Validation Helpers
     // ===============================================================
-    function isValidUser(data) {
-      return hasRequiredFields(['uid', 'email', 'createdAt']) &&
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
+             data.keys().size() <= 5 && 
              data.uid == request.auth.uid &&
-             isValidEmail(data.email) &&
-             data.createdAt is timestamp &&
-             isValidOptionalString('displayName', 0, 100) &&
-             isValidOptionalString('photoURL', 0, 1000);
+             data.email is string && data.email.size() <= 200 &&
+             data.createdAt is timestamp;
     }
 
     function isValidLibrary(data) {
-      return hasRequiredFields(['name', 'ownerId', 'createdAt']) &&
-             validStringLength('name', 1, 100) &&
+      let required = ['name', 'ownerId', 'createdAt'];
+      return data.keys().hasAll(required) &&
+             data.keys().size() <= 10 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
              data.ownerId == request.auth.uid &&
              data.createdAt is timestamp &&
-             isValidOptionalString('ownerName', 0, 100) &&
-             isValidOptionalString('heroImageUrl', 0, 1048576) &&
-             (!( 'sharedWith' in data ) || isValidList(data.sharedWith, 50));
+             (!( 'sharedWith' in data ) || (data.sharedWith is list && data.sharedWith.size() <= 50)) &&
+             (!( 'heroImageUrl' in data ) || (data.heroImageUrl is string && data.heroImageUrl.size() <= 2000000));
     }
 
     function isValidBook(data) {
-      return hasRequiredFields(['title', 'addedAt', 'addedBy']) &&
-             validStringLength('title', 1, 500) &&
-             (data.addedAt is timestamp || data.addedAt is string) &&
-             data.addedBy is string &&
-             isValidOptionalString('author', 0, 500) &&
-             isValidOptionalString('isbn', 0, 50) &&
-             isValidOptionalString('coverUrl', 0, 1048576) &&
-             isValidOptionalString('publishedDate', 0, 50) &&
-             (!( 'genres' in data ) || isValidList(data.genres, 20)) &&
-             isValidOptionalString('series', 0, 100) &&
-             isValidOptionalString('format', 0, 50);
+      let required = ['title', 'addedAt', 'addedBy'];
+      return data.keys().hasAll(required) &&
+             data.keys().size() <= 20 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 2000 &&
+             data.addedAt is timestamp &&
+             (data.addedBy is string && data.addedBy.size() <= 128) &&
+             (!( 'author' in data ) || (data.author == null || data.author is string)) &&
+             (!( 'isbn' in data ) || (data.isbn == null || data.isbn is string)) &&
+             (!( 'coverUrl' in data ) || (data.coverUrl == null || data.coverUrl is string)) &&
+             (!( 'publishedDate' in data ) || (data.publishedDate == null || data.publishedDate is string)) &&
+             (!( 'genres' in data ) || (data.genres == null || data.genres is list)) &&
+             (!( 'series' in data ) || (data.series == null || data.series is string)) &&
+             (!( 'format' in data ) || (data.format == null || data.format is string)) &&
+             (!( 'userStatuses' in data ) || (data.userStatuses == null || data.userStatuses is map));
+    }
+
+    function isValidBookDetails(data) {
+      return data.keys().size() <= 10 &&
+             (!( 'synopsis' in data ) || (data.synopsis == null || data.synopsis is string)) &&
+             (!( 'authorBio' in data ) || (data.authorBio == null || data.authorBio is string)) &&
+             (!( 'embedding' in data ) || (data.embedding == null || data.embedding is list));
     }
 
     function isValidReview(data) {
-      return hasRequiredFields(['userId', 'userName', 'rating', 'text', 'createdAt']) &&
+      return data.keys().hasAll(['userId', 'userName', 'rating', 'text', 'createdAt']) &&
              data.userId == request.auth.uid &&
-             validStringLength('userName', 1, 100) &&
+             data.userName is string && data.userName.size() <= 200 &&
              data.rating is number && data.rating >= 1 && data.rating <= 5 &&
-             validStringLength('text', 1, 2000) &&
-             data.createdAt is timestamp &&
-             (!( 'updatedAt' in data ) || data.updatedAt is timestamp);
+             data.text is string && data.text.size() <= 5000 &&
+             data.createdAt is timestamp;
     }
 
     function isValidAllowedDuplicate(data) {
-      return hasRequiredFields(['bookIds', 'createdAt']) &&
-             isValidList(data.bookIds, 100) &&
-             data.createdAt is number;
+      return data.keys().hasAll(['bookIds', 'createdAt']) &&
+             data.bookIds is list && data.bookIds.size() <= 100 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidJob(data) {
+      return data.keys().hasAll(['status', 'updatedAt']) &&
+             data.status in ['running', 'completed', 'failed'] &&
+             data.updatedAt is timestamp;
     }
 
     // ===============================================================
-    // Access Rules
+    // Collection Rules
     // ===============================================================
 
     match /users/{userId} {
       allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && uidUnchanged();
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) && uidNotModified();
+      allow create: if isOwner(userId) && isValidUserProfile(incoming());
+      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().uid == existing().uid;
     }
 
     match /libraries/{libraryId} {
       function canReadLibrary() {
-        return isAuthenticated() && (
-          resource.data.ownerId == request.auth.uid ||
-          (request.auth.token.email in resource.data.get('sharedWith', []))
+        return isSignedIn() && (
+          existing().ownerId == request.auth.uid ||
+          (request.auth.token.email in existing().get('sharedWith', []))
         );
       }
-
       function canEditLibrary() {
-        return isAuthenticated() && resource.data.ownerId == request.auth.uid;
+        return isSignedIn() && existing().ownerId == request.auth.uid;
+      }
+      function canAccessLibraryResource() {
+        let library = get(/databases/$(database)/documents/libraries/$(libraryId));
+        return isSignedIn() && (
+          library.data.ownerId == request.auth.uid ||
+          (request.auth.token.email in library.data.get('sharedWith', []))
+        );
+      }
+      function canModifyLibraryResource() {
+        let library = get(/databases/$(database)/documents/libraries/$(libraryId));
+        return isSignedIn() && (
+          library.data.ownerId == request.auth.uid ||
+          (request.auth.token.email in library.data.get('sharedWith', []))
+        );
+      }
+      function libraryOwnerOnly() {
+        let library = get(/databases/$(database)/documents/libraries/$(libraryId));
+        return isSignedIn() && library.data.ownerId == request.auth.uid;
       }
 
       allow read: if canReadLibrary();
-      allow create: if isAuthenticated() && isValidLibrary(request.resource.data);
-      allow update: if canEditLibrary() && isValidLibrary(request.resource.data) &&
-                    request.resource.data.ownerId == resource.data.ownerId &&
-                    request.resource.data.createdAt == resource.data.createdAt;
+      allow create: if isSignedIn() && isValidLibrary(incoming());
+      allow update: if canEditLibrary() && isValidLibrary(incoming()) && 
+                    incoming().ownerId == existing().ownerId &&
+                    incoming().createdAt == existing().createdAt;
       allow delete: if canEditLibrary();
 
-      match /allowedDuplicates/{allowedId} {
-        function canReadSub() {
-          let library = get(/databases/$(database)/documents/libraries/$(libraryId));
-          return isAuthenticated() && (
-            library.data.ownerId == request.auth.uid ||
-            (request.auth.token.email in library.data.get('sharedWith', []))
-          );
+      match /books/{bookId} {
+        allow read: if canAccessLibraryResource();
+        allow create: if canModifyLibraryResource() && isValidBook(incoming()) && incoming().addedBy == request.auth.uid;
+        allow update: if canModifyLibraryResource() && isValidBook(incoming()) &&
+                      incoming().get('addedAt', null) == existing().get('addedAt', null) &&
+                      incoming().get('addedBy', null) == existing().get('addedBy', null);
+        allow delete: if libraryOwnerOnly();
+
+        match /reviews/{reviewId} {
+          allow read: if canAccessLibraryResource();
+          allow create: if canModifyLibraryResource() && isValidReview(incoming());
+          allow update: if canModifyLibraryResource() && isValidReview(incoming()) &&
+                        existing().userId == request.auth.uid &&
+                        incoming().userId == existing().userId &&
+                        incoming().createdAt == existing().createdAt;
+          allow delete: if canModifyLibraryResource() && existing().userId == request.auth.uid;
         }
-        function canEditSub() {
-          let library = get(/databases/$(database)/documents/libraries/$(libraryId));
-          return isAuthenticated() && (
-            library.data.ownerId == request.auth.uid ||
-            (request.auth.token.email in library.data.get('sharedWith', []))
-          );
-        }
-        allow read: if canReadSub();
-        allow create: if canEditSub() && isValidAllowedDuplicate(request.resource.data);
-        allow update: if canEditSub() && isValidAllowedDuplicate(request.resource.data);
-        allow delete: if canEditSub();
       }
 
       match /bookDetails/{bookId} {
-        function canReadBooks() {
-          let library = get(/databases/$(database)/documents/libraries/$(libraryId));
-          return isAuthenticated() && (
-            library.data.ownerId == request.auth.uid ||
-            (request.auth.token.email in library.data.get('sharedWith', []))
-          );
-        }
-
-        function canEditBooks() {
-          let library = get(/databases/$(database)/documents/libraries/$(libraryId));
-          return isAuthenticated() && (
-            library.data.ownerId == request.auth.uid ||
-            (request.auth.token.email in library.data.get('sharedWith', []))
-          );
-        }
-
-        allow read: if canReadBooks();
-        allow write: if canEditBooks();
+        allow read: if canAccessLibraryResource();
+        allow create: if canModifyLibraryResource() && isValidBookDetails(incoming());
+        allow update: if canModifyLibraryResource() && isValidBookDetails(incoming());
+        allow delete: if libraryOwnerOnly();
       }
 
-      match /books/{bookId} {
-        function canReadBooks() {
-          let library = get(/databases/$(database)/documents/libraries/$(libraryId));
-          return isAuthenticated() && (
-            library.data.ownerId == request.auth.uid ||
-            (request.auth.token.email in library.data.get('sharedWith', []))
-          );
-        }
+      match /allowedDuplicates/{allowedId} {
+        allow read: if canAccessLibraryResource();
+        allow create: if canModifyLibraryResource() && isValidAllowedDuplicate(incoming());
+        allow update: if canModifyLibraryResource() && isValidAllowedDuplicate(incoming());
+        allow delete: if libraryOwnerOnly();
+      }
 
-        function canEditBooks() {
-          let library = get(/databases/$(database)/documents/libraries/$(libraryId));
-          return isAuthenticated() && (
-            library.data.ownerId == request.auth.uid ||
-            (request.auth.token.email in library.data.get('sharedWith', []))
-          );
-        }
-
-        allow read: if canReadBooks();
-        allow create: if canEditBooks() && isValidBook(request.resource.data) && request.resource.data.addedBy == request.auth.uid;
-        allow update: if canEditBooks() && isValidBook(request.resource.data) &&
-                      (!('addedAt' in resource.data) || request.resource.data.addedAt == resource.data.addedAt || resource.data.addedAt is string) &&
-                      (!('addedBy' in resource.data) || request.resource.data.addedBy == resource.data.addedBy);
-        allow delete: if canEditBooks();
-
-        match /reviews/{reviewId} {
-          allow read: if canReadBooks();
-          allow create: if canEditBooks() && isValidReview(request.resource.data) && request.resource.data.userId == request.auth.uid;
-          allow update: if canEditBooks() && isValidReview(request.resource.data) && 
-                        request.resource.data.userId == resource.data.userId &&
-                        request.resource.data.createdAt == resource.data.createdAt &&
-                        request.auth.uid == resource.data.userId;
-          allow delete: if canEditBooks() && request.auth.uid == resource.data.userId;
-        }
+      match /jobs/{jobId} {
+        allow read: if canAccessLibraryResource();
+        // Server creates/updates jobs, but we'll allow client read
       }
     }
   }

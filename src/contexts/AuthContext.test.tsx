@@ -1,7 +1,7 @@
 // top of file
 import {render, screen, waitFor} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import React, {useContext} from 'react';
+import React from 'react';
 import {AuthProvider, useAuth} from './AuthContext';
 import {onAuthStateChanged} from 'firebase/auth';
 import {getDoc, setDoc} from 'firebase/firestore';
@@ -47,7 +47,7 @@ describe('AuthContext', () => {
 
   it('renders loading state initially', () => {
     // Hang onAuthStateChanged so it stays loading
-    (onAuthStateChanged as any).mockImplementation(() => {
+    vi.mocked(onAuthStateChanged).mockImplementation(() => {
       return () => {};
     });
 
@@ -61,14 +61,19 @@ describe('AuthContext', () => {
   });
 
   it('provides user when authenticated', async () => {
-    (onAuthStateChanged as any).mockImplementation(
-      (_auth: any, callback: any) => {
+    vi.mocked(onAuthStateChanged).mockImplementation(
+      (
+        _auth: unknown,
+        callback: (user: Record<string, unknown> | null) => void,
+      ) => {
         callback({uid: '123', email: 'test@example.com'});
         return () => {};
       },
     );
 
-    (getDoc as any).mockResolvedValueOnce({exists: () => true});
+    vi.mocked(getDoc).mockResolvedValueOnce({
+      exists: () => true,
+    } as unknown as import('firebase/firestore').DocumentSnapshot);
 
     render(
       <AuthProvider>
@@ -83,8 +88,11 @@ describe('AuthContext', () => {
   });
 
   it('creates user doc if it does not exist', async () => {
-    (onAuthStateChanged as any).mockImplementation(
-      (_auth: any, callback: any) => {
+    vi.mocked(onAuthStateChanged).mockImplementation(
+      (
+        _auth: unknown,
+        callback: (user: Record<string, unknown> | null) => void,
+      ) => {
         callback({
           uid: 'user456',
           email: 'new@example.com',
@@ -95,7 +103,9 @@ describe('AuthContext', () => {
       },
     );
 
-    (getDoc as any).mockResolvedValueOnce({exists: () => false});
+    vi.mocked(getDoc).mockResolvedValueOnce({
+      exists: () => false,
+    } as unknown as import('firebase/firestore').DocumentSnapshot);
 
     render(
       <AuthProvider>
@@ -118,8 +128,11 @@ describe('AuthContext', () => {
   });
 
   it('handles user sign out', async () => {
-    (onAuthStateChanged as any).mockImplementation(
-      (_auth: any, callback: any) => {
+    vi.mocked(onAuthStateChanged).mockImplementation(
+      (
+        _auth: unknown,
+        callback: (user: Record<string, unknown> | null) => void,
+      ) => {
         callback(null);
         return () => {};
       },

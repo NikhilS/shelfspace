@@ -46,14 +46,6 @@
           "items": { "type": "string" }
         },
         "series": { "type": "string" },
-        "description": { "type": "string" },
-        "synopsis": { "type": "string" },
-        "authorBio": { "type": "string" },
-        "embedding": {
-          "type": "array",
-          "items": { "type": "number" },
-          "description": "Generated semantic vector embedding of the book description for clustering."
-        },
         "format": { "type": "string", "enum": ["physical", "digital"] },
         "userStatuses": { 
           "type": "object",
@@ -64,9 +56,30 @@
       },
       "required": ["title", "addedAt", "addedBy"]
     },
+    "BookDetails": {
+      "title": "BookDetails",
+      "description": "Heavy data for a book in a library. Linked 1-to-1 with a Book by using the exact same document ID.",
+      "type": "object",
+      "properties": {
+        "synopsis": { "type": "string" },
+        "authorBio": { "type": "string" },
+        "clusterCoordinates": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "embedding": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "Generated semantic vector embedding of the book synopsis for clustering."
+        }
+      }
+    },
     "Review": {
       "title": "Review",
-      "description": "A review for a book.",
+      "description": "A review for a book. Stored as a subcollection under the specific Book document.",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
@@ -87,9 +100,22 @@
           "type": "array",
           "items": { "type": "string" }
         },
-        "createdAt": { "type": "number" }
+        "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["bookIds", "createdAt"]
+    },
+    "Job": {
+      "title": "Job",
+      "description": "A background task for a library.",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["running", "completed", "failed"] },
+        "progress": { "type": "number" },
+        "total": { "type": "number" },
+        "error": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["status", "updatedAt"]
     }
   },
   "firestore": {
@@ -105,9 +131,17 @@
       "schema": { "$ref": "#/entities/AllowedDuplicate" },
       "description": "Dismissed duplicate suggestions within a library."
     },
+    "/libraries/{libraryId}/jobs/{jobId}": {
+      "schema": { "$ref": "#/entities/Job" },
+      "description": "Background tasks for a library."
+    },
     "/libraries/{libraryId}/books/{bookId}": {
       "schema": { "$ref": "#/entities/Book" },
       "description": "Books within a library."
+    },
+    "/libraries/{libraryId}/bookDetails/{bookId}": {
+      "schema": { "$ref": "#/entities/BookDetails" },
+      "description": "Heavy data for books within a library."
     },
     "/libraries/{libraryId}/books/{bookId}/reviews/{reviewId}": {
       "schema": { "$ref": "#/entities/Review" },

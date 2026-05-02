@@ -9,7 +9,7 @@ interface ChatbotProps {
     title: string;
     author: string;
     genres?: string[];
-    description?: string;
+    synopsis?: string;
   }[];
 }
 

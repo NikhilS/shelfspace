@@ -24,7 +24,7 @@ function LoadingScreen() {
 function PageWrapper({children}: {children?: React.ReactNode}) {
   return (
     <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
-      {children || <Outlet />}
+      <ErrorBoundary>{children || <Outlet />}</ErrorBoundary>
     </div>
   );
 }

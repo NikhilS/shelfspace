@@ -67,7 +67,7 @@ describe('SpruceUpView', () => {
         author: 'Isaac Asimov',
         isbn: '456',
         coverUrl: 'http',
-        description: 'desc',
+        synopsis: 'desc',
         publishedDate: '1951',
         genres: ['Sci-Fi'],
       },
