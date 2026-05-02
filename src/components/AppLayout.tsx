@@ -3,6 +3,7 @@ import {Link, useLocation, Outlet} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {Library, LogOut, Menu} from 'lucide-react';
 import {motion, AnimatePresence} from 'motion/react';
+import {ConnectivityBanner} from './ConnectivityBanner';
 
 interface AppLayoutProps {
   children?: React.ReactNode;
@@ -88,6 +89,7 @@ export default function AppLayout({children}: AppLayoutProps) {
 
       {/* Main Content Wrapper */}
       <main className="flex-1 min-w-0 flex flex-col md:ml-72 pt-16 md:pt-0 min-h-screen relative">
+        <ConnectivityBanner />
         {/* TopNavBar */}
         <header className="flex flex-col fixed md:sticky top-0 w-full md:w-auto mx-auto md:mx-0 z-30 bg-background/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-sm font-body-md text-on-background transition-all">
           <div className="flex justify-between items-center h-16 px-4 md:px-8 w-full">

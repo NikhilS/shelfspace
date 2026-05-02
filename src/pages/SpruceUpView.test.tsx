@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import {render, screen, waitFor, fireEvent} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import React from 'react';
@@ -44,7 +43,9 @@ describe('SpruceUpView', () => {
   });
 
   it('renders loading state initially', () => {
-    (firestore.onSnapshot as any).mockImplementation(() => vi.fn());
+    (firestore.onSnapshot as import('vitest').Mock).mockImplementation(() =>
+      vi.fn(),
+    );
 
     render(
       <MemoryRouter initialEntries={['/library/123/spruce-up']}>
@@ -54,7 +55,7 @@ describe('SpruceUpView', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Spruce Up Library')).toBeInTheDocument();
+    expect(screen.getByText('Scanning for anomalies...')).toBeInTheDocument();
   });
 
   it('loads and displays duplicates and missing metadata', async () => {
@@ -74,24 +75,40 @@ describe('SpruceUpView', () => {
       {id: '4', title: 'Lacking Meta', author: 'Someone'}, // Missing metadata
     ];
 
-    (firestore.onSnapshot as any).mockImplementation(
-      (collectionRef: any, cb: any) => {
-        // Mock for both books and allowedDuplicates
-        if (collectionRef === 'mock-books-collection') {
-          cb({
-            docs: mockBooks.map(b => ({id: b.id, data: () => b})),
-          });
-        } else if (collectionRef === 'mock-allowed-collection') {
-          cb({
-            docs: [], // No allowed duplicates
-          });
+    const createMockSnap = (docs: any[] = [], data: any = null) => ({
+      docs,
+      forEach(cb: any) { docs.forEach(cb); },
+      exists: () => data !== null,
+      data: () => data,
+    });
+
+    (firestore.onSnapshot as import('vitest').Mock).mockImplementation(
+      (ref: any, cb: any) => {
+        if (typeof ref === 'string') {
+          if (ref === 'mock-books-collection') {
+            cb(createMockSnap(mockBooks.map(b => ({id: b.id, data: () => b}))));
+          } else if (ref.includes('resync') || ref === 'mock-job-ref') {
+            cb(createMockSnap([], null));
+          } else {
+            cb(createMockSnap([]));
+          }
+        } else {
+          cb(createMockSnap([]));
         }
         return vi.fn();
       },
     );
 
-    (firestore.collection as any).mockImplementation(
-      (db: any, path: string, libId: string, subPath: string) => {
+    (firestore.doc as import('vitest').Mock).mockImplementation(
+      (db: any, ...args: string[]) => {
+        const path = args.join('/');
+        if (path.includes('jobs/resync')) return 'mock-job-ref';
+        return 'mock-doc-ref';
+      },
+    );
+
+    (firestore.collection as import('vitest').Mock).mockImplementation(
+      (db: unknown, path: string, libId: string, subPath: string) => {
         if (subPath === 'books') return 'mock-books-collection';
         if (subPath === 'allowedDuplicates') return 'mock-allowed-collection';
         return 'mock-collection';
@@ -140,21 +157,40 @@ describe('SpruceUpView', () => {
       {id: '4', title: '1984', author: 'George Orwell', format: 'physical'}, // Duplicate
     ];
 
-    (firestore.onSnapshot as any).mockImplementation(
-      (collectionRef: any, cb: any) => {
-        if (collectionRef === 'mock-books-collection') {
-          cb({
-            docs: mockBooks.map(b => ({id: b.id, data: () => b})),
-          });
-        } else if (collectionRef === 'mock-allowed-collection') {
-          cb({docs: []});
+    const createMockSnap = (docs: any[] = [], data: any = null) => ({
+      docs,
+      forEach(cb: any) { docs.forEach(cb); },
+      exists: () => data !== null,
+      data: () => data,
+    });
+
+    (firestore.onSnapshot as import('vitest').Mock).mockImplementation(
+      (ref: any, cb: any) => {
+        if (typeof ref === 'string') {
+          if (ref === 'mock-books-collection') {
+            cb(createMockSnap(mockBooks.map(b => ({id: b.id, data: () => b}))));
+          } else if (ref.includes('resync') || ref === 'mock-job-ref') {
+            cb(createMockSnap([], null));
+          } else {
+            cb(createMockSnap([]));
+          }
+        } else {
+          cb(createMockSnap([]));
         }
         return vi.fn();
       },
     );
 
-    (firestore.collection as any).mockImplementation(
-      (db: any, path: string, libId: string, subPath: string) => {
+    (firestore.doc as import('vitest').Mock).mockImplementation(
+      (db: any, ...args: string[]) => {
+        const path = args.join('/');
+        if (path.includes('jobs/resync')) return 'mock-job-ref';
+        return 'mock-doc-ref';
+      },
+    );
+
+    (firestore.collection as import('vitest').Mock).mockImplementation(
+      (db: unknown, path: string, libId: string, subPath: string) => {
         if (subPath === 'books') return 'mock-books-collection';
         if (subPath === 'allowedDuplicates') return 'mock-allowed-collection';
         return 'mock-collection';
@@ -187,27 +223,38 @@ describe('SpruceUpView', () => {
       {id: '2', title: 'Dune', author: 'Frank Herbert', isbn: '123'}, // Duplicate
     ];
 
-    (firestore.onSnapshot as any).mockImplementation(
-      (collectionRef: any, cb: any) => {
-        if (collectionRef === 'mock-books-collection') {
-          cb({
-            docs: mockBooks.map(b => ({id: b.id, data: () => b})),
-          });
+    const createMockSnap = (docs: any[] = [], data: any = null) => ({
+      docs,
+      forEach(cb: any) { docs.forEach(cb); },
+      exists: () => data !== null,
+      data: () => data,
+    });
+
+    (firestore.onSnapshot as import('vitest').Mock).mockImplementation(
+      (ref: any, cb: any) => {
+        if (typeof ref === 'string') {
+          if (ref === 'mock-books-collection') {
+            cb(createMockSnap(mockBooks.map(b => ({id: b.id, data: () => b}))));
+          } else if (ref.includes('resync') || ref === 'mock-job-ref') {
+            cb(createMockSnap([], null));
+          } else {
+            cb(createMockSnap([]));
+          }
         } else {
-          cb({docs: []});
+          cb(createMockSnap([]));
         }
         return vi.fn();
       },
     );
 
-    (firestore.collection as any).mockImplementation(
-      (db: any, path: string, libId: string, subPath: string) => {
+    (firestore.collection as import('vitest').Mock).mockImplementation(
+      (db: unknown, path: string, libId: string, subPath: string) => {
         if (subPath === 'books') return 'mock-books-collection';
         return 'mock-collection';
       },
     );
 
-    (firestore.addDoc as any).mockResolvedValue({});
+    (firestore.addDoc as import('vitest').Mock).mockResolvedValue({});
 
     render(
       <MemoryRouter initialEntries={['/library/123/spruce-up']}>
@@ -232,8 +279,8 @@ describe('SpruceUpView', () => {
   });
 
   it('shows error toast when loading data fails', async () => {
-    (firestore.onSnapshot as any).mockImplementation(
-      (_ref: any, _ok: any, errCb: any) => {
+    (firestore.onSnapshot as import('vitest').Mock).mockImplementation(
+      (_ref: unknown, _ok: any, errCb: any) => {
         errCb(new Error('Permission denied'));
         return vi.fn();
       },

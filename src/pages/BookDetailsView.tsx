@@ -1,31 +1,21 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import {motion} from 'motion/react';
-/* eslint-disable @typescript-eslint/no-floating-promises, @typescript-eslint/no-explicit-any */
-import React, {useState, useEffect, useMemo} from 'react';
+import React, {useState} from 'react';
 import {useParams, Link, useNavigate, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {db, handleFirestoreError, OperationType} from '../firebase';
 import {
   doc,
-  getDoc,
   collection,
-  query,
-  onSnapshot,
-  orderBy,
   updateDoc,
-  Timestamp,
   addDoc,
   serverTimestamp,
-  deleteDoc,
-  increment,
   setDoc,
 } from 'firebase/firestore';
-import {generateBookInsights} from '../services/gemini';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {toTitleCase} from '../lib/utils';
 import {BookDetails} from '../services/bookApi';
-import {Book, FirestoreDate, BookDetailsPayload} from '../types';
+import {Book, BookDetailsPayload, FirestoreDate} from '../types';
 import {
   ArrowLeft,
   Edit2,
@@ -37,15 +27,9 @@ import {
   Save,
 } from 'lucide-react';
 import SidebarActions from '../components/SidebarActions';
-
-interface Review {
-  id: string;
-  userId: string;
-  userName: string;
-  rating: number;
-  text: string;
-  createdAt: FirestoreDate;
-}
+import {StarRating} from '../components/StarRating';
+import {useBook, Review} from './book-details/useBook';
+import {useBookInsights} from './book-details/useBookInsights';
 
 export default function BookDetailsView() {
   const {libraryId, bookId} = useParams<{libraryId: string; bookId: string}>();
@@ -55,23 +39,25 @@ export default function BookDetailsView() {
 
   const backUrl = location.state?.from || `/library/${libraryId}`;
 
-  const [bookBase, setBookBase] = useState<Book | null>(null);
-  const [bookDetails, setBookDetails] = useState<BookDetailsPayload | null>(
-    null,
-  );
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    book,
+    bookBase,
+    bookDetails,
+    setBookBase,
+    setBookDetails,
+    reviews,
+    setReviews,
+    isLoading,
+    canEdit,
+    deleteBook,
+  } = useBook(libraryId, bookId);
 
-  const book = useMemo(() => {
-    if (!bookBase) return null;
-    return {...bookBase, ...bookDetails};
-  }, [bookBase, bookDetails]);
-
-  const [activeInsight, setActiveInsight] = useState<
-    'catchup' | 'similar' | null
-  >(null);
-  const [insightContent, setInsightContent] = useState<string | null>(null);
-  const [isGeneratingInsight, setIsGeneratingInsight] = useState(false);
+  const {
+    activeInsight,
+    insightContent,
+    isGeneratingInsight,
+    handleGenerateInsight,
+  } = useBookInsights(libraryId, book, canEdit);
 
   const [isReviewing, setIsReviewing] = useState(false);
   const [reviewRating, setReviewRating] = useState(0);
@@ -84,198 +70,6 @@ export default function BookDetailsView() {
     Partial<BookDetails> & {genresInput?: string}
   >({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
-
-  const [canEdit, setCanEdit] = useState(false);
-
-  useEffect(() => {
-    if (!libraryId || !user) return;
-
-    // Fetch Library to check permissions
-    const unsubscribe = onSnapshot(
-      doc(db, 'libraries', libraryId),
-      libDoc => {
-        if (libDoc.exists()) {
-          const data = libDoc.data();
-          setCanEdit(
-            data.ownerId === user.uid ||
-              (data.sharedWith && data.sharedWith.includes(user.email || '')),
-          );
-        }
-      },
-      error => {
-        console.error('Error fetching library perms:', error);
-      },
-    );
-
-    return () => unsubscribe();
-  }, [libraryId, user]);
-
-  useEffect(() => {
-    if (!libraryId || !bookId) return;
-
-    // Fetch Book
-    const unsubscribeBook = onSnapshot(
-      doc(db, 'libraries', libraryId, 'books', bookId),
-      docSnap => {
-        if (docSnap.exists()) {
-          const bookData = {id: docSnap.id, ...docSnap.data()} as Book;
-          setBookBase(bookData);
-          setIsLoading(false);
-        } else {
-          toast.error('Book not found');
-          navigate(backUrl, {replace: true});
-          setIsLoading(false);
-        }
-      },
-      error => {
-        console.error('Book fetch error:', error);
-        handleFirestoreError(
-          error,
-          OperationType.GET,
-          `libraries/${libraryId}/books/${bookId}`,
-        );
-        setIsLoading(false);
-      },
-    );
-
-    // Fetch Book Details
-    const unsubscribeDetails = onSnapshot(
-      doc(db, 'libraries', libraryId, 'bookDetails', bookId),
-      docSnap => {
-        if (docSnap.exists()) {
-          setBookDetails(docSnap.data() as BookDetailsPayload);
-        } else {
-          setBookDetails(null);
-        }
-      },
-      error => {
-        console.error('Book details fetch error:', error);
-      },
-    );
-
-    const reviewsRef = collection(
-      db,
-      'libraries',
-      libraryId,
-      'books',
-      bookId,
-      'reviews',
-    );
-    const q = query(reviewsRef, orderBy('createdAt', 'desc'));
-    const unsubscribeReviews = onSnapshot(
-      q,
-      snapshot => {
-        const revs: Review[] = [];
-        snapshot.forEach(doc => {
-          revs.push({id: doc.id, ...doc.data()} as Review);
-        });
-        setReviews(revs);
-      },
-      error => {
-        console.error('Reviews fetch error:', error);
-      },
-    );
-
-    return () => {
-      unsubscribeBook();
-      unsubscribeDetails();
-      unsubscribeReviews();
-    };
-  }, [libraryId, bookId, navigate]);
-
-  useEffect(() => {
-    if (!book || !libraryId || !bookId || !canEdit) return;
-
-    // We only want to fire off the generation if synopsis or authorBio is missing
-    const needsSynopsis = !book.synopsis;
-    const needsBio = !book.authorBio;
-
-    if (!needsSynopsis && !needsBio) return;
-
-    const abortController = new AbortController();
-
-    const generateMissingInfo = async () => {
-      try {
-        const updates: Partial<Book> = {};
-
-        if (needsSynopsis) {
-          const synopsis = await generateBookInsights(
-            book.title,
-            book.author,
-            'synopsis',
-            abortController.signal,
-          );
-          if (abortController.signal.aborted) return;
-          if (synopsis) updates.synopsis = synopsis;
-        }
-
-        if (needsBio) {
-          const authorBio = await generateBookInsights(
-            book.title,
-            book.author,
-            'author_bio',
-            abortController.signal,
-          );
-          if (abortController.signal.aborted) return;
-          if (authorBio) updates.authorBio = authorBio;
-        }
-
-        if (
-          Object.keys(updates).length > 0 &&
-          !abortController.signal.aborted
-        ) {
-          const detailPayload: BookDetailsPayload = {
-            synopsis: updates.synopsis,
-            authorBio: updates.authorBio,
-          };
-          await setDoc(
-            doc(db, 'libraries', libraryId, 'bookDetails', bookId),
-            detailPayload,
-            {merge: true},
-          );
-        }
-      } catch (error: unknown) {
-        if (error instanceof Error && error.message !== 'Aborted') {
-          console.error('Failed to auto-generate missing book info:', error);
-        }
-      }
-    };
-
-    // Debounce the generation. If the user browses through 20 books quickly,
-    // we don't fire 20 requests. We only fire if they stay on this book for 1.5 seconds.
-    const timeoutId = setTimeout(generateMissingInfo, 1500);
-
-    return () => {
-      clearTimeout(timeoutId);
-      abortController.abort();
-    };
-  }, [
-    book?.title,
-    book?.author,
-    book?.synopsis,
-    book?.authorBio,
-    libraryId,
-    bookId,
-    canEdit,
-  ]);
-
-  const handleGenerateInsight = async (type: 'catchup' | 'similar') => {
-    if (!book) return;
-
-    setActiveInsight(type);
-    setIsGeneratingInsight(true);
-    setInsightContent(null);
-
-    try {
-      const content = await generateBookInsights(book.title, book.author, type);
-      setInsightContent(content);
-    } catch (error) {
-      toast.error('Failed to generate insights. Please try again.');
-      setActiveInsight(null);
-    } finally {
-      setIsGeneratingInsight(false);
-    }
-  };
 
   const handleSaveReview = async () => {
     if (!book || !libraryId || !user) return;
@@ -294,7 +88,7 @@ export default function BookDetailsView() {
       userName: user.displayName || user.email || 'Unknown User',
       rating: reviewRating,
       text: reviewText.trim(),
-      createdAt: new Date() as any,
+      createdAt: new Date() as unknown as FirestoreDate,
     };
 
     const originalReviews = [...reviews];
@@ -399,7 +193,7 @@ export default function BookDetailsView() {
           | undefined,
       };
       const cleanHeavyData = Object.fromEntries(
-        Object.entries(heavyData).filter(([_, v]) => v !== undefined),
+        Object.entries(heavyData).filter(([, v]) => v !== undefined),
       );
       if (Object.keys(cleanHeavyData).length > 0) {
         await updateDoc(
@@ -435,12 +229,9 @@ export default function BookDetailsView() {
     try {
       // Optimistic navigation
       toast.success('Book deleted');
-      navigate(backUrl, {replace: true});
+      void navigate(backUrl, {replace: true});
 
-      await deleteDoc(doc(db, 'libraries', libraryId, 'books', book.id));
-      await updateDoc(doc(db, 'libraries', libraryId), {
-        bookCount: increment(-1),
-      });
+      await deleteBook();
     } catch (error) {
       handleFirestoreError(
         error,
@@ -448,8 +239,6 @@ export default function BookDetailsView() {
         `libraries/${libraryId}/books/${book.id}`,
       );
       toast.error('Failed to delete book');
-      // Navigation happened already, but Firestore delete failed.
-      // In a real app we might want to stay on page or show an error modal.
     }
   };
 
@@ -638,7 +427,11 @@ export default function BookDetailsView() {
                 value={book.userStatuses?.[user?.uid || ''] || 'unset'}
                 onChange={async e => {
                   if (!libraryId || !bookId || !user) return;
-                  const newStatus = e.target.value;
+                  const newStatus = e.target.value as
+                    | 'unset'
+                    | 'reading'
+                    | 'finished'
+                    | 'abandoned';
                   const originalBookBase = bookBase ? {...bookBase} : null;
 
                   // Optimistic update
@@ -663,8 +456,13 @@ export default function BookDetailsView() {
                       },
                     );
                     toast.success('Reading status updated');
-                  } catch (error) {
+                  } catch (e) {
                     setBookBase(originalBookBase);
+                    handleFirestoreError(
+                      e,
+                      OperationType.UPDATE,
+                      `libraries/${libraryId}/books/${bookId}`,
+                    );
                     toast.error('Failed to update status');
                   }
                 }}
@@ -811,21 +609,13 @@ export default function BookDetailsView() {
                 (book.userStatuses?.[user?.uid || ''] === 'finished' ||
                   book.userStatuses?.[user?.uid || ''] === 'abandoned') && (
                   <div className="bg-surface-container rounded-lg p-6 mb-8 border border-surface-variant">
-                    <div className="flex items-center gap-2 mb-4">
-                      {[1, 2, 3, 4, 5].map(star => (
-                        <button
-                          key={star}
-                          onClick={() => setReviewRating(star)}
-                          className="focus:outline-none transition-transform hover:scale-110"
-                        >
-                          <svg
-                            className={`w-8 h-8 ${star <= reviewRating ? 'fill-secondary text-secondary' : 'text-outline/30 fill-current hover:text-secondary/50'}`}
-                            viewBox="0 0 24 24"
-                          >
-                            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-                          </svg>
-                        </button>
-                      ))}
+                    <div className="mb-4">
+                      <StarRating
+                        interactive
+                        rating={reviewRating}
+                        onRatingChange={setReviewRating}
+                        size="lg"
+                      />
                     </div>
                     <textarea
                       value={reviewText}
@@ -876,15 +666,7 @@ export default function BookDetailsView() {
                               {review.userName}
                             </p>
                             <div className="flex items-center gap-1 mt-1 text-secondary">
-                              {[1, 2, 3, 4, 5].map(star => (
-                                <svg
-                                  key={star}
-                                  className={`w-4 h-4 ${star <= review.rating ? 'fill-current' : 'text-outline/30 fill-current'}`}
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-                                </svg>
-                              ))}
+                              <StarRating rating={review.rating} size="sm" />
                             </div>
                           </div>
                         </div>
@@ -892,8 +674,9 @@ export default function BookDetailsView() {
                           {typeof review.createdAt === 'object' &&
                           review.createdAt !== null &&
                           'toDate' in review.createdAt &&
-                          typeof (review.createdAt as any).toDate === 'function'
-                            ? (review.createdAt as any)
+                          typeof (review.createdAt as {toDate: () => Date})
+                            .toDate === 'function'
+                            ? (review.createdAt as {toDate: () => Date})
                                 .toDate()
                                 .toLocaleDateString()
                             : 'Just now'}

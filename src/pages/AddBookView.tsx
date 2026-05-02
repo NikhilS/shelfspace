@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, {useState, useRef, useEffect} from 'react';
 import {
   Search,
@@ -75,7 +74,17 @@ export default function AddBookView() {
   const [selectedScanned, setSelectedScanned] = useState<Set<string>>(
     new Set(),
   );
-  const [extractedBooks, setExtractedBooks] = useState<BookDetails[]>([]);
+  const [extractedBooks, setExtractedBooks] = useState<
+    {
+      title: string;
+      author: string;
+      isbn?: string;
+      genres?: string[];
+      format?: 'physical' | 'digital';
+      coverUrl?: string;
+      publishedDate?: string;
+    }[]
+  >([]);
   const [selectedExtracted, setSelectedExtracted] = useState<Set<string>>(
     new Set(),
   );
@@ -340,7 +349,14 @@ export default function AddBookView() {
     try {
       for (const b of booksToAdd) {
         try {
-          await addBooks([b]);
+          await addBooks([
+            {
+              ...b,
+              isbn: b.isbn || '',
+              coverUrl: b.coverUrl || '',
+              publishedDate: b.publishedDate || '',
+            } as BookDetails,
+          ]);
           successCount++;
         } catch (error) {
           console.error('Error in AddBookView', error);
@@ -392,7 +408,14 @@ export default function AddBookView() {
     try {
       for (const b of booksToAdd) {
         try {
-          await addBooks([b]);
+          await addBooks([
+            {
+              ...b,
+              isbn: b.isbn || '',
+              coverUrl: b.coverUrl || '',
+              publishedDate: b.publishedDate || '',
+            } as BookDetails,
+          ]);
           successCount++;
         } catch (error) {
           console.error('Failed to add extracted book', error);
@@ -553,7 +576,14 @@ export default function AddBookView() {
                         data-testid={`method-option-${tab.id}`}
                         className={`w-full text-left px-4 py-3 flex items-center gap-3 text-sm font-bold transition-colors ${activeTab === tab.id ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-variant/50 hover:text-on-surface'}`}
                         onClick={() => {
-                          setActiveTab(tab.id as any);
+                          setActiveTab(
+                            tab.id as
+                              | 'scan'
+                              | 'search'
+                              | 'camera'
+                              | 'csv'
+                              | 'manual',
+                          );
                           setIsDropdownOpen(false);
                         }}
                       >
@@ -728,7 +758,9 @@ export default function AddBookView() {
                     onBooksExtracted={books => {
                       setExtractedBooks(books);
                       setSelectedExtracted(
-                        new Set(books.map((b: any) => b.isbn || b.title)),
+                        new Set(
+                          books.map(b => b.isbn || b.title),
+                        ),
                       );
                     }}
                     isExtracting={isExtracting}
@@ -797,7 +829,7 @@ export default function AddBookView() {
                               checked={selectedExtracted.has(
                                 `${book.title}::${book.author}`,
                               )}
-                              onChange={() => toggleSelect(book)}
+                              onChange={() => toggleSelectExtracted(book as BookDetails)}
                               className="rounded border-outline-variant/60 text-primary focus:ring-primary/20 w-4 h-4 sm:w-5 sm:h-5 cursor-pointer mt-0.5"
                             />
                           </div>

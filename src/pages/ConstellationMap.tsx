@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-floating-promises */
+/* eslint-disable @typescript-eslint/no-floating-promises */
 import React, {useState, useEffect} from 'react';
 import {useParams, Link} from 'react-router-dom';
 import {
@@ -30,12 +30,19 @@ interface BookDoc extends BookDetails {
   embedding?: number[];
 }
 
+interface ScatterPoint {
+  x: number;
+  y: number;
+  book: BookDoc;
+  clusterId: number;
+}
+
 export default function ConstellationMap() {
   const {id: libraryId} = useParams<{id: string}>();
   const [books, setBooks] = useState<BookDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<string>('Loading books...');
-  const [plotData, setPlotData] = useState<any[]>([]);
+  const [plotData, setPlotData] = useState<ScatterPoint[]>([]);
   const [clusterNames, setClusterNames] = useState<Record<number, string>>({});
   const [reclusterTrigger, setReclusterTrigger] = useState(0);
 
@@ -207,7 +214,7 @@ export default function ConstellationMap() {
 
         setProgress('Naming constellations with AI...');
         await new Promise(r => setTimeout(r, 100)); // give UI a tick
-        const groupedClusters: Record<number, any[]> = {};
+        const groupedClusters: Record<number, BookDoc[]> = {};
         newPlotData.forEach(p => {
           if (p.clusterId !== -1) {
             if (!groupedClusters[p.clusterId])
@@ -233,10 +240,14 @@ export default function ConstellationMap() {
           setPlotData(newPlotData);
           setLoading(false);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Map generation error:', err);
         if (isMounted) {
-          setProgress(err?.message || 'Error building constellation map.');
+          setProgress(
+            err instanceof Error
+              ? err.message
+              : 'Error building constellation map.',
+          );
           setLoading(false);
         }
       }
@@ -278,7 +289,13 @@ export default function ConstellationMap() {
     }
   };
 
-  const CustomTooltip = ({active, payload}: any) => {
+  const CustomTooltip = ({
+    active,
+    payload,
+  }: {
+    active?: boolean;
+    payload?: {payload: ScatterPoint}[];
+  }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       const b = data.book as BookDoc;

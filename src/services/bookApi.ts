@@ -7,6 +7,7 @@ export interface BookDetails {
   genres?: string[];
   series?: string;
   synopsis?: string;
+  authorBio?: string;
   format?: 'physical' | 'digital';
 }
 
@@ -173,8 +174,8 @@ export async function searchBookByTitleAndAuthor(
           data.items.map(async (item: GoogleBooksItem) => {
             const bookData = item.volumeInfo;
             return {
-              title: bookData.title || title,
-              author: bookData.authors?.join(', ') || author,
+              title: bookData.title || title || 'Unknown Title',
+              author: bookData.authors?.join(', ') || author || 'Unknown Author',
               isbn: extractIsbn(bookData.industryIdentifiers),
               coverUrl: getHighResCoverUrl(
                 bookData.imageLinks?.thumbnail ||

@@ -19,7 +19,7 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('firebase/firestore', async () => {
   const actual =
-    await vi.importActual<any /* eslint-disable-line @typescript-eslint/no-explicit-any */>(
+    await vi.importActual<typeof import('firebase/firestore')>(
       'firebase/firestore',
     );
   return {
@@ -30,9 +30,7 @@ vi.mock('firebase/firestore', async () => {
     or: vi.fn(),
     onSnapshot: vi.fn((query, callback) => {
       callback({
-        forEach: (
-          cb: any /* eslint-disable-line @typescript-eslint/no-explicit-any */,
-        ) =>
+        forEach: (cb: any) =>
           cb({
             id: 'lib1',
             data: () => ({
@@ -93,8 +91,7 @@ describe('Dashboard', () => {
     ).mockReturnValue({
       user: {uid: 'user1', email: 'user@example.com'},
     });
-    (addDoc as any) /* eslint-disable-line @typescript-eslint/no-explicit-any */
-      .mockResolvedValue({id: 'newLibId'});
+    (addDoc as import('vitest').Mock).mockResolvedValue({id: 'newLibId'});
 
     render(
       <MemoryRouter>

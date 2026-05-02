@@ -10,7 +10,13 @@ import {
   BookDetails,
 } from '../services/bookApi';
 
-type ExtractedBook = {title: string; author: string; isbn?: string};
+type ExtractedBook = {
+  title: string;
+  author: string;
+  isbn?: string;
+  genres?: string[];
+  format?: 'physical' | 'digital';
+};
 
 interface ExtractedBooksTableProps {
   extractedBooks: ExtractedBook[];

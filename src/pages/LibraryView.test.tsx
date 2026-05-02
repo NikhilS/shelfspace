@@ -45,8 +45,7 @@ vi.mock('firebase/firestore', () => {
               },
             ],
             forEach: function (cb: (doc: unknown) => void) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (this as any).docs.forEach(cb);
+              (this as {docs: unknown[]}).docs.forEach(cb);
             },
           });
         } else {
@@ -75,12 +74,11 @@ vi.mock('firebase/firestore', () => {
 });
 
 vi.mock('recharts', async () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const actual = (await vi.importActual('recharts')) as any;
+  const actual = (await vi.importActual('recharts')) as import('vitest').Mock;
   return {
     ...actual,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ResponsiveContainer: ({children}: any) => (
+
+    ResponsiveContainer: ({children}: {children: React.ReactNode}) => (
       <div style={{width: 800, height: 800}}>{children}</div>
     ),
   };

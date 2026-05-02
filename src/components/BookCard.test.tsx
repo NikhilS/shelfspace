@@ -6,7 +6,12 @@ describe('BookCard component', () => {
   const mockBook = {
     id: 'book1',
     addedBy: 'user1',
-    addedAt: '2023-01-01',
+    addedAt: {
+      toDate: () => new Date(),
+      seconds: 0,
+      nanoseconds: 0,
+      isEqual: () => true,
+    } as any,
     title: 'the great gatsby',
     author: 'f. scott fitzgerald',
     isbn: '123456',

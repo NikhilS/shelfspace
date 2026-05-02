@@ -5,6 +5,8 @@ import {fileURLToPath} from 'url';
 import admin from 'firebase-admin';
 import fs from 'fs';
 
+import {getFirestore} from 'firebase-admin/firestore';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -20,16 +22,11 @@ if (!admin.apps.length) {
   });
 }
 
-const dbAdmin = admin.firestore();
-if (firebaseConfig.firestoreDatabaseId) {
-  // If we need a specific database ID
-  // Note: Standard firebase-admin doesn't have a direct databaseId setter in initializeApp
-  // but you can get it via settings if using newer SDK versions or just use the default.
-  // Actually, for multiple databases you use:
-  // const db = admin.firestore(databaseId); (not always supported in all versions)
-  // Let's check the version in package.json. It was 12.11.0 for client, but admin is likely different.
-}
-const db = dbAdmin;
+const db = getFirestore(
+  admin.app(),
+  firebaseConfig.firestoreDatabaseId || '(default)',
+);
+const dbAdmin = db;
 
 async function startServer() {
   const app = express();
@@ -46,7 +43,30 @@ async function startServer() {
       return res.status(400).json({error: 'Missing libraryId'});
     }
 
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({error: 'Unauthorized'});
+    }
+
     try {
+      const token = authHeader.split(' ')[1];
+      const decodedToken = await admin.auth().verifyIdToken(token);
+
+      const libSnap = await dbAdmin
+        .collection('libraries')
+        .doc(libraryId)
+        .get();
+      if (!libSnap.exists) {
+        return res.status(404).json({error: 'Library not found'});
+      }
+      const libData = libSnap.data();
+      if (
+        libData?.ownerId !== decodedToken.uid &&
+        !(libData?.sharedWith || []).includes(decodedToken.email || '')
+      ) {
+        return res.status(403).json({error: 'Forbidden'});
+      }
+
       const jobRef = db
         .collection('libraries')
         .doc(libraryId)
@@ -79,10 +99,21 @@ async function startServer() {
             .doc(libraryId)
             .collection('books')
             .get();
-          const books = booksSnap.docs.map(d => ({
-            id: d.id,
-            ...(d.data() as Record<string, unknown>),
-          }));
+          const books = booksSnap.docs.map(d => {
+            const data = d.data();
+            return {
+              id: d.id,
+              title: data.title as string,
+              author: data.author as string,
+              isbn: data.isbn as string,
+              coverUrl: data.coverUrl as string,
+              synopsis: data.synopsis as string,
+              authorBio: data.authorBio as string,
+              publishedDate: data.publishedDate as string,
+              genres: data.genres as string[],
+              ...data,
+            };
+          });
           const total = books.length;
 
           await jobRef.update({total});
@@ -100,29 +131,33 @@ async function startServer() {
                 try {
                   const bookArg = isForceResync
                     ? {
-                        title: b.title as string,
-                        author: b.author as string,
-                        isbn: b.isbn as string,
+                        title: b.title,
+                        author: b.author,
+                        isbn: b.isbn,
                       }
-                    : (b as unknown as Partial<{
-                        isbn: string;
-                        title: string;
-                        author: string;
-                        synopsis: string;
-                      }>);
+                    : {
+                        id: b.id,
+                        title: b.title,
+                        author: b.author,
+                        isbn: b.isbn,
+                        synopsis: b.synopsis,
+                      };
 
-                  const enriched = await getTieredMetadata(bookArg);
+                  const enriched = await getTieredMetadata(bookArg as any);
 
                   if (enriched) {
-                    const newData: Record<string, unknown> = {};
-                    const heavyData: Record<string, unknown> = {};
+                    const newData: Record<string, any> = {};
+                    const heavyData: Record<string, any> = {};
 
                     if ((isForceResync || !b.coverUrl) && enriched.coverUrl)
                       newData.coverUrl = enriched.coverUrl;
                     if ((isForceResync || !b.synopsis) && enriched.synopsis)
                       heavyData.synopsis = enriched.synopsis;
-                    if ((isForceResync || !b.authorBio) && enriched.authorBio)
-                      heavyData.authorBio = enriched.authorBio;
+                    if (
+                      (isForceResync || !(b as any).authorBio) &&
+                      (enriched as any).authorBio
+                    )
+                      heavyData.authorBio = (enriched as any).authorBio;
                     if (
                       (isForceResync || !b.publishedDate) &&
                       enriched.publishedDate
@@ -152,7 +187,7 @@ async function startServer() {
                         .collection('libraries')
                         .doc(libraryId)
                         .collection('books')
-                        .doc(b.id as string)
+                        .doc(b.id)
                         .update(updateData);
                     }
 
@@ -197,10 +232,10 @@ async function startServer() {
         }
       })();
 
-      res.json({message: 'Resync job started', jobId: 'resync'});
+      return res.json({message: 'Resync job started', jobId: 'resync'});
     } catch (error) {
       console.error('Failed to start resync job:', error);
-      res.status(500).json({error: 'Failed to start resync'});
+      return res.status(500).json({error: 'Failed to start resync'});
     }
   });
 

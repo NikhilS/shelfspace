@@ -23,8 +23,8 @@ interface LibraryCollectionProps {
   setSearchQuery: (q: string) => void;
   sortBy: SortOption;
   setSortBy: (sort: SortOption) => void;
-  sortOrder: string;
-  setSortOrder: (order: string) => void;
+  sortOrder: 'asc' | 'desc';
+  setSortOrder: (order: 'asc' | 'desc') => void;
   viewMode: 'standard' | 'table';
   setViewMode: (mode: 'standard' | 'table') => void;
   isFiltersOpen: boolean;

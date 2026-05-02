@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import { doc, collection, onSnapshot } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Library, Book } from '../types';
-import { toast } from 'sonner';
-import { getFirestoreTime } from '../lib/utils';
+import {useState, useEffect} from 'react';
+import {doc, collection, onSnapshot} from 'firebase/firestore';
+import {db, handleFirestoreError, OperationType} from '../firebase';
+import {Library, Book} from '../types';
+import {toast} from 'sonner';
+import {getFirestoreTime} from '../lib/utils';
 
 export function useLibraryData(
   libraryId: string | undefined,
@@ -25,7 +25,7 @@ export function useLibraryData(
       libRef,
       docSnap => {
         if (docSnap.exists()) {
-          setLibrary({ id: docSnap.id, ...docSnap.data() } as Library);
+          setLibrary({id: docSnap.id, ...docSnap.data()} as Library);
         } else {
           toast.error('Library not found');
           navigate('/');
@@ -90,7 +90,7 @@ export function useLibraryData(
             parsedGenres = Array.from(result);
           }
 
-          bks.push({ id: doc.id, ...data, genres: parsedGenres } as Book);
+          bks.push({id: doc.id, ...data, genres: parsedGenres} as Book);
         });
 
         // Sort by addedAt descending
@@ -116,5 +116,5 @@ export function useLibraryData(
     };
   }, [libraryId, userId, navigate]);
 
-  return { library, books, isLoading, isBooksLoading };
+  return {library, books, isLoading, isBooksLoading};
 }

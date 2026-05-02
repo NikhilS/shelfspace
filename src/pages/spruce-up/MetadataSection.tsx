@@ -12,6 +12,7 @@ interface MetadataSectionProps {
     total: number;
   } | null;
   processingIds: Record<string, boolean>;
+  isOnline: boolean;
   onFixAll: () => Promise<void>;
   onForceResync: () => void;
   onFixMetadata: (book: Book) => Promise<void>;
@@ -23,6 +24,7 @@ export function MetadataSection({
   fixingProgress,
   activeJob,
   processingIds,
+  isOnline,
   onFixAll,
   onForceResync,
   onFixMetadata,
@@ -39,7 +41,8 @@ export function MetadataSection({
         <div className="flex items-center gap-3">
           <button
             onClick={onForceResync}
-            disabled={activeJob?.status === 'running' || fixingAll}
+            disabled={activeJob?.status === 'running' || fixingAll || !isOnline}
+            title={!isOnline ? 'AI features require a connection' : ''}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-error bg-error/10 hover:bg-error/20 rounded-xl transition-colors disabled:opacity-50"
           >
             {activeJob?.status === 'running' ? (
@@ -54,7 +57,8 @@ export function MetadataSection({
           {missingMetadata.length > 0 && (
             <button
               onClick={onFixAll}
-              disabled={fixingAll}
+              disabled={fixingAll || !isOnline}
+              title={!isOnline ? 'AI features require a connection' : ''}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-on-primary bg-primary rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {fixingAll ? (
@@ -96,8 +100,9 @@ export function MetadataSection({
               </div>
               <button
                 onClick={() => onFixMetadata(b)}
-                disabled={processingIds[b.id]}
-                className="mt-4 flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors"
+                disabled={processingIds[b.id] || !isOnline}
+                title={!isOnline ? 'AI features require a connection' : ''}
+                className="mt-4 flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors disabled:opacity-50"
               >
                 {processingIds[b.id] ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

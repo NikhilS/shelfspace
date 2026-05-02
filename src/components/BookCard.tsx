@@ -5,11 +5,11 @@ import {toTitleCase} from '../lib/utils';
 
 import {Timestamp} from 'firebase/firestore';
 
-type FirestoreDate = Timestamp | Date | string | number;
+import {FirestoreDate} from '../types';
 
 interface BookCardProps {
   key?: React.Key;
-  book: BookDetails & {id: string; addedBy: string; addedAt: FirestoreDate};
+  book: BookDetails & {id: string; addedBy: string | null; addedAt: FirestoreDate};
   onClick?: () => void;
   canEdit: boolean;
 }

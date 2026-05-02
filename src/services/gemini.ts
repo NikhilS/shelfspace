@@ -450,16 +450,13 @@ export async function generateBookInsights(
     }
 
     const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
-    const response = await ai.models.generateContent(
-      {
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: {
-          systemInstruction: 'You are an expert librarian.',
-        },
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-pro-preview',
+      contents: prompt,
+      config: {
+        systemInstruction: 'You are an expert librarian.',
       },
-      {signal},
-    );
+    });
 
     return (
       response.text ||

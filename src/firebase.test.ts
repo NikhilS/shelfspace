@@ -44,7 +44,9 @@ describe('firebase', () => {
 
     expect(firestore.initializeFirestore).toHaveBeenCalledWith(
       firebaseModule.app,
-      {},
+      {
+        localCache: 'mock-local-cache',
+      },
       'test-database-id',
     );
   });

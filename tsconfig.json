@@ -11,6 +11,7 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
+    "noEmit": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
     "rootDir": ".",

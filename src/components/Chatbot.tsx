@@ -1,8 +1,9 @@
 import React, {useState, useRef, useEffect} from 'react';
-import {MessageSquare, X, Send, Loader2, Bot, User} from 'lucide-react';
+import {MessageSquare, X, Send, Loader2, Bot, User, WifiOff} from 'lucide-react';
 import {motion, AnimatePresence} from 'motion/react';
-import {GoogleGenAI} from '@google/genai';
+import {GoogleGenAI, Chat} from '@google/genai';
 import Markdown from 'react-markdown';
+import {useOnlineStatus} from '../hooks/useOnlineStatus';
 
 interface ChatbotProps {
   libraryBooks: {
@@ -21,14 +22,12 @@ interface Message {
 
 export default function Chatbot({libraryBooks}: ChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const isOnline = useOnlineStatus();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatRef =
-    useRef<any /* eslint-disable-line @typescript-eslint/no-explicit-any */>(
-      null,
-    );
+  const chatRef = useRef<Chat | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({behavior: 'smooth'});
@@ -242,20 +241,33 @@ Format your responses using Markdown. Be concise, helpful, and engaging.`;
 
             {/* Input */}
             <div className="p-4 bg-surface/50 border-t border-border/40 backdrop-blur-sm">
+              {!isOnline && (
+                <div className="flex items-center gap-2 mb-3 px-1 text-on-error bg-error/10 border border-error/20 p-2 rounded-xl">
+                  <WifiOff size={14} className="text-error" />
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-error">
+                    Offline: AI Features Disabled
+                  </span>
+                </div>
+              )}
               <div className="relative flex items-center">
                 <textarea
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask about your library..."
-                  className="w-full bg-paper/80 border border-border/60 rounded-2xl pl-5 pr-14 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20 focus:border-ink/40 resize-none font-medium custom-scrollbar"
+                  disabled={!isOnline}
+                  placeholder={
+                    isOnline
+                      ? 'Ask about your library...'
+                      : 'AI requires connection...'
+                  }
+                  className="w-full bg-paper/80 border border-border/60 rounded-2xl pl-5 pr-14 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink/20 focus:border-ink/40 resize-none font-medium custom-scrollbar disabled:opacity-50 disabled:cursor-not-allowed"
                   rows={1}
                   style={{minHeight: '50px', maxHeight: '120px'}}
                 />
                 <button
                   onClick={handleSend}
-                  disabled={!input.trim() || isLoading}
-                  className="absolute right-2 p-2.5 text-surface bg-primary disabled:bg-surface disabled:text-muted hover:bg-primary/90 rounded-xl transition-all shadow-sm disabled:shadow-none"
+                  disabled={!input.trim() || isLoading || !isOnline}
+                  className="absolute right-2 p-2.5 text-surface bg-primary disabled:bg-surface disabled:text-muted hover:bg-primary/90 rounded-xl transition-all shadow-sm disabled:shadow-none disabled:cursor-not-allowed"
                 >
                   <Send size={16} strokeWidth={2} />
                 </button>

@@ -62,13 +62,20 @@ describe('AuthContext', () => {
 
   it('provides user when authenticated', async () => {
     vi.mocked(onAuthStateChanged).mockImplementation(
-      (
-        _auth: unknown,
-        callback: (user: Record<string, unknown> | null) => void,
+      ((
+        _auth: import('firebase/auth').Auth,
+        callback:
+          | ((user: import('firebase/auth').User | null) => void)
+          | import('firebase/auth').NextOrObserver<import('firebase/auth').User | null>,
       ) => {
-        callback({uid: '123', email: 'test@example.com'});
+        const cb =
+          typeof callback === 'function' ? callback : callback.next?.bind(callback);
+        cb?.({
+          uid: '123',
+          email: 'test@example.com',
+        } as import('firebase/auth').User);
         return () => {};
-      },
+      }) as any,
     );
 
     vi.mocked(getDoc).mockResolvedValueOnce({
@@ -89,18 +96,19 @@ describe('AuthContext', () => {
 
   it('creates user doc if it does not exist', async () => {
     vi.mocked(onAuthStateChanged).mockImplementation(
-      (
-        _auth: unknown,
-        callback: (user: Record<string, unknown> | null) => void,
+      ((
+        _auth: any,
+        callback: any,
       ) => {
-        callback({
+        const cb = typeof callback === 'function' ? callback : callback.next?.bind(callback);
+        cb?.({
           uid: 'user456',
           email: 'new@example.com',
           displayName: 'New User',
           photoURL: 'http://example.com/photo.jpg',
-        });
+        } as any);
         return () => {};
-      },
+      }) as any,
     );
 
     vi.mocked(getDoc).mockResolvedValueOnce({
@@ -129,13 +137,14 @@ describe('AuthContext', () => {
 
   it('handles user sign out', async () => {
     vi.mocked(onAuthStateChanged).mockImplementation(
-      (
-        _auth: unknown,
-        callback: (user: Record<string, unknown> | null) => void,
+      ((
+        _auth: any,
+        callback: any,
       ) => {
-        callback(null);
+        const cb = typeof callback === 'function' ? callback : callback.next?.bind(callback);
+        cb?.(null);
         return () => {};
-      },
+      }) as any,
     );
 
     render(

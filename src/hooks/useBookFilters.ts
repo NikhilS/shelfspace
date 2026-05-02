@@ -1,7 +1,7 @@
-import { useMemo, useDeferredValue } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Book } from '../types';
-import { getFirestoreTime } from '../lib/utils';
+import {useMemo, useDeferredValue} from 'react';
+import {useSearchParams} from 'react-router-dom';
+import {Book} from '../types';
+import {getFirestoreTime} from '../lib/utils';
 
 export type SortOption = 'added' | 'title' | 'author';
 
@@ -30,7 +30,7 @@ export function useBookFilters(books: Book[]) {
         else prev.set(key, value);
         return prev;
       },
-      { replace: true },
+      {replace: true},
     );
   };
 
@@ -119,9 +119,11 @@ export function useBookFilters(books: Book[]) {
     sortBy,
     setSortBy: (sort: SortOption) => setSearchParamsValue('sort', sort),
     sortOrder,
-    setSortOrder: (order: 'asc' | 'desc') => setSearchParamsValue('order', order),
+    setSortOrder: (order: 'asc' | 'desc') =>
+      setSearchParamsValue('order', order),
     viewMode,
-    setViewMode: (view: 'standard' | 'table') => setSearchParamsValue('view', view),
+    setViewMode: (view: 'standard' | 'table') =>
+      setSearchParamsValue('view', view),
     searchQuery,
     setSearchQuery: (q: string) => setSearchParamsValue('q', q),
     filterGenre,
@@ -148,7 +150,7 @@ export function useBookFilters(books: Book[]) {
           prev.delete('yearMax');
           return prev;
         },
-        { replace: true },
+        {replace: true},
       );
     },
   };

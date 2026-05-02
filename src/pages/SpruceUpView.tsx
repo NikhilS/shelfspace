@@ -1,16 +1,19 @@
 import React, {useState} from 'react';
 import {useParams, Link} from 'react-router-dom';
 import SidebarActions from '../components/SidebarActions';
-import {Loader2, ArrowLeft} from 'lucide-react';
+import {ArrowLeft} from 'lucide-react';
 import {motion} from 'motion/react';
 import {ErrorBoundary} from '../components/ErrorBoundary';
 import {useSpruceUp} from './spruce-up/useSpruceUp';
+import {useOnlineStatus} from '../hooks/useOnlineStatus';
 import {DuplicateSection} from './spruce-up/DuplicateSection';
 import {MetadataSection} from './spruce-up/MetadataSection';
 import {ForceResyncModal} from './spruce-up/ForceResyncModal';
+import {PageLoading} from '../components/PageLoading';
 
 export default function SpruceUpView() {
   const {id: libraryId} = useParams<{id: string}>();
+  const isOnline = useOnlineStatus();
   const {
     books,
     loading,
@@ -28,6 +31,15 @@ export default function SpruceUpView() {
   } = useSpruceUp(libraryId);
 
   const [isForceResyncModalOpen, setIsForceResyncModalOpen] = useState(false);
+
+  if (loading) {
+    return (
+      <PageLoading
+        title="Scanning for anomalies..."
+        subtitle="Analyzing duplicates and identifying missing metadata in your collection."
+      />
+    );
+  }
 
   return (
     <>
@@ -50,44 +62,31 @@ export default function SpruceUpView() {
         </p>
 
         <ErrorBoundary name="Spruce Up View Content">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-4 bg-surface-container-low rounded-2xl border border-surface-variant relative overflow-hidden">
-              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03] mix-blend-overlay"></div>
-              <Loader2 className="w-10 h-10 animate-[spin_3s_linear_infinite] text-primary relative z-10" />
-              <p className="text-on-surface-variant font-mono text-sm uppercase tracking-widest relative z-10 text-center px-4">
-                Scanning volumes for anomalies...
-                <br />
-                <span className="text-xs opacity-60 normal-case tracking-normal font-sans">
-                  Dusting off the shelves
-                </span>
-              </p>
-            </div>
-          ) : (
-            <motion.div
-              initial={{opacity: 0, y: 10}}
-              animate={{opacity: 1, y: 0}}
-              transition={{duration: 0.4}}
-              className="flex flex-col gap-12"
-            >
-              <DuplicateSection
-                duplicates={duplicates}
-                processingIds={processingIds}
-                handleAllowDuplicateGroup={handleAllowDuplicateGroup}
-                handleDelete={handleDelete}
-              />
+          <motion.div
+            initial={{opacity: 0, y: 10}}
+            animate={{opacity: 1, y: 0}}
+            transition={{duration: 0.4}}
+            className="flex flex-col gap-12"
+          >
+            <DuplicateSection
+              duplicates={duplicates}
+              processingIds={processingIds}
+              handleAllowDuplicateGroup={handleAllowDuplicateGroup}
+              handleDelete={handleDelete}
+            />
 
-              <MetadataSection
-                missingMetadata={missingMetadata}
-                fixingAll={fixingAll}
-                fixingProgress={fixingProgress}
-                activeJob={activeJob}
-                processingIds={processingIds}
-                onFixAll={handleFixAllMetadata}
-                onForceResync={() => setIsForceResyncModalOpen(true)}
-                onFixMetadata={handleFixMetadata}
-              />
-            </motion.div>
-          )}
+            <MetadataSection
+              missingMetadata={missingMetadata}
+              fixingAll={fixingAll}
+              fixingProgress={fixingProgress}
+              activeJob={activeJob}
+              processingIds={processingIds}
+              isOnline={isOnline}
+              onFixAll={handleFixAllMetadata}
+              onForceResync={() => setIsForceResyncModalOpen(true)}
+              onFixMetadata={handleFixMetadata}
+            />
+          </motion.div>
         </ErrorBoundary>
       </div>
 
