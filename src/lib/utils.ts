@@ -2,10 +2,14 @@ import {FirestoreDate} from '../types';
 
 export function toTitleCase(str: string) {
   if (!str) return '';
-  return str.replace(
-    /\w\S*/g,
-    txt => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase(),
-  );
+  // Match any sequence of non-whitespace characters
+  return str.replace(/\S+/g, word => {
+    const chars = Array.from(word);
+    if (chars.length === 0) return '';
+    const first = chars[0].toUpperCase();
+    const rest = chars.slice(1).join('').toLowerCase();
+    return first + rest;
+  });
 }
 
 export function getFirestoreTime(

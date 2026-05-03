@@ -91,17 +91,21 @@ export function useBookFilters(books: Book[]) {
   const sortedBooks = useMemo(() => {
     const sorted = [...filteredBooks];
     if (sortBy === 'title') {
-      sorted.sort((a, b) =>
-        sortOrder === 'asc'
-          ? a.title.localeCompare(b.title)
-          : b.title.localeCompare(a.title),
-      );
+      sorted.sort((a, b) => {
+        const titleA = a.title || '';
+        const titleB = b.title || '';
+        return sortOrder === 'asc'
+          ? titleA.localeCompare(titleB)
+          : titleB.localeCompare(titleA);
+      });
     } else if (sortBy === 'author') {
-      sorted.sort((a, b) =>
-        sortOrder === 'asc'
-          ? a.author.localeCompare(b.author)
-          : b.author.localeCompare(a.author),
-      );
+      sorted.sort((a, b) => {
+        const authorA = a.author || '';
+        const authorB = b.author || '';
+        return sortOrder === 'asc'
+          ? authorA.localeCompare(authorB)
+          : authorB.localeCompare(authorA);
+      });
     } else {
       sorted.sort((a, b) => {
         const timeA = getFirestoreTime(a.addedAt);

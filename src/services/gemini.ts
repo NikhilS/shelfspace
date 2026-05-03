@@ -5,7 +5,11 @@ export async function generateClusterNames(
   clusters: {id: number; books: {title: string; author?: string}[]}[],
 ): Promise<Record<number, string>> {
   try {
-    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+    const apiKey =
+      typeof process !== 'undefined'
+        ? process.env.GEMINI_API_KEY
+        : import.meta.env.VITE_GEMINI_API_KEY;
+    const ai = new GoogleGenAI({apiKey});
 
     // Group books to avoid massive prompts just in case
     const prompt = `I have clustered a library of books into thematic constellations. For each cluster, I will provide a list of books. 
@@ -25,7 +29,10 @@ ${clusters
     c =>
       `ID ${c.id}:\n${c.books
         .slice(0, 15)
-        .map(b => `- ${b.title} ${b.author ? `by ${b.author}` : ''}`)
+        .map(
+          b =>
+            `- ${b.title || 'Unknown Title'} ${b.author ? `by ${b.author}` : ''}`,
+        )
         .join('\n')}`,
   )
   .join('\n\n')}
@@ -92,7 +99,11 @@ export async function generateBookEmbeddings(
 ): Promise<number[][]> {
   try {
     if (!texts || texts.length === 0) return [];
-    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+    const apiKey =
+      typeof process !== 'undefined'
+        ? process.env.GEMINI_API_KEY
+        : import.meta.env.VITE_GEMINI_API_KEY;
+    const ai = new GoogleGenAI({apiKey});
 
     const embeddings: number[][] = new Array(texts.length).fill([]);
 
@@ -142,7 +153,11 @@ export async function extractBooksFromImage(
     if (!base64Image || base64Image === 'data:,') {
       throw new Error('Invalid image data provided.');
     }
-    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+    const apiKey =
+      typeof process !== 'undefined'
+        ? process.env.GEMINI_API_KEY
+        : import.meta.env.VITE_GEMINI_API_KEY;
+    const ai = new GoogleGenAI({apiKey});
 
     // First attempt with pro
     let response;
@@ -222,10 +237,17 @@ export async function extractBooksFromCsv(csvText: string): Promise<
 > {
   try {
     // 1. Parse CSV locally using PapaParse
-    const parsed = Papa.parse(csvText, {
-      header: false,
-      skipEmptyLines: true,
-    });
+    const parsed = await new Promise<Papa.ParseResult<unknown>>(
+      (resolve, reject) => {
+        Papa.parse(csvText, {
+          header: false,
+          skipEmptyLines: true,
+          worker: true,
+          complete: results => resolve(results),
+          error: error => reject(error),
+        });
+      },
+    );
 
     const rows = parsed.data as string[][];
     if (rows.length === 0) return [];
@@ -233,7 +255,11 @@ export async function extractBooksFromCsv(csvText: string): Promise<
     // Extract first 3 rows to give structural context
     const sampleRows = rows.slice(0, 3);
 
-    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+    const apiKey =
+      typeof process !== 'undefined'
+        ? process.env.GEMINI_API_KEY
+        : import.meta.env.VITE_GEMINI_API_KEY;
+    const ai = new GoogleGenAI({apiKey});
     const response = await ai.models.generateContent({
       model: 'gemini-3.1-pro-preview',
       contents: `You are a data mapping assistant. I am providing you with the first few rows of a CSV file parsed as JSON arrays.
@@ -349,7 +375,11 @@ export async function enrichBooksMetadata(
 ): Promise<{id: string; series: string}[]> {
   try {
     if (!books || books.length === 0) return [];
-    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+    const apiKey =
+      typeof process !== 'undefined'
+        ? process.env.GEMINI_API_KEY
+        : import.meta.env.VITE_GEMINI_API_KEY;
+    const ai = new GoogleGenAI({apiKey});
 
     const prompt = `Act as an expert librarian. I have a list of books. For each book, please determine:
     1. The book series it belongs to. If it is a standalone book, return 'Standalone'.
@@ -392,7 +422,11 @@ export async function generateLibraryRecommendations(
   libraryBooks: {title: string; author: string}[],
 ): Promise<string> {
   try {
-    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+    const apiKey =
+      typeof process !== 'undefined'
+        ? process.env.GEMINI_API_KEY
+        : import.meta.env.VITE_GEMINI_API_KEY;
+    const ai = new GoogleGenAI({apiKey});
     // Limit to 100 books to provide more context for recommendations
     const limitedBooks = libraryBooks.slice(0, 100);
     const bookList = limitedBooks
@@ -449,7 +483,11 @@ export async function generateBookInsights(
         break;
     }
 
-    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+    const apiKey =
+      typeof process !== 'undefined'
+        ? process.env.GEMINI_API_KEY
+        : import.meta.env.VITE_GEMINI_API_KEY;
+    const ai = new GoogleGenAI({apiKey});
     const response = await ai.models.generateContent({
       model: 'gemini-3.1-pro-preview',
       contents: prompt,
@@ -472,7 +510,11 @@ export async function generateLibraryHeroImage(
   libraryName: string,
 ): Promise<string | null> {
   try {
-    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+    const apiKey =
+      typeof process !== 'undefined'
+        ? process.env.GEMINI_API_KEY
+        : import.meta.env.VITE_GEMINI_API_KEY;
+    const ai = new GoogleGenAI({apiKey});
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
@@ -507,11 +549,22 @@ export async function getPickOfTheDay(
 ): Promise<{title: string; author: string; reason: string} | null> {
   try {
     if (!books || books.length === 0) return null;
-    const ai = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
-    // Randomize the books we send to the AI to get varied recommendations, max 50 books
-    const sampleBooks = [...books].sort(() => 0.5 - Math.random()).slice(0, 50);
+    const apiKey =
+      typeof process !== 'undefined'
+        ? process.env.GEMINI_API_KEY
+        : import.meta.env.VITE_GEMINI_API_KEY;
+    const ai = new GoogleGenAI({apiKey});
+    const shuffled = [...books];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const sampleBooks = shuffled.slice(0, 50);
     const bookList = sampleBooks
-      .map((b, i) => `${i + 1}. "${b.title}" by ${b.author}`)
+      .map(
+        (b, i) =>
+          `${i + 1}. "${b.title || 'Unknown Title'}" by ${b.author || 'Unknown Author'}`,
+      )
       .join('\n');
     const prompt = `Act as an expert librarian. Here is a sample of books from my library:
 

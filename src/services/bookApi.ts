@@ -70,8 +70,10 @@ function getHighResCoverUrl(url: string | undefined): string {
 }
 
 const getGoogleBooksUrl = (query: string): string => {
-  const apiKey = (process.env as unknown as {BOOKS_API_KEY?: string})
-    .BOOKS_API_KEY;
+  const apiKey =
+    typeof process !== 'undefined'
+      ? process.env.BOOKS_API_KEY || process.env.VITE_BOOKS_API_KEY
+      : import.meta.env.VITE_BOOKS_API_KEY;
   const baseUrl = `https://www.googleapis.com/books/v1/volumes?q=${query}`;
   return apiKey ? `${baseUrl}&key=${apiKey}` : baseUrl;
 };

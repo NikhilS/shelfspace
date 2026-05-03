@@ -1,13 +1,11 @@
 import {useState, useEffect} from 'react';
 import {useAuth} from '../../contexts/AuthContext';
-import {db, handleFirestoreError, OperationType} from '../../firebase';
+import {db, auth, handleFirestoreError, OperationType} from '../../firebase';
 import {
   collection,
   query,
   where,
   onSnapshot,
-  addDoc,
-  serverTimestamp,
   or,
   getCountFromServer,
   updateDoc,
@@ -94,15 +92,25 @@ export function useLibraries() {
     setLibraries(prev => [tempLib, ...prev]);
 
     try {
-      const docRef = await addDoc(collection(db, 'libraries'), {
-        name: trimmedName,
-        ownerId: user.uid,
-        ownerName: user.displayName || user.email || 'Unknown',
-        sharedWith: [],
-        createdAt: serverTimestamp(),
-        heroImageUrl: null,
-        bookCount: 0,
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not logged in');
+      const token = await user.getIdToken();
+
+      const res = await fetch('/api/libraries', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({name: trimmedName}),
       });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to create library');
+      }
+
+      const {id: newLibraryId} = await res.json();
       toast.success('Library created successfully');
 
       // Generate hero image in background
@@ -110,7 +118,7 @@ export function useLibraries() {
         .then(async url => {
           if (url) {
             try {
-              await updateDoc(doc(db, 'libraries', docRef.id), {
+              await updateDoc(doc(db, 'libraries', newLibraryId), {
                 heroImageUrl: url,
               });
             } catch (e) {

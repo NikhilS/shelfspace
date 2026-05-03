@@ -14,7 +14,7 @@ export interface Library {
   bookCount?: number;
 }
 
-export interface UserStatuses {
+interface UserStatuses {
   [userId: string]: 'unset' | 'reading' | 'finished' | 'abandoned';
 }
 
@@ -43,9 +43,4 @@ export interface BookDetailsPayload {
   authorBio?: string;
   embedding?: number[];
   clusterCoordinates?: {x: number; y: number};
-}
-
-export interface AllowedDuplicateGroup {
-  bookIds: string[];
-  createdAt: Timestamp;
 }

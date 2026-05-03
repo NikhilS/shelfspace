@@ -66,11 +66,11 @@ export function EditBookForm({
         delete cleanForm.genresInput;
       }
       if (typeof cleanForm.author === 'string')
-        cleanForm.author = cleanForm.author.substring(0, 500);
+        cleanForm.author = Array.from(cleanForm.author).slice(0, 500).join('');
       if (typeof cleanForm.series === 'string')
-        cleanForm.series = cleanForm.series.substring(0, 100);
+        cleanForm.series = Array.from(cleanForm.series).slice(0, 100).join('');
       if (typeof cleanForm.title === 'string')
-        cleanForm.title = cleanForm.title.substring(0, 500);
+        cleanForm.title = Array.from(cleanForm.title).slice(0, 500).join('');
 
       const {
         synopsis,

@@ -20,6 +20,7 @@ import {ReviewSection} from './book-details/ReviewSection';
 import {EditBookForm} from './book-details/EditBookForm';
 import {useBook} from './book-details/useBook';
 import {useBookInsights} from './book-details/useBookInsights';
+import {DebugOverlay} from '../components/DebugOverlay';
 
 export default function BookDetailsView() {
   const {libraryId, bookId} = useParams<{libraryId: string; bookId: string}>();
@@ -51,6 +52,22 @@ export default function BookDetailsView() {
 
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Filter huge payloads for DebugOverlay
+  const debugData = React.useMemo(() => {
+    if (!bookBase) return null;
+    const base = {...bookBase};
+    const details = bookDetails ? {...bookDetails} : {};
+
+    if (details.embedding)
+      details.embedding = `[Vector array - ${details.embedding.length} dimensions]`;
+    if (details.synopsis)
+      details.synopsis = `[Present: ${details.synopsis.length} chars]`;
+    if (details.authorBio)
+      details.authorBio = `[Present: ${details.authorBio.length} chars]`;
+
+    return {bookBase: base, bookDetails: details};
+  }, [bookBase, bookDetails]);
 
   const handleDeleteBook = async () => {
     if (!book || !libraryId || !canEdit) return;
@@ -167,14 +184,14 @@ export default function BookDetailsView() {
             {/* Header Info */}
             <div>
               <div className="flex flex-wrap gap-2 mb-4">
-                {book.genres && book.genres.length > 0 && (
+                {book.genres && book.genres.length > 0 && book.genres[0] && (
                   <span className="bg-tertiary-container/10 text-tertiary-container font-label-caps text-label-caps px-3 py-1 rounded-[0.125rem]">
                     {book.genres[0].toUpperCase()}
                   </span>
                 )}
                 {book.series && book.series !== 'Standalone' && (
                   <span className="bg-secondary-container/10 text-secondary-container font-label-caps text-label-caps px-3 py-1 rounded-[0.125rem]">
-                    {book.series.toUpperCase()}
+                    {String(book.series).toUpperCase()}
                   </span>
                 )}
               </div>
@@ -470,6 +487,7 @@ export default function BookDetailsView() {
           />
         )}
       </AnimatePresence>
+      <DebugOverlay data={debugData} title="Book Docs" />
     </>
   );
 }

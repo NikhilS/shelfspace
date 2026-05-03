@@ -72,6 +72,129 @@ async function startServer() {
     }
   });
 
+  app.post('/api/libraries/:libraryId/share', async (req, res) => {
+    const {libraryId} = req.params;
+    const {email} = req.body;
+
+    if (!libraryId || !email) {
+      return res.status(400).json({error: 'Missing libraryId or email'});
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({error: 'Unauthorized'});
+    }
+
+    try {
+      const token = authHeader.split(' ')[1];
+      const decodedToken = await admin.auth().verifyIdToken(token);
+
+      const libRef = dbAdmin.collection('libraries').doc(libraryId);
+      const libSnap = await libRef.get();
+
+      if (!libSnap.exists) {
+        return res.status(404).json({error: 'Library not found'});
+      }
+
+      const libData = libSnap.data();
+      if (libData?.ownerId !== decodedToken.uid) {
+        return res.status(403).json({error: 'Forbidden'});
+      }
+
+      const sharedWith = libData.sharedWith || [];
+      const normalizedEmail = email.trim().toLowerCase();
+
+      if (!normalizedEmail) {
+        return res.status(400).json({error: 'Invalid email'});
+      }
+
+      if (!sharedWith.includes(normalizedEmail)) {
+        await libRef.update({
+          sharedWith: admin.firestore.FieldValue.arrayUnion(normalizedEmail),
+        });
+      }
+
+      return res.json({status: 'success'});
+    } catch (error) {
+      console.error('Failed to share library:', error);
+      return res.status(500).json({error: 'Internal server error'});
+    }
+  });
+
+  app.delete('/api/libraries/:libraryId/share/:email', async (req, res) => {
+    const {libraryId, email} = req.params;
+
+    if (!libraryId || !email) {
+      return res.status(400).json({error: 'Missing libraryId or email'});
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({error: 'Unauthorized'});
+    }
+
+    try {
+      const token = authHeader.split(' ')[1];
+      const decodedToken = await admin.auth().verifyIdToken(token);
+
+      const libRef = dbAdmin.collection('libraries').doc(libraryId);
+      const libSnap = await libRef.get();
+
+      if (!libSnap.exists) {
+        return res.status(404).json({error: 'Library not found'});
+      }
+
+      const libData = libSnap.data();
+      if (libData?.ownerId !== decodedToken.uid) {
+        return res.status(403).json({error: 'Forbidden'});
+      }
+
+      await libRef.update({
+        sharedWith: admin.firestore.FieldValue.arrayRemove(
+          email.toLowerCase().trim(),
+        ),
+      });
+
+      return res.json({status: 'success'});
+    } catch (error) {
+      console.error('Failed to remove share:', error);
+      return res.status(500).json({error: 'Internal server error'});
+    }
+  });
+
+  app.post('/api/libraries', async (req, res) => {
+    const {name} = req.body;
+
+    if (!name) {
+      return res.status(400).json({error: 'Missing library name'});
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({error: 'Unauthorized'});
+    }
+
+    try {
+      const token = authHeader.split(' ')[1];
+      const decodedToken = await admin.auth().verifyIdToken(token);
+
+      const docRef = await dbAdmin.collection('libraries').add({
+        name: name.trim(),
+        ownerId: decodedToken.uid,
+        ownerName: decodedToken.name || decodedToken.email || 'Unknown',
+        sharedWith: [],
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        heroImageUrl: null,
+        bookCount: 0,
+      });
+
+      return res.json({id: docRef.id});
+    } catch (error) {
+      console.error('Failed to create library:', error);
+      return res.status(500).json({error: 'Internal server error'});
+    }
+  });
+
   // API Routes
   app.post('/api/libraries/:libraryId/resync', async (req, res) => {
     const {libraryId} = req.params;

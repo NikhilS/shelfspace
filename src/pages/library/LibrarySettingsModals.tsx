@@ -2,6 +2,8 @@ import React from 'react';
 import {motion, AnimatePresence} from 'motion/react';
 import {X, Share2, Settings, Download, Trash2} from 'lucide-react';
 import {Library} from '../../types';
+import {useDebugMode} from '../../hooks/useDebugMode';
+import {Bug} from 'lucide-react';
 
 interface LibrarySettingsModalsProps {
   isSettingsOpen: boolean;
@@ -40,6 +42,8 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
   handleDeleteLibrary,
   confirmDeleteLibrary,
 }) => {
+  const {isDebugMode, toggleDebugMode} = useDebugMode();
+
   return (
     <>
       <AnimatePresence>
@@ -169,6 +173,20 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
                   Sheets or Excel.
                 </p>
               </div>
+
+              <div className="mb-10">
+                <h4 className="text-sm font-medium text-on-surface-variant mb-4 uppercase tracking-wider">
+                  Developer Tools
+                </h4>
+                <button
+                  onClick={toggleDebugMode}
+                  className={`w-full flex items-center justify-center gap-2 border px-5 py-4 rounded-xl transition-colors text-sm font-medium ${isDebugMode ? 'bg-primary text-white border-primary shadow-sm' : 'bg-surface-container text-on-surface border-outline-variant/50 hover:bg-surface shadow-sm'}`}
+                >
+                  <Bug size={18} />{' '}
+                  {isDebugMode ? 'Disable Debug Mode' : 'Enable Debug Mode'}
+                </button>
+              </div>
+
               {isOwner && (
                 <div className="pt-8 border-t border-outline-variant/30">
                   <h4 className="text-sm font-medium text-error mb-4 uppercase tracking-wider">

@@ -1,13 +1,11 @@
 import React, {useState, useEffect} from 'react';
 import {useParams, Link, useNavigate, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
-import {db, handleFirestoreError, OperationType} from '../firebase';
-import {doc, updateDoc} from 'firebase/firestore';
+import {auth, handleFirestoreError, OperationType} from '../firebase';
 import {ArrowLeft, Plus, Share2, Settings, Map, Wand2} from 'lucide-react';
 import {toast} from 'sonner';
 import {toTitleCase, getFirestoreTime} from '../lib/utils';
 import SidebarActions from '../components/SidebarActions';
-import Chatbot from '../components/Chatbot';
 import {motion, AnimatePresence} from 'motion/react';
 
 // Hooks
@@ -24,6 +22,7 @@ import {LibrarySettingsModals} from './library/LibrarySettingsModals';
 import {BulkActionsBar} from './library/BulkActionsBar';
 import {ErrorBoundary} from '../components/ErrorBoundary';
 import {PageLoading} from '../components/PageLoading';
+import {DebugOverlay} from '../components/DebugOverlay';
 
 export default function LibraryView() {
   const {id} = useParams<{id: string}>();
@@ -56,23 +55,47 @@ export default function LibraryView() {
   // Scroll restoration
   useEffect(() => {
     if (isLoading || isBooksLoading || !id) return;
-    const savedScroll = sessionStorage.getItem(`library_scroll_${id}`);
-    if (savedScroll) {
-      requestAnimationFrame(() => {
-        window.scrollTo(0, parseInt(savedScroll, 10));
-      });
+
+    // Only restore/save scroll for the collection tab (Grid/Table views)
+    if (filters.currentTab !== 'collection') {
+      // If we switched to overview, we usually want to be at the top
+      window.scrollTo(0, 0);
+      return;
     }
+
+    const scrollKey = `library_scroll_${id}_${filters.viewMode}`;
+    let scrollTimer: NodeJS.Timeout;
+    const savedScroll = sessionStorage.getItem(scrollKey);
+
+    if (savedScroll) {
+      // Small timeout to allow the browser to layout the content after tab/view switch
+      scrollTimer = setTimeout(() => {
+        const top = parseInt(savedScroll, 10);
+        if (top > 0) {
+          window.scrollTo({
+            top,
+            behavior: 'instant' as ScrollBehavior,
+          });
+        }
+      }, 250);
+    }
+
     const handleScroll = () => {
-      sessionStorage.setItem(`library_scroll_${id}`, window.scrollY.toString());
+      if (filters.currentTab === 'collection') {
+        sessionStorage.setItem(scrollKey, window.scrollY.toString());
+      }
     };
-    const timeoutId = setTimeout(() => {
+
+    const registerTimer = setTimeout(() => {
       window.addEventListener('scroll', handleScroll, {passive: true});
-    }, 100);
+    }, 400);
+
     return () => {
-      clearTimeout(timeoutId);
+      if (scrollTimer) clearTimeout(scrollTimer);
+      clearTimeout(registerTimer);
       window.removeEventListener('scroll', handleScroll);
     };
-  }, [id, isLoading, isBooksLoading]);
+  }, [id, isLoading, isBooksLoading, filters.currentTab, filters.viewMode]);
 
   // Escape key for modals
   useEffect(() => {
@@ -92,8 +115,24 @@ export default function LibraryView() {
     if (!id || !library || !shareEmail.trim()) return;
     try {
       const email = shareEmail.trim().toLowerCase();
-      const newSharedWith = [...new Set([...library.sharedWith, email])];
-      await updateDoc(doc(db, 'libraries', id), {sharedWith: newSharedWith});
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not logged in');
+      const token = await user.getIdToken();
+
+      const res = await fetch(`/api/libraries/${id}/share`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({email}),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to share library');
+      }
+
       setShareEmail('');
       toast.success(`Shared with ${email}`);
     } catch (error) {
@@ -104,8 +143,22 @@ export default function LibraryView() {
   const handleRemoveShare = async (email: string) => {
     if (!id || !library) return;
     try {
-      const newSharedWith = library.sharedWith.filter(e => e !== email);
-      await updateDoc(doc(db, 'libraries', id), {sharedWith: newSharedWith});
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not logged in');
+      const token = await user.getIdToken();
+
+      const res = await fetch(`/api/libraries/${id}/share/${email}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to remove share');
+      }
+
       toast.success(`Removed access for ${email}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `libraries/${id}`);
@@ -172,12 +225,14 @@ export default function LibraryView() {
       ].join(',');
     });
     const csvContent = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], {type: 'text/csv;charset=utf-8;'});
+    const blob = new Blob(['\uFEFF' + csvContent], {
+      type: 'text/csv;charset=utf-8;',
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `${library.name
-      .replace(/[^a-z0-9]/gi, '_')
+      .replace(/[\s/\\<>:"|?*]/g, '_')
       .toLowerCase()}_export.csv`;
     document.body.appendChild(link);
     link.click();
@@ -187,7 +242,8 @@ export default function LibraryView() {
 
   const isOwner = library?.ownerId === user?.uid;
   const canEdit = !!(
-    isOwner || library?.sharedWith.includes(user?.email || '')
+    isOwner ||
+    (user?.email && library?.sharedWith?.includes(user.email))
   );
 
   if ((isLoading || isBooksLoading) && books.length === 0) {
@@ -386,12 +442,16 @@ export default function LibraryView() {
             onStatusChange={selection.handleBulkStatusChange}
           />
 
-          <Chatbot
-            libraryBooks={books.map(b => ({
-              title: b.title,
-              author: b.author,
-              genres: b.genres,
-            }))}
+          <DebugOverlay
+            data={{
+              id: library.id,
+              name: library.name,
+              ownerId: library.ownerId,
+              sharedWith: library.sharedWith,
+              createdAt: library.createdAt,
+              summary: `[Books in collection: ${books?.length || 0}]`,
+            }}
+            title="Library Document"
           />
         </div>
       </div>

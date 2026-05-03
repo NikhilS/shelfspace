@@ -74,14 +74,20 @@ export function useAddBooks(libraryId?: string) {
 
           if (cleanDetails.genres && Array.isArray(cleanDetails.genres))
             cleanDetails.genres = cleanDetails.genres
-              .map((g: string) => g.substring(0, 100))
+              .map((g: string) => Array.from(g).slice(0, 100).join(''))
               .slice(0, 20);
           if (typeof cleanDetails.author === 'string')
-            cleanDetails.author = cleanDetails.author.substring(0, 500);
+            cleanDetails.author = Array.from(cleanDetails.author)
+              .slice(0, 500)
+              .join('');
           if (typeof cleanDetails.series === 'string')
-            cleanDetails.series = cleanDetails.series.substring(0, 100);
+            cleanDetails.series = Array.from(cleanDetails.series)
+              .slice(0, 100)
+              .join('');
           if (typeof cleanDetails.title === 'string')
-            cleanDetails.title = cleanDetails.title.substring(0, 500);
+            cleanDetails.title = Array.from(cleanDetails.title)
+              .slice(0, 500)
+              .join('');
 
           const newDocRef = doc(
             collection(db, 'libraries', libraryId, 'books'),
