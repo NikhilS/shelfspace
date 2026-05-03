@@ -4,6 +4,7 @@ import {AuthProvider, useAuth} from './contexts/AuthContext';
 import {ErrorBoundary} from './components/ErrorBoundary';
 import {Toaster} from 'sonner';
 import AppLayout from './components/AppLayout';
+import ScrollToTop from './components/ScrollToTop';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const LibraryView = lazy(() => import('./pages/LibraryView'));
@@ -47,41 +48,44 @@ function PrivateRoute({children}: {children?: React.ReactNode}) {
 
 function AnimatedRoutes() {
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <PageWrapper>
-              <Login />
-            </PageWrapper>
-          </Suspense>
-        }
-      />
+    <>
+      <ScrollToTop />
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            <Suspense fallback={<LoadingScreen />}>
+              <PageWrapper>
+                <Login />
+              </PageWrapper>
+            </Suspense>
+          }
+        />
 
-      <Route
-        element={
-          <PrivateRoute>
-            <AppLayout>
-              <PageWrapper />
-            </AppLayout>
-          </PrivateRoute>
-        }
-      >
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/library/:id" element={<LibraryView />} />
-        <Route path="/library/:id/add" element={<AddBookView />} />
         <Route
-          path="/library/:id/constellation"
-          element={<ConstellationMap />}
-        />
-        <Route path="/library/:id/spruce-up" element={<SpruceUpView />} />
-        <Route
-          path="/library/:libraryId/book/:bookId"
-          element={<BookDetailsView />}
-        />
-      </Route>
-    </Routes>
+          element={
+            <PrivateRoute>
+              <AppLayout>
+                <PageWrapper />
+              </AppLayout>
+            </PrivateRoute>
+          }
+        >
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/library/:id" element={<LibraryView />} />
+          <Route path="/library/:id/add" element={<AddBookView />} />
+          <Route
+            path="/library/:id/constellation"
+            element={<ConstellationMap />}
+          />
+          <Route path="/library/:id/spruce-up" element={<SpruceUpView />} />
+          <Route
+            path="/library/:libraryId/book/:bookId"
+            element={<BookDetailsView />}
+          />
+        </Route>
+      </Routes>
+    </>
   );
 }
 
