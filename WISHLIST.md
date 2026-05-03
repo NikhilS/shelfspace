@@ -5,11 +5,6 @@ This file tracks feature ideas, planned improvements, and requested features for
 ## Planned Features / Ideas
 - [ ] Add richer sharing modes (edit vs. view-only access).
 - [ ] Normalize categories into a [standard taxonomy](https://www.bisg.org/BISAC-Subject-Codes-main).
-- [ ] Once the app is a SPA, load the list of books once at startup and cache it in memory forever (till we add/remove a book etc).
-- [ ] **Denormalize Library Book Counts**: Maintain a `bookCount` field directly on the `libraries` documents. Currently, the Dashboard iterates over all libraries and fires a `getCountFromServer` for each one. While cheaper than `getDocs`, this incurs multiple aggregation queries that could be completely bypassed with a maintained counter.
-- [ ] **Server-Side Sorting & Pagination for Library Books**: `LibraryView` currently uses `onSnapshot` to pull all books into memory and sorts them locally. This incurs heavy read costs for large libraries. We should create composite indexes (e.g., for `title`, `author`, `addedAt`) and implement paginated queries (`limit`, `startAfter`).
-- [ ] **Optimize Library Deletion**: Deleting a library currently pulls every single book document payload into client memory using `getDocs` to populate a batch delete. We should consider offloading this to a Firebase Cloud Function for massive libraries or optimizing the query footprint.
-- [ ] **Separation of "Heavy" Data**: Features like the ConstellationMap.tsx cluster books using AI-generated embedding arrays (huge arrays of 768 floats). Because these embeddings live on the main Book document, whenever we query books, we are downloading the heavy embeddings as well—even for simple lists. We can move synopsis, authorBio, and embedding to a separate bookDetails subcollection. The primary books queries would become extremely lightweight (just title, author, cover image) resulting in a much faster initial render and drastically lower bandwidth egress.
 
 
 ## Completed
@@ -26,3 +21,7 @@ This file tracks feature ideas, planned improvements, and requested features for
 - [x] Add a new "resync all metadata" feature that refetches everything for all books.
 - [x] Consider replacing the single 'genre' field with multiple categories, mirroring the Google Books API.
 - [x] Once we have normalized categories, add some visualizations to the home page (e.g., a pie chart).
+- [x] Once the app is a SPA, load the list of books once at startup and cache it in memory forever (till we add/remove a book etc).
+- [x] **Denormalize Library Book Counts**: Maintain a `bookCount` field directly on the `libraries` documents. Currently, the Dashboard iterates over all libraries and fires a `getCountFromServer` for each one. While cheaper than `getDocs`, this incurs multiple aggregation queries that could be completely bypassed with a maintained counter.
+- [x] **Optimize Library Deletion**: Deleting a library currently pulls every single book document payload into client memory using `getDocs` to populate a batch delete. We should consider offloading this to a Firebase Cloud Function for massive libraries or optimizing the query footprint.
+- [x] **Separation of "Heavy" Data**: Features like the ConstellationMap.tsx cluster books using AI-generated embedding arrays (huge arrays of 768 floats). Because these embeddings live on the main Book document, whenever we query books, we are downloading the heavy embeddings as well—even for simple lists. We can move synopsis, authorBio, and embedding to a separate bookDetails subcollection. The primary books queries would become extremely lightweight (just title, author, cover image) resulting in a much faster initial render and drastically lower bandwidth egress.
