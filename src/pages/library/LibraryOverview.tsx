@@ -124,7 +124,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
               </span>
             </div>
           </div>
-          <div className="bg-surface p-6 border border-surface-variant relative shadow-sm flex-grow flex flex-col min-w-0">
+          <div className="bg-surface p-6 border border-surface-variant relative shadow-sm flex flex-col min-w-0">
             <p className="font-label-caps text-label-caps text-secondary uppercase tracking-widest mb-6 text-left">
               Top Categories
             </p>
@@ -305,7 +305,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                     <Sparkles size={16} />
                     Curator's Pick
                   </h4>
-                  <h3 className="font-headline-md text-headline-md text-primary mb-1">
+                  <h3 className="font-headline-md text-headline-md text-primary mt-4 mb-1">
                     {toTitleCase(pickOfTheDay.title)}
                   </h3>
                   <p className="font-body-md text-on-surface-variant italic mb-4">
