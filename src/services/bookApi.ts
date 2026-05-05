@@ -172,27 +172,25 @@ export async function searchBookByTitleAndAuthor(
     if (response.ok) {
       const data = (await response.json()) as GoogleBooksResponse;
       if (data.items && data.items.length > 0) {
-        results = await Promise.all(
-          data.items.map(async (item: GoogleBooksItem) => {
-            const bookData = item.volumeInfo;
-            return {
-              title: bookData.title || title || 'Unknown Title',
-              author:
-                bookData.authors?.join(', ') || author || 'Unknown Author',
-              isbn: extractIsbn(bookData.industryIdentifiers),
-              coverUrl: getHighResCoverUrl(
-                bookData.imageLinks?.thumbnail ||
-                  bookData.imageLinks?.smallThumbnail,
-              ),
-              publishedDate: bookData.publishedDate || '',
-              genres: bookData.categories || undefined,
-              synopsis: bookData.description || undefined,
-            };
-          }),
-        );
+        results = data.items.map((item: GoogleBooksItem) => {
+          const bookData = item.volumeInfo;
+          return {
+            title: bookData.title || title || 'Unknown Title',
+            author: bookData.authors?.join(', ') || author || 'Unknown Author',
+            isbn: extractIsbn(bookData.industryIdentifiers),
+            coverUrl: getHighResCoverUrl(
+              bookData.imageLinks?.thumbnail ||
+                bookData.imageLinks?.smallThumbnail,
+            ),
+            publishedDate: bookData.publishedDate || '',
+            genres: bookData.categories || undefined,
+            synopsis: bookData.description || undefined,
+          };
+        });
       }
     }
   } catch (_error) {
+    if ((_error as Error).name === 'AbortError') throw _error;
     console.error('Google Books search failed:', _error);
   }
   return results;
@@ -207,32 +205,29 @@ export async function searchBookByTitle(
   const normalizedQuery = query.toLowerCase().trim();
 
   try {
-    // Try intitle: first for exact title matches
-    const response = await fetch(
-      getGoogleBooksUrl(`intitle:${encodeURIComponent(query)}&maxResults=10`),
-      {signal},
+    const q = encodeURIComponent(
+      `intitle:${encodeURIComponent(query)}&maxResults=10`,
     );
+    const response = await fetch(getGoogleBooksUrl(q), {signal});
     if (response.ok) {
       const data = (await response.json()) as GoogleBooksResponse;
 
       if (data.items && data.items.length > 0) {
-        results = await Promise.all(
-          data.items.map(async (item: GoogleBooksItem) => {
-            const bookData = item.volumeInfo;
-            return {
-              title: bookData.title || 'Unknown Title',
-              author: bookData.authors?.join(', ') || 'Unknown Author',
-              isbn: extractIsbn(bookData.industryIdentifiers),
-              coverUrl: getHighResCoverUrl(
-                bookData.imageLinks?.thumbnail ||
-                  bookData.imageLinks?.smallThumbnail,
-              ),
-              publishedDate: bookData.publishedDate || '',
-              genres: bookData.categories || undefined,
-              synopsis: bookData.description || undefined,
-            };
-          }),
-        );
+        results = data.items.map((item: GoogleBooksItem) => {
+          const bookData = item.volumeInfo;
+          return {
+            title: bookData.title || 'Unknown Title',
+            author: bookData.authors?.join(', ') || 'Unknown Author',
+            isbn: extractIsbn(bookData.industryIdentifiers),
+            coverUrl: getHighResCoverUrl(
+              bookData.imageLinks?.thumbnail ||
+                bookData.imageLinks?.smallThumbnail,
+            ),
+            publishedDate: bookData.publishedDate || '',
+            genres: bookData.categories || undefined,
+            synopsis: bookData.description || undefined,
+          };
+        });
       }
     }
 
@@ -246,8 +241,8 @@ export async function searchBookByTitle(
         const fallbackData =
           (await fallbackResponse.json()) as GoogleBooksResponse;
         if (fallbackData.items && fallbackData.items.length > 0) {
-          const fallbackResults = await Promise.all(
-            fallbackData.items.map(async (item: GoogleBooksItem) => {
+          const fallbackResults = fallbackData.items.map(
+            (item: GoogleBooksItem) => {
               const bookData = item.volumeInfo;
               return {
                 title: bookData.title || 'Unknown Title',
@@ -261,7 +256,7 @@ export async function searchBookByTitle(
                 genres: bookData.categories || undefined,
                 synopsis: bookData.description || undefined,
               };
-            }),
+            },
           );
 
           // Merge and deduplicate by title+author
@@ -275,46 +270,44 @@ export async function searchBookByTitle(
         }
       }
     }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (_error) {
-    // Silently fallback to OpenLibrary if Google Books fails (e.g., ad blocker)
+    if ((_error as Error).name === 'AbortError') throw _error;
+    console.error('Google Books search failed:', _error);
   }
 
-  // Fallback to OpenLibrary if Google Books fails completely or returns nothing
   if (results.length === 0) {
     try {
-      // Use title= parameter for better title matching
       let response = await fetch(
         `https://openlibrary.org/search.json?title=${encodeURIComponent(query)}&limit=10`,
+        {signal},
       );
       if (response.ok) {
         let data = (await response.json()) as OpenLibraryResponse;
 
-        // Fallback to general search if title= prefix fails
         if (!data.docs || data.docs.length === 0) {
           response = await fetch(
             `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10`,
+            {signal},
           );
           data = (await response.json()) as OpenLibraryResponse;
         }
 
         if (data.docs && data.docs.length > 0) {
-          results = await Promise.all(
-            data.docs.map(async (doc: OpenLibraryDoc) => ({
-              title: doc.title || 'Unknown Title',
-              author: doc.author_name?.join(', ') || 'Unknown Author',
-              isbn: doc.isbn?.[0] || '',
-              coverUrl: getHighResCoverUrl(
-                doc.cover_i
-                  ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`
-                  : undefined,
-              ),
-              publishedDate: doc.first_publish_year?.toString() || '',
-            })),
-          );
+          results = data.docs.map((doc: OpenLibraryDoc) => ({
+            title: doc.title || 'Unknown Title',
+            author: doc.author_name?.join(', ') || 'Unknown Author',
+            isbn: doc.isbn?.[0] || '',
+            coverUrl: getHighResCoverUrl(
+              doc.cover_i
+                ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`
+                : undefined,
+            ),
+            publishedDate: doc.first_publish_year?.toString() || '',
+          }));
         }
       }
     } catch (_error) {
+      if ((_error as Error).name === 'AbortError') throw _error;
       console.error('OpenLibrary title search failed:', _error);
     }
   }

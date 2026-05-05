@@ -242,7 +242,7 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
                             )}
                           </div>
                         </div>
-                        <span className="font-headline-md text-[18px] sm:text-[20px] text-on-surface line-clamp-2 max-w-lg leading-snug">
+                        <span className="font-serif text-lg sm:text-xl font-medium text-on-surface line-clamp-2 max-w-lg leading-snug">
                           {toTitleCase(book.title)}
                         </span>
                       </div>

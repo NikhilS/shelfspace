@@ -1,5 +1,6 @@
 import React, {Component, ErrorInfo, ReactNode} from 'react';
 import {AlertCircle, RefreshCcw} from 'lucide-react';
+import {Button} from '@/components/ui/button';
 
 interface Props {
   children: ReactNode;
@@ -54,13 +55,13 @@ export class ErrorBoundary extends Component<Props, State> {
               : 'An unexpected error occurred while rendering this part of the application.'}{' '}
             We've been notified and are looking into it.
           </p>
-          <button
+          <Button
             onClick={this.handleReset}
-            className="flex items-center gap-2 bg-primary text-on-primary px-6 py-3 rounded-xl hover:bg-primary/90 transition-all font-body-md text-sm font-bold shadow-sm"
+            className="flex items-center gap-2"
           >
             <RefreshCcw size={18} />
             Try Refreshing
-          </button>
+          </Button>
         </div>
       );
     }

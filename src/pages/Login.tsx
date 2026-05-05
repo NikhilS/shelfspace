@@ -11,6 +11,7 @@ import {
   Library,
   BarChart,
 } from 'lucide-react';
+import {Button} from '@/components/ui/button';
 
 export default function Login() {
   const {user, isAuthReady, signIn} = useAuth();
@@ -89,9 +90,9 @@ export default function Login() {
               pocket.
             </p>
             <div className="mt-4 flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-              <button
+              <Button
                 onClick={signIn}
-                className="bg-primary text-on-primary font-body-md text-body-md px-6 py-3 rounded flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors architectural-shadow group border border-transparent"
+                className="flex items-center justify-center gap-2"
               >
                 <svg
                   className="w-5 h-5 bg-white rounded-full p-0.5"
@@ -115,8 +116,8 @@ export default function Login() {
                     fill="#EA4335"
                   ></path>
                 </svg>
-                Sign in with Google
-              </button>
+                Sign In with Google
+              </Button>
               <a
                 href="#features"
                 className="bg-transparent border border-primary text-primary font-body-md text-body-md px-6 py-3 rounded flex items-center justify-center gap-2 hover:bg-surface-variant/50 transition-colors"

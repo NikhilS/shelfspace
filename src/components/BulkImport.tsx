@@ -2,6 +2,16 @@ import React, {useRef, useState} from 'react';
 import {UploadCloud, Loader2, FileText} from 'lucide-react';
 import {extractBooksFromCsv} from '../services/gemini';
 import {toast} from 'sonner';
+import {logger} from '../contexts/DebugContext';
+import {Button} from '@/components/ui/button';
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 
 interface BulkImportProps {
   onBooksExtracted: (
@@ -32,7 +42,13 @@ export default function BulkImport({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    logger.info(
+      `Starting CSV file upload: ${file.name} (${Math.round(file.size / 1024)} KB)`,
+    );
+
     if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+      logger.warn(`Invalid file type rejected: ${file.name} (${file.type})`);
       toast.error('Please upload a valid CSV file.');
       return;
     }
@@ -40,13 +56,27 @@ export default function BulkImport({
     setExtractionStatus('Reading CSV file...');
     try {
       const text = await file.text();
+      logger.info(
+        `CSV text extracted, total length: ${text.length} characters`,
+      );
+
       setExtractionStatus('Extracting books using AI...');
+      logger.info('Sending CSV text to Gemini for standard book extraction...');
+
       const books = await extractBooksFromCsv(text);
       onBooksExtracted(books);
-      if (books.length === 0)
+
+      if (books.length === 0) {
+        logger.warn('Gemini extraction returned 0 books from the CSV');
         toast.error('No books could be extracted from this file.');
-      else toast.success(`Found ${books.length} books in CSV.`);
+      } else {
+        logger.info(`Successfully extracted ${books.length} books from CSV.`);
+        toast.success(`Found ${books.length} books in CSV.`);
+      }
     } catch (error) {
+      logger.error(
+        `CSV Processing failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
       if (error instanceof Error) toast.error(error.message);
       else toast.error('Failed to process CSV file.');
     } finally {
@@ -61,10 +91,10 @@ export default function BulkImport({
       <div className="w-16 h-16 sm:w-20 sm:h-20 bg-surface-container-low rounded-full flex items-center justify-center text-primary mb-6 shadow-[0_2px_10px_rgb(26,47,75,0.04)] border border-outline-variant/40">
         <UploadCloud className="w-8 h-8 sm:w-10 sm:h-10" strokeWidth={2} />
       </div>
-      <h3 className="text-2xl sm:text-3xl font-serif font-bold text-on-surface mb-3 tracking-tight">
+      <h3 className="font-headline-lg text-headline-lg sm:text-headline-xl text-on-surface mb-3 tracking-tight">
         Upload Library CSV
       </h3>
-      <p className="text-on-surface-variant text-sm sm:text-base mb-6 max-w-md font-medium leading-relaxed">
+      <p className="text-on-surface-variant font-body-md text-body-md sm:text-body-lg mb-6 max-w-md leading-relaxed">
         Upload a CSV export from Goodreads, Amazon, or your own spreadsheet. Our
         AI will automatically extract the titles, authors, and ISBNs.
       </p>
@@ -73,14 +103,18 @@ export default function BulkImport({
         <label className="block text-sm font-bold text-on-surface mb-1.5 ml-1 text-center">
           Default Format
         </label>
-        <select
+        <Select
           value={csvFormat}
-          onChange={e => setCsvFormat(e.target.value as 'physical' | 'digital')}
-          className="w-full bg-surface-container border border-outline-variant/80 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium"
+          onValueChange={(val: 'physical' | 'digital') => setCsvFormat(val)}
         >
-          <option value="physical">Physical Books</option>
-          <option value="digital">Digital / E-Books</option>
-        </select>
+          <SelectTrigger className="w-full bg-surface-container border border-outline-variant/80 rounded-2xl px-5 py-6 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium">
+            <SelectValue placeholder="Select format" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="physical">Physical Books</SelectItem>
+            <SelectItem value="digital">Digital / E-Books</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <input
@@ -91,10 +125,10 @@ export default function BulkImport({
         onChange={handleFileUpload}
       />
 
-      <button
+      <Button
         onClick={() => fileInputRef.current?.click()}
         disabled={isExtracting}
-        className="bg-primary text-on-primary px-8 py-4 rounded-full hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-3 font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:shadow-lg hover:-translate-y-0.5"
+        className="rounded-full shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-3 px-8 py-6"
       >
         {isExtracting ? (
           <>
@@ -106,7 +140,7 @@ export default function BulkImport({
             <FileText size={20} strokeWidth={2.5} /> Select CSV File
           </>
         )}
-      </button>
+      </Button>
     </div>
   );
 }

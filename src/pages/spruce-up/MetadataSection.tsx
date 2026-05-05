@@ -1,6 +1,7 @@
 import React from 'react';
 import {Loader2, Wand2} from 'lucide-react';
 import {Book} from '../../types';
+import {Button} from '@/components/ui/button';
 
 interface MetadataSectionProps {
   missingMetadata: Book[];
@@ -31,19 +32,20 @@ export function MetadataSection({
 }: MetadataSectionProps) {
   return (
     <section>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <h2 className="text-xl font-bold text-on-surface">
           Books with Missing Metadata{' '}
           <span className="text-on-surface-variant font-normal">
             ({missingMetadata.length})
           </span>
         </h2>
-        <div className="flex items-center gap-3">
-          <button
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+          <Button
+            variant="outline"
             onClick={onForceResync}
             disabled={activeJob?.status === 'running' || fixingAll || !isOnline}
             title={!isOnline ? 'AI features require a connection' : ''}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-error bg-error/10 hover:bg-error/20 rounded-xl transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 text-error hover:text-error hover:bg-error/10"
           >
             {activeJob?.status === 'running' ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -53,13 +55,13 @@ export function MetadataSection({
             {activeJob?.status === 'running'
               ? `Processing (${activeJob.progress}/${activeJob.total})`
               : 'Force Resync All Metadata'}
-          </button>
+          </Button>
           {missingMetadata.length > 0 && (
-            <button
+            <Button
               onClick={onFixAll}
               disabled={fixingAll || !isOnline}
               title={!isOnline ? 'AI features require a connection' : ''}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-on-primary bg-primary rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2"
             >
               {fixingAll ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -69,7 +71,7 @@ export function MetadataSection({
               {fixingAll
                 ? `Fixing (${fixingProgress}/${missingMetadata.length})`
                 : 'Fix All Missing Metadata'}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -98,11 +100,12 @@ export function MetadataSection({
                   )}
                 </ul>
               </div>
-              <button
+              <Button
+                variant="outline"
                 onClick={() => onFixMetadata(b)}
                 disabled={processingIds[b.id] || !isOnline}
                 title={!isOnline ? 'AI features require a connection' : ''}
-                className="mt-4 flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors disabled:opacity-50"
+                className="mt-4 flex items-center justify-center gap-2 w-full"
               >
                 {processingIds[b.id] ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -110,7 +113,7 @@ export function MetadataSection({
                   <Wand2 className="w-4 h-4" />
                 )}
                 Fix Metadata
-              </button>
+              </Button>
             </div>
           ))}
         </div>

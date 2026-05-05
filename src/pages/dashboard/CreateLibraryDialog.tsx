@@ -2,6 +2,8 @@ import React, {useState} from 'react';
 import {motion, AnimatePresence} from 'motion/react';
 import {Loader2} from 'lucide-react';
 import {handleFirestoreError, OperationType} from '../../firebase';
+import {Input} from '../../components/ui/input';
+import {Button} from '../../components/ui/button';
 
 interface CreateLibraryDialogProps {
   isOpen: boolean;
@@ -45,28 +47,29 @@ export function CreateLibraryDialog({
           className="bg-surface-container p-6 sm:p-8 rounded-lg shadow-sm border border-outline-variant/30 mb-12 relative overflow-hidden"
         >
           <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center relative z-10 w-full">
-            <input
+            <Input
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="Library Name (e.g. Private Study)"
-              className="flex-1 bg-surface border border-outline-variant/70 rounded-md px-6 py-4 focus:outline-none focus:ring-0 focus:border-primary transition-all text-base sm:text-lg placeholder:text-on-surface-variant/70"
+              className="flex-1 px-6 py-4 text-base sm:text-lg"
               autoFocus
               disabled={isSubmitting}
             />
             <div className="flex gap-3 sm:gap-4 flex-shrink-0">
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="flex-1 sm:flex-none justify-center text-primary px-6 py-4 rounded-md font-body-md hover:bg-surface-variant border border-outline-variant/50 transition-colors disabled:opacity-50"
+                className="flex-1 sm:flex-none justify-center px-6 py-6 font-body-md"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex-1 sm:flex-none justify-center bg-primary text-on-primary px-8 py-4 rounded-md font-body-md hover:bg-primary/90 transition-all flex items-center gap-2 disabled:opacity-50 min-w-[140px] architectural-shadow"
+                className="flex-1 sm:flex-none justify-center px-8 py-6 font-body-md min-w-[140px] shadow-[0_2px_12px_rgb(26,47,75,0.12)] hover:-translate-y-[1px] transition-transform gap-2"
               >
                 {isSubmitting ? (
                   <>
@@ -75,7 +78,7 @@ export function CreateLibraryDialog({
                 ) : (
                   'Create Collection'
                 )}
-              </button>
+              </Button>
             </div>
           </div>
         </motion.form>

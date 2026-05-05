@@ -14,7 +14,7 @@ export interface Library {
   bookCount?: number;
 }
 
-interface UserStatuses {
+export interface UserStatuses {
   [userId: string]: 'unset' | 'reading' | 'finished' | 'abandoned';
 }
 

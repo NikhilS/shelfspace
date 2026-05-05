@@ -14,6 +14,8 @@ import {Book} from '../../types';
 import {SortOption} from '../../hooks/useBookFilters';
 import {User} from 'firebase/auth';
 import {NavigateFunction} from 'react-router-dom';
+import {Input} from '../../components/ui/input';
+import {Button} from '../../components/ui/button';
 
 interface LibraryCollectionProps {
   libraryId: string;
@@ -86,9 +88,9 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
       <div className="sticky top-0 z-40 flex flex-col shadow-[0_4px_20px_rgba(26,47,75,0.02)] border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md">
         <div className="px-4 sm:px-8 min-h-16 py-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 transition-all">
           <div className="relative w-full lg:w-[320px] lg:flex-shrink-0">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-            <input
-              className="w-full pl-9 pr-3 py-1.5 bg-surface-container border border-outline-variant/50 rounded-md font-body-md text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:ring-inset hover:border-primary/50 transition-colors"
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant z-10" />
+            <Input
+              className="pl-9"
               placeholder="Search collection..."
               type="text"
               value={searchQuery}
@@ -118,23 +120,35 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
                   <option value="author">Author (A-Z)</option>
                 </select>
                 {sortBy !== 'added' && (
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() =>
                       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
                     }
-                    className="p-0.5 text-on-surface hover:text-primary transition-colors rounded-full hover:bg-surface-container ml-1"
+                    className="h-6 w-6 ml-1 p-0"
                   >
                     {sortOrder === 'asc' ? (
                       <ArrowUp className="w-4 h-4" />
                     ) : (
                       <ArrowDown className="w-4 h-4" />
                     )}
-                  </button>
+                  </Button>
                 )}
               </div>
-              <button
+              <Button
+                variant={
+                  isFiltersOpen ||
+                  searchQuery ||
+                  filterGenre ||
+                  filterAuthor ||
+                  filterYearMin ||
+                  filterYearMax
+                    ? 'default'
+                    : 'outline'
+                }
                 onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-                className={`flex flex-shrink-0 items-center gap-2 px-3 py-1.5 rounded-md text-sm font-body-md transition-all border ${isFiltersOpen || searchQuery || filterGenre || filterAuthor || filterYearMin || filterYearMax ? 'bg-primary text-on-primary border-primary shadow-sm' : 'bg-surface text-on-surface border-outline-variant/60 hover:border-outline-variant hover:shadow-sm'}`}
+                className="flex flex-shrink-0 items-center gap-2"
               >
                 <Filter className="w-4 h-4" />
                 <span className="hidden sm:inline">Filters</span>
@@ -145,26 +159,30 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
                   filterYearMax) && (
                   <span className="w-1.5 h-1.5 rounded-full bg-surface"></span>
                 )}
-              </button>
+              </Button>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0 sm:ml-auto">
-              <div className="flex items-center bg-surface-container-lowest rounded-md p-1 border border-outline-variant/40 flex-shrink-0">
-                <button
+              <div className="flex bg-surface-container-lowest rounded-md p-0.5 border border-outline-variant/40 flex-shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setViewMode('standard')}
-                  className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'standard' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
+                  className={`h-8 sm:h-9 px-2 sm:px-3 text-sm font-body-md ${viewMode === 'standard' ? 'bg-surface shadow-sm text-primary hover:bg-surface hover:text-primary' : 'text-on-surface hover:text-primary'}`}
                   title="Grid View"
                 >
-                  <LayoutGrid className="w-4 h-4" />
+                  <LayoutGrid className="w-4 h-4 mr-0 sm:mr-2" />
                   <span className="hidden sm:inline">Grid</span>
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setViewMode('table')}
-                  className={`p-1.5 sm:px-3 sm:py-1.5 rounded-md transition-all flex items-center gap-2 text-sm font-body-md ${viewMode === 'table' ? 'bg-surface shadow-sm text-primary' : 'text-on-surface hover:text-primary'}`}
+                  className={`h-8 sm:h-9 px-2 sm:px-3 text-sm font-body-md ${viewMode === 'table' ? 'bg-surface shadow-sm text-primary hover:bg-surface hover:text-primary' : 'text-on-surface hover:text-primary'}`}
                   title="Table View"
                 >
-                  <TableIcon className="w-4 h-4" />
+                  <TableIcon className="w-4 h-4 mr-0 sm:mr-2" />
                   <span className="hidden sm:inline">Table</span>
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -213,37 +231,34 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
                 ))}
               </select>
 
-              <div className="flex items-center gap-1.5 text-sm bg-surface border border-outline-variant/60 rounded-md px-3 py-1">
-                <input
+              <div className="flex items-center gap-1.5 text-sm bg-surface border border-outline-variant/60 rounded-md px-1 py-1">
+                <Input
                   type="number"
                   placeholder="Min Yr"
                   value={filterYearMin}
                   onChange={e => setFilterYearMin(e.target.value)}
-                  className="w-14 bg-transparent focus:outline-none text-on-surface text-center placeholder-on-surface-variant/70"
+                  className="w-16 h-7 bg-transparent border-none text-center text-on-surface"
                 />
                 <span className="opacity-40">-</span>
-                <input
+                <Input
                   type="number"
                   placeholder="Max Yr"
                   value={filterYearMax}
                   onChange={e => setFilterYearMax(e.target.value)}
-                  className="w-14 bg-transparent focus:outline-none text-on-surface text-center placeholder-on-surface-variant/70"
+                  className="w-16 h-7 bg-transparent border-none text-center text-on-surface"
                 />
               </div>
             </div>
             {clearFilters && (
-              <button
-                onClick={clearFilters}
-                className="text-xs text-on-surface-variant hover:text-primary font-bold uppercase tracking-wider transition-colors px-2"
-              >
+              <Button variant="ghost" onClick={clearFilters}>
                 Clear All
-              </button>
+              </Button>
             )}
           </div>
         )}
       </div>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col lg:flex-row gap-6 sm:gap-8">
+      <main className="layout-page-content flex flex-col lg:flex-row gap-6 sm:gap-8 pt-6 sm:pt-8">
         <div className="flex-1 min-w-0">
           {sortedBooks.length === 0 ? (
             <div className="text-center py-24 px-6 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
@@ -263,13 +278,13 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
                   : 'No books match your current filters.'}
               </p>
               {books.length === 0 && canEdit && (
-                <button
+                <Button
                   onClick={() => navigate(`/library/${libraryId}/add`)}
-                  className="mt-8 inline-flex items-center gap-2 bg-primary text-on-primary px-6 py-3 rounded-md hover:bg-primary/90 transition-all font-body-md text-sm font-bold relative z-10 architectural-shadow"
+                  className="mt-8 flex items-center gap-2 mx-auto"
                 >
                   <Plus size={18} strokeWidth={2.5} />
                   Add Your First Book
-                </button>
+                </Button>
               )}
             </div>
           ) : (

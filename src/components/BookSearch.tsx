@@ -7,6 +7,7 @@ import {
 } from '../services/bookApi';
 import {toast} from 'sonner';
 import {toTitleCase} from '../lib/utils';
+import {Button} from '@/components/ui/button';
 
 interface BookSearchProps {
   existingBooks: BookDetails[];
@@ -112,17 +113,17 @@ export default function BookSearch({
           placeholder="Search by title, author, or ISBN..."
           className="flex-1 bg-surface-container/50 border border-outline-variant/60 rounded-full px-6 py-4 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium placeholder:text-on-surface-variant/60"
         />
-        <button
+        <Button
           type="submit"
           disabled={isSearching}
-          className="bg-primary text-on-primary px-8 py-4 rounded-full hover:bg-primary/90 shadow-sm hover:shadow-md transition-all disabled:opacity-50 flex items-center justify-center sm:w-auto w-full font-bold flex-shrink-0"
+          className="rounded-full shadow-sm hover:shadow-md transition-all flex items-center justify-center sm:w-auto w-full font-bold flex-shrink-0 px-8 py-7"
         >
           {isSearching ? (
             <Loader2 className="animate-spin" size={20} />
           ) : (
             'Search'
           )}
-        </button>
+        </Button>
       </form>
 
       <div className="space-y-4">
@@ -193,11 +194,11 @@ export default function BookSearch({
                     Published: {book.publishedDate}
                   </p>
                 )}
-                <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:hidden hidden group-hover:flex">
-                  <button
+                <div className="mt-3 flex flex-col sm:hidden w-full">
+                  <Button
                     onClick={() => handleAddClick(book)}
                     disabled={isAdding === (book.isbn || book.title)}
-                    className="w-full sm:w-auto bg-primary text-on-primary px-4 py-2.5 rounded-full flex items-center justify-center gap-2 font-bold text-sm shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:bg-primary/90 hover:scale-105 transition-all disabled:opacity-50"
+                    className="w-full rounded-full flex items-center justify-center gap-2 font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:scale-105 transition-all h-9"
                   >
                     {isAdding === (book.isbn || book.title) ? (
                       <Loader2 size={16} className="animate-spin" />
@@ -206,14 +207,14 @@ export default function BookSearch({
                         <BookPlus size={16} strokeWidth={2.5} /> Add to Library
                       </>
                     )}
-                  </button>
+                  </Button>
                 </div>
               </div>
               <div className="hidden sm:flex flex-col items-end gap-3 flex-shrink-0 ml-2">
-                <button
+                <Button
                   onClick={() => handleAddClick(book)}
                   disabled={isAdding === (book.isbn || book.title)}
-                  className="bg-primary text-on-primary px-6 py-3 rounded-full flex items-center gap-2 font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:bg-primary/90 hover:-translate-y-0.5 transition-all disabled:opacity-50"
+                  className="rounded-full flex items-center gap-2 font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:-translate-y-0.5 transition-all px-6 py-6"
                   title="Add to Library"
                 >
                   {isAdding === (book.isbn || book.title) ? (
@@ -223,7 +224,7 @@ export default function BookSearch({
                       <BookPlus size={18} strokeWidth={2.5} /> Add
                     </>
                   )}
-                </button>
+                </Button>
               </div>
             </div>
           ))

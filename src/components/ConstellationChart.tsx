@@ -217,17 +217,17 @@ export default function ConstellationChart({
               </p>
               {hoveredNode.data.book.genres &&
                 hoveredNode.data.book.genres.length > 0 && (
-                  <p className="text-[10px] uppercase font-semibold text-primary mt-2">
+                  <p className="font-label-caps text-label-caps text-primary mt-2">
                     {hoveredNode.data.book.genres[0]}
                   </p>
                 )}
               {hoveredNode.data.clusterId >= 0 ? (
-                <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] bg-secondary-container text-secondary-container-on">
+                <span className="inline-block mt-2 px-2 py-0.5 rounded font-label-caps text-label-caps bg-secondary-container text-secondary-container-on">
                   {clusterNames[hoveredNode.data.clusterId] ||
                     `Cluster ${hoveredNode.data.clusterId + 1}`}
                 </span>
               ) : (
-                <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] bg-surface-variant text-on-surface-variant">
+                <span className="inline-block mt-2 px-2 py-0.5 rounded font-label-caps text-label-caps bg-surface-variant text-on-surface-variant">
                   Uncategorized Star
                 </span>
               )}
@@ -238,7 +238,7 @@ export default function ConstellationChart({
 
       {/* Map Legend */}
       <div className="absolute bottom-4 left-4 bg-surface/80 backdrop-blur border border-outline-variant/50 p-3 rounded-xl shadow-lg pointer-events-auto">
-        <h4 className="text-xs font-bold text-on-surface uppercase tracking-widest mb-2">
+        <h4 className="font-label-caps text-label-caps text-on-surface mb-2">
           Constellations
         </h4>
         <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-2 custom-scrollbar">

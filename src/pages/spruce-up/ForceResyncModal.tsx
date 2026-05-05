@@ -1,5 +1,7 @@
 import React from 'react';
-import {motion, AnimatePresence} from 'motion/react';
+import {RefreshCw, X} from 'lucide-react';
+import {Dialog, DialogContent, DialogTitle} from '@/components/ui/dialog';
+import {Button} from '@/components/ui/button';
 
 interface ForceResyncModalProps {
   isOpen: boolean;
@@ -15,51 +17,51 @@ export function ForceResyncModal({
   bookCount,
 }: ForceResyncModalProps) {
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{opacity: 0}}
-          animate={{opacity: 1}}
-          exit={{opacity: 0}}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-        >
-          <motion.div
-            initial={{opacity: 0, scale: 0.95}}
-            animate={{opacity: 1, scale: 1}}
-            exit={{opacity: 0, scale: 0.95}}
-            className="bg-surface shadow-[0px_10px_40px_rgba(0,0,0,0.1)] rounded-[32px] w-full max-w-md overflow-hidden border border-outline-variant/30"
-          >
-            <div className="p-8">
-              <h3 className="text-2xl font-serif font-medium text-on-surface mb-3 tracking-tight">
-                Force Resync All Metadata?
-              </h3>
-              <p className="text-on-surface-variant mb-8 text-sm leading-relaxed">
-                This will ignore any existing metadata and try to refetch +
-                repopulate everything from Google Books and OpenLibrary for all{' '}
-                <strong>{bookCount}</strong> books. This includes downloading
-                new covers and genres, which might overwrite manual edits.
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={onClose}
-                  className="px-5 py-3 text-on-surface font-medium hover:bg-surface-container border border-outline-variant/30 rounded-xl transition-colors text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    onConfirm();
-                    onClose();
-                  }}
-                  className="px-5 py-3 bg-error text-on-error hover:bg-error/90 font-bold rounded-xl transition-colors text-sm shadow-sm"
-                >
-                  Yes, Force Resync
-                </button>
-              </div>
+    <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        className="w-full max-w-md bg-surface p-8 rounded-[32px] shadow-xl border border-outline-variant/30 gap-0"
+      >
+        <div className="flex items-center justify-between mb-8">
+          <DialogTitle className="text-2xl font-serif font-medium flex items-center gap-3 text-on-surface tracking-tight">
+            <div className="w-10 h-10 bg-error-container rounded-full flex items-center justify-center text-error border border-error-container/50">
+              <RefreshCw size={20} />
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+            Force Resync
+          </DialogTitle>
+          <button
+            onClick={onClose}
+            className="p-2.5 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="mb-8">
+          <p className="text-on-surface-variant text-sm leading-relaxed text-left">
+            This will ignore any existing metadata and try to refetch +
+            repopulate everything from Google Books and OpenLibrary for all{' '}
+            <strong className="text-on-surface">{bookCount}</strong> books. This
+            includes downloading new covers and genres, which might overwrite
+            manual edits.
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
+          >
+            Yes, Force Resync
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

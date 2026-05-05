@@ -3,6 +3,8 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {useSelection} from './useSelection';
 import {updateDoc} from 'firebase/firestore';
 import {toast} from 'sonner';
+import React from 'react';
+import {Book} from '../types';
 
 // Mock dependencies
 vi.mock('firebase/firestore', () => ({
@@ -35,7 +37,7 @@ describe('useSelection', () => {
 
   it('toggles book selection', () => {
     const {result} = renderHook(() => useSelection(libraryId, userId));
-    const mockEvent = {stopPropagation: vi.fn()} as any;
+    const mockEvent = {stopPropagation: vi.fn()} as unknown as React.MouseEvent;
 
     act(() => {
       result.current.toggleBookSelection(mockEvent, 'book1');
@@ -50,7 +52,10 @@ describe('useSelection', () => {
 
   it('selects and deselects all books', () => {
     const {result} = renderHook(() => useSelection(libraryId, userId));
-    const books = [{id: 'book1'} as any, {id: 'book2'} as any];
+    const books = [
+      {id: 'book1'} as unknown as Book,
+      {id: 'book2'} as unknown as Book,
+    ];
 
     act(() => {
       result.current.toggleAllBooks(books);
@@ -65,7 +70,7 @@ describe('useSelection', () => {
 
   it('clears selection', () => {
     const {result} = renderHook(() => useSelection(libraryId, userId));
-    const mockEvent = {stopPropagation: vi.fn()} as any;
+    const mockEvent = {stopPropagation: vi.fn()} as unknown as React.MouseEvent;
 
     act(() => {
       result.current.toggleBookSelection(mockEvent, 'book1');
@@ -80,7 +85,7 @@ describe('useSelection', () => {
 
   it('handles bulk status change', async () => {
     const {result} = renderHook(() => useSelection(libraryId, userId));
-    const mockEvent = {stopPropagation: vi.fn()} as any;
+    const mockEvent = {stopPropagation: vi.fn()} as unknown as React.MouseEvent;
 
     act(() => {
       result.current.toggleBookSelection(mockEvent, 'book1');

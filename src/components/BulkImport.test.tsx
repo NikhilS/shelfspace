@@ -39,7 +39,9 @@ describe('BulkImport', () => {
     );
 
     const select = screen.getByRole('combobox');
-    fireEvent.change(select, {target: {value: 'digital'}});
+    fireEvent.click(select);
+    const option = screen.getByText('Digital / E-Books');
+    fireEvent.click(option);
     expect(mockSetCsvFormat).toHaveBeenCalledWith('digital');
   });
 

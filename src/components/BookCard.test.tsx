@@ -11,7 +11,7 @@ describe('BookCard component', () => {
       seconds: 0,
       nanoseconds: 0,
       isEqual: () => true,
-    } as any,
+    } as unknown as Book,
     title: 'the great gatsby',
     author: 'f. scott fitzgerald',
     isbn: '123456',

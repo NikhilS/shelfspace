@@ -3,6 +3,7 @@ import {describe, it, expect, vi} from 'vitest';
 import {render} from '@testing-library/react';
 import BookDetailsView from './BookDetailsView';
 import {MemoryRouter} from 'react-router-dom';
+import {DebugProvider} from '../contexts/DebugContext';
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({user: {uid: 'u1'}, logOut: vi.fn()}),
@@ -35,9 +36,11 @@ vi.mock('firebase/firestore', () => ({
 describe('BookDetailsView', () => {
   it('renders loading state initially', () => {
     const {container} = render(
-      <MemoryRouter>
-        <BookDetailsView />
-      </MemoryRouter>,
+      <DebugProvider>
+        <MemoryRouter>
+          <BookDetailsView />
+        </MemoryRouter>
+      </DebugProvider>,
     );
     expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
   });

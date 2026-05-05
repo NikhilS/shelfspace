@@ -14,6 +14,7 @@ import {auth, db, handleFirestoreError, OperationType} from '../../firebase';
 import {Book, BookDetailsPayload} from '../../types';
 import {getTieredMetadata} from '../../lib/metadataUtils';
 import {toast} from 'sonner';
+import {logger} from '../../contexts/DebugContext';
 
 const getFingerprints = (b: Book) => {
   const cleanIsbn = (b.isbn || '').trim().replace(/[^0-9X]/gi, '');
@@ -354,6 +355,7 @@ export function useSpruceUp(libraryId: string | undefined) {
           chunk.map(async b => {
             try {
               const bookArg = b;
+              logger.info(`Sprucing up metadata for "${bookArg.title}"...`);
 
               const enriched = await getTieredMetadata(bookArg);
 
@@ -361,21 +363,30 @@ export function useSpruceUp(libraryId: string | undefined) {
               const heavyData: BookDetailsPayload = {};
 
               if (enriched) {
-                if (!b.coverUrl && enriched.coverUrl)
+                if (!b.coverUrl && enriched.coverUrl) {
                   newData.coverUrl = enriched.coverUrl;
+                  logger.info(`Found coverURL for "${bookArg.title}"`);
+                }
                 if (!b.synopsis && enriched.synopsis) {
                   heavyData.synopsis = enriched.synopsis;
+                  logger.info(`Found synopsis for "${bookArg.title}"`);
                 }
-                if (!b.authorBio && enriched.authorBio)
+                if (!b.authorBio && enriched.authorBio) {
                   heavyData.authorBio = enriched.authorBio;
-                if (!b.publishedDate && enriched.publishedDate)
+                }
+                if (!b.publishedDate && enriched.publishedDate) {
                   newData.publishedDate = enriched.publishedDate;
+                }
                 if (
                   (!b.genres || b.genres.length === 0) &&
                   enriched.genres &&
                   enriched.genres.length > 0
-                )
+                ) {
                   newData.genres = enriched.genres;
+                  logger.info(
+                    `Found genres for "${bookArg.title}": ${enriched.genres.join(', ')}`,
+                  );
+                }
               }
 
               const hasNewLightData = Object.keys(newData).length > 0;

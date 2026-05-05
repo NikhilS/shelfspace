@@ -3,6 +3,7 @@ import {describe, it, expect, vi} from 'vitest';
 import {render, screen} from '@testing-library/react';
 import LibraryView from './LibraryView';
 import {MemoryRouter, Route, Routes} from 'react-router-dom';
+import {DebugProvider} from '../contexts/DebugContext';
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({user: {uid: 'u1', email: 'test@test.com'}, logOut: vi.fn()}),
@@ -18,12 +19,14 @@ vi.mock('firebase/firestore', () => {
   return {
     doc: vi.fn((db, ...pathArgs) => ({path: pathArgs.join('/')})),
     collection: vi.fn((db, ...pathArgs) => ({path: pathArgs.join('/')})),
-    query: vi.fn(),
-    onSnapshot: vi.fn((ref, callback) => {
+    query: vi.fn(ref => ref),
+    onSnapshot: vi.fn((ref, arg2, arg3) => {
+      const callback = typeof arg2 === 'function' ? arg2 : arg3;
       // Use setTimeout so the first render completes before we trigger the data.
       setTimeout(() => {
-        if (ref.path && ref.path.includes('books')) {
+        if (ref && ref.path && ref.path.includes('books')) {
           callback({
+            metadata: {hasPendingWrites: false},
             docs: [
               {
                 id: 'book1',
@@ -67,6 +70,7 @@ vi.mock('firebase/firestore', () => {
     serverTimestamp: vi.fn(),
     getDoc: vi.fn(),
     updateDoc: vi.fn(() => Promise.resolve()),
+    orderBy: vi.fn(),
     Timestamp: {
       fromDate: vi.fn(),
     },
@@ -87,22 +91,26 @@ vi.mock('recharts', async () => {
 describe('LibraryView', () => {
   it('renders loading state initially', () => {
     const {container} = render(
-      <MemoryRouter initialEntries={['/library/lib1']}>
-        <Routes>
-          <Route path="/library/:id" element={<LibraryView />} />
-        </Routes>
-      </MemoryRouter>,
+      <DebugProvider>
+        <MemoryRouter initialEntries={['/library/lib1']}>
+          <Routes>
+            <Route path="/library/:id" element={<LibraryView />} />
+          </Routes>
+        </MemoryRouter>
+      </DebugProvider>,
     );
     expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
   });
 
   it('renders top categories after loading data', async () => {
     render(
-      <MemoryRouter initialEntries={['/library/lib1']}>
-        <Routes>
-          <Route path="/library/:id" element={<LibraryView />} />
-        </Routes>
-      </MemoryRouter>,
+      <DebugProvider>
+        <MemoryRouter initialEntries={['/library/lib1']}>
+          <Routes>
+            <Route path="/library/:id" element={<LibraryView />} />
+          </Routes>
+        </MemoryRouter>
+      </DebugProvider>,
     );
 
     // Wait for the library to finish loading

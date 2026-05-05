@@ -1,6 +1,7 @@
 import React from 'react';
 import {motion, AnimatePresence} from 'motion/react';
 import {X} from 'lucide-react';
+import {Button} from '@/components/ui/button';
 
 interface BulkActionsBarProps {
   selectedCount: number;
@@ -43,13 +44,15 @@ export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
               <option value="unset">Remove Status</option>
             </select>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onClear}
-            className="ml-2 p-2 hover:bg-surface-variant/50 rounded-full transition-colors text-on-surface-variant hover:text-on-surface"
+            className="ml-2 rounded-full"
             title="Clear selection"
           >
             <X size={18} strokeWidth={2} />
-          </button>
+          </Button>
         </motion.div>
       )}
     </AnimatePresence>

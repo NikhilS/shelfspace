@@ -3,39 +3,76 @@ import {BookDetails} from '../../services/bookApi';
 import CoverCamera from '../../components/CoverCamera';
 import {Camera, X, Loader2} from 'lucide-react';
 import {toast} from 'sonner';
+import {useForm} from 'react-hook-form';
+import {zodResolver} from '@hookform/resolvers/zod';
+import {z} from 'zod';
+import {Input} from '../../components/ui/input';
+import {Label} from '../../components/ui/label';
+import {Button} from '../../components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
 
 interface ManualEntryTabProps {
   existingBooks: BookDetails[];
   allowDuplicates: boolean;
-  addBooks: (books: BookDetails[]) => Promise<void>;
+  addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
 }
+
+const manualEntrySchema = z.object({
+  title: z.string().min(1, 'Title is required').max(500),
+  author: z.string().min(1, 'Author is required').max(500),
+  format: z.enum(['physical', 'digital']),
+  isbn: z.string().optional(),
+  genresInput: z.string().optional(),
+  publishedDate: z.string().optional(),
+  series: z.string().max(100).optional(),
+  synopsis: z.string().optional(),
+});
+
+type ManualEntryFormValues = z.infer<typeof manualEntrySchema>;
 
 export function ManualEntryTab({
   existingBooks,
   allowDuplicates,
   addBooks,
 }: ManualEntryTabProps) {
-  const [manualBook, setManualBook] = useState<BookDetails>({
-    title: '',
-    author: '',
-    isbn: '',
-    genres: [],
-    series: '',
-    synopsis: '',
-    publishedDate: '',
-    coverUrl: '',
-    format: 'physical',
-  });
+  const [coverUrl, setCoverUrl] = useState<string>('');
   const [isCoverCameraActive, setIsCoverCameraActive] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
 
-  const handleManualAdd = async () => {
-    if (!manualBook.title.trim() || !manualBook.author.trim()) return;
-    const cleanNewIsbn = (manualBook.isbn || '')
-      .trim()
-      .replace(/[^0-9X]/gi, '');
-    const cleanNewTitle = manualBook.title.trim().toLowerCase();
-    const cleanNewAuthor = manualBook.author.trim().toLowerCase();
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: {errors, isValid},
+  } = useForm<ManualEntryFormValues>({
+    resolver: zodResolver(manualEntrySchema),
+    defaultValues: {
+      title: '',
+      author: '',
+      isbn: '',
+      genresInput: '',
+      series: '',
+      synopsis: '',
+      publishedDate: '',
+      format: 'physical',
+    },
+    mode: 'onChange',
+  });
+
+  const formatValue = watch('format');
+
+  const onSubmit = async (data: ManualEntryFormValues) => {
+    const cleanNewIsbn = (data.isbn || '').trim().replace(/[^0-9X]/gi, '');
+    const cleanNewTitle = data.title.trim().toLowerCase();
+    const cleanNewAuthor = data.author.trim().toLowerCase();
 
     if (
       !allowDuplicates &&
@@ -53,25 +90,33 @@ export function ManualEntryTab({
         return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
       })
     ) {
-      toast.info(`Skipped duplicate: ${manualBook.title}`);
+      toast.info(`Skipped duplicate: ${data.title}`);
       return;
     }
 
     setIsAdding(true);
     try {
-      await addBooks([manualBook]);
-      toast.success(`Added ${manualBook.title}`);
-      setManualBook({
-        title: '',
-        author: '',
-        isbn: '',
-        genres: [],
-        series: '',
-        synopsis: '',
-        publishedDate: '',
-        coverUrl: '',
-        format: 'physical',
-      });
+      const newBook: BookDetails = {
+        title: data.title,
+        author: data.author,
+        isbn: data.isbn || '',
+        series: data.series || '',
+        synopsis: data.synopsis || '',
+        publishedDate: data.publishedDate || '',
+        format: data.format,
+        coverUrl,
+        genres: data.genresInput
+          ? data.genresInput
+              .split(',')
+              .map(g => g.trim())
+              .filter(Boolean)
+          : [],
+      };
+
+      await addBooks([newBook]);
+      toast.success(`Added ${newBook.title}`);
+      reset();
+      setCoverUrl('');
     } catch {
       toast.error('Failed to add book');
     } finally {
@@ -85,27 +130,23 @@ export function ManualEntryTab({
         {isCoverCameraActive ? (
           <CoverCamera
             onCapture={base64Image => {
-              setManualBook(prev => ({
-                ...prev,
-                coverUrl: base64Image,
-              }));
+              setCoverUrl(base64Image);
               setIsCoverCameraActive(false);
             }}
             onCancel={() => setIsCoverCameraActive(false)}
           />
         ) : (
           <div className="flex flex-col items-center">
-            {manualBook.coverUrl ? (
+            {coverUrl ? (
               <div className="relative group">
                 <img
-                  src={manualBook.coverUrl}
+                  src={coverUrl}
                   alt="Cover"
                   className="w-32 h-48 object-cover rounded-xl shadow-[2px_4px_12px_rgb(26,47,75,0.1)] border border-outline-variant/40"
                 />
                 <button
-                  onClick={() =>
-                    setManualBook(prev => ({...prev, coverUrl: ''}))
-                  }
+                  type="button"
+                  onClick={() => setCoverUrl('')}
                   className="absolute -top-3 -right-3 p-2 bg-error text-on-error rounded-full opacity-0 group-hover:opacity-100 transition-all hover:scale-110 shadow-md"
                 >
                   <X size={14} strokeWidth={2.5} />
@@ -113,6 +154,7 @@ export function ManualEntryTab({
               </div>
             ) : (
               <button
+                type="button"
                 onClick={() => setIsCoverCameraActive(true)}
                 className="w-32 h-48 bg-surface-container/50 border-2 border-dashed border-outline-variant/60 rounded-2xl flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-primary/40 transition-all shadow-sm hover:shadow-md"
               >
@@ -132,166 +174,149 @@ export function ManualEntryTab({
         )}
       </div>
 
-      <div className="space-y-5">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <div>
-            <label className="block text-sm font-bold text-on-surface mb-1.5 ml-1">
+          <div className="space-y-1">
+            <Label
+              htmlFor="title"
+              className="text-sm font-bold text-on-surface ml-1"
+            >
               Title *
-            </label>
-            <input
-              type="text"
-              value={manualBook.title}
-              onChange={e =>
-                setManualBook(prev => ({
-                  ...prev,
-                  title: e.target.value,
-                }))
-              }
-              className="w-full bg-surface-container-low/60 border border-outline-variant/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium"
-              required
+            </Label>
+            <Input
+              id="title"
+              className="bg-surface-container-low/60 border-outline-variant/80 rounded-2xl px-5 py-6 font-medium"
+              {...register('title')}
             />
+            {errors.title && (
+              <p className="text-xs text-error mt-1">{errors.title.message}</p>
+            )}
           </div>
-          <div>
-            <label className="block text-sm font-bold text-on-surface mb-1.5 ml-1">
+          <div className="space-y-1">
+            <Label
+              htmlFor="author"
+              className="text-sm font-bold text-on-surface ml-1"
+            >
               Author *
-            </label>
-            <input
-              type="text"
-              value={manualBook.author}
-              onChange={e =>
-                setManualBook(prev => ({
-                  ...prev,
-                  author: e.target.value,
-                }))
-              }
-              className="w-full bg-surface-container-low/60 border border-outline-variant/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium"
-              required
+            </Label>
+            <Input
+              id="author"
+              className="bg-surface-container-low/60 border-outline-variant/80 rounded-2xl px-5 py-6 font-medium"
+              {...register('author')}
             />
+            {errors.author && (
+              <p className="text-xs text-error mt-1">{errors.author.message}</p>
+            )}
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          <div>
-            <label className="block text-sm font-bold text-on-surface mb-1.5 ml-1">
+          <div className="space-y-1">
+            <Label
+              htmlFor="genresInput"
+              className="text-sm font-bold text-on-surface ml-1"
+            >
               Genres
-            </label>
-            <input
-              type="text"
-              value={manualBook.genres?.join(', ') || ''}
-              onChange={e =>
-                setManualBook(prev => ({
-                  ...prev,
-                  genres: e.target.value
-                    .split(',')
-                    .map((g: string) => g.trim())
-                    .filter(Boolean),
-                }))
-              }
-              className="w-full bg-surface-container-low/60 border border-outline-variant/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium"
+            </Label>
+            <Input
+              id="genresInput"
+              className="bg-surface-container-low/60 border-outline-variant/80 rounded-2xl px-5 py-6 font-medium"
+              {...register('genresInput')}
             />
           </div>
-          <div>
-            <label className="block text-sm font-bold text-on-surface mb-1.5 ml-1">
+          <div className="space-y-1">
+            <Label
+              htmlFor="series"
+              className="text-sm font-bold text-on-surface ml-1"
+            >
               Series
-            </label>
-            <input
-              type="text"
-              value={manualBook.series || ''}
-              onChange={e =>
-                setManualBook(prev => ({
-                  ...prev,
-                  series: e.target.value,
-                }))
-              }
-              className="w-full bg-surface-container-low/60 border border-outline-variant/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium"
+            </Label>
+            <Input
+              id="series"
+              className="bg-surface-container-low/60 border-outline-variant/80 rounded-2xl px-5 py-6 font-medium"
+              {...register('series')}
             />
           </div>
-          <div>
-            <label className="block text-sm font-bold text-on-surface mb-1.5 ml-1">
+          <div className="space-y-1">
+            <Label
+              htmlFor="isbn"
+              className="text-sm font-bold text-on-surface ml-1"
+            >
               ISBN
-            </label>
-            <input
-              type="text"
-              value={manualBook.isbn || ''}
-              onChange={e =>
-                setManualBook(prev => ({
-                  ...prev,
-                  isbn: e.target.value,
-                }))
-              }
-              className="w-full bg-surface-container-low/60 border border-outline-variant/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium font-mono text-sm"
+            </Label>
+            <Input
+              id="isbn"
+              className="bg-surface-container-low/60 border-outline-variant/80 rounded-2xl px-5 py-6 font-medium font-mono text-sm"
+              {...register('isbn')}
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <div>
-            <label className="block text-sm font-bold text-on-surface mb-1.5 ml-1">
+          <div className="space-y-1">
+            <Label
+              htmlFor="publishedDate"
+              className="text-sm font-bold text-on-surface ml-1"
+            >
               Published Date
-            </label>
-            <input
-              type="text"
+            </Label>
+            <Input
+              id="publishedDate"
               placeholder="e.g., 2023 or YYYY-MM-DD"
-              value={manualBook.publishedDate || ''}
-              onChange={e =>
-                setManualBook(prev => ({
-                  ...prev,
-                  publishedDate: e.target.value,
-                }))
-              }
-              className="w-full bg-surface-container-low/60 border border-outline-variant/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium"
+              className="bg-surface-container-low/60 border-outline-variant/80 rounded-2xl px-5 py-6 font-medium"
+              {...register('publishedDate')}
             />
           </div>
-          <div>
-            <label className="block text-sm font-bold text-on-surface mb-1.5 ml-1">
+          <div className="space-y-1">
+            <Label className="text-sm font-bold text-on-surface ml-1">
               Format *
-            </label>
-            <select
-              value={manualBook.format || 'physical'}
-              onChange={e =>
-                setManualBook(prev => ({
-                  ...prev,
-                  format: e.target.value as 'physical' | 'digital',
-                }))
+            </Label>
+            <Select
+              value={formatValue}
+              onValueChange={(val: 'physical' | 'digital') =>
+                setValue('format', val)
               }
-              className="w-full bg-surface-container-low/60 border border-outline-variant/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium"
             >
-              <option value="physical">Physical Book</option>
-              <option value="digital">Digital / E-Book</option>
-            </select>
+              <SelectTrigger className="w-full bg-surface-container-low/60 border-outline-variant/80 rounded-2xl px-5 py-6 font-medium">
+                <SelectValue placeholder="Select format" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="physical">Physical Book</SelectItem>
+                <SelectItem value="digital">Digital / E-Book</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-bold text-on-surface mb-1.5 ml-1">
+        <div className="space-y-1">
+          <Label
+            htmlFor="synopsis"
+            className="text-sm font-bold text-on-surface ml-1"
+          >
             Synopsis
-          </label>
+          </Label>
           <textarea
-            value={manualBook.synopsis || ''}
-            onChange={e =>
-              setManualBook(prev => ({
-                ...prev,
-                synopsis: e.target.value,
-              }))
-            }
+            id="synopsis"
             className="w-full bg-surface-container-low/60 border border-outline-variant/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium min-h-[120px] resize-y"
+            {...register('synopsis')}
           />
         </div>
 
-        <button
-          onClick={handleManualAdd}
-          disabled={
-            !manualBook.title.trim() || !manualBook.author.trim() || isAdding
-          }
-          className="w-full bg-primary text-on-primary px-8 py-4 rounded-full hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:shadow-lg hover:-translate-y-0.5 mt-8"
+        <Button
+          type="submit"
+          disabled={!isValid || isAdding}
+          className="w-full rounded-full h-14 text-base font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:shadow-lg hover:-translate-y-0.5 mt-8 disabled:opacity-50"
         >
           {isAdding ? (
-            <Loader2 className="animate-spin" size={24} strokeWidth={2.5} />
-          ) : (
-            'Add Book to Library'
-          )}
-        </button>
-      </div>
+            <Loader2
+              className="animate-spin mr-2"
+              size={24}
+              strokeWidth={2.5}
+            />
+          ) : null}
+          {isAdding ? 'Adding Book...' : 'Add Book to Library'}
+        </Button>
+      </form>
     </div>
   );
 }

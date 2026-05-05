@@ -11,25 +11,42 @@ export default function BarcodeScanner({
   paused = false,
 }: BarcodeScannerProps) {
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [useFallbackCamera, setUseFallbackCamera] = useState(false);
 
   const {ref} = useZxing({
+    constraints: useFallbackCamera
+      ? {video: true}
+      : {video: {facingMode: 'environment'}},
     onDecodeResult(result) {
       if (!paused) {
         onScan(result.getText());
       }
     },
     onError(error: unknown) {
-      if (!errorMsg) {
-        const msg =
-          typeof error === 'string' ? error : (error as Error)?.message;
+      const msg =
+        typeof error === 'string'
+          ? error
+          : (error as Error)?.message || String(error);
+
+      if (
+        !useFallbackCamera &&
+        (msg.includes('video source') ||
+          msg.includes('Overconstrained') ||
+          msg.includes('NotFound'))
+      ) {
+        setUseFallbackCamera(true);
+      } else if (!errorMsg) {
         if (
           msg.includes('video source') ||
           msg.includes('Permission') ||
-          msg.includes('NotFound')
+          msg.includes('NotFound') ||
+          msg.includes('Overconstrained')
         ) {
           setErrorMsg(
             'Could not access camera. Please check permissions and ensure your device has a camera.',
           );
+        } else {
+          setErrorMsg(msg);
         }
       }
     },

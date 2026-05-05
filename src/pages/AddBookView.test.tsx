@@ -15,7 +15,7 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
-    ...(actual as any),
+    ...(actual as unknown),
     useParams: () => ({id: 'lib123'}),
     useNavigate: () => vi.fn(),
   };
@@ -35,11 +35,16 @@ vi.mock('../services/bookApi', () => ({
 vi.mock('firebase/firestore', async importOriginal => {
   const actual = await importOriginal();
   return {
-    ...(actual as any),
+    ...(actual as unknown),
     getFirestore: vi.fn(),
     collection: vi.fn(),
     doc: vi.fn(),
-    writeBatch: vi.fn(() => ({set: vi.fn(), commit: vi.fn()})),
+    writeBatch: vi.fn(() => ({
+      set: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      commit: vi.fn(),
+    })),
     addDoc: vi.fn(() => Promise.resolve({id: 'doc123'})),
     updateDoc: vi.fn(() => Promise.resolve()),
     increment: vi.fn(),
@@ -55,6 +60,15 @@ vi.mock('firebase/firestore', async importOriginal => {
 
 vi.mock('../firebase', () => ({
   db: {},
+  handleFirestoreError: vi.fn(),
+  OperationType: {
+    CREATE: 'create',
+    UPDATE: 'update',
+    DELETE: 'delete',
+    LIST: 'list',
+    GET: 'get',
+    WRITE: 'write',
+  },
 }));
 
 describe('AddBookView', () => {

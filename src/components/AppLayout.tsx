@@ -44,11 +44,11 @@ export default function AppLayout({children}: AppLayoutProps) {
         <div className="px-8 mb-10 flex flex-col gap-1">
           <Link
             to="/"
-            className="text-3xl font-serif font-bold text-primary font-headline-md tracking-tight"
+            className="font-headline-lg text-headline-lg text-primary tracking-tight"
           >
             Athenaeum
           </Link>
-          <span className="text-on-surface-variant font-body-md text-xs opacity-80 uppercase tracking-[0.2em] mt-1 pl-1">
+          <span className="text-on-surface-variant font-label-caps text-label-caps opacity-80 uppercase tracking-widest mt-1 pl-1">
             Modern Archivist
           </span>
         </div>
@@ -57,11 +57,7 @@ export default function AppLayout({children}: AppLayoutProps) {
           <Link
             to="/"
             onClick={() => setIsMobileNavOpen(false)}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-serif text-lg tracking-tight w-full text-left cursor-pointer ${
-              isHome
-                ? 'text-primary font-bold bg-primary/5 shadow-sm'
-                : 'text-on-surface hover:text-primary hover:bg-surface-container'
-            }`}
+            className={`sidebar-nav-item ${isHome ? 'active' : ''}`}
           >
             <Library
               className={`w-5 h-5 flex-shrink-0 ${isHome ? 'text-primary' : 'text-on-surface-variant'}`}
@@ -77,10 +73,7 @@ export default function AppLayout({children}: AppLayoutProps) {
         </div>
 
         <div className="mt-auto px-4">
-          <button
-            onClick={logOut}
-            className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
-          >
+          <button onClick={logOut} className="sidebar-nav-item">
             <LogOut className="text-on-surface-variant flex-shrink-0 w-5 h-5" />
             <span>Logout</span>
           </button>

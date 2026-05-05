@@ -15,17 +15,30 @@ export async function getTieredMetadata(
   }>,
 ) {
   let enriched: Partial<BookDetails> | null = null;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const signal = controller.signal;
 
-  if (book.isbn && book.isbn !== 'null') {
-    const res = await searchBookByIsbn(book.isbn);
-    if (res) enriched = res;
-  }
-
-  if (!enriched && book.title && book.author) {
-    const results = await searchBookByTitleAndAuthor(book.title, book.author);
-    if (results && results.length > 0) {
-      enriched = results[0];
+  try {
+    if (book.isbn && book.isbn !== 'null') {
+      const res = await searchBookByIsbn(book.isbn, signal);
+      if (res) enriched = res;
     }
+
+    if (!enriched && book.title && book.author) {
+      const results = await searchBookByTitleAndAuthor(
+        book.title,
+        book.author,
+        signal,
+      );
+      if (results && results.length > 0) {
+        enriched = results[0];
+      }
+    }
+  } catch (e) {
+    console.warn('Metadata resolution failed or timed out', e);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const resultData: Partial<BookDetails> = enriched ? {...enriched} : {};

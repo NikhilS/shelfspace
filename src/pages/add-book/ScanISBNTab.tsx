@@ -1,12 +1,15 @@
-import React, {useState} from 'react';
+import React, {useState, useRef} from 'react';
 import {BookDetails, searchBookByIsbn} from '../../services/bookApi';
 import BarcodeScanner from '../../components/BarcodeScanner';
 import {Loader2, X, BookPlus} from 'lucide-react';
 import {toast} from 'sonner';
 import {toTitleCase} from '../../lib/utils';
+import {Checkbox} from '../../components/ui/checkbox';
+import {Button} from '../../components/ui/button';
+import {logger} from '../../contexts/DebugContext';
 
 interface ScanISBNTabProps {
-  addBooks: (books: BookDetails[]) => Promise<void>;
+  addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
   isAddingAll: boolean;
 }
 
@@ -14,31 +17,47 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
   const [processingIsbns, setProcessingIsbns] = useState<Set<string>>(
     new Set(),
   );
+  const processingRefs = useRef<Set<string>>(new Set());
+  const scannedRefs = useRef<Set<string>>(new Set());
+
   const [scannedBooks, setScannedBooks] = useState<BookDetails[]>([]);
   const [selectedScanned, setSelectedScanned] = useState<Set<string>>(
     new Set(),
   );
 
   const handleScanIsbn = async (isbn: string) => {
-    if (processingIsbns.has(isbn) || scannedBooks.some(b => b.isbn === isbn))
+    if (processingRefs.current.has(isbn) || scannedRefs.current.has(isbn))
       return;
 
+    logger.info(`Detected ISBN: ${isbn}. Searching library database...`);
+    processingRefs.current.add(isbn);
     setProcessingIsbns(prev => new Set(prev).add(isbn));
 
     try {
-      const book = await searchBookByIsbn(isbn);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const book = await searchBookByIsbn(isbn, controller.signal);
+      clearTimeout(timeoutId);
+
       if (book) {
+        logger.info(`Found book: ${book.title} by ${book.author}`);
+        scannedRefs.current.add(isbn);
         setScannedBooks(prev => {
           if (prev.some(b => b.isbn === isbn)) return prev;
           return [book, ...prev];
         });
         setSelectedScanned(prev => new Set(prev).add(isbn));
       } else {
+        logger.warn(`No metadata found for ISBN ${isbn}`);
         toast.error(`Could not find book for ISBN ${isbn}`);
       }
-    } catch {
+    } catch (err: unknown) {
+      logger.error(
+        `Error searching ISBN ${isbn}: ${err instanceof Error ? err.message : String(err)}`,
+      );
       toast.error(`Failed to fetch book for ISBN ${isbn}`);
     } finally {
+      processingRefs.current.delete(isbn);
       setProcessingIsbns(prev => {
         const next = new Set(prev);
         next.delete(isbn);
@@ -68,6 +87,9 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
     const originalSelected = new Set(selectedScanned);
 
     // Optimistic UI
+    booksToAdd.forEach(b => {
+      if (b.isbn) scannedRefs.current.delete(b.isbn);
+    });
     setScannedBooks(prev =>
       prev.filter(b => !selectedScanned.has(b.isbn || b.title)),
     );
@@ -89,6 +111,9 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
 
       toast.success(`Successfully added ${formattedBooks.length} books`);
     } catch {
+      booksToAdd.forEach(b => {
+        if (b.isbn) scannedRefs.current.add(b.isbn);
+      });
       setScannedBooks(originalScanned);
       setSelectedScanned(originalSelected);
       toast.error('Failed to add some books');
@@ -117,40 +142,44 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
             <h3 className="font-serif text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
               Scanned {scannedBooks.length} Books
             </h3>
-            <div className="flex gap-2 sm:gap-3 items-center">
+            <div className="flex gap-2 sm:gap-4 items-center">
               <label className="hidden sm:flex items-center gap-2 text-sm font-bold text-on-surface cursor-pointer mr-2 hover:bg-surface-container-low/80 px-3 py-1.5 rounded-full transition-colors">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={
                     selectedScanned.size === scannedBooks.length &&
                     scannedBooks.length > 0
                   }
-                  onChange={e => {
-                    if (e.target.checked)
+                  onCheckedChange={checked => {
+                    if (checked) {
                       setSelectedScanned(
                         new Set(scannedBooks.map(b => b.isbn || b.title)),
                       );
-                    else setSelectedScanned(new Set());
+                    } else {
+                      setSelectedScanned(new Set());
+                    }
                   }}
-                  className="rounded border-outline-variant/60 text-primary focus:ring-primary/20 w-4 h-4 cursor-pointer"
+                  aria-label="Select all"
                 />
                 Select All
               </label>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => {
+                  scannedRefs.current.clear();
                   setScannedBooks([]);
                   setSelectedScanned(new Set());
                 }}
-                className="p-2 sm:px-4 sm:py-2 text-sm font-bold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low border border-transparent hover:border-outline-variant/60 rounded-full transition-colors"
+                className="rounded-full text-on-surface-variant"
                 title="Clear & Scan Again"
               >
                 <span className="hidden sm:inline">Clear</span>
-                <X size={18} strokeWidth={2} className="sm:hidden" />
-              </button>
-              <button
+                <X className="sm:hidden" />
+              </Button>
+              <Button
                 onClick={handleAddSelectedScanned}
                 disabled={isAddingAll || selectedScanned.size === 0}
-                className="bg-primary text-on-primary px-4 py-2 sm:px-5 sm:py-2.5 rounded-full text-sm font-bold hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm hover:shadow-md hover:-translate-y-0.5"
+                className="rounded-full shadow-sm hover:shadow-md transition-all gap-2"
               >
                 {isAddingAll ? (
                   <Loader2 className="animate-spin" size={16} />
@@ -159,7 +188,7 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
                 )}
                 <span className="hidden sm:inline">Add Selected </span>(
                 {selectedScanned.size})
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -181,12 +210,11 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
                     onClick={() => toggleSelectScanned(book)}
                   >
                     <td className="px-4 py-3 text-center">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selectedScanned.has(book.isbn || book.title)}
-                        onChange={() => toggleSelectScanned(book)}
+                        onCheckedChange={() => toggleSelectScanned(book)}
                         onClick={e => e.stopPropagation()}
-                        className="rounded border-outline-variant/60 text-primary focus:ring-primary/20 w-4 h-4 cursor-pointer"
+                        aria-label={`Select ${book.title}`}
                       />
                     </td>
                     <td className="px-4 py-3 font-medium text-on-surface flex items-center gap-2">

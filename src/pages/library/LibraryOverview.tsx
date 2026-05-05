@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import {toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {useNavigate, useLocation} from 'react-router-dom';
+import {Button} from '@/components/ui/button';
 
 import {User} from 'firebase/auth';
 
@@ -84,17 +85,8 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
       initial={{opacity: 0, y: 10}}
       animate={{opacity: 1, y: 0}}
       transition={{duration: 0.4, ease: 'easeOut'}}
-      className="flex-grow p-4 sm:p-8 lg:p-12 w-full max-w-screen-2xl mx-auto"
+      className="layout-page-content"
     >
-      <header className="mb-12 relative">
-        <div className="absolute -top-6 left-0 w-16 h-[2px] bg-primary/20"></div>
-        <h2 className="font-serif text-[48px] sm:text-[64px] font-medium leading-[0.95] tracking-tight text-primary mb-4 italic">
-          Library Overview
-        </h2>
-        <p className="font-body-lg text-[18px] sm:text-[20px] text-on-surface-variant max-w-2xl text-balance">
-          Your personal catalog of wisdom and narratives.
-        </p>
-      </header>
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <div className="md:col-span-4 flex flex-col gap-6">
           <div
@@ -108,7 +100,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
               <BookIcon className="w-6 h-6 text-primary/40 group-hover:text-primary/60 transition-colors" />
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="font-headline-xl text-[56px] leading-none text-primary">
+              <span className="font-headline-2xl text-headline-2xl text-primary">
                 {books.length}
               </span>
               <span className="font-body-md text-on-surface-variant">
@@ -239,16 +231,15 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                     {toTitleCase(book.author)}
                   </p>
                   <div className="mt-auto flex justify-end">
-                    <button
+                    <Button
                       onClick={() =>
                         navigate(`/library/${library.id}/book/${book.id}`, {
                           state: {from: location.pathname + location.search},
                         })
                       }
-                      className="px-6 py-2 bg-primary text-on-primary font-body-md font-medium rounded hover:bg-primary/90 transition-colors shadow-sm"
                     >
                       View Details
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -259,25 +250,24 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
               <p className="font-body-lg text-on-surface-variant">
                 You aren't currently reading any books in this library.
               </p>
-              <button
-                onClick={() => setCurrentTab('collection')}
-                className="px-6 py-2 bg-primary text-on-primary font-body-md font-medium rounded hover:bg-primary/90 transition-colors shadow-sm"
-              >
+              <Button onClick={() => setCurrentTab('collection')}>
                 Browse Collection
-              </button>
+              </Button>
             </div>
           )}
           <div className="bg-gradient-to-br from-surface-container-low to-surface border border-outline-variant/30 p-8 relative overflow-hidden min-h-[220px] flex items-center">
             <div className="absolute top-6 right-6 text-[#A8C7FA] opacity-50">
               <Sparkles size={32} />
             </div>
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => generateNewPick()}
-              className="absolute top-4 left-4 p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-full transition-colors z-20"
+              className="absolute top-4 left-4 z-20 hover:bg-surface-container text-on-surface-variant hover:text-primary"
               title="Get another recommendation"
             >
               <RefreshCw size={20} />
-            </button>
+            </Button>
             {isGeneratingPick ? (
               <div className="w-full flex flex-col items-center justify-center gap-4 py-8">
                 <Loader2 className="animate-spin text-primary" size={32} />

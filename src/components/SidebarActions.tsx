@@ -18,7 +18,7 @@ export default function SidebarActions({children}: SidebarActionsProps) {
 
   return createPortal(
     <div className="mt-6 flex flex-col gap-2">
-      <div className="px-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-[0.2em] mb-2 mt-2">
+      <div className="px-4 font-label-caps text-label-caps text-on-surface-variant tracking-[0.2em] mb-2 mt-2">
         Actions
       </div>
       {children}

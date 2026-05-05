@@ -1,6 +1,8 @@
 import React, {Suspense, lazy} from 'react';
 import {BrowserRouter, Routes, Route, Navigate, Outlet} from 'react-router-dom';
 import {AuthProvider, useAuth} from './contexts/AuthContext';
+import {DebugProvider} from './contexts/DebugContext';
+import {DebugOverlay} from './components/DebugOverlay';
 import {ErrorBoundary} from './components/ErrorBoundary';
 import {Toaster} from 'sonner';
 import AppLayout from './components/AppLayout';
@@ -24,8 +26,18 @@ function LoadingScreen() {
 
 function PageWrapper({children}: {children?: React.ReactNode}) {
   return (
-    <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
-      <ErrorBoundary>{children || <Outlet />}</ErrorBoundary>
+    <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out flex-1">
+      <ErrorBoundary>
+        <Suspense
+          fallback={
+            <div className="flex h-[50vh] items-center justify-center text-on-surface-variant font-serif italic text-lg animate-pulse">
+              Loading...
+            </div>
+          }
+        >
+          {children || <Outlet />}
+        </Suspense>
+      </ErrorBoundary>
     </div>
   );
 }
@@ -41,9 +53,7 @@ function PrivateRoute({children}: {children?: React.ReactNode}) {
     return <Navigate to="/login" />;
   }
 
-  return (
-    <Suspense fallback={<LoadingScreen />}>{children || <Outlet />}</Suspense>
-  );
+  return <>{children || <Outlet />}</>;
 }
 
 function AnimatedRoutes() {
@@ -92,12 +102,15 @@ function AnimatedRoutes() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <BrowserRouter>
-          <AnimatedRoutes />
-        </BrowserRouter>
-        <Toaster position="bottom-right" />
-      </AuthProvider>
+      <DebugProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <AnimatedRoutes />
+          </BrowserRouter>
+          <Toaster position="bottom-right" />
+          <DebugOverlay />
+        </AuthProvider>
+      </DebugProvider>
     </ErrorBoundary>
   );
 }

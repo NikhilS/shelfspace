@@ -2,7 +2,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
 
 @custom-variant dark (&:is(.dark *));
@@ -60,19 +59,42 @@
   /* Legacy mappings */
   --color-paper: var(--color-background);
   --color-ink: var(--color-on-background);
-  --color-accent: var(--color-primary);
+  --color-accent: var(--color-surface-container-highest);
   --color-muted: var(--color-on-surface-variant);
   --color-border: var(--color-surface-variant);
+
+  /* Shadcn mappings */
+  --color-foreground: #1c1c18;
+  --color-primary-foreground: #ffffff;
+  --color-secondary-foreground: #78512f;
+  --color-accent: #e5e2dc;
+  --color-accent-foreground: #1c1c18;
+  --color-muted: #e5e2dc;
+  --color-muted-foreground: #44474d;
+  --color-destructive: #ba1a1a;
+  --color-destructive-foreground: #ffffff;
+  --color-input: #c4c6ce;
+  --color-ring: #021a35;
+  --color-popover: #f0eee8;
+  --color-popover-foreground: #1c1c18;
+  --color-card: #ffffff;
+  --color-card-foreground: #1c1c18;
 
   --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
   --font-serif: 'Newsreader', ui-serif, Georgia, serif;
 
+  --font-headline-2xl: 'Newsreader';
   --font-headline-xl: 'Newsreader';
   --font-headline-lg: 'Newsreader';
   --font-headline-md: 'Newsreader';
   --font-body-lg: 'Manrope';
   --font-body-md: 'Manrope';
   --font-label-caps: 'Manrope';
+
+  --text-headline-2xl: 64px;
+  --text-headline-2xl--line-height: 1.0;
+  --text-headline-2xl--letter-spacing: -0.03em;
+  --text-headline-2xl--font-weight: 600;
 
   --text-headline-xl: 48px;
   --text-headline-xl--line-height: 1.1;
@@ -85,7 +107,7 @@
 
   --text-headline-md: 24px;
   --text-headline-md--line-height: 1.3;
-  --text-headline-md--font-weight: 500;
+  --text-headline-md--font-weight: 600; /* Adjusted to 600 for better hierarchy with headings */
 
   --text-body-lg: 18px;
   --text-body-lg--line-height: 1.6;
@@ -99,6 +121,7 @@
   --text-label-caps--line-height: 1.2;
   --text-label-caps--letter-spacing: 0.1em;
   --text-label-caps--font-weight: 700;
+  --text-label-caps--text-transform: uppercase;
 
   --radius-sm: 0.125rem;
   --radius-DEFAULT: 0.25rem;
@@ -119,6 +142,41 @@ body {
   color: var(--color-on-background);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+@layer components {
+  .sidebar-nav-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer;
+  }
+  .sidebar-nav-item:not(.active):not(.active-sub) {
+    @apply text-on-surface hover:text-primary hover:bg-surface-container;
+  }
+  .sidebar-nav-item.active {
+    @apply text-primary font-bold bg-primary/5 shadow-sm;
+  }
+  .sidebar-nav-item.active-sub {
+    @apply text-primary bg-surface-container shadow-sm;
+  }
+
+  .layout-container {
+    @apply w-full max-w-[1200px] mx-auto px-4 sm:px-8 lg:px-12;
+  }
+
+  .layout-page-content {
+    @apply flex-1 overflow-y-auto py-6 sm:py-8 min-w-0 w-full max-w-[1200px] mx-auto px-4 sm:px-8 lg:px-12;
+  }
+
+  .layout-header {
+    @apply mb-6 sm:mb-8 flex flex-col gap-4 border-b border-surface-variant pb-6 sm:pb-8;
+  }
+  
+  .layout-header-title {
+    @apply font-headline-lg sm:font-headline-xl text-headline-lg sm:text-headline-xl text-primary-container mb-2 sm:mb-4;
+  }
+
+  .layout-header-subtitle {
+    @apply font-body-md sm:font-body-lg text-body-md sm:text-body-lg text-on-surface-variant max-w-2xl;
+  }
 }
 
 @layer utilities {

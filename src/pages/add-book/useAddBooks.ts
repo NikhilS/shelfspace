@@ -5,124 +5,131 @@ import {
   doc,
   serverTimestamp,
   increment,
-  updateDoc,
 } from 'firebase/firestore';
-import {db} from '../../firebase';
+import {db, auth} from '../../firebase';
 import {BookDetails} from '../../services/bookApi';
-import {BookDetailsPayload} from '../../types';
-import {enrichBooksMetadata} from '../../services/gemini';
 import {useAuth} from '../../contexts/AuthContext';
+import {logger} from '../../contexts/DebugContext';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null,
+) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo:
+        auth.currentUser?.providerData?.map(provider => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export function useAddBooks(libraryId?: string) {
   const {user} = useAuth();
   const [isAddingAll, setIsAddingAll] = useState(false);
 
-  const addBooks = async (booksToAddFast: BookDetails[]) => {
-    if (!libraryId || !user) throw new Error('Library or user not found');
-    if (booksToAddFast.length === 0) return;
+  const addBooks = async (books: BookDetails[]) => {
+    if (!libraryId || !user) {
+      console.error('Library ID or User missing', {libraryId, user: !!user});
+      throw new Error('Access denied or library not found');
+    }
+    if (books.length === 0) return;
 
     setIsAddingAll(true);
-    try {
-      // 1. Enrich missing series in batched format via gemini API
-      const enrichedBooks = booksToAddFast.map(book => ({
-        ...book,
-        format: book.format || 'physical',
-      }));
-      const booksMissingSeriesArr = enrichedBooks
-        .map((b, i) => ({
-          id: i.toString(),
-          title: b.title || '',
-          author: b.author || '',
-          synopsis: b.synopsis || '',
-        }))
-        .filter(
-          b => b.title && enrichedBooks[parseInt(b.id)].series === undefined,
-        );
+    logger.info(`[useAddBooks] Starting addBooks for ${books.length} books`);
 
-      if (booksMissingSeriesArr.length > 0) {
-        try {
-          const enrichments = await enrichBooksMetadata(booksMissingSeriesArr);
-          if (enrichments && enrichments.length > 0) {
-            const enrichMap = new Map(enrichments.map(e => [e.id, e.series]));
-            for (const b of booksMissingSeriesArr) {
-              const series = enrichMap.get(b.id);
-              if (series) {
-                const idx = parseInt(b.id);
-                if (idx >= 0 && idx < enrichedBooks.length) {
-                  enrichedBooks[idx].series = series;
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to enrich metadata on batch add', err);
-        }
+    try {
+      const BATCH_SIZE = 200;
+      const chunks: BookDetails[][] = [];
+      for (let i = 0; i < books.length; i += BATCH_SIZE) {
+        chunks.push(books.slice(i, i + BATCH_SIZE));
       }
 
-      // 2. Prepare cleanly sized payloads and use writeBatch
-      const finalCleanBooks: BookDetails[] = [];
-      for (let i = 0; i < enrichedBooks.length; i += 500) {
-        const batchList = enrichedBooks.slice(i, i + 500);
-        const batchRef = writeBatch(db);
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        let currentBatchCount = 0;
 
-        for (const enrichedDetails of batchList) {
-          const cleanDetails = Object.fromEntries(
-            Object.entries(enrichedDetails).filter(
+        for (const book of chunk) {
+          const cleanBook = Object.fromEntries(
+            Object.entries(book).filter(
               ([, v]) => v !== undefined && v !== null && v !== '',
             ),
           ) as Record<string, string | string[] | undefined>;
 
-          if (cleanDetails.genres && Array.isArray(cleanDetails.genres))
-            cleanDetails.genres = cleanDetails.genres
-              .map((g: string) => Array.from(g).slice(0, 100).join(''))
-              .slice(0, 20);
-          if (typeof cleanDetails.author === 'string')
-            cleanDetails.author = Array.from(cleanDetails.author)
-              .slice(0, 500)
-              .join('');
-          if (typeof cleanDetails.series === 'string')
-            cleanDetails.series = Array.from(cleanDetails.series)
-              .slice(0, 100)
-              .join('');
-          if (typeof cleanDetails.title === 'string')
-            cleanDetails.title = Array.from(cleanDetails.title)
-              .slice(0, 500)
-              .join('');
+          if (typeof cleanBook.title === 'string')
+            cleanBook.title = cleanBook.title.slice(0, 500);
+          if (typeof cleanBook.author === 'string')
+            cleanBook.author = cleanBook.author.slice(0, 500);
 
           const newDocRef = doc(
             collection(db, 'libraries', libraryId, 'books'),
           );
 
-          // Split heavy data from lightweight data
           const {
             synopsis,
             authorBio,
             embedding,
             clusterCoordinates,
             ...lightweightData
-          } = cleanDetails;
+          } = cleanBook;
 
-          batchRef.set(newDocRef, {
+          batch.set(newDocRef, {
             ...lightweightData,
             addedBy: user.uid,
             addedAt: serverTimestamp(),
+            format: lightweightData.format || 'physical',
           });
 
-          // Write heavy payload to bookDetails subcollection
-          const heavyData: BookDetailsPayload = {
-            synopsis: synopsis as string | undefined,
-            authorBio: authorBio as string | undefined,
-            embedding: embedding as number[] | undefined,
-            clusterCoordinates: clusterCoordinates as
-              | {x: number; y: number}
-              | undefined,
+          const heavyData = {
+            synopsis,
+            authorBio,
+            embedding,
+            clusterCoordinates,
           };
-
-          const cleanHeavyData = Object.fromEntries(
+          const cleanHeavy = Object.fromEntries(
             Object.entries(heavyData).filter(([, v]) => v !== undefined),
           );
 
-          if (Object.keys(cleanHeavyData).length > 0) {
+          if (Object.keys(cleanHeavy).length > 0) {
             const detailRef = doc(
               db,
               'libraries',
@@ -130,26 +137,39 @@ export function useAddBooks(libraryId?: string) {
               'bookDetails',
               newDocRef.id,
             );
-            batchRef.set(detailRef, cleanHeavyData);
+            batch.set(detailRef, cleanHeavy);
           }
-
-          finalCleanBooks.push(enrichedDetails);
+          currentBatchCount++;
         }
 
-        // Wait, for offline-first, if they add a book and immediately shut the app,
-        // writeBatch resolves later. We won't block the UI with an await if we want fast optimistic UI,
-        // but for now we'll await so we don't proceed without queuing. Fireblocks offline sync queues this anyway.
-        await batchRef.commit();
+        const libRef = doc(db, 'libraries', libraryId);
+        batch.update(libRef, {
+          bookCount: increment(currentBatchCount),
+          updatedAt: serverTimestamp(),
+        });
+
+        logger.info(
+          `[useAddBooks] Committing batch of ${currentBatchCount}...`,
+        );
+        try {
+          await batch.commit();
+        } catch (err) {
+          handleFirestoreError(
+            err,
+            OperationType.WRITE,
+            `libraries/${libraryId}/books`,
+          );
+        }
+        logger.info('[useAddBooks] Batch commit successful.');
       }
 
-      if (finalCleanBooks.length > 0 && libraryId) {
-        // Fire-and-forget stats update
-        updateDoc(doc(db, 'libraries', libraryId), {
-          bookCount: increment(finalCleanBooks.length),
-        }).catch(err => console.warn('Failed to update stats offline', err));
-      }
-
-      return finalCleanBooks;
+      logger.info(`[useAddBooks] Successfully added ${books.length} books.`);
+      return books;
+    } catch (err) {
+      logger.error(
+        `[useAddBooks] Failed to add books: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw err;
     } finally {
       setIsAddingAll(false);
     }

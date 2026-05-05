@@ -1,6 +1,6 @@
 import React, {useState} from 'react';
 import {useParams, Link} from 'react-router-dom';
-import SidebarActions from '../components/SidebarActions';
+import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {ArrowLeft} from 'lucide-react';
 import {motion} from 'motion/react';
 import {ErrorBoundary} from '../components/ErrorBoundary';
@@ -43,22 +43,12 @@ export default function SpruceUpView() {
 
   return (
     <>
-      <SidebarActions>
-        <Link
-          to={`/library/${libraryId}`}
-          className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
-        >
-          <ArrowLeft className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
-          <span>Back to Library</span>
-        </Link>
-      </SidebarActions>
-      <div className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 min-w-0 max-w-[1200px] mx-auto w-full">
-        <div className="mb-6 sm:mb-8 flex flex-col gap-4 border-b border-surface-variant pb-6 sm:pb-8">
+      <LibrarySidebarNav libraryId={libraryId} />
+      <div className="layout-page-content">
+        <div className="layout-header">
           <div>
-            <h2 className="font-headline-lg sm:font-headline-xl text-headline-lg sm:text-headline-xl text-primary-container mb-2 sm:mb-4">
-              Spruce Up Library
-            </h2>
-            <p className="font-body-md sm:font-body-lg text-body-md sm:text-body-lg text-on-surface-variant max-w-2xl">
+            <h2 className="layout-header-title">Spruce Up Library</h2>
+            <p className="layout-header-subtitle">
               Find and fix issues with your library, such as duplicate entries
               and missing metadata.
             </p>

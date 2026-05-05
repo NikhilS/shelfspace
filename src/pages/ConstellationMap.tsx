@@ -1,9 +1,10 @@
 import React from 'react';
 import {useParams, Link} from 'react-router-dom';
 import {ArrowLeft, Loader2, RefreshCw} from 'lucide-react';
-import SidebarActions from '../components/SidebarActions';
+import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import ConstellationChart from '../components/ConstellationChart';
 import {useConstellationData} from '../hooks/useConstellationData';
+import {Button} from '@/components/ui/button';
 
 export default function ConstellationMap() {
   const {id: libraryId} = useParams<{id: string}>();
@@ -12,36 +13,27 @@ export default function ConstellationMap() {
 
   return (
     <>
-      <SidebarActions>
-        <Link
-          to={`/library/${libraryId}`}
-          className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
-        >
-          <ArrowLeft className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
-          <span>Back to Library</span>
-        </Link>
-      </SidebarActions>
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="mb-8 flex flex-col md:flex-row justify-between items-start gap-4">
+      <LibrarySidebarNav libraryId={libraryId} />
+      <div className="layout-page-content">
+        <div className="layout-header border-none flex-row justify-between items-start">
           <div>
-            <h1 className="text-3xl font-display text-on-surface mb-2">
-              Constellation Map
-            </h1>
-            <p className="text-on-surface-variant text-sm max-w-xl">
+            <h1 className="layout-header-title">Constellation Map</h1>
+            <p className="layout-header-subtitle">
               An AI-generated semantic map of your books. Books with similar
               themes, genres, and synopses are clustered closer together.
               Navigating the clusters reveals organic reading paths.
             </p>
           </div>
 
-          <button
+          <Button
+            variant="outline"
             onClick={handleRecluster}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-surface-container hover:bg-surface-variant text-on-surface text-sm font-medium rounded-full transition-colors border border-outline-variant disabled:opacity-50 whitespace-nowrap"
+            className="flex items-center gap-2 rounded-full"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            Re-cluster Map
-          </button>
+            Re-Cluster Map
+          </Button>
         </div>
 
         {loading ? (

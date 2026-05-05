@@ -5,7 +5,7 @@ import {auth, handleFirestoreError, OperationType} from '../firebase';
 import {ArrowLeft, Plus, Share2, Settings, Map, Wand2} from 'lucide-react';
 import {toast} from 'sonner';
 import {toTitleCase, getFirestoreTime} from '../lib/utils';
-import SidebarActions from '../components/SidebarActions';
+import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {motion, AnimatePresence} from 'motion/react';
 
 // Hooks
@@ -22,7 +22,7 @@ import {LibrarySettingsModals} from './library/LibrarySettingsModals';
 import {BulkActionsBar} from './library/BulkActionsBar';
 import {ErrorBoundary} from '../components/ErrorBoundary';
 import {PageLoading} from '../components/PageLoading';
-import {DebugOverlay} from '../components/DebugOverlay';
+import {useDebug} from '../contexts/DebugContext';
 
 export default function LibraryView() {
   const {id} = useParams<{id: string}>();
@@ -47,7 +47,6 @@ export default function LibraryView() {
   const picker = usePickOfTheDay(books, filters.currentTab);
 
   // Local state for modals and UI
-  const [shareEmail, setShareEmail] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
   const [libraryToDelete, setLibraryToDelete] = useState(false);
@@ -109,36 +108,6 @@ export default function LibraryView() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  const handleShare = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id || !library || !shareEmail.trim()) return;
-    try {
-      const email = shareEmail.trim().toLowerCase();
-      const user = auth.currentUser;
-      if (!user) throw new Error('Not logged in');
-      const token = await user.getIdToken();
-
-      const res = await fetch(`/api/libraries/${id}/share`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({email}),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to share library');
-      }
-
-      setShareEmail('');
-      toast.success(`Shared with ${email}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `libraries/${id}`);
-    }
-  };
 
   const handleRemoveShare = async (email: string) => {
     if (!id || !library) return;
@@ -246,6 +215,24 @@ export default function LibraryView() {
     (user?.email && library?.sharedWith?.includes(user.email))
   );
 
+  const {setDebugData} = useDebug();
+
+  useEffect(() => {
+    if (library) {
+      setDebugData(
+        {
+          id: library.id,
+          name: library.name,
+          ownerId: library.ownerId,
+          sharedWith: library.sharedWith,
+          createdAt: library.createdAt,
+          summary: `[Books in collection: ${books?.length || 0}]`,
+        },
+        'Library Document',
+      );
+    }
+  }, [library, books, setDebugData]);
+
   if ((isLoading || isBooksLoading) && books.length === 0) {
     return (
       <PageLoading
@@ -259,67 +246,23 @@ export default function LibraryView() {
 
   return (
     <>
-      <SidebarActions>
-        <>
-          <Link
-            to="/"
-            className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
-            <span>Back to Libraries</span>
-          </Link>
-          <Link
-            to={`/library/${id}/constellation`}
-            className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
-          >
-            <Map className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
-            <span>Constellation Map</span>
-          </Link>
-          {canEdit && (
-            <button
-              onClick={() =>
-                navigate(`/library/${id}/add`, {
-                  state: {from: location.pathname + location.search},
-                })
-              }
-              className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
-            >
-              <Plus className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
-              <span>Add Book</span>
-            </button>
-          )}
-          {canEdit && (
-            <Link
-              to={`/library/${id}/spruce-up`}
-              className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
-            >
-              <Wand2 className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
-              <span>Spruce Up Library</span>
-            </Link>
-          )}
-          {canEdit && (
-            <button
-              onClick={() => setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer ${isAdvancedSettingsOpen ? 'bg-surface-container text-primary shadow-sm' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
-            >
-              <Settings className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
-              <span>Settings</span>
-            </button>
-          )}
-          {isOwner && (
-            <button
-              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer ${isSettingsOpen ? 'bg-surface-container text-primary shadow-sm' : 'text-on-surface hover:text-primary hover:bg-surface-container'}`}
-            >
-              <Share2 className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
-              <span>Share</span>
-            </button>
-          )}
-        </>
-      </SidebarActions>
+      <LibrarySidebarNav
+        libraryId={id}
+        onOpenSettings={() => setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)}
+        onOpenShare={() => setIsSettingsOpen(!isSettingsOpen)}
+      />
 
       <div className="flex-grow flex flex-col min-h-screen w-full">
-        <div className="flex-grow flex flex-col w-full">
+        <div className="layout-page">
+          <ErrorBoundary name="Library Collection Header">
+            <LibraryHeader
+              library={library}
+              books={books}
+              isOwner={isOwner}
+              isSyncing={isSyncing}
+            />
+          </ErrorBoundary>
+
           {/* Tabs Navigation */}
           <div className="w-full px-4 sm:px-8 pt-4 border-b border-outline-variant/30 flex flex-col sm:flex-row justify-between sm:items-end gap-3 sm:gap-0 bg-surface-container-lowest">
             <div className="flex gap-6 overflow-x-auto no-scrollbar">
@@ -369,14 +312,6 @@ export default function LibraryView() {
                   transition={{duration: 0.2}}
                   className="flex-grow flex flex-col"
                 >
-                  <ErrorBoundary name="Library Collection Header">
-                    <LibraryHeader
-                      library={library}
-                      books={books}
-                      isOwner={isOwner}
-                      isSyncing={isSyncing}
-                    />
-                  </ErrorBoundary>
                   <ErrorBoundary name="Library Collection Shelf">
                     <LibraryCollection
                       libraryId={id!}
@@ -427,9 +362,33 @@ export default function LibraryView() {
             library={library}
             isOwner={isOwner}
             canEdit={canEdit}
-            shareEmail={shareEmail}
-            setShareEmail={setShareEmail}
-            handleShare={handleShare}
+            addShareEmail={async email => {
+              if (!id || !library || !email.trim()) return;
+              try {
+                const user = auth.currentUser;
+                if (!user) throw new Error('Not logged in');
+                const token = await user.getIdToken();
+                const res = await fetch(`/api/libraries/${id}/share`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({email: email.trim().toLowerCase()}),
+                });
+                if (!res.ok) {
+                  const errorData = await res.json();
+                  throw new Error(errorData.error || 'Failed to share library');
+                }
+                toast.success(`Shared with ${email}`);
+              } catch (error) {
+                handleFirestoreError(
+                  error,
+                  OperationType.UPDATE,
+                  `libraries/${id}`,
+                );
+              }
+            }}
             handleRemoveShare={handleRemoveShare}
             handleExportToCSV={handleExportToCSV}
             handleDeleteLibrary={() => setLibraryToDelete(true)}
@@ -440,18 +399,6 @@ export default function LibraryView() {
             selectedCount={selection.selectedBooks.size}
             onClear={selection.clearSelection}
             onStatusChange={selection.handleBulkStatusChange}
-          />
-
-          <DebugOverlay
-            data={{
-              id: library.id,
-              name: library.name,
-              ownerId: library.ownerId,
-              sharedWith: library.sharedWith,
-              createdAt: library.createdAt,
-              summary: `[Books in collection: ${books?.length || 0}]`,
-            }}
-            title="Library Document"
           />
         </div>
       </div>

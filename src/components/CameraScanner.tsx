@@ -2,6 +2,8 @@ import React, {useRef, useState, useEffect} from 'react';
 import {Camera, UploadCloud, Loader2, Sparkles} from 'lucide-react';
 import {extractBooksFromImage} from '../services/gemini';
 import {toast} from 'sonner';
+import {logger} from '../contexts/DebugContext';
+import {Button} from '@/components/ui/button';
 
 interface CameraScannerProps {
   onBooksExtracted: (
@@ -30,17 +32,24 @@ export default function CameraScanner({
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const startCamera = async () => {
+    logger.info('Starting camera access request...');
     try {
       let stream;
       try {
+        logger.info('Requesting environment (back) camera...');
         stream = await navigator.mediaDevices.getUserMedia({
           video: {facingMode: 'environment'},
         });
       } catch (err) {
         const error = err as Error;
+        logger.warn(
+          `Back camera failed: ${error.name}. Retrying with any camera...`,
+        );
         if (
           error.name === 'OverconstrainedError' ||
-          error.name === 'NotFoundError'
+          error.name === 'NotFoundError' ||
+          error.name === 'NotReadableError' ||
+          (error.message && error.message.includes('video source'))
         ) {
           stream = await navigator.mediaDevices.getUserMedia({
             video: true,
@@ -50,21 +59,27 @@ export default function CameraScanner({
         }
       }
       streamRef.current = stream;
+      logger.info('Camera stream acquired successfully.');
 
       const attachStream = () => {
         if (!streamRef.current) return;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.onloadedmetadata = () => {
+            logger.info(
+              `Video metadata loaded: ${videoRef.current?.videoWidth}x${videoRef.current?.videoHeight}`,
+            );
             setIsCameraActive(true);
           };
         } else {
+          logger.info('Video element not ready, retrying attachment...');
           streamReqId.current = window.setTimeout(attachStream, 50);
         }
       };
       attachStream();
     } catch (err) {
       const error = err as Error;
+      logger.error(`Camera start failed: ${error.name} - ${error.message}`);
       console.error(error);
       if (error.name === 'NotAllowedError') {
         toast.error(
@@ -77,12 +92,16 @@ export default function CameraScanner({
   };
 
   const stopCamera = () => {
+    logger.info('Stopping camera...');
     if (streamReqId.current !== null) {
       clearTimeout(streamReqId.current);
       streamReqId.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        logger.info(`Stopping track: ${track.label}`);
+        track.stop();
+      });
       streamRef.current = null;
     }
     if (videoRef.current) {
@@ -124,19 +143,22 @@ export default function CameraScanner({
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const base64Image = canvas.toDataURL('image/jpeg', 0.8);
+    logger.info(
+      `Captured image: ${canvas.width}x${canvas.height}, approx ${Math.round(base64Image.length / 1024)} KB`,
+    );
 
     // Allow UX to switch to extracting state immediately
     setIsExtracting(true);
 
     try {
       const books = await extractBooksFromImage(base64Image, 'image/jpeg');
+      setIsExtracting(false);
       onBooksExtracted(books);
       if (books.length === 0) toast.error('No books found in image');
     } catch (error) {
+      setIsExtracting(false);
       if (error instanceof Error) toast.error(error.message);
       else toast.error('Failed to extract books from image');
-    } finally {
-      setIsExtracting(false);
     }
   };
 
@@ -147,6 +169,9 @@ export default function CameraScanner({
       toast.error('Please upload a valid image file.');
       return;
     }
+    logger.info(
+      `Uploading image: ${file.name} (${Math.round(file.size / 1024)} KB, type: ${file.type})`,
+    );
     setIsExtracting(true);
     stopCamera();
     try {
@@ -155,20 +180,20 @@ export default function CameraScanner({
         const base64Image = reader.result as string;
         try {
           const books = await extractBooksFromImage(base64Image, file.type);
+          setIsExtracting(false);
           onBooksExtracted(books);
           if (books.length === 0) toast.error('No books found in image');
           else toast.success(`Found ${books.length} books.`);
         } catch (err) {
+          setIsExtracting(false);
           if (err instanceof Error) toast.error(err.message);
           else toast.error('Failed to extract books from image');
-        } finally {
-          setIsExtracting(false);
         }
       };
       reader.readAsDataURL(file);
     } catch {
-      toast.error('Failed to process image file.');
       setIsExtracting(false);
+      toast.error('Failed to process image file.');
     } finally {
       if (imageInputRef.current) imageInputRef.current.value = '';
     }
@@ -177,13 +202,12 @@ export default function CameraScanner({
   if (isExtracting) {
     return (
       <div className="py-24 flex flex-col items-center justify-center w-full bg-surface-container-low/30 rounded-3xl border border-outline-variant/40">
-        <div className="relative mb-6 text-primary">
+        <div className="relative mb-6 text-primary w-20 h-20 flex items-center justify-center">
           <Loader2
-            className="animate-spin absolute inset-0"
-            size={56}
+            className="animate-spin absolute inset-0 w-full h-full text-primary/30"
             strokeWidth={1.5}
           />
-          <Sparkles className="animate-pulse" size={56} strokeWidth={1.5} />
+          <Sparkles className="animate-pulse" size={40} strokeWidth={1.5} />
         </div>
         <h3 className="font-serif font-bold text-2xl text-on-surface tracking-tight mb-2">
           Analyzing bookshelf...
@@ -208,13 +232,14 @@ export default function CameraScanner({
 
       {isCameraActive ? (
         <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 flex flex-col sm:flex-row justify-center items-center gap-2 sm:gap-3 px-4">
-          <button
+          <Button
+            variant="outline"
             onClick={captureAndExtract}
             data-testid="capture-shelf-action"
-            className="bg-surface/95 backdrop-blur-md text-on-surface px-5 sm:px-6 py-2.5 sm:py-3 rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all text-sm border border-outline-variant/40 w-full sm:w-auto justify-center"
+            className="bg-surface/95 backdrop-blur-md rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all w-full sm:w-auto justify-center"
           >
             <Camera size={18} strokeWidth={2} /> Capture Shelf
-          </button>
+          </Button>
           <input
             type="file"
             accept="image/*"
@@ -222,12 +247,12 @@ export default function CameraScanner({
             ref={imageInputRef}
             onChange={handleImageUpload}
           />
-          <button
+          <Button
             onClick={() => imageInputRef.current?.click()}
-            className="bg-primary text-on-primary px-5 sm:px-6 py-2.5 sm:py-3 rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-primary/90 hover:scale-105 transition-all text-sm border border-transparent w-full sm:w-auto justify-center"
+            className="rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:scale-105 transition-all w-full sm:w-auto justify-center"
           >
             <UploadCloud size={18} strokeWidth={2} /> Upload Photo
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-surface/60 font-medium">
@@ -240,12 +265,13 @@ export default function CameraScanner({
             ref={imageInputRef}
             onChange={handleImageUpload}
           />
-          <button
+          <Button
+            variant="outline"
             onClick={() => imageInputRef.current?.click()}
-            className="mt-6 bg-surface text-on-surface px-6 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all text-sm border border-outline-variant/40"
+            className="mt-6 rounded-full font-bold shadow-lg flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all"
           >
-            <UploadCloud size={18} strokeWidth={2} /> Upload Photo instead
-          </button>
+            <UploadCloud size={18} strokeWidth={2} /> Upload Photo Instead
+          </Button>
         </div>
       )}
     </div>

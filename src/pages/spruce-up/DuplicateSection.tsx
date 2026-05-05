@@ -1,6 +1,7 @@
 import React from 'react';
 import {EyeOff, Loader2, Trash2} from 'lucide-react';
 import {Book} from '../../types';
+import {Button} from '@/components/ui/button';
 
 interface DuplicateSectionProps {
   duplicates: Book[][];
@@ -34,17 +35,18 @@ export function DuplicateSection({
               key={idx}
               className="bg-surface-container border border-outline-variant rounded-xl p-4"
             >
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                 <h3 className="font-medium text-lg">
                   Group {idx + 1}: {group[0].title}
                 </h3>
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => handleAllowDuplicateGroup(group)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-on-surface-variant hover:text-on-surface bg-transparent hover:bg-surface-variant/50 rounded-md transition-colors"
+                  className="flex items-center justify-center gap-1.5 w-full sm:w-auto"
                 >
                   <EyeOff className="w-4 h-4" />
                   Ignore
-                </button>
+                </Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {group.map(b => (
@@ -72,18 +74,19 @@ export function DuplicateSection({
                         {b.synopsis ? 'Yes' : 'No'}
                       </p>
                     </div>
-                    <button
+                    <Button
+                      variant="destructive"
                       onClick={() => handleDelete(b.id)}
                       disabled={processingIds[b.id]}
-                      className="mt-4 flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium text-error bg-error/10 hover:bg-error/20 rounded-md transition-colors"
+                      className="mt-4 flex items-center justify-center gap-2 w-full"
                     >
                       {processingIds[b.id] ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <Trash2 className="w-4 h-4" />
                       )}
-                      Delete this duplicate
-                    </button>
+                      Delete This Duplicate
+                    </Button>
                   </div>
                 ))}
               </div>

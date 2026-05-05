@@ -78,7 +78,7 @@ describe('AuthContext', () => {
         email: 'test@example.com',
       } as import('firebase/auth').User);
       return () => {};
-    }) as any);
+    }) as unknown);
 
     vi.mocked(getDoc).mockResolvedValueOnce({
       exists: () => true,
@@ -98,8 +98,8 @@ describe('AuthContext', () => {
 
   it('creates user doc if it does not exist', async () => {
     vi.mocked(onAuthStateChanged).mockImplementation(((
-      _auth: any,
-      callback: any,
+      _auth: unknown,
+      callback: unknown,
     ) => {
       const cb =
         typeof callback === 'function'
@@ -110,9 +110,9 @@ describe('AuthContext', () => {
         email: 'new@example.com',
         displayName: 'New User',
         photoURL: 'http://example.com/photo.jpg',
-      } as any);
+      } as unknown);
       return () => {};
-    }) as any);
+    }) as unknown);
 
     vi.mocked(getDoc).mockResolvedValueOnce({
       exists: () => false,
@@ -140,8 +140,8 @@ describe('AuthContext', () => {
 
   it('handles user sign out', async () => {
     vi.mocked(onAuthStateChanged).mockImplementation(((
-      _auth: any,
-      callback: any,
+      _auth: unknown,
+      callback: unknown,
     ) => {
       const cb =
         typeof callback === 'function'
@@ -149,7 +149,7 @@ describe('AuthContext', () => {
           : callback.next?.bind(callback);
       cb?.(null);
       return () => {};
-    }) as any);
+    }) as unknown);
 
     render(
       <AuthProvider>

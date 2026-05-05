@@ -17,6 +17,23 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+vi.mock('../firebase', () => ({
+  db: {},
+  auth: {
+    currentUser: {
+      getIdToken: vi.fn().mockResolvedValue('mock-token'),
+      uid: 'user1',
+    },
+  },
+  handleFirestoreError: vi.fn(),
+  OperationType: {CREATE: 'create'},
+}));
+
+global.fetch = vi.fn().mockResolvedValue({
+  ok: true,
+  json: () => Promise.resolve({id: 'newLibId'}),
+});
+
 vi.mock('firebase/firestore', async () => {
   const actual =
     await vi.importActual<typeof import('firebase/firestore')>(
@@ -30,7 +47,7 @@ vi.mock('firebase/firestore', async () => {
     or: vi.fn(),
     onSnapshot: vi.fn((query, callback) => {
       callback({
-        forEach: (cb: any) =>
+        forEach: (cb: (doc: unknown) => void) =>
           cb({
             id: 'lib1',
             data: () => ({
@@ -110,7 +127,7 @@ describe('Dashboard', () => {
     fireEvent.click(createBtn);
 
     await waitFor(() => {
-      expect(addDoc).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalled();
     });
   });
 });

@@ -1,4 +1,5 @@
 import React, {useRef} from 'react';
+import {Star, StarHalf} from 'lucide-react';
 
 interface StarRatingProps {
   rating: number;
@@ -46,27 +47,17 @@ export function StarRating({
             key={starNum}
             className={`relative ${interactive ? 'cursor-pointer hover:scale-110 transition-transform' : ''}`}
             onClick={e => handleClick(e, starNum)}
-            onMouseMove={undefined}
           >
             {/* Empty base star */}
-            <svg
-              className={`${starClasses} text-outline/30 fill-current hover:text-secondary/50`}
-              viewBox="0 0 24 24"
-            >
-              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-            </svg>
+            <Star
+              className={`${starClasses} text-outline/30 ${!isEmpty && !isHalf ? 'fill-secondary text-secondary' : 'fill-transparent'} hover:text-secondary/50`}
+            />
 
-            {/* Filled overlay (full or half) */}
-            {!isEmpty && (
-              <svg
+            {/* Filled overlay (half) */}
+            {isHalf && (
+              <StarHalf
                 className={`${starClasses} absolute top-0 left-0 fill-secondary text-secondary`}
-                viewBox="0 0 24 24"
-                style={{
-                  clipPath: isHalf ? 'inset(0 50% 0 0)' : 'none',
-                }}
-              >
-                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-              </svg>
+              />
             )}
           </div>
         );

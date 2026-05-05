@@ -2,6 +2,7 @@ import {useState, useEffect} from 'react';
 import {doc, setDoc} from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {generateBookInsights} from '../../services/gemini';
+import {fetchAuthorBioFromWikipedia} from '../../services/wikipediaApi';
 import {Book, BookDetailsPayload} from '../../types';
 import {toast} from 'sonner';
 
@@ -41,15 +42,26 @@ export function useBookInsights(
           if (synopsis) updates.synopsis = synopsis;
         }
 
-        if (needsBio) {
-          const authorBio = await generateBookInsights(
-            book.title,
-            book.author,
-            'author_bio',
-            abortController.signal,
-          );
+        if (needsBio && book.author && book.author !== 'Unknown Author') {
+          // Try Wikipedia first
+          let authorBio = await fetchAuthorBioFromWikipedia(book.author);
+
           if (abortController.signal.aborted) return;
-          if (authorBio) updates.authorBio = authorBio;
+
+          // Fallback to Gemini if Wikipedia returns nothing or a disambiguation page hint
+          if (!authorBio || authorBio.includes('may refer to:')) {
+            authorBio = await generateBookInsights(
+              book.title,
+              book.author,
+              'author_bio',
+              abortController.signal,
+            );
+          }
+
+          if (abortController.signal.aborted) return;
+          if (authorBio && !authorBio.includes('may refer to:')) {
+            updates.authorBio = authorBio;
+          }
         }
 
         if (

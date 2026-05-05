@@ -3,6 +3,7 @@
 This file tracks feature ideas, planned improvements, and requested features for the Athenaeum library app. You can ask the AI agent to append items here, mark them as complete, or implement them directly.
 
 ## Planned Features / Ideas
+- [ ] Date Handling: Migrate manual timestamp manipulations and `Intl.DateTimeFormat` usage to a standard library like `date-fns` or `dayjs` for consistency.
 - [ ] Add richer sharing modes (edit vs. view-only access).
 - [ ] Normalize categories into a [standard taxonomy](https://www.bisg.org/BISAC-Subject-Codes-main).
 

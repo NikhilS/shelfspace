@@ -1,5 +1,5 @@
 import {motion, AnimatePresence} from 'motion/react';
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {useParams, Link, useNavigate, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {db, handleFirestoreError, OperationType} from '../firebase';
@@ -14,13 +14,16 @@ import {
   Book as BookIcon,
   User,
   Trash2,
+  X,
 } from 'lucide-react';
-import SidebarActions from '../components/SidebarActions';
+import {Dialog, DialogContent, DialogTitle} from '@/components/ui/dialog';
+import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {ReviewSection} from './book-details/ReviewSection';
 import {EditBookForm} from './book-details/EditBookForm';
 import {useBook} from './book-details/useBook';
 import {useBookInsights} from './book-details/useBookInsights';
-import {DebugOverlay} from '../components/DebugOverlay';
+import {useDebug} from '../contexts/DebugContext';
+import {Button} from '@/components/ui/button';
 
 export default function BookDetailsView() {
   const {libraryId, bookId} = useParams<{libraryId: string; bookId: string}>();
@@ -57,17 +60,27 @@ export default function BookDetailsView() {
   const debugData = React.useMemo(() => {
     if (!bookBase) return null;
     const base = {...bookBase};
-    const details = bookDetails ? {...bookDetails} : {};
+    const details: Record<string, unknown> = bookDetails
+      ? {...bookDetails}
+      : {};
 
-    if (details.embedding)
-      details.embedding = `[Vector array - ${details.embedding.length} dimensions]`;
-    if (details.synopsis)
-      details.synopsis = `[Present: ${details.synopsis.length} chars]`;
-    if (details.authorBio)
-      details.authorBio = `[Present: ${details.authorBio.length} chars]`;
+    if (bookDetails?.embedding)
+      details.embedding = `[Vector array - ${bookDetails.embedding.length} dimensions]`;
+    if (bookDetails?.synopsis)
+      details.synopsis = `[Present: ${bookDetails.synopsis.length} chars]`;
+    if (bookDetails?.authorBio)
+      details.authorBio = `[Present: ${bookDetails.authorBio.length} chars]`;
 
     return {bookBase: base, bookDetails: details};
   }, [bookBase, bookDetails]);
+
+  const {setDebugData} = useDebug();
+
+  useEffect(() => {
+    if (debugData) {
+      setDebugData(debugData, 'Book Docs');
+    }
+  }, [debugData, setDebugData]);
 
   const handleDeleteBook = async () => {
     if (!book || !libraryId || !canEdit) return;
@@ -94,10 +107,8 @@ export default function BookDetailsView() {
   if (isLoading) {
     return (
       <>
-        <SidebarActions>
-          <></>
-        </SidebarActions>
-        <div className="flex-1 w-full bg-background px-4 sm:px-8 lg:px-12 py-6 sm:py-8 max-w-[1200px] mx-auto relative overflow-hidden">
+        <LibrarySidebarNav libraryId={libraryId} />
+        <div className="layout-page-content">
           <div className="absolute inset-0 bg-surface-variant/20 animate-pulse pointer-events-none" />
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12 relative z-10">
             <div className="md:col-span-4 flex flex-col gap-6">
@@ -127,20 +138,12 @@ export default function BookDetailsView() {
 
   return (
     <>
-      <SidebarActions>
-        <Link
-          to={backUrl}
-          className="flex items-center gap-3 text-on-surface hover:text-primary px-4 py-3 rounded-xl hover:bg-surface-container transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer"
-        >
-          <ArrowLeft className="w-5 h-5 text-on-surface-variant flex-shrink-0" />
-          <span>Back to Library</span>
-        </Link>
-      </SidebarActions>
+      <LibrarySidebarNav libraryId={libraryId} />
       <motion.div
         initial={{opacity: 0, y: 10}}
         animate={{opacity: 1, y: 0}}
         transition={{duration: 0.4}}
-        className="flex-1 overflow-y-auto px-4 sm:px-8 lg:px-12 py-6 sm:py-8 max-w-[1200px] mx-auto w-full"
+        className="layout-page-content"
       >
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
           {/* Left Column */}
@@ -205,33 +208,35 @@ export default function BookDetailsView() {
                   </h2>
                 </div>
                 {canEdit && (
-                  <div className="flex flex-col sm:flex-row items-center gap-2 flex-shrink-0">
-                    <button
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0">
+                    <Button
+                      variant="outline"
                       onClick={startEditing}
-                      className="flex items-center gap-2 px-4 py-2 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors text-sm font-label-caps uppercase tracking-wider border border-outline-variant/30"
+                      className="flex items-center justify-center gap-2 w-full sm:w-auto"
                     >
                       <Edit2 size={16} /> Edit
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="destructive"
                       onClick={() => setIsDeleting(true)}
-                      className="flex items-center gap-2 px-4 py-2 text-error hover:bg-error/10 rounded-md transition-colors text-sm font-label-caps uppercase tracking-wider border border-error/30"
+                      className="flex items-center justify-center gap-2 w-full sm:w-auto"
                     >
                       <Trash2 size={16} /> Delete
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-6 text-on-surface-variant text-[14px] font-body-md border-b border-surface-dim pb-6">
+              <div className="flex flex-wrap items-center gap-6 text-on-surface-variant text-sm font-body-md border-b border-surface-dim pb-6">
                 <div className="flex flex-col">
-                  <span className="text-on-surface-variant uppercase text-xs tracking-wider mb-1">
+                  <span className="font-label-caps text-label-caps text-on-surface-variant mb-1">
                     Published
                   </span>
                   <span>{book.publishedDate || 'Unknown'}</span>
                 </div>
                 <div className="w-px h-8 bg-surface-variant hidden sm:block"></div>
                 <div className="flex flex-col">
-                  <span className="text-on-surface-variant uppercase text-xs tracking-wider mb-1">
+                  <span className="font-label-caps text-label-caps text-on-surface-variant mb-1">
                     Format
                   </span>
                   <span className="capitalize">
@@ -240,7 +245,7 @@ export default function BookDetailsView() {
                 </div>
                 <div className="w-px h-8 bg-surface-variant hidden sm:block"></div>
                 <div className="flex flex-col">
-                  <span className="text-on-surface-variant uppercase text-xs tracking-wider mb-1">
+                  <span className="font-label-caps text-label-caps text-on-surface-variant mb-1">
                     ISBN
                   </span>
                   <span>{book.isbn || 'Unknown'}</span>
@@ -252,7 +257,7 @@ export default function BookDetailsView() {
             <section className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-surface-container p-4 rounded-lg border border-outline-variant/30 w-fit">
               <label
                 htmlFor="readingStatus"
-                className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider"
+                className="font-label-caps text-label-caps text-on-surface-variant"
               >
                 Reading Status
               </label>
@@ -319,7 +324,7 @@ export default function BookDetailsView() {
 
             {/* Synopsis */}
             <section>
-              <h3 className="font-headline-md text-[24px] text-primary mb-4">
+              <h3 className="font-headline-md text-headline-md text-primary mb-4">
                 Synopsis
               </h3>
               <div className="font-body-lg text-body-lg text-on-surface space-y-4 leading-relaxed">
@@ -337,13 +342,13 @@ export default function BookDetailsView() {
 
               {book.genres && book.genres.length > 0 && (
                 <div className="mt-8 pt-4 border-t border-surface-variant flex items-center flex-wrap gap-2">
-                  <span className="font-label-caps text-on-surface-variant uppercase text-[10px] tracking-wider mr-2">
+                  <span className="font-label-caps text-label-caps text-on-surface-variant mr-2">
                     All Categories:
                   </span>
                   {book.genres.map((g, idx) => (
                     <span
                       key={idx}
-                      className="text-xs text-on-surface-variant px-2 py-0.5 border border-outline-variant/30 rounded-sm bg-surface-variant/30"
+                      className="font-label-caps text-label-caps text-on-surface-variant px-2 py-0.5 border border-outline-variant/30 rounded-sm bg-surface-variant/30"
                     >
                       {g}
                     </span>
@@ -359,10 +364,10 @@ export default function BookDetailsView() {
                   <User className="w-12 h-12 text-on-surface-variant" />
                 </div>
                 <div>
-                  <h3 className="font-headline-md text-[24px] text-primary mb-1">
+                  <h3 className="font-headline-md text-headline-md text-primary mb-1">
                     About {toTitleCase(book.author)}
                   </h3>
-                  <div className="font-body-md text-[16px] text-on-surface leading-relaxed mt-4">
+                  <div className="font-body-md text-body-md text-on-surface leading-relaxed mt-4">
                     {book.authorBio ? (
                       <div className="markdown-body">
                         <Markdown>{book.authorBio}</Markdown>
@@ -380,27 +385,19 @@ export default function BookDetailsView() {
 
             {/* AI Features */}
             <section className="mt-8">
-              <div className="flex flex-wrap gap-4 mb-6">
-                <button
+              <div className="flex flex-wrap gap-2 mb-6">
+                <Button
+                  variant={activeInsight === 'catchup' ? 'default' : 'outline'}
                   onClick={() => handleGenerateInsight('catchup')}
-                  className={`px-6 py-2 rounded-full font-label-caps text-label-caps transition-all border ${
-                    activeInsight === 'catchup'
-                      ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-transparent text-primary border-primary hover:bg-primary/5'
-                  }`}
                 >
-                  CATCH ME UP (SPOILERS)
-                </button>
-                <button
+                  Catch Me Up (Spoilers)
+                </Button>
+                <Button
+                  variant={activeInsight === 'similar' ? 'default' : 'outline'}
                   onClick={() => handleGenerateInsight('similar')}
-                  className={`px-6 py-2 rounded-full font-label-caps text-label-caps transition-all border ${
-                    activeInsight === 'similar'
-                      ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-transparent text-primary border-primary hover:bg-primary/5'
-                  }`}
                 >
-                  OTHER BOOKS LIKE THIS
-                </button>
+                  Other Books Like This
+                </Button>
               </div>
 
               {activeInsight && (
@@ -431,48 +428,46 @@ export default function BookDetailsView() {
         </div>
       </motion.div>
 
-      <AnimatePresence>
-        {isDeleting && (
-          <motion.div
-            initial={{opacity: 0}}
-            animate={{opacity: 1}}
-            exit={{opacity: 0}}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 font-sans text-left"
-          >
-            <motion.div
-              initial={{scale: 0.95, opacity: 0}}
-              animate={{scale: 1, opacity: 1}}
-              exit={{scale: 0.95, opacity: 0}}
-              className="bg-surface rounded-[32px] p-8 max-w-sm w-full shadow-[0px_10px_40px_rgba(0,0,0,0.1)] border border-surface-variant"
+      <Dialog
+        open={isDeleting}
+        onOpenChange={open => !open && setIsDeleting(false)}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="bg-surface rounded-[32px] p-8 max-w-md w-full shadow-[0px_10px_40px_rgba(0,0,0,0.1)] border border-surface-variant gap-0"
+        >
+          <div className="flex items-center justify-between mb-8">
+            <DialogTitle className="text-2xl font-serif font-medium flex items-center gap-3 text-on-surface tracking-tight">
+              <div className="w-10 h-10 bg-error-container rounded-full flex items-center justify-center text-error border border-error-container/50">
+                <Trash2 size={20} />
+              </div>
+              Delete Book
+            </DialogTitle>
+            <button
+              onClick={() => setIsDeleting(false)}
+              className="p-2.5 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors"
             >
-              <div className="w-12 h-12 bg-error-container rounded-full flex items-center justify-center text-on-error-container mb-5 border border-error-container/50">
-                <Trash2 size={24} strokeWidth={1.5} />
-              </div>
-              <h3 className="text-2xl font-serif font-medium text-on-surface mb-3 tracking-tight">
-                Delete Book
-              </h3>
-              <p className="text-on-surface-variant mb-8 text-sm leading-relaxed">
-                Are you sure you want to delete this book? This action cannot be
-                undone.
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setIsDeleting(false)}
-                  className="px-5 py-3 text-on-surface font-medium hover:bg-surface-container border border-surface-variant rounded-xl transition-colors text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteBook}
-                  className="px-5 py-3 bg-error text-on-error hover:bg-error/90 rounded-xl transition-colors font-medium text-sm shadow-sm"
-                >
-                  Delete
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="mb-8">
+            <p className="text-on-surface-variant text-sm leading-relaxed text-left">
+              Are you sure you want to delete this book? This action cannot be
+              undone.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setIsDeleting(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteBook}>
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AnimatePresence>
         {isEditingDetails && (
@@ -487,7 +482,6 @@ export default function BookDetailsView() {
           />
         )}
       </AnimatePresence>
-      <DebugOverlay data={debugData} title="Book Docs" />
     </>
   );
 }

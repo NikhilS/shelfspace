@@ -1,6 +1,7 @@
 import React, {useRef, useState, useEffect} from 'react';
 import {Camera, X} from 'lucide-react';
 import {toast} from 'sonner';
+import {Button} from '@/components/ui/button';
 
 interface CoverCameraProps {
   onCapture: (base64Image: string) => void;
@@ -122,19 +123,22 @@ export default function CoverCamera({onCapture, onCancel}: CoverCameraProps) {
       />
       <canvas ref={canvasRef} className="hidden" />
       {isCameraActive && (
-        <button
+        <Button
+          variant="outline"
           onClick={captureCover}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-surface/95 backdrop-blur-md text-on-surface px-6 py-3 rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all text-sm whitespace-nowrap border border-outline-variant/40"
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-surface/95 backdrop-blur-md rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all outline-none"
         >
           <Camera size={18} strokeWidth={2} /> Capture Cover
-        </button>
+        </Button>
       )}
-      <button
+      <Button
+        variant="outline"
+        size="icon"
         onClick={onCancel}
-        className="absolute top-4 right-4 p-2 bg-on-surface text-surface rounded-full hover:bg-on-surface/90 transition-colors shadow-md border outline-none"
+        className="absolute top-4 right-4 p-2 bg-on-surface text-surface rounded-full hover:bg-on-surface/90 hover:text-surface transition-colors shadow-md outline-none border-none h-9 w-9"
       >
         <X size={20} strokeWidth={2.5} />
-      </button>
+      </Button>
     </div>
   );
 }

@@ -1,5 +1,6 @@
-import {GoogleGenAI} from '@google/genai';
+import {GoogleGenAI, Type} from '@google/genai';
 import Papa from 'papaparse';
+import {logger} from '../contexts/DebugContext';
 
 export async function generateClusterNames(
   clusters: {id: number; books: {title: string; author?: string}[]}[],
@@ -39,7 +40,7 @@ ${clusters
 `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -150,7 +151,9 @@ export async function extractBooksFromImage(
   mimeType: string,
 ): Promise<{title: string; author: string; isbn?: string}[]> {
   try {
+    logger.info(`Starting book extraction from image (${mimeType})...`);
     if (!base64Image || base64Image === 'data:,') {
+      logger.error('Invalid image data: image is empty');
       throw new Error('Invalid image data provided.');
     }
     const apiKey =
@@ -159,11 +162,29 @@ export async function extractBooksFromImage(
         : import.meta.env.VITE_GEMINI_API_KEY;
     const ai = new GoogleGenAI({apiKey});
 
-    // First attempt with pro
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+    // Strategy: Try with Pro first, fallback to Flash. Use schema for both.
+    const extractionSchema = {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: {type: Type.STRING},
+          author: {type: Type.STRING},
+          isbn: {
+            type: Type.STRING,
+            description: 'ISBN if visible, otherwise null',
+          },
+        },
+        required: ['title', 'author'],
+      },
+    };
+
+    const prompt =
+      "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects. Each object has a 'title' string, an 'author' string, and an 'isbn' string (if visible on the spine or back cover, otherwise null).";
+
+    const generateCall = async (model: string) => {
+      return ai.models.generateContent({
+        model,
         contents: {
           parts: [
             {
@@ -172,40 +193,60 @@ export async function extractBooksFromImage(
                 data: base64Image.split(',')[1] || base64Image,
               },
             },
-            {
-              text: "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects, where each object has a 'title' string, an 'author' string, and an 'isbn' string (if visible on the spine or back cover, otherwise null). Do not include markdown formatting like ```json. Just the raw JSON array.",
-            },
+            {text: prompt},
           ],
         },
         config: {
           responseMimeType: 'application/json',
+          responseSchema: extractionSchema,
         },
       });
-    } catch (e: unknown) {
-      console.warn(
-        'Retrying with flash model due to internal server error:',
-        e,
+    };
+
+    const timeoutPromise = (ms: number) =>
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('API_TIMEOUT')), ms),
       );
-      response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: base64Image.split(',')[1] || base64Image,
-              },
-            },
-            {
-              text: "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects, where each object has a 'title' string, an 'author' string, and an 'isbn' string (if visible on the spine or back cover, otherwise null). Do not include markdown formatting like ```json. Just the raw JSON array.",
-            },
-          ],
-        },
-      });
+
+    let response;
+    try {
+      logger.info('Calling Gemini 3.1 Pro for book extraction...');
+      response = await Promise.race([
+        generateCall('gemini-3.1-pro-preview'),
+        timeoutPromise(30000), // 30s timeout for pro
+      ]);
+      logger.info('Gemini 3.1 Pro response received.');
+    } catch (e: unknown) {
+      const isTimeout = e instanceof Error && e.message === 'API_TIMEOUT';
+      logger.warn(
+        `Gemini 3.1 Pro ${isTimeout ? 'timed out' : 'failed'}, retrying with flash: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      try {
+        response = await Promise.race([
+          generateCall('gemini-3-flash-preview'),
+          timeoutPromise(20000), // 20s timeout for flash
+        ]);
+        logger.info('Gemini 3 Flash response received.');
+      } catch (err: unknown) {
+        logger.warn(
+          'Gemini 3 Flash failed, falling back to Gemini 2.5 Flash:',
+          err,
+        );
+        response = await Promise.race([
+          generateCall('gemini-2.5-flash'),
+          timeoutPromise(20000), // 20s timeout for 2.5 flash
+        ]);
+        logger.info('Gemini 2.5 Flash response received.');
+      }
     }
 
     let text = response.text;
-    if (!text) return [];
+    if (!text) {
+      logger.warn('Gemini returned empty text response');
+      return [];
+    }
+
+    logger.info(`Raw response length: ${text.length} chars`);
 
     text = text
       .replace(/^```json\n?/, '')
@@ -215,14 +256,21 @@ export async function extractBooksFromImage(
     try {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) {
+        logger.info(`Successfully parsed ${parsed.length} books from image`);
         return parsed;
       }
+      logger.error('Gemini response is not an array');
       return [];
     } catch (e: unknown) {
-      console.error('Failed to parse Gemini response:', e);
+      logger.error(
+        `Failed to parse Gemini JSON: ${e instanceof Error ? e.message : String(e)}`,
+      );
       return [];
     }
   } catch (error) {
+    logger.error(
+      `Fatal error in extraction: ${error instanceof Error ? error.message : String(error)}`,
+    );
     handleGeminiError(error);
   }
 }
@@ -244,7 +292,7 @@ export async function extractBooksFromCsv(csvText: string): Promise<
           skipEmptyLines: true,
           worker: true,
           complete: results => resolve(results),
-          error: error => reject(error),
+          error: (error: unknown) => reject(error),
         });
       },
     );
@@ -392,13 +440,22 @@ export async function enrichBooksMetadata(
     - series (the series name, or 'Standalone')
     `;
 
-    const response = await ai.models.generateContent({
+    const fetchPromise = ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
       },
     });
+
+    const timeoutPromise = new Promise<{text: string}>((_, reject) => {
+      setTimeout(() => reject(new Error('TIMEOUT')), 10000);
+    });
+
+    const response = (await Promise.race([
+      fetchPromise,
+      timeoutPromise,
+    ])) as unknown as {text: string};
 
     const text = response.text;
     if (!text) return [];
@@ -414,6 +471,10 @@ export async function enrichBooksMetadata(
       return [];
     }
   } catch (error) {
+    if (error instanceof Error && error.message === 'TIMEOUT') {
+      logger.warn('Gemini metadata enrichment timed out.');
+      return [];
+    }
     handleGeminiError(error);
   }
 }
@@ -459,51 +520,66 @@ export async function generateBookInsights(
   type: 'summary' | 'catchup' | 'similar' | 'author_bio' | 'synopsis',
   signal?: AbortSignal,
 ): Promise<string> {
-  try {
-    let prompt = '';
-    switch (type) {
-      case 'summary':
-      case 'synopsis':
-        prompt = `Act as an expert librarian and literary critic. Provide a compelling, spoiler-free summary of the book "${title}" by ${author}. 
+  let prompt = '';
+  switch (type) {
+    case 'summary':
+    case 'synopsis':
+      prompt = `Act as an expert librarian and literary critic. Provide a compelling, spoiler-free summary of the book "${title}" by ${author}. 
         Focus on the premise, the main themes, the setting, and the general tone of the book. 
         Why might someone want to read this? Keep it concise (around 2-3 paragraphs) and engaging. Format with simple markdown (use ## for headings if needed).`;
-        break;
-      case 'author_bio':
-        prompt = `Act as an expert librarian. Provide a concise biographical summary of the author ${author}, who wrote "${title}". 
+      break;
+    case 'author_bio':
+      prompt = `Act as an expert librarian. Provide a concise biographical summary of the author ${author}, who wrote "${title}". 
         Focus on their career, notable works, writing style, and any major awards. Keep it to 1-2 paragraphs. Format with simple markdown if needed, but do not use headings.`;
-        break;
-      case 'catchup':
-        prompt = `I am currently reading or have previously read "${title}" by ${author} but I need a refresher. 
+      break;
+    case 'catchup':
+      prompt = `I am currently reading or have previously read "${title}" by ${author} but I need a refresher. 
         Provide a comprehensive plot summary INCLUDING ALL MAJOR SPOILERS, twists, and the ending. 
         Break it down by major plot points or acts. This is for someone who wants to know exactly what happens without reading it, or needs to remember the details before reading a sequel. Format with simple markdown (use ## for headings, bullet points for key events).`;
-        break;
-      case 'similar':
-        prompt = `I enjoyed reading "${title}" by ${author}. As an expert librarian, recommend 3-5 other books that I might like. 
+      break;
+    case 'similar':
+      prompt = `I enjoyed reading "${title}" by ${author}. As an expert librarian, recommend 3-5 other books that I might like. 
         For each recommendation, provide the Title, Author, and a brief 1-2 sentence explanation of WHY it is similar to "${title}" (e.g., similar themes, writing style, setting, or character dynamics). Format with simple markdown (use ## for the book titles).`;
-        break;
-    }
-
-    const apiKey =
-      typeof process !== 'undefined'
-        ? process.env.GEMINI_API_KEY
-        : import.meta.env.VITE_GEMINI_API_KEY;
-    const ai = new GoogleGenAI({apiKey});
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
-      contents: prompt,
-      config: {
-        systemInstruction: 'You are an expert librarian.',
-      },
-    });
-
-    return (
-      response.text ||
-      "I'm sorry, I couldn't generate insights for this book at the moment."
-    );
-  } catch (error) {
-    if (signal?.aborted) throw new Error('Aborted');
-    handleGeminiError(error);
+      break;
   }
+
+  const apiKey =
+    typeof process !== 'undefined'
+      ? process.env.GEMINI_API_KEY
+      : import.meta.env.VITE_GEMINI_API_KEY;
+  const ai = new GoogleGenAI({apiKey});
+
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      const response = await ai.models.generateContent({
+        model: retries > 1 ? 'gemini-3.1-pro-preview' : 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          systemInstruction: 'You are an expert librarian.',
+        },
+      });
+
+      return (
+        response.text ||
+        "I'm sorry, I couldn't generate insights for this book at the moment."
+      );
+    } catch (error: unknown) {
+      if (signal?.aborted) throw new Error('Aborted');
+      const errObj = error as Record<string, unknown>;
+      const is500 =
+        errObj?.status === 500 ||
+        String(error).includes('500') ||
+        (errObj?.message && String(errObj.message).includes('500'));
+      if (is500 && retries > 1) {
+        retries--;
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      handleGeminiError(error);
+    }
+  }
+  return "I'm sorry, I couldn't generate insights for this book at the moment.";
 }
 
 export async function generateLibraryHeroImage(
@@ -591,13 +667,24 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
       });
     } catch (e: unknown) {
       console.warn('Fallback to pro model due to error in pick of the day:', e);
-      response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-3.1-pro-preview',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+      } catch (err: unknown) {
+        console.warn('Fallback to 2.5 flash model:', err);
+        response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+      }
     }
 
     let text = response.text;
