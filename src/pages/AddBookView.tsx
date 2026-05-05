@@ -1,11 +1,10 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState} from 'react';
 import {Camera, FileText, Plus, ScanBarcode, Search} from 'lucide-react';
 import {BookDetails} from '../services/bookApi';
 import {toast} from 'sonner';
 import {useParams} from 'react-router-dom';
-import {collection, onSnapshot} from 'firebase/firestore';
-import {db} from '../firebase';
 import {useAddBooks} from './add-book/useAddBooks';
+import {useExistingBooks} from './add-book/useExistingBooks';
 import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {Checkbox} from '../components/ui/checkbox';
 import {
@@ -28,25 +27,9 @@ export default function AddBookView() {
   const {id: libraryId} = useParams<{id: string}>();
 
   const [activeTab, setActiveTab] = useState<TabId>('scan');
-  const [existingBooks, setExistingBooks] = useState<BookDetails[]>([]);
   const [allowDuplicates, setAllowDuplicates] = useState(true);
 
-  useEffect(() => {
-    if (!libraryId) return;
-    const booksRef = collection(db, 'libraries', libraryId, 'books');
-    const unsubscribe = onSnapshot(
-      booksRef,
-      snap => {
-        const books = snap.docs.map(doc => doc.data() as BookDetails);
-        setExistingBooks(books);
-      },
-      err => {
-        console.error('Failed to load existing books:', err);
-      },
-    );
-    return () => unsubscribe();
-  }, [libraryId]);
-
+  const {existingBooks} = useExistingBooks(libraryId);
   const {addBooks, isAddingAll} = useAddBooks(libraryId);
 
   const handleAdd = async (book: BookDetails) => {

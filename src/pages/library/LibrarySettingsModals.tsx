@@ -136,7 +136,9 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
                     </span>
                     <button
                       onClick={() => handleRemoveShare(email)}
-                      className="text-on-surface-variant hover:text-error p-1.5 rounded-md hover:bg-error-container transition-colors opacity-0 group-hover:opacity-100"
+                      className="text-on-surface-variant hover:text-error p-1.5 rounded-md hover:bg-error-container transition-colors"
+                      title="Remove user"
+                      aria-label={`Remove access for ${email}`}
                     >
                       <X size={16} />
                     </button>

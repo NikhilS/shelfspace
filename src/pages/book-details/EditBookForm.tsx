@@ -1,7 +1,5 @@
 import React, {useState} from 'react';
 import {Save, Loader2} from 'lucide-react';
-import {doc, updateDoc} from 'firebase/firestore';
-import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {toast} from 'sonner';
 import {Book, BookDetailsPayload} from '../../types';
 import {useForm} from 'react-hook-form';
@@ -35,6 +33,7 @@ interface EditBookFormProps {
   setBookDetails: React.Dispatch<
     React.SetStateAction<BookDetailsPayload | null>
   >;
+  updateBook: (cleanForm: Partial<Book & BookDetailsPayload>) => Promise<void>;
   onClose: () => void;
 }
 
@@ -58,6 +57,7 @@ export function EditBookForm({
   bookDetails,
   setBookBase,
   setBookDetails,
+  updateBook,
   onClose,
 }: EditBookFormProps) {
   const [isSavingDetails, setIsSavingDetails] = useState(false);
@@ -123,20 +123,13 @@ export function EditBookForm({
       setBookBase(prev => (prev ? ({...prev, ...cleanForm} as Book) : null));
       onClose();
 
-      await updateDoc(
-        doc(db, 'libraries', libraryId, 'books', book.id),
-        cleanForm,
-      );
+      await updateBook(cleanForm);
 
       toast.success('Book details updated');
-    } catch (error) {
+    } catch {
       setBookBase(originalBookBase);
       setBookDetails(originalBookDetails);
-      handleFirestoreError(
-        error,
-        OperationType.UPDATE,
-        `libraries/${libraryId}/books/${book.id}`,
-      );
+      toast.error('Failed to update book details');
     } finally {
       setIsSavingDetails(false);
     }

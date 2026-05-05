@@ -1,7 +1,16 @@
 import React, {useState, useEffect} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
-import {auth, handleFirestoreError, OperationType} from '../firebase';
+import {auth, db, handleFirestoreError, OperationType} from '../firebase';
+import {
+  collection,
+  getDocs,
+  writeBatch,
+  doc,
+  updateDoc,
+  arrayUnion,
+  arrayRemove,
+} from 'firebase/firestore';
 
 import {toast} from 'sonner';
 import {toTitleCase, getFirestoreTime} from '../lib/utils';
@@ -113,19 +122,10 @@ export default function LibraryView() {
     try {
       const user = auth.currentUser;
       if (!user) throw new Error('Not logged in');
-      const token = await user.getIdToken();
 
-      const res = await fetch(`/api/libraries/${id}/share/${email}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      await updateDoc(doc(db, 'libraries', id), {
+        sharedWith: arrayRemove(email),
       });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to remove share');
-      }
 
       toast.success(`Removed access for ${email}`);
     } catch (error) {
@@ -138,17 +138,25 @@ export default function LibraryView() {
     try {
       const user = auth.currentUser;
       if (!user) throw new Error('Not logged in');
-      const token = await user.getIdToken();
-      const res = await fetch(`/api/libraries/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+
+      // Fetch all books in the library to delete them (optional cleanup, but good practice)
+      const booksRef = collection(db, 'libraries', id, 'books');
+      const booksSnap = await getDocs(booksRef);
+
+      const batch = writeBatch(db);
+
+      // Add deletes for all books
+      booksSnap.forEach(bookDoc => {
+        batch.delete(bookDoc.ref);
+        // Note: this won't delete subcollections of books like reviews if they exist,
+        // but for a client-side delete it's okay to skip deeper orphans rather than building a full recursive delete here.
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to delete library from server');
-      }
+      // Delete the library document itself
+      const libRef = doc(db, 'libraries', id);
+      batch.delete(libRef);
+
+      await batch.commit();
 
       toast.success('Library deleted');
       void navigate('/');
@@ -368,19 +376,11 @@ export default function LibraryView() {
               try {
                 const user = auth.currentUser;
                 if (!user) throw new Error('Not logged in');
-                const token = await user.getIdToken();
-                const res = await fetch(`/api/libraries/${id}/share`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                  },
-                  body: JSON.stringify({email: email.trim().toLowerCase()}),
+
+                await updateDoc(doc(db, 'libraries', id), {
+                  sharedWith: arrayUnion(email.trim().toLowerCase()),
                 });
-                if (!res.ok) {
-                  const errorData = await res.json();
-                  throw new Error(errorData.error || 'Failed to share library');
-                }
+
                 toast.success(`Shared with ${email}`);
               } catch (error) {
                 handleFirestoreError(

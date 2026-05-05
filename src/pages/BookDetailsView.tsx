@@ -2,8 +2,6 @@ import {motion, AnimatePresence} from 'motion/react';
 import React, {useState, useEffect} from 'react';
 import {useParams, useNavigate, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
-import {db, handleFirestoreError, OperationType} from '../firebase';
-import {doc, updateDoc, serverTimestamp} from 'firebase/firestore';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {toTitleCase} from '../lib/utils';
@@ -36,6 +34,9 @@ export default function BookDetailsView() {
     isLoading,
     canEdit,
     deleteBook,
+    updateReadingStatus,
+    addReview,
+    updateBook,
   } = useBook(libraryId, bookId);
 
   const {
@@ -82,12 +83,7 @@ export default function BookDetailsView() {
       void navigate(backUrl, {replace: true});
 
       await deleteBook();
-    } catch (error) {
-      handleFirestoreError(
-        error,
-        OperationType.DELETE,
-        `libraries/${libraryId}/books/${book.id}`,
-      );
+    } catch {
       toast.error('Failed to delete book');
     }
   };
@@ -278,22 +274,10 @@ export default function BookDetailsView() {
                   });
 
                   try {
-                    await updateDoc(
-                      doc(db, 'libraries', libraryId, 'books', bookId),
-                      {
-                        [`userStatuses.${user.uid}`]: newStatus,
-                        addedBy: book.addedBy || user.uid,
-                        addedAt: book.addedAt || serverTimestamp(),
-                      },
-                    );
+                    await updateReadingStatus(newStatus);
                     toast.success('Reading status updated');
-                  } catch (e) {
+                  } catch {
                     setBookBase(originalBookBase);
-                    handleFirestoreError(
-                      e,
-                      OperationType.UPDATE,
-                      `libraries/${libraryId}/books/${bookId}`,
-                    );
                     toast.error('Failed to update status');
                   }
                 }}
@@ -415,6 +399,7 @@ export default function BookDetailsView() {
               reviews={reviews}
               setReviews={setReviews}
               canEdit={canEdit}
+              addReview={addReview}
             />
           </div>
         </div>
@@ -470,6 +455,7 @@ export default function BookDetailsView() {
             bookDetails={bookDetails}
             setBookBase={setBookBase}
             setBookDetails={setBookDetails}
+            updateBook={updateBook}
             onClose={() => setIsEditingDetails(false)}
           />
         )}

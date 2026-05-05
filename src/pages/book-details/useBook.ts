@@ -8,6 +8,9 @@ import {
   writeBatch,
   increment,
   getDocs,
+  updateDoc,
+  serverTimestamp,
+  addDoc,
 } from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {Book, BookDetailsPayload, FirestoreDate} from '../../types';
@@ -184,6 +187,69 @@ export function useBook(
         OperationType.DELETE,
         `libraries/${libraryId}/books/${bookId}`,
       );
+      throw e;
+    }
+  };
+
+  const updateReadingStatus = async (
+    status: 'unset' | 'reading' | 'finished' | 'abandoned',
+  ) => {
+    if (!libraryId || !bookId || !user || !book) return;
+
+    try {
+      await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), {
+        [`userStatuses.${user.uid}`]: status,
+        addedBy: book.addedBy || user.uid,
+        addedAt: book.addedAt || serverTimestamp(),
+      });
+    } catch (e) {
+      handleFirestoreError(
+        e,
+        OperationType.UPDATE,
+        `libraries/${libraryId}/books/${bookId}`,
+      );
+      throw e;
+    }
+  };
+
+  const addReview = async (rating: number, text: string) => {
+    if (!libraryId || !bookId || !user)
+      throw new Error('Missing review context');
+    try {
+      await addDoc(
+        collection(db, 'libraries', libraryId, 'books', bookId, 'reviews'),
+        {
+          userId: user.uid,
+          userName: user.displayName || user.email || 'Unknown User',
+          rating,
+          text,
+          createdAt: serverTimestamp(),
+        },
+      );
+    } catch (e) {
+      handleFirestoreError(
+        e,
+        OperationType.CREATE,
+        `libraries/${libraryId}/books/${bookId}/reviews`,
+      );
+      throw e;
+    }
+  };
+
+  const updateBook = async (cleanForm: Partial<Book & BookDetailsPayload>) => {
+    if (!libraryId || !bookId || !book) return;
+    try {
+      await updateDoc(
+        doc(db, 'libraries', libraryId, 'books', bookId),
+        cleanForm,
+      );
+    } catch (e) {
+      handleFirestoreError(
+        e,
+        OperationType.UPDATE,
+        `libraries/${libraryId}/books/${bookId}`,
+      );
+      throw e;
     }
   };
 
@@ -198,5 +264,8 @@ export function useBook(
     isLoading,
     canEdit,
     deleteBook,
+    updateReadingStatus,
+    addReview,
+    updateBook,
   };
 }

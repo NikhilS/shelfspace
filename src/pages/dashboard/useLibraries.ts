@@ -1,6 +1,6 @@
 import {useState, useEffect} from 'react';
 import {useAuth} from '../../contexts/AuthContext';
-import {db, auth, handleFirestoreError, OperationType} from '../../firebase';
+import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {
   collection,
   query,
@@ -10,7 +10,8 @@ import {
   getCountFromServer,
   updateDoc,
   doc,
-  Timestamp,
+  addDoc,
+  serverTimestamp,
 } from 'firebase/firestore';
 import {Library} from '../../types';
 import {toast} from 'sonner';
@@ -76,41 +77,19 @@ export function useLibraries() {
     if (!name.trim() || !user || isSubmitting) return;
 
     const trimmedName = name.trim();
-    const tempId = `temp-${Date.now()}`;
-    const tempLib: Library = {
-      id: tempId,
-      name: trimmedName,
-      ownerId: user.uid,
-      ownerName: user.displayName || user.email || 'Unknown',
-      sharedWith: [],
-      createdAt: Timestamp.now(),
-      bookCount: 0,
-    };
-
-    const originalLibraries = [...libraries];
     setIsSubmitting(true);
-    setLibraries(prev => [tempLib, ...prev]);
 
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Not logged in');
-      const token = await user.getIdToken();
-
-      const res = await fetch('/api/libraries', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({name: trimmedName}),
+      const docRef = await addDoc(collection(db, 'libraries'), {
+        name: trimmedName,
+        ownerId: user.uid,
+        ownerName: user.displayName || user.email || 'Unknown',
+        sharedWith: [],
+        createdAt: serverTimestamp(),
+        heroImageUrl: null,
+        bookCount: 0,
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to create library');
-      }
-
-      const {id: newLibraryId} = await res.json();
       toast.success('Library created successfully');
 
       // Generate hero image in background
@@ -118,7 +97,7 @@ export function useLibraries() {
         .then(async url => {
           if (url) {
             try {
-              await updateDoc(doc(db, 'libraries', newLibraryId), {
+              await updateDoc(doc(db, 'libraries', docRef.id), {
                 heroImageUrl: url,
               });
             } catch (e) {
@@ -128,8 +107,8 @@ export function useLibraries() {
         })
         .catch(console.error);
     } catch (error) {
-      setLibraries(originalLibraries);
-      throw error;
+      handleFirestoreError(error, OperationType.CREATE, 'libraries');
+      toast.error('Failed to create library');
     } finally {
       setIsSubmitting(false);
     }

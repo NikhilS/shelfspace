@@ -1,6 +1,4 @@
 import React, {useState} from 'react';
-import {collection, addDoc, serverTimestamp} from 'firebase/firestore';
-import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {toast} from 'sonner';
 import {StarRating} from '../../components/StarRating';
 import {Review} from './useBook';
@@ -14,6 +12,7 @@ interface ReviewSectionProps {
   reviews: Review[];
   setReviews: React.Dispatch<React.SetStateAction<Review[]>>;
   canEdit: boolean;
+  addReview: (rating: number, text: string) => Promise<void>;
 }
 
 export function ReviewSection({
@@ -22,6 +21,7 @@ export function ReviewSection({
   reviews,
   setReviews,
   canEdit,
+  addReview,
 }: ReviewSectionProps) {
   const {user} = useAuth();
   const [isReviewing, setIsReviewing] = useState(false);
@@ -53,27 +53,14 @@ export function ReviewSection({
 
     setIsSavingReview(true);
     try {
-      await addDoc(
-        collection(db, 'libraries', libraryId, 'books', book.id, 'reviews'),
-        {
-          userId: user.uid,
-          userName: user.displayName || user.email || 'Unknown User',
-          rating: tempReview.rating,
-          text: tempReview.text,
-          createdAt: serverTimestamp(),
-        },
-      );
+      await addReview(tempReview.rating, tempReview.text);
       toast.success('Review added');
-    } catch (error) {
+    } catch {
       setReviews(originalReviews);
       setIsReviewing(true);
       setReviewRating(tempReview.rating);
       setReviewText(tempReview.text);
-      handleFirestoreError(
-        error,
-        OperationType.CREATE,
-        `libraries/${libraryId}/books/${book.id}/reviews`,
-      );
+      toast.error('Failed to save review');
     } finally {
       setIsSavingReview(false);
     }
