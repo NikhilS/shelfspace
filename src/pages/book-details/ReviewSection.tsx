@@ -31,12 +31,8 @@ export function ReviewSection({
 
   const handleSaveReview = async () => {
     if (!book || !libraryId || !user) return;
-    if (reviewRating === 0) {
-      toast.error('Please select a rating');
-      return;
-    }
-    if (!reviewText.trim()) {
-      toast.error('Please write a review');
+    if (reviewRating === 0 && !reviewText.trim()) {
+      toast.error('Please provide a rating or write a review');
       return;
     }
 

@@ -3,6 +3,7 @@ import {BookDetails} from '../../services/bookApi';
 import CameraScanner from '../../components/CameraScanner';
 import ExtractedBooksTable from '../../components/ExtractedBooksTable';
 import {logger} from '../../contexts/DebugContext';
+import {triggerHaptics} from '../../lib/utils';
 
 interface CaptureShelfTabProps {
   addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
@@ -36,6 +37,7 @@ export function CaptureShelfTab({
       {extractedBooks.length === 0 && (
         <CameraScanner
           onBooksExtracted={books => {
+            triggerHaptics([50]);
             logger.info(
               `Extraction complete. Identified ${books.length} potential books.`,
             );

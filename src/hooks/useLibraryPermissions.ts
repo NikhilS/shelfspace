@@ -31,17 +31,13 @@ export function useLibraryPermissions(
           setCanEdit(edit);
         }
       } catch (err) {
-        handleFirestoreError(
-          err,
-          OperationType.GET,
-          `libraries/${libraryId}`
-        );
+        handleFirestoreError(err, OperationType.GET, `libraries/${libraryId}`);
       } finally {
         setLoading(false);
       }
     };
-    
-    checkPerms();
+
+    void checkPerms();
   }, [libraryId, userId]);
 
   return {canEdit, isOwner, loading};

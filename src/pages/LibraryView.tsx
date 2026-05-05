@@ -1,8 +1,8 @@
 import React, {useState, useEffect} from 'react';
-import {useParams, Link, useNavigate, useLocation} from 'react-router-dom';
+import {useParams, useNavigate} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {auth, handleFirestoreError, OperationType} from '../firebase';
-import {ArrowLeft, Plus, Share2, Settings, Map, Wand2} from 'lucide-react';
+
 import {toast} from 'sonner';
 import {toTitleCase, getFirestoreTime} from '../lib/utils';
 import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
@@ -28,7 +28,6 @@ export default function LibraryView() {
   const {id} = useParams<{id: string}>();
   const {user} = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   // Data fetching
   const {library, books, isLoading, isBooksLoading, isSyncing} = useLibraryData(
@@ -248,7 +247,9 @@ export default function LibraryView() {
     <>
       <LibrarySidebarNav
         libraryId={id}
-        onOpenSettings={() => setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)}
+        onOpenSettings={() =>
+          setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)
+        }
         onOpenShare={() => setIsSettingsOpen(!isSettingsOpen)}
       />
 

@@ -33,7 +33,7 @@ vi.mock('../firebase', () => ({
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: {uid: 'user123', email: 'test@example.com'}
+    user: {uid: 'user123', email: 'test@example.com'},
   }),
 }));
 

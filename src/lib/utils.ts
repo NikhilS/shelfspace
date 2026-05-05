@@ -34,3 +34,13 @@ export function getFirestoreTime(
   const d = new Date(dateObj as string | number | Date);
   return isNaN(d.getTime()) ? 0 : d.getTime();
 }
+
+/**
+ * Triggers haptic feedback on supported devices.
+ * @param pattern Number of milliseconds to vibrate, or an array of vibration/pause/vibration sequences.
+ */
+export function triggerHaptics(pattern: number | number[]) {
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    navigator.vibrate(pattern);
+  }
+}

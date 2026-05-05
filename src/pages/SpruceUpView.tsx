@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
-import {useParams, Link} from 'react-router-dom';
+import {useParams} from 'react-router-dom';
 import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
-import {ArrowLeft} from 'lucide-react';
+
 import {motion} from 'motion/react';
 import {ErrorBoundary} from '../components/ErrorBoundary';
 import {useSpruceUp} from './spruce-up/useSpruceUp';

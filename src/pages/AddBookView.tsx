@@ -1,15 +1,8 @@
 import React, {useState, useEffect} from 'react';
-import {
-  Camera,
-  FileText,
-  Plus,
-  ArrowLeft,
-  ScanBarcode,
-  Search,
-} from 'lucide-react';
+import {Camera, FileText, Plus, ScanBarcode, Search} from 'lucide-react';
 import {BookDetails} from '../services/bookApi';
 import {toast} from 'sonner';
-import {useParams, Link, useLocation} from 'react-router-dom';
+import {useParams} from 'react-router-dom';
 import {collection, onSnapshot} from 'firebase/firestore';
 import {db} from '../firebase';
 import {useAddBooks} from './add-book/useAddBooks';
@@ -33,9 +26,6 @@ type TabId = 'scan' | 'search' | 'camera' | 'csv' | 'manual';
 
 export default function AddBookView() {
   const {id: libraryId} = useParams<{id: string}>();
-  const location = useLocation();
-
-  const backUrl = location.state?.from || `/library/${libraryId}`;
 
   const [activeTab, setActiveTab] = useState<TabId>('scan');
   const [existingBooks, setExistingBooks] = useState<BookDetails[]>([]);

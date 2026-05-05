@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
+import {triggerHaptics} from '../../lib/utils';
 
 interface ManualEntryTabProps {
   existingBooks: BookDetails[];
@@ -90,6 +91,7 @@ export function ManualEntryTab({
         return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
       })
     ) {
+      triggerHaptics([50, 100, 50]);
       toast.info(`Skipped duplicate: ${data.title}`);
       return;
     }
@@ -114,10 +116,12 @@ export function ManualEntryTab({
       };
 
       await addBooks([newBook]);
+      triggerHaptics([30, 50, 30]);
       toast.success(`Added ${newBook.title}`);
       reset();
       setCoverUrl('');
     } catch {
+      triggerHaptics([50, 100, 50]);
       toast.error('Failed to add book');
     } finally {
       setIsAdding(false);

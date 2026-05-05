@@ -1,6 +1,6 @@
 import React from 'react';
-import {useParams, Link} from 'react-router-dom';
-import {ArrowLeft, Loader2, RefreshCw} from 'lucide-react';
+import {useParams} from 'react-router-dom';
+import {Loader2, RefreshCw} from 'lucide-react';
 import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import ConstellationChart from '../components/ConstellationChart';
 import {useConstellationData} from '../hooks/useConstellationData';
@@ -15,7 +15,7 @@ export default function ConstellationMap() {
     <>
       <LibrarySidebarNav libraryId={libraryId} />
       <div className="layout-page-content">
-        <div className="layout-header border-none flex-row justify-between items-start">
+        <div className="layout-header border-none sm:flex-row sm:justify-between sm:items-start">
           <div>
             <h1 className="layout-header-title">Constellation Map</h1>
             <p className="layout-header-subtitle">

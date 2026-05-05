@@ -3,7 +3,7 @@ import {BookDetails, searchBookByIsbn} from '../../services/bookApi';
 import BarcodeScanner from '../../components/BarcodeScanner';
 import {Loader2, X, BookPlus} from 'lucide-react';
 import {toast} from 'sonner';
-import {toTitleCase} from '../../lib/utils';
+import {toTitleCase, triggerHaptics} from '../../lib/utils';
 import {Checkbox} from '../../components/ui/checkbox';
 import {Button} from '../../components/ui/button';
 import {logger} from '../../contexts/DebugContext';
@@ -41,6 +41,7 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
 
       if (book) {
         logger.info(`Found book: ${book.title} by ${book.author}`);
+        triggerHaptics(50);
         scannedRefs.current.add(isbn);
         setScannedBooks(prev => {
           if (prev.some(b => b.isbn === isbn)) return prev;
@@ -49,12 +50,14 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
         setSelectedScanned(prev => new Set(prev).add(isbn));
       } else {
         logger.warn(`No metadata found for ISBN ${isbn}`);
+        triggerHaptics([50, 100, 50]);
         toast.error(`Could not find book for ISBN ${isbn}`);
       }
     } catch (err: unknown) {
       logger.error(
         `Error searching ISBN ${isbn}: ${err instanceof Error ? err.message : String(err)}`,
       );
+      triggerHaptics([50, 100, 50]);
       toast.error(`Failed to fetch book for ISBN ${isbn}`);
     } finally {
       processingRefs.current.delete(isbn);
@@ -109,6 +112,7 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
 
       await addBooks(formattedBooks);
 
+      triggerHaptics([30, 50, 30]);
       toast.success(`Successfully added ${formattedBooks.length} books`);
     } catch {
       booksToAdd.forEach(b => {
@@ -116,6 +120,7 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
       });
       setScannedBooks(originalScanned);
       setSelectedScanned(originalSelected);
+      triggerHaptics([50, 100, 50]);
       toast.error('Failed to add some books');
     }
   };

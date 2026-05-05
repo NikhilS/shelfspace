@@ -1,6 +1,6 @@
 import React, {useState, useRef, useEffect} from 'react';
 import {BookPlus, Loader2, X} from 'lucide-react';
-import {toTitleCase, cn} from '../lib/utils';
+import {toTitleCase, cn, triggerHaptics} from '../lib/utils';
 import {toast} from 'sonner';
 import {Checkbox} from './ui/checkbox';
 import {Button} from './ui/button';
@@ -149,6 +149,7 @@ export default function ExtractedBooksTable({
           logger.info(
             `[ExtractedBooksTable] Filtered out ${duplicateCount} duplicate books.`,
           );
+          triggerHaptics([50, 100, 50]);
           toast.info(
             `Skipped ${duplicateCount} duplicate book${duplicateCount === 1 ? '' : 's'}.`,
           );
@@ -156,6 +157,7 @@ export default function ExtractedBooksTable({
       }
 
       if (booksToSave.length === 0) {
+        triggerHaptics([50, 100, 50]);
         toast.info('All selected books are already in your library.');
         setIsAddingAll(false);
         setAddProgress(null);
@@ -169,6 +171,7 @@ export default function ExtractedBooksTable({
       // Save to library via the hook
       await addBooks(booksToSave);
 
+      triggerHaptics([30, 50, 30]);
       toast.success(`Successfully added ${booksToSave.length} books`);
 
       // Clear added books from the table - THIS TRIGGERS UNMOUNT if table becomes empty
@@ -187,6 +190,7 @@ export default function ExtractedBooksTable({
       });
     } catch (e: unknown) {
       console.error('Error adding extracted books:', e);
+      triggerHaptics([50, 100, 50]);
       toast.error('An error occurred while adding books to your library.');
     } finally {
       logger.info(

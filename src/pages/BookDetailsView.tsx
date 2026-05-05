@@ -1,21 +1,13 @@
 import {motion, AnimatePresence} from 'motion/react';
 import React, {useState, useEffect} from 'react';
-import {useParams, Link, useNavigate, useLocation} from 'react-router-dom';
+import {useParams, useNavigate, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {db, handleFirestoreError, OperationType} from '../firebase';
 import {doc, updateDoc, serverTimestamp} from 'firebase/firestore';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {toTitleCase} from '../lib/utils';
-import {
-  ArrowLeft,
-  Edit2,
-  Loader2,
-  Book as BookIcon,
-  User,
-  Trash2,
-  X,
-} from 'lucide-react';
+import {Edit2, Loader2, Book as BookIcon, User, Trash2, X} from 'lucide-react';
 import {Dialog, DialogContent, DialogTitle} from '@/components/ui/dialog';
 import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {ReviewSection} from './book-details/ReviewSection';
