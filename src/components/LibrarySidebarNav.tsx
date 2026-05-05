@@ -9,6 +9,7 @@ import {
   Library as LibraryIcon,
 } from 'lucide-react';
 import SidebarActions from './SidebarActions';
+import HeaderActions from './HeaderActions';
 import {useAuth} from '../contexts/AuthContext';
 import {useLibraryPermissions} from '../hooks/useLibraryPermissions';
 
@@ -16,12 +17,16 @@ interface LibrarySidebarNavProps {
   libraryId?: string;
   onOpenSettings?: () => void;
   onOpenShare?: () => void;
+  isSettingsOpen?: boolean;
+  isShareOpen?: boolean;
 }
 
 export function LibrarySidebarNav({
   libraryId,
   onOpenSettings,
   onOpenShare,
+  isSettingsOpen = false,
+  isShareOpen = false,
 }: LibrarySidebarNavProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -45,63 +50,67 @@ export function LibrarySidebarNav({
   };
 
   return (
-    <SidebarActions>
-      <Link
-        to={`/library/${libraryId}`}
-        className={`sidebar-nav-item ${isLibraryView ? 'active' : ''}`}
-      >
-        <LibraryIcon className="w-5 h-5 flex-shrink-0" />
-        <span>Library View</span>
-      </Link>
+    <>
+      <HeaderActions>
+        {canEdit && (
+          <button
+            onClick={handleSettings}
+            title="Library Settings"
+            className={`p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all ${isSettingsOpen ? 'text-primary bg-surface-container' : ''}`}
+          >
+            <Settings className="w-5 h-5 flex-shrink-0" />
+          </button>
+        )}
 
-      <Link
-        to={`/library/${libraryId}/constellation`}
-        className={`sidebar-nav-item ${location.pathname.includes('/constellation') ? 'active' : ''}`}
-      >
-        <Map className="w-5 h-5 flex-shrink-0" />
-        <span>Constellation Map</span>
-      </Link>
+        {isOwner && (
+          <button
+            onClick={handleShare}
+            title="Share Library"
+            className={`p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all ${isShareOpen ? 'text-primary bg-surface-container' : ''}`}
+          >
+            <Share2 className="w-5 h-5 flex-shrink-0" />
+          </button>
+        )}
+      </HeaderActions>
 
-      {canEdit && (
+      <SidebarActions>
         <Link
-          to={`/library/${libraryId}/add`}
-          state={{from: location.pathname + location.search}}
-          className={`sidebar-nav-item ${location.pathname.includes('/add') ? 'active' : ''}`}
+          to={`/library/${libraryId}`}
+          className={`sidebar-nav-item ${isLibraryView ? 'active' : ''}`}
         >
-          <Plus className="w-5 h-5 flex-shrink-0" />
-          <span>Add Books</span>
+          <LibraryIcon className="w-5 h-5 flex-shrink-0" />
+          <span>Library View</span>
         </Link>
-      )}
 
-      {canEdit && (
         <Link
-          to={`/library/${libraryId}/spruce-up`}
-          className={`sidebar-nav-item ${location.pathname.includes('/spruce-up') ? 'active' : ''}`}
+          to={`/library/${libraryId}/constellation`}
+          className={`sidebar-nav-item ${location.pathname.includes('/constellation') ? 'active' : ''}`}
         >
-          <Wand2 className="w-5 h-5 flex-shrink-0" />
-          <span>Spruce Up Library</span>
+          <Map className="w-5 h-5 flex-shrink-0" />
+          <span>Constellation Map</span>
         </Link>
-      )}
 
-      {canEdit && (
-        <button
-          onClick={handleSettings}
-          className={`sidebar-nav-item ${onOpenSettings && location.pathname === `/library/${libraryId}` && !!document.querySelector('[data-settings-open="true"]') ? 'active-sub' : ''}`}
-        >
-          <Settings className="w-5 h-5 flex-shrink-0" />
-          <span>Settings</span>
-        </button>
-      )}
+        {canEdit && (
+          <Link
+            to={`/library/${libraryId}/add`}
+            state={{from: location.pathname + location.search}}
+            className={`sidebar-nav-item ${location.pathname.includes('/add') ? 'active' : ''}`}
+          >
+            <Plus className="w-5 h-5 flex-shrink-0" />
+            <span>Add Books</span>
+          </Link>
+        )}
 
-      {isOwner && (
-        <button
-          onClick={handleShare}
-          className={`sidebar-nav-item ${onOpenShare && location.pathname === `/library/${libraryId}` && !!document.querySelector('[data-share-open="true"]') ? 'active-sub' : ''}`}
-        >
-          <Share2 className="w-5 h-5 flex-shrink-0" />
-          <span>Share</span>
-        </button>
-      )}
-    </SidebarActions>
+        {canEdit && (
+          <Link
+            to={`/library/${libraryId}/spruce-up`}
+            className={`sidebar-nav-item ${location.pathname.includes('/spruce-up') ? 'active' : ''}`}
+          >
+            <Wand2 className="w-5 h-5 flex-shrink-0" />
+            <span>Spruce Up Library</span>
+          </Link>
+        )}
+      </SidebarActions>
+    </>
   );
 }

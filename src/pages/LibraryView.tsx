@@ -259,6 +259,8 @@ export default function LibraryView() {
           setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)
         }
         onOpenShare={() => setIsSettingsOpen(!isSettingsOpen)}
+        isSettingsOpen={isAdvancedSettingsOpen}
+        isShareOpen={isSettingsOpen}
       />
 
       <div className="flex-grow flex flex-col min-h-screen w-full">

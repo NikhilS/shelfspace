@@ -100,7 +100,11 @@ export default function AppLayout({children}: AppLayoutProps) {
             <div className="text-xl font-serif font-medium text-primary w-1/3 text-center max-md:hidden">
               Athenaeum
             </div>
-            <div className="flex items-center justify-end space-x-6 w-1/3 ml-auto text-on-surface-variant">
+            <div className="flex items-center justify-end space-x-4 w-1/3 ml-auto text-on-surface-variant">
+              <div
+                id="header-actions-root"
+                className="flex items-center space-x-2"
+              />
               <div className="h-9 w-9 border border-outline-variant/30 shadow-sm rounded-full bg-surface-variant overflow-hidden cursor-pointer hover:border-primary/50 transition-colors">
                 {user?.photoURL ? (
                   <img
