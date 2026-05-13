@@ -13,6 +13,7 @@ import {
 import {auth, db, handleFirestoreError, OperationType} from '../../firebase';
 import {Book, BookDetailsPayload} from '../../types';
 import {getTieredMetadata} from '../../lib/metadataUtils';
+import {classifyBooks} from '../../services/gemini';
 import {toast} from 'sonner';
 import {logger} from '../../contexts/DebugContext';
 
@@ -118,6 +119,34 @@ export function useSpruceUp(libraryId: string | undefined) {
     progress: number;
     total: number;
   } | null>(null);
+
+  // Selection & Filtering
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<
+    'all' | 'missing_metadata' | 'missing_genre' | 'low_res_cover'
+  >('missing_metadata');
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (filteredBooks: Book[]) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      const allSelected = filteredBooks.every(b => next.has(b.id));
+      if (allSelected) {
+        filteredBooks.forEach(b => next.delete(b.id));
+      } else {
+        filteredBooks.forEach(b => next.add(b.id));
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!libraryId) return;
@@ -340,16 +369,123 @@ export function useSpruceUp(libraryId: string | undefined) {
     }
   };
 
-  const processBooksMetadata = async (booksToProcess: Book[]) => {
+  const handleBulkFixMetadata = async () => {
+    const selectedBooks = booksWithDetails.filter(b => selectedIds.has(b.id));
+    if (selectedBooks.length === 0 || fixingAll) return;
+    setFixingAll(true);
+    setFixingProgress(0);
+    await processBooksMetadata(selectedBooks, false); // Fix missing only
+    setFixingAll(false);
+    setFixingProgress(0);
+  };
+
+  const handleBulkForceResync = async () => {
+    const selectedBooks = booksWithDetails.filter(b => selectedIds.has(b.id));
+    if (selectedBooks.length === 0 || fixingAll) return;
+    setFixingAll(true);
+    setFixingProgress(0);
+    await processBooksMetadata(selectedBooks, true); // Force resync everything
+    setFixingAll(false);
+    setFixingProgress(0);
+  };
+
+  const handleBulkFixGenreAI = async () => {
+    const selectedBooks = booksWithDetails.filter(b => selectedIds.has(b.id));
+    if (selectedBooks.length === 0 || fixingAll) return;
+    const targets = selectedBooks.filter(
+      b => !b.genres || b.genres.length === 0,
+    );
+    if (targets.length === 0) {
+      toast.info('Selected books already have genres');
+      return;
+    }
+    setFixingAll(true);
+    setFixingProgress(0);
+    await processAIGenre(targets);
+    setFixingAll(false);
+    setFixingProgress(0);
+  };
+
+  const handleBulkForceGenreAI = async () => {
+    const selectedBooks = booksWithDetails.filter(b => selectedIds.has(b.id));
+    if (selectedBooks.length === 0 || fixingAll) return;
+    setFixingAll(true);
+    setFixingProgress(0);
+    await processAIGenre(selectedBooks);
+    setFixingAll(false);
+    setFixingProgress(0);
+  };
+
+  const processAIGenre = async (booksToProcess: Book[]) => {
+    const BATCH_SIZE = 20;
+    let successCount = 0;
+
+    for (let i = 0; i < booksToProcess.length; i += BATCH_SIZE) {
+      const chunk = booksToProcess.slice(i, i + BATCH_SIZE);
+
+      setProcessingIds(prev => {
+        const next = {...prev};
+        chunk.forEach(b => (next[b.id] = true));
+        return next;
+      });
+
+      try {
+        const results = await classifyBooks(chunk);
+
+        const batch = writeBatch(db);
+        results.forEach(res => {
+          if (res.genres && res.genres.length > 0) {
+            batch.update(doc(db, 'libraries', libraryId!, 'books', res.id), {
+              genres: res.genres,
+            });
+            successCount++;
+          }
+        });
+
+        await batch.commit();
+
+        setBooks(prev =>
+          prev.map(b => {
+            const res = results.find(r => r.id === b.id);
+            if (res && res.genres && res.genres.length > 0) {
+              return {...b, genres: res.genres};
+            }
+            return b;
+          }),
+        );
+      } catch (error) {
+        console.error('Batch AI Genre failed:', error);
+        toast.error('AI classification failed for some books');
+      } finally {
+        setProcessingIds(prev => {
+          const next = {...prev};
+          chunk.forEach(b => (next[b.id] = false));
+          return next;
+        });
+        setFixingProgress(prev => prev + chunk.length);
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`Updated genres for ${successCount} books using AI`);
+    }
+  };
+
+  const processBooksMetadata = async (
+    booksToProcess: Book[],
+    forceResync = false,
+  ) => {
     let successCount = 0;
     try {
       const concurrencyLimit = 5;
       for (let i = 0; i < booksToProcess.length; i += concurrencyLimit) {
         const chunk = booksToProcess.slice(i, i + concurrencyLimit);
 
-        const newProcessingIds: Record<string, boolean> = {};
-        chunk.forEach(b => (newProcessingIds[b.id] = true));
-        setProcessingIds(prev => ({...prev, ...newProcessingIds}));
+        setProcessingIds(prev => {
+          const next = {...prev};
+          chunk.forEach(b => (next[b.id] = true));
+          return next;
+        });
 
         await Promise.all(
           chunk.map(async b => {
@@ -363,29 +499,41 @@ export function useSpruceUp(libraryId: string | undefined) {
               const heavyData: BookDetailsPayload = {};
 
               if (enriched) {
-                if (!b.coverUrl && enriched.coverUrl) {
-                  newData.coverUrl = enriched.coverUrl;
-                  logger.info(`Found coverURL for "${bookArg.title}"`);
-                }
-                if (!b.synopsis && enriched.synopsis) {
-                  heavyData.synopsis = enriched.synopsis;
-                  logger.info(`Found synopsis for "${bookArg.title}"`);
-                }
-                if (!b.authorBio && enriched.authorBio) {
-                  heavyData.authorBio = enriched.authorBio;
-                }
-                if (!b.publishedDate && enriched.publishedDate) {
-                  newData.publishedDate = enriched.publishedDate;
-                }
-                if (
-                  (!b.genres || b.genres.length === 0) &&
-                  enriched.genres &&
-                  enriched.genres.length > 0
-                ) {
-                  newData.genres = enriched.genres;
-                  logger.info(
-                    `Found genres for "${bookArg.title}": ${enriched.genres.join(', ')}`,
-                  );
+                // If forceResync is true, we overwrite. Otherwise we only fill missing.
+                if (forceResync) {
+                  if (enriched.coverUrl) newData.coverUrl = enriched.coverUrl;
+                  if (enriched.synopsis) heavyData.synopsis = enriched.synopsis;
+                  if (enriched.authorBio)
+                    heavyData.authorBio = enriched.authorBio;
+                  if (enriched.publishedDate)
+                    newData.publishedDate = enriched.publishedDate;
+                  if (enriched.genres && enriched.genres.length > 0)
+                    newData.genres = enriched.genres;
+                } else {
+                  if (!b.coverUrl && enriched.coverUrl) {
+                    newData.coverUrl = enriched.coverUrl;
+                    logger.info(`Found coverURL for "${bookArg.title}"`);
+                  }
+                  if (!b.synopsis && enriched.synopsis) {
+                    heavyData.synopsis = enriched.synopsis;
+                    logger.info(`Found synopsis for "${bookArg.title}"`);
+                  }
+                  if (!b.authorBio && enriched.authorBio) {
+                    heavyData.authorBio = enriched.authorBio;
+                  }
+                  if (!b.publishedDate && enriched.publishedDate) {
+                    newData.publishedDate = enriched.publishedDate;
+                  }
+                  if (
+                    (!b.genres || b.genres.length === 0) &&
+                    enriched.genres &&
+                    enriched.genres.length > 0
+                  ) {
+                    newData.genres = enriched.genres;
+                    logger.info(
+                      `Found genres for "${bookArg.title}": ${enriched.genres.join(', ')}`,
+                    );
+                  }
                 }
               }
 
@@ -466,11 +614,6 @@ export function useSpruceUp(libraryId: string | undefined) {
               }
             } catch (error) {
               console.error('Error fixing metadata for', b.title, error);
-              handleFirestoreError(
-                error,
-                OperationType.UPDATE,
-                `libraries/${libraryId}/books/${b.id}`,
-              );
             } finally {
               setProcessingIds(prev => ({...prev, [b.id]: false}));
               setFixingProgress(prev => prev + 1);
@@ -531,6 +674,7 @@ export function useSpruceUp(libraryId: string | undefined) {
 
   return {
     books,
+    booksWithDetails,
     loading,
     duplicates,
     missingMetadata,
@@ -538,10 +682,19 @@ export function useSpruceUp(libraryId: string | undefined) {
     fixingAll,
     fixingProgress,
     activeJob,
+    selectedIds,
+    filter,
+    setFilter,
+    toggleSelect,
+    toggleSelectAll,
     handleDelete,
     handleAllowDuplicateGroup,
     handleFixMetadata,
     handleFixAllMetadata,
     handleForceResyncAllMetadata,
+    handleBulkFixMetadata,
+    handleBulkForceResync,
+    handleBulkFixGenreAI,
+    handleBulkForceGenreAI,
   };
 }

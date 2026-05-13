@@ -53,7 +53,11 @@ export function useBook(
           const data = libDoc.data();
           setCanEdit(
             data.ownerId === user.uid ||
-              (data.sharedWith && data.sharedWith.includes(user.email || '')),
+              (user.email &&
+                data.access &&
+                data.access[user.email.toLowerCase()] &&
+                (data.access[user.email.toLowerCase()] === 'owner' ||
+                  data.access[user.email.toLowerCase()] === 'editor')),
           );
         }
       },

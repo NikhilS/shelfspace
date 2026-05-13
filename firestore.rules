@@ -32,8 +32,19 @@ service cloud.firestore {
     }
 
     // ===============================================================
-    // Validation Helpers
+    // Global Access Control
     // ===============================================================
+    function canCheckAllowlist() {
+      return isSignedIn();
+    }
+    
+    match /appSettings/allowlist/users/{email} {
+      allow read: if isSignedIn() && (request.auth.token.email == email || request.auth.token.email == 'nikhil.singhal@gmail.com');
+      // allow read list for bootstrapper to check empty
+      allow list: if canCheckAllowlist();
+      // allow create for first bootstrapper
+      allow create: if isSignedIn();
+    }
 
     function isValidUserProfile(data) {
       return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
@@ -54,7 +65,7 @@ service cloud.firestore {
              data.ownerName is string && data.ownerName.size() <= 200 &&
              data.createdAt is timestamp &&
              (!( 'bookCount' in data ) || (data.bookCount is number)) &&
-             (!( 'sharedWith' in data ) || (data.sharedWith is list && data.sharedWith.size() <= 100)) &&
+             (!( 'access' in data ) || (data.access is map && data.access.size() <= 101)) &&
              (!( 'heroImageUrl' in data ) || (data.heroImageUrl == null || (data.heroImageUrl is string && data.heroImageUrl.size() <= 2000000)));
     }
 
@@ -120,13 +131,21 @@ service cloud.firestore {
 
     match /libraries/{libraryId} {
       // Note: No get() calls here for allow list. Relies on resource.data filter natively.
+      function getRole(lib) {
+        return lib.get('access', {}).get(request.auth.token.email, null);
+      }
+      
       function canReadLibrary() {
         return isSignedIn() && (
           existing().ownerId == request.auth.uid ||
-          (request.auth.token.email in existing().get('sharedWith', []))
+          getRole(existing()) != null
         );
       }
       function canEditLibrary() {
+        let role = getRole(existing());
+        return isSignedIn() && (existing().ownerId == request.auth.uid || role == 'editor' || role == 'owner');
+      }
+      function isLibraryOwner() {
         return isSignedIn() && existing().ownerId == request.auth.uid;
       }
       
@@ -135,13 +154,31 @@ service cloud.firestore {
       function getLibrary() {
         return get(/databases/$(database)/documents/libraries/$(libraryId));
       }
+      
+      function getParentRole() {
+        let library = getLibrary();
+        return library.data.get('access', {}).get(request.auth.token.email, null);
+      }
+
       function canAccessLibraryResource() {
         let library = getLibrary();
+        let role = library.data.get('access', {}).get(request.auth.token.email, null);
         return isSignedIn() && library != null && (
           library.data.ownerId == request.auth.uid ||
-          (request.auth.token.email in library.data.get('sharedWith', []))
+          role != null
         );
       }
+      
+      function canWriteLibraryResource() {
+        let library = getLibrary();
+        let role = library.data.get('access', {}).get(request.auth.token.email, null);
+        return isSignedIn() && library != null && (
+          library.data.ownerId == request.auth.uid ||
+          role == 'editor' ||
+          role == 'owner'
+        );
+      }
+
       function libraryOwnerOnly() {
         let library = getLibrary();
         return isSignedIn() && library != null && library.data.ownerId == request.auth.uid;
@@ -152,15 +189,15 @@ service cloud.firestore {
       allow update: if canEditLibrary() && isValidLibrary(incoming()) && 
                     incoming().ownerId == existing().ownerId &&
                     incoming().createdAt == existing().createdAt;
-      allow delete: if canEditLibrary();
+      allow delete: if isLibraryOwner();
 
       match /books/{bookId} {
         allow read: if canAccessLibraryResource();
-        allow create: if canAccessLibraryResource() && isValidBook(incoming()) && incoming().addedBy == request.auth.uid;
-        allow update: if canAccessLibraryResource() && isValidBook(incoming()) &&
+        allow create: if canWriteLibraryResource() && isValidBook(incoming()) && incoming().addedBy == request.auth.uid;
+        allow update: if canWriteLibraryResource() && isValidBook(incoming()) &&
                       incoming().get('addedAt', null) == existing().get('addedAt', null) &&
                       incoming().get('addedBy', null) == existing().get('addedBy', null);
-        allow delete: if libraryOwnerOnly();
+        allow delete: if canWriteLibraryResource(); // Editors can delete books too
 
         match /reviews/{reviewId} {
           allow read: if canAccessLibraryResource();
@@ -175,16 +212,16 @@ service cloud.firestore {
 
       match /bookDetails/{bookId} {
         allow read: if canAccessLibraryResource();
-        allow create: if canAccessLibraryResource() && isValidBookDetails(incoming());
-        allow update: if canAccessLibraryResource() && isValidBookDetails(incoming());
-        allow delete: if libraryOwnerOnly();
+        allow create: if canWriteLibraryResource() && isValidBookDetails(incoming());
+        allow update: if canWriteLibraryResource() && isValidBookDetails(incoming());
+        allow delete: if canWriteLibraryResource();
       }
 
       match /allowedDuplicates/{allowedId} {
         allow read: if canAccessLibraryResource();
-        allow create: if canAccessLibraryResource() && isValidAllowedDuplicate(incoming());
-        allow update: if canAccessLibraryResource() && isValidAllowedDuplicate(incoming());
-        allow delete: if libraryOwnerOnly();
+        allow create: if canWriteLibraryResource() && isValidAllowedDuplicate(incoming());
+        allow update: if canWriteLibraryResource() && isValidAllowedDuplicate(incoming());
+        allow delete: if canWriteLibraryResource();
       }
 
       match /jobs/{jobId} {

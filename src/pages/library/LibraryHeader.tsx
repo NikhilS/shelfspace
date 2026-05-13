@@ -9,6 +9,7 @@ interface LibraryHeaderProps {
   books: Book[];
   isOwner: boolean;
   isSyncing?: boolean;
+  role?: 'owner' | 'editor' | 'viewer' | null;
 }
 
 export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
@@ -16,6 +17,7 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   books,
   isOwner,
   isSyncing = false,
+  role,
 }) => {
   return (
     <div
@@ -35,9 +37,16 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
           animate={{opacity: 1, y: 0}}
           transition={{delay: 0.1, duration: 0.5}}
         >
-          <h1 className="text-headline-xl sm:text-headline-2xl font-headline-xl text-on-primary drop-shadow-md mb-2">
-            {toTitleCase(library.name)}
-          </h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-headline-xl sm:text-headline-2xl font-headline-xl text-on-primary drop-shadow-md">
+              {toTitleCase(library.name)}
+            </h1>
+            {role === 'viewer' && (
+              <span className="font-label-caps text-[10px] tracking-wider uppercase bg-surface-container-high/80 text-on-surface-variant px-2 py-1 flex items-center justify-center rounded border border-outline-variant/30 backdrop-blur-sm shadow-sm inline-flex">
+                Read-Only
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-3 flex-wrap">
             <div className="w-[1px] h-4 bg-white/40 hidden sm:block" />
             <p className="font-label-caps text-label-caps text-white/80">

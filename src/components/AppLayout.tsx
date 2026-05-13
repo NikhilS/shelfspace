@@ -1,7 +1,7 @@
 import React, {useState, useEffect} from 'react';
 import {Link, useLocation, Outlet} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
-import {Library, LogOut, Menu} from 'lucide-react';
+import {Library, LogOut, Menu, Shield} from 'lucide-react';
 import {motion, AnimatePresence} from 'motion/react';
 import {ConnectivityBanner} from './ConnectivityBanner';
 
@@ -64,6 +64,21 @@ export default function AppLayout({children}: AppLayoutProps) {
             />
             <span>My Libraries</span>
           </Link>
+
+          {useAuth().isAdmin && (
+            <Link
+              to="/admin"
+              onClick={() => setIsMobileNavOpen(false)}
+              className={`sidebar-nav-item ${location.pathname === '/admin' ? 'active' : ''}`}
+            >
+              <div
+                className={`w-5 h-5 flex-shrink-0 flex items-center justify-center ${location.pathname === '/admin' ? 'text-primary' : 'text-on-surface-variant'}`}
+              >
+                <Shield className="w-5 h-5" />
+              </div>
+              <span>Admin</span>
+            </Link>
+          )}
 
           <div
             id="sidebar-actions-root"

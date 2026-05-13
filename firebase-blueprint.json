@@ -21,10 +21,10 @@
         "name": { "type": "string" },
         "ownerId": { "type": "string" },
         "ownerName": { "type": "string" },
-        "sharedWith": {
-          "type": "array",
-          "items": { "type": "string", "format": "email" },
-          "description": "List of emails this library is shared with."
+        "access": {
+          "type": "object",
+          "description": "Map of user emails to their access level.",
+          "additionalProperties": { "type": "string", "enum": ["owner", "editor", "viewer"] }
         },
         "heroImageUrl": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }

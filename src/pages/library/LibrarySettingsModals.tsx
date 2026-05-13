@@ -2,7 +2,7 @@ import React from 'react';
 import {useForm} from 'react-hook-form';
 import {zodResolver} from '@hookform/resolvers/zod';
 import {z} from 'zod';
-import {X, Share2, Settings, Download, Trash2} from 'lucide-react';
+import {X, Share2, Settings, Download, Trash2, Shield} from 'lucide-react';
 import {Library} from '../../types';
 import {useDebugMode} from '../../hooks/useDebugMode';
 import {Bug} from 'lucide-react';
@@ -19,8 +19,12 @@ interface LibrarySettingsModalsProps {
   library: Library;
   isOwner: boolean;
   canEdit: boolean;
-  addShareEmail: (email: string) => Promise<void>;
+  addShareEmail: (email: string, role: 'editor' | 'viewer') => Promise<void>;
   handleRemoveShare: (email: string) => void;
+  handleUpdateRole?: (
+    email: string,
+    role: 'editor' | 'viewer',
+  ) => Promise<void>;
   handleExportToCSV: () => void;
   handleDeleteLibrary: () => void;
   confirmDeleteLibrary: () => void;
@@ -28,6 +32,7 @@ interface LibrarySettingsModalsProps {
 
 const shareSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
+  role: z.enum(['editor', 'viewer']).default('viewer'),
 });
 
 type ShareFormValues = z.infer<typeof shareSchema>;
@@ -44,6 +49,7 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
   canEdit,
   addShareEmail,
   handleRemoveShare,
+  handleUpdateRole,
   handleExportToCSV,
   handleDeleteLibrary,
   confirmDeleteLibrary,
@@ -59,17 +65,31 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
   } = useForm<ShareFormValues>({
     resolver: zodResolver(shareSchema),
     mode: 'onChange',
+    defaultValues: {
+      role: 'viewer',
+    },
   });
 
   const onShareSubmit = async (data: ShareFormValues) => {
     setIsSharing(true);
     try {
-      await addShareEmail(data.email);
+      await addShareEmail(data.email, data.role);
       reset();
     } finally {
       setIsSharing(false);
     }
   };
+
+  const getRoleForEmail = (email: string) => {
+    if (library.access && library.access[email]) {
+      return library.access[email];
+    }
+    return 'viewer';
+  };
+
+  const sharedEmails = Object.keys(library.access || {}).filter(
+    email => library.access?.[email] !== 'owner',
+  );
 
   return (
     <>
@@ -86,7 +106,7 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
               <div className="w-10 h-10 bg-surface-container rounded-full flex items-center justify-center text-primary border border-outline-variant/30">
                 <Share2 size={20} />
               </div>
-              Share & Settings
+              Share Access
             </DialogTitle>
             <button
               onClick={() => setIsSettingsOpen(false)}
@@ -95,56 +115,102 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
               <X size={20} />
             </button>
           </div>
-          <div className="mb-10">
-            <h4 className="text-sm font-medium text-on-surface-variant mb-4 uppercase tracking-wider">
-              Share Access
-            </h4>
+          <div className="mb-6">
             <form
               onSubmit={handleSubmit(onShareSubmit)}
               className="flex flex-col gap-2 mb-6"
             >
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <input
                   type="email"
                   {...register('email')}
                   placeholder="friend@email.com"
-                  className="flex-1 bg-surface-container border border-outline-variant/50 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 text-on-surface"
+                  className="flex-1 bg-surface-container border border-outline-variant/50 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 text-on-surface min-w-0"
                 />
-                <Button type="submit" disabled={!isValid || isSharing}>
-                  {isSharing ? '...' : 'Share'}
+                <select
+                  {...register('role')}
+                  className="bg-surface-container border border-outline-variant/50 rounded-xl pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 text-on-surface appearance-none cursor-pointer"
+                  style={{
+                    backgroundImage:
+                      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")",
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundSize: '1rem',
+                  }}
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                </select>
+                <Button
+                  type="submit"
+                  disabled={!isValid || isSharing}
+                  className="shrink-0 px-3"
+                >
+                  {isSharing ? '...' : 'Invite'}
                 </Button>
               </div>
               {errors.email && (
                 <p className="text-xs text-error">{errors.email.message}</p>
               )}
             </form>
-            <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-              {library.sharedWith.length === 0 ? (
-                <div className="bg-surface-container border border-outline-variant/50 rounded-xl p-4 text-center">
-                  <p className="text-sm text-on-surface-variant">
-                    Not shared with anyone yet.
-                  </p>
-                </div>
-              ) : (
-                library.sharedWith.map(email => (
-                  <div
-                    key={email}
-                    className="flex items-center justify-between bg-surface-container border border-outline-variant/50 px-4 py-3 rounded-xl text-sm group hover:border-outline-variant transition-colors"
-                  >
-                    <span className="truncate mr-3 font-medium text-on-surface">
-                      {email}
-                    </span>
+
+            <h4 className="text-sm font-medium text-on-surface-variant mb-3 uppercase tracking-wider">
+              Current Access
+            </h4>
+
+            <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar pb-4">
+              <div className="flex items-center justify-between bg-surface-container/50 border border-outline-variant/30 px-4 py-3 rounded-xl text-sm">
+                <span className="truncate mr-3 font-medium text-on-surface flex items-center gap-2">
+                  <Shield size={16} className="text-primary" />
+                  {library.ownerName}
+                </span>
+                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full font-medium">
+                  Owner
+                </span>
+              </div>
+
+              {sharedEmails.map(email => (
+                <div
+                  key={email}
+                  className="flex items-center justify-between bg-surface-container border border-outline-variant/50 px-4 py-3 rounded-xl text-sm group hover:border-outline-variant transition-colors"
+                >
+                  <span className="truncate mr-3 font-medium text-on-surface">
+                    {email}
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={getRoleForEmail(email)}
+                      onChange={e =>
+                        handleUpdateRole?.(
+                          email,
+                          e.target.value as 'editor' | 'viewer',
+                        )
+                      }
+                      className="bg-transparent border-none text-xs text-on-surface-variant focus:outline-none cursor-pointer pr-5 appearance-none"
+                      style={{
+                        backgroundImage:
+                          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")",
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: 'right center',
+                        backgroundSize: '0.75rem',
+                      }}
+                    >
+                      <option value="viewer">Viewer</option>
+                      <option value="editor">Editor</option>
+                    </select>
+
                     <button
                       onClick={() => handleRemoveShare(email)}
                       className="text-on-surface-variant hover:text-error p-1.5 rounded-md hover:bg-error-container transition-colors"
-                      title="Remove user"
+                      title="Remove access"
                       aria-label={`Remove access for ${email}`}
                     >
                       <X size={16} />
                     </button>
                   </div>
-                ))
-              )}
+                </div>
+              ))}
             </div>
           </div>
         </DialogContent>

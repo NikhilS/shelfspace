@@ -7,6 +7,7 @@ import {ErrorBoundary} from './components/ErrorBoundary';
 import {Toaster} from 'sonner';
 import AppLayout from './components/AppLayout';
 import ScrollToTop from './components/ScrollToTop';
+import {RequireLibraryPermission} from './components/RequireLibraryPermission';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const LibraryView = lazy(() => import('./pages/LibraryView'));
@@ -15,6 +16,7 @@ const AddBookView = lazy(() => import('./pages/AddBookView'));
 const ConstellationMap = lazy(() => import('./pages/ConstellationMap'));
 const Login = lazy(() => import('./pages/Login'));
 const SpruceUpView = lazy(() => import('./pages/SpruceUpView'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 
 function LoadingScreen() {
   return (
@@ -82,16 +84,51 @@ function AnimatedRoutes() {
           }
         >
           <Route path="/" element={<Dashboard />} />
-          <Route path="/library/:id" element={<LibraryView />} />
-          <Route path="/library/:id/add" element={<AddBookView />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+
+          <Route
+            path="/library/:id"
+            element={
+              <RequireLibraryPermission requires="viewer">
+                <LibraryView />
+              </RequireLibraryPermission>
+            }
+          />
+
+          <Route
+            path="/library/:id/add"
+            element={
+              <RequireLibraryPermission requires="editor">
+                <AddBookView />
+              </RequireLibraryPermission>
+            }
+          />
+
           <Route
             path="/library/:id/constellation"
-            element={<ConstellationMap />}
+            element={
+              <RequireLibraryPermission requires="viewer">
+                <ConstellationMap />
+              </RequireLibraryPermission>
+            }
           />
-          <Route path="/library/:id/spruce-up" element={<SpruceUpView />} />
+
+          <Route
+            path="/library/:id/spruce-up"
+            element={
+              <RequireLibraryPermission requires="editor">
+                <SpruceUpView />
+              </RequireLibraryPermission>
+            }
+          />
+
           <Route
             path="/library/:libraryId/book/:bookId"
-            element={<BookDetailsView />}
+            element={
+              <RequireLibraryPermission requires="viewer">
+                <BookDetailsView />
+              </RequireLibraryPermission>
+            }
           />
         </Route>
       </Routes>

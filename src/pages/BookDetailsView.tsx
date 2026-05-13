@@ -1,5 +1,5 @@
 import {motion, AnimatePresence} from 'motion/react';
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useMemo} from 'react';
 import {useParams, useNavigate, useLocation} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {toast} from 'sonner';
@@ -50,7 +50,7 @@ export default function BookDetailsView() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Filter huge payloads for DebugOverlay
-  const debugData = React.useMemo(() => {
+  const debugData = useMemo(() => {
     if (!bookBase) return null;
     const base = {...bookBase};
     const details: Record<string, unknown> = bookDetails

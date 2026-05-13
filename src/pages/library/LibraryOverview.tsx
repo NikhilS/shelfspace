@@ -13,6 +13,7 @@ import {
 import {toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {useNavigate, useLocation} from 'react-router-dom';
 import {Button} from '@/components/ui/button';
+import {format} from 'date-fns';
 
 import {User} from 'firebase/auth';
 
@@ -73,11 +74,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
     if (books.length === 0) return 'Never';
     const latestTime = Math.max(...books.map(b => getFirestoreTime(b.addedAt)));
     if (latestTime <= 0) return 'Unknown';
-    return new Date(latestTime).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    return format(new Date(latestTime), 'MMM d, yyyy');
   }, [books]);
 
   return (

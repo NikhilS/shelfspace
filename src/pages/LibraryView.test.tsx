@@ -58,7 +58,9 @@ vi.mock('firebase/firestore', () => {
             data: () => ({
               name: 'My Sci-Fi Library',
               ownerId: 'u1',
-              sharedWith: [],
+              access: {
+                'test@test.com': 'owner',
+              },
             }),
           });
         }

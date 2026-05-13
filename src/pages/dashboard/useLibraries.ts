@@ -7,6 +7,7 @@ import {
   where,
   onSnapshot,
   or,
+  FieldPath,
   getCountFromServer,
   updateDoc,
   doc,
@@ -30,7 +31,15 @@ export function useLibraries() {
       collection(db, 'libraries'),
       or(
         where('ownerId', '==', user.uid),
-        where('sharedWith', 'array-contains', user.email?.toLowerCase() || ''),
+        ...(user.email
+          ? [
+              where(new FieldPath('access', user.email), 'in', [
+                'owner',
+                'editor',
+                'viewer',
+              ]),
+            ]
+          : []),
       ),
     );
 
@@ -84,7 +93,9 @@ export function useLibraries() {
         name: trimmedName,
         ownerId: user.uid,
         ownerName: user.displayName || user.email || 'Unknown',
-        sharedWith: [],
+        access: {
+          ...(user.email ? {[user.email.toLowerCase()]: 'owner'} : {}),
+        },
         createdAt: serverTimestamp(),
         heroImageUrl: null,
         bookCount: 0,

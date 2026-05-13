@@ -8,7 +8,7 @@ export interface Library {
   name: string;
   ownerId: string;
   ownerName: string;
-  sharedWith: string[];
+  access?: Record<string, 'owner' | 'editor' | 'viewer'>;
   createdAt: Timestamp;
   heroImageUrl?: string;
   bookCount?: number;

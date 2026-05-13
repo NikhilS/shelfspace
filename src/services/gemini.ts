@@ -708,6 +708,70 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
   }
 }
 
+export async function classifyBooks(
+  batch: {id: string; title: string; author: string; synopsis?: string}[],
+): Promise<{id: string; genres: string[]}[]> {
+  try {
+    if (!batch || batch.length === 0) return [];
+    const apiKey =
+      typeof process !== 'undefined'
+        ? process.env.GEMINI_API_KEY
+        : import.meta.env.VITE_GEMINI_API_KEY;
+    const ai = new GoogleGenAI({apiKey});
+
+    const booksPromptData = batch.map(b => ({
+      id: b.id,
+      title: b.title,
+      author: b.author,
+      context: b.synopsis ? b.synopsis.substring(0, 300) : '',
+    }));
+
+    const prompt = `You are an expert librarian specializing in book classification.
+Classify the following batch of ${batch.length} books into the most appropriate BISAC Subject Headings.
+Use only established BISAC categories (e.g., FICTION / Mystery & Detective / General, BIOGRAPHY & AUTOBIOGRAPHY / Historical).
+
+Rules:
+1. Provide 1 to 3 relevant BISAC categories per book.
+2. Ensure categories are formatted correctly according to standard BISAC naming (Levels separated by ' / ').
+3. Respond ONLY with a valid JSON array of objects.
+
+Format:
+[
+  {
+    "id": "original_id",
+    "genres": ["BISAC Category 1", "BISAC Category 2"]
+  }
+]
+
+Books to classify:
+${JSON.stringify(booksPromptData, null, 2)}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const text = response.text;
+    if (!text) return [];
+
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return parsed as {id: string; genres: string[]}[];
+      }
+      return [];
+    } catch (e) {
+      console.error('Failed to parse Gemini classification response:', e);
+      return [];
+    }
+  } catch (error) {
+    handleGeminiError(error);
+  }
+}
+
 async function compressImage(dataUrl: string): Promise<string> {
   if (typeof window === 'undefined') return dataUrl; // Skip compression on server for now
   return new Promise(resolve => {

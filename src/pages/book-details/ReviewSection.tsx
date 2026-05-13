@@ -5,6 +5,7 @@ import {Review} from './useBook';
 import {Book, FirestoreDate} from '../../types';
 import {useAuth} from '../../contexts/AuthContext';
 import {Button} from '@/components/ui/button';
+import {format} from 'date-fns';
 
 interface ReviewSectionProps {
   libraryId: string;
@@ -146,9 +147,10 @@ export function ReviewSection({
                   'toDate' in review.createdAt &&
                   typeof (review.createdAt as {toDate: () => Date}).toDate ===
                     'function'
-                    ? (review.createdAt as {toDate: () => Date})
-                        .toDate()
-                        .toLocaleDateString()
+                    ? format(
+                        (review.createdAt as {toDate: () => Date}).toDate(),
+                        'MMM d, yyyy',
+                      )
                     : 'Just now'}
                 </span>
               </div>

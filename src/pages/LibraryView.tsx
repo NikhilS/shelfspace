@@ -7,18 +7,20 @@ import {
   getDocs,
   writeBatch,
   doc,
+  setDoc,
   updateDoc,
-  arrayUnion,
-  arrayRemove,
+  serverTimestamp,
 } from 'firebase/firestore';
 
 import {toast} from 'sonner';
 import {toTitleCase, getFirestoreTime} from '../lib/utils';
 import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {motion, AnimatePresence} from 'motion/react';
+import {format} from 'date-fns';
 
 // Hooks
 import {useLibraryData} from '../hooks/useLibraryData';
+import {getAccessFromLibrary} from '../hooks/useLibraryAccess';
 import {useBookFilters} from '../hooks/useBookFilters';
 import {useSelection} from '../hooks/useSelection';
 import {usePickOfTheDay} from '../hooks/usePickOfTheDay';
@@ -123,11 +125,37 @@ export default function LibraryView() {
       const user = auth.currentUser;
       if (!user) throw new Error('Not logged in');
 
-      await updateDoc(doc(db, 'libraries', id), {
-        sharedWith: arrayRemove(email),
-      });
+      const targetEmail = email.trim().toLowerCase();
+
+      const updateData: Partial<Library> = {};
+
+      // Remove from access
+      if (library.access && library.access[targetEmail]) {
+        const newAccess = {...library.access};
+        delete newAccess[targetEmail];
+        updateData.access = newAccess;
+      }
+
+      await updateDoc(doc(db, 'libraries', id), updateData);
 
       toast.success(`Removed access for ${email}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `libraries/${id}`);
+    }
+  };
+
+  const handleUpdateRole = async (email: string, role: 'editor' | 'viewer') => {
+    if (!id || !library) return;
+    try {
+      const targetEmail = email.trim().toLowerCase();
+      const newAccess = {...(library.access || {})};
+      newAccess[targetEmail] = role;
+
+      await updateDoc(doc(db, 'libraries', id), {
+        access: newAccess,
+      });
+
+      toast.success(`Updated role for ${email} to ${role}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `libraries/${id}`);
     }
@@ -189,7 +217,7 @@ export default function LibraryView() {
       let addedDateStr = '';
       if (book.addedAt) {
         const time = getFirestoreTime(book.addedAt);
-        if (time > 0) addedDateStr = new Date(time).toLocaleString();
+        if (time > 0) addedDateStr = format(new Date(time), 'PPpp');
       }
       return [
         escapeCSV(book.title),
@@ -216,11 +244,9 @@ export default function LibraryView() {
     toast.success('Library exported to CSV');
   };
 
-  const isOwner = library?.ownerId === user?.uid;
-  const canEdit = !!(
-    isOwner ||
-    (user?.email && library?.sharedWith?.includes(user.email))
-  );
+  const access = getAccessFromLibrary(library, user?.uid, user?.email);
+  const isOwner = access.isOwner;
+  const canEdit = access.canEdit;
 
   const {setDebugData} = useDebug();
 
@@ -231,7 +257,7 @@ export default function LibraryView() {
           id: library.id,
           name: library.name,
           ownerId: library.ownerId,
-          sharedWith: library.sharedWith,
+          access: library.access,
           createdAt: library.createdAt,
           summary: `[Books in collection: ${books?.length || 0}]`,
         },
@@ -271,6 +297,7 @@ export default function LibraryView() {
               books={books}
               isOwner={isOwner}
               isSyncing={isSyncing}
+              role={access.role}
             />
           </ErrorBoundary>
 
@@ -373,17 +400,32 @@ export default function LibraryView() {
             library={library}
             isOwner={isOwner}
             canEdit={canEdit}
-            addShareEmail={async email => {
+            addShareEmail={async (email, role) => {
               if (!id || !library || !email.trim()) return;
               try {
                 const user = auth.currentUser;
                 if (!user) throw new Error('Not logged in');
 
+                const newEmail = email.trim().toLowerCase();
+                const newAccess = {...(library.access || {})};
+                newAccess[newEmail] = role;
+
+                // 1. Update library access
                 await updateDoc(doc(db, 'libraries', id), {
-                  sharedWith: arrayUnion(email.trim().toLowerCase()),
+                  access: newAccess,
                 });
 
-                toast.success(`Shared with ${email}`);
+                // 2. Auto-provision to global allowlist
+                await setDoc(
+                  doc(db, 'appSettings/allowlist/users', newEmail),
+                  {
+                    email: newEmail,
+                    addedAt: serverTimestamp(),
+                  },
+                  {merge: true},
+                );
+
+                toast.success(`Shared with ${email} as ${toTitleCase(role)}`);
               } catch (error) {
                 handleFirestoreError(
                   error,
@@ -393,6 +435,7 @@ export default function LibraryView() {
               }
             }}
             handleRemoveShare={handleRemoveShare}
+            handleUpdateRole={handleUpdateRole}
             handleExportToCSV={handleExportToCSV}
             handleDeleteLibrary={() => setLibraryToDelete(true)}
             confirmDeleteLibrary={confirmDeleteLibrary}

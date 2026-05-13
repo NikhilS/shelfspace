@@ -7,6 +7,7 @@ import BookCard from '../../components/BookCard';
 import {toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {SortOption} from '../../hooks/useBookFilters';
 import {User} from 'firebase/auth';
+import {format} from 'date-fns';
 
 interface LibraryShelfProps {
   books: Book[];
@@ -266,13 +267,10 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
                       }
                     >
                       {book.addedAt && getFirestoreTime(book.addedAt) > 0
-                        ? new Date(
-                            getFirestoreTime(book.addedAt),
-                          ).toLocaleDateString(undefined, {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })
+                        ? format(
+                            new Date(getFirestoreTime(book.addedAt)),
+                            'MMM d, yyyy',
+                          )
                         : 'Unknown'}
                     </td>
                   </>
