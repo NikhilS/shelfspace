@@ -290,7 +290,7 @@ export default function LibraryView() {
       />
 
       <div className="flex-grow flex flex-col min-h-screen w-full">
-        <div className="layout-page">
+        <div className="flex-1 flex flex-col min-w-0">
           <ErrorBoundary name="Library Collection Header">
             <LibraryHeader
               library={library}

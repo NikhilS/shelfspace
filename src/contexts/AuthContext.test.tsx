@@ -16,9 +16,11 @@ vi.mock('firebase/auth', () => ({
 }));
 
 vi.mock('firebase/firestore', () => ({
-  doc: vi.fn(),
+  doc: vi.fn((_db, ...paths) => paths.join('/')),
   setDoc: vi.fn(),
   getDoc: vi.fn(),
+  collection: vi.fn((_db, ...paths) => paths.join('/')),
+  getDocs: vi.fn(),
   serverTimestamp: vi.fn(() => 'server-time'),
 }));
 
@@ -76,13 +78,18 @@ describe('AuthContext', () => {
       cb?.({
         uid: '123',
         email: 'test@example.com',
+        emailVerified: true,
       } as import('firebase/auth').User);
       return () => {};
     }) as unknown);
 
-    vi.mocked(getDoc).mockResolvedValueOnce({
-      exists: () => true,
-    } as unknown as import('firebase/firestore').DocumentSnapshot);
+    vi.mocked(getDoc).mockImplementation(async (ref: any) => {
+      // Simulate that both allowlist and user documents exist
+      return {
+        exists: () => true,
+        data: () => ({role: 'user'}),
+      } as unknown as import('firebase/firestore').DocumentSnapshot;
+    });
 
     render(
       <AuthProvider>
@@ -110,13 +117,23 @@ describe('AuthContext', () => {
         email: 'new@example.com',
         displayName: 'New User',
         photoURL: 'http://example.com/photo.jpg',
+        emailVerified: true,
       } as unknown);
       return () => {};
     }) as unknown);
 
-    vi.mocked(getDoc).mockResolvedValueOnce({
-      exists: () => false,
-    } as unknown as import('firebase/firestore').DocumentSnapshot);
+    vi.mocked(getDoc).mockImplementation(async (ref: any) => {
+      if (ref === 'appSettings/allowlist/users/new@example.com') {
+        return {
+          exists: () => true,
+          data: () => ({role: 'user'}),
+        } as unknown as import('firebase/firestore').DocumentSnapshot;
+      }
+      return {
+        exists: () => false,
+        data: () => ({}),
+      } as unknown as import('firebase/firestore').DocumentSnapshot;
+    });
 
     render(
       <AuthProvider>
@@ -125,16 +142,15 @@ describe('AuthContext', () => {
     );
 
     await waitFor(() => {
-      expect(setDoc).toHaveBeenCalledWith(
-        undefined, // Because doc is mocked to return undefined
-        {
-          uid: 'user456',
-          email: 'new@example.com',
-          displayName: 'New User',
-          photoURL: 'http://example.com/photo.jpg',
-          createdAt: 'server-time',
-        },
-      );
+      expect(screen.getByTestId('user')).toBeInTheDocument();
+    });
+
+    expect(setDoc).toHaveBeenCalledWith('users/user456', {
+      uid: 'user456',
+      email: 'new@example.com',
+      displayName: 'New User',
+      photoURL: 'http://example.com/photo.jpg',
+      createdAt: 'server-time',
     });
   });
 

@@ -16,7 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
-import {triggerHaptics} from '../../lib/utils';
+import {
+  triggerHaptics,
+  toSentenceCase,
+  normalizeTitle,
+  normalizeName,
+  normalizeIsbn,
+  normalizeText,
+} from '../../lib/utils';
 
 interface ManualEntryTabProps {
   existingBooks: BookDetails[];
@@ -99,18 +106,18 @@ export function ManualEntryTab({
     setIsAdding(true);
     try {
       const newBook: BookDetails = {
-        title: data.title,
-        author: data.author,
-        isbn: data.isbn || '',
-        series: data.series || '',
-        synopsis: data.synopsis || '',
+        title: normalizeTitle(data.title),
+        author: normalizeName(data.author),
+        isbn: normalizeIsbn(data.isbn),
+        series: normalizeText(data.series),
+        synopsis: normalizeText(data.synopsis),
         publishedDate: data.publishedDate || '',
         format: data.format,
         coverUrl,
         genres: data.genresInput
           ? data.genresInput
               .split(',')
-              .map(g => g.trim())
+              .map(g => toSentenceCase(g.trim()))
               .filter(Boolean)
           : [],
       };

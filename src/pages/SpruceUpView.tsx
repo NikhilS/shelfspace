@@ -29,6 +29,8 @@ export default function SpruceUpView() {
     handleAllowDuplicateGroup,
     handleBulkFixMetadata,
     handleBulkForceResync,
+    handleBulkFixGenreAPI,
+    handleBulkForceGenreAPI,
     handleBulkFixGenreAI,
     handleBulkForceGenreAI,
   } = useSpruceUp(libraryId);
@@ -66,6 +68,8 @@ export default function SpruceUpView() {
           progress={fixingProgress}
           onFixMetadata={handleBulkFixMetadata}
           onForceResyncAll={handleBulkForceResync}
+          onFixGenreAPI={handleBulkFixGenreAPI}
+          onForceGenreAPI={handleBulkForceGenreAPI}
           onFixGenreAI={handleBulkFixGenreAI}
           onForceGenreAI={handleBulkForceGenreAI}
         />

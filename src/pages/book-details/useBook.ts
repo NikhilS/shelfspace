@@ -257,19 +257,31 @@ export function useBook(
     }
   };
 
+  const updateBookOptimistically = (
+    partialBook: Partial<Book & BookDetailsPayload>,
+  ) => {
+    setBookBase(prev => (prev ? ({...prev, ...partialBook} as Book) : prev));
+    setBookDetails(prev =>
+      prev ? ({...prev, ...partialBook} as BookDetailsPayload) : prev,
+    );
+  };
+
+  const setReviewsOptimistically = (newReviews: Review[]) => {
+    setReviews(newReviews);
+  };
+
   return {
     book,
     bookBase,
     bookDetails,
-    setBookBase,
-    setBookDetails,
     reviews,
-    setReviews,
     isLoading,
     canEdit,
     deleteBook,
     updateReadingStatus,
     addReview,
     updateBook,
+    updateBookOptimistically,
+    setReviewsOptimistically,
   };
 }

@@ -1,3 +1,11 @@
+import {
+  toSentenceCase,
+  normalizeTitle,
+  normalizeName,
+  normalizeIsbn,
+  normalizeText,
+} from '../lib/utils';
+
 export interface BookDetails {
   title: string;
   author: string;
@@ -96,16 +104,22 @@ export async function searchBookByIsbn(
       if (data.items && data.items.length > 0) {
         const bookData = data.items[0].volumeInfo;
         return {
-          title: bookData.title || 'Unknown Title',
-          author: bookData.authors?.join(', ') || 'Unknown Author',
-          isbn: extractIsbn(bookData.industryIdentifiers) || isbn,
+          title: normalizeTitle(bookData.title || 'Unknown Title'),
+          author: normalizeName(
+            bookData.authors?.join(', ') || 'Unknown Author',
+          ),
+          isbn: normalizeIsbn(
+            extractIsbn(bookData.industryIdentifiers) || isbn,
+          ),
           coverUrl: getHighResCoverUrl(
             bookData.imageLinks?.thumbnail ||
               bookData.imageLinks?.smallThumbnail,
           ),
           publishedDate: bookData.publishedDate || '',
-          genres: bookData.categories || undefined,
-          synopsis: bookData.description || undefined,
+          genres: bookData.categories
+            ? bookData.categories.map(toSentenceCase)
+            : undefined,
+          synopsis: normalizeText(bookData.description || undefined),
         };
       }
     }
@@ -136,9 +150,11 @@ export async function searchBookByIsbn(
       if (data.docs && data.docs.length > 0) {
         const doc = data.docs[0];
         return {
-          title: doc.title || 'Unknown Title',
-          author: doc.author_name?.join(', ') || 'Unknown Author',
-          isbn: doc.isbn?.[0] || isbn,
+          title: normalizeTitle(doc.title || 'Unknown Title'),
+          author: normalizeName(
+            doc.author_name?.join(', ') || 'Unknown Author',
+          ),
+          isbn: normalizeIsbn(doc.isbn?.[0] || isbn),
           coverUrl: getHighResCoverUrl(
             doc.cover_i
               ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`
@@ -175,16 +191,20 @@ export async function searchBookByTitleAndAuthor(
         results = data.items.map((item: GoogleBooksItem) => {
           const bookData = item.volumeInfo;
           return {
-            title: bookData.title || title || 'Unknown Title',
-            author: bookData.authors?.join(', ') || author || 'Unknown Author',
-            isbn: extractIsbn(bookData.industryIdentifiers),
+            title: normalizeTitle(bookData.title || title || 'Unknown Title'),
+            author: normalizeName(
+              bookData.authors?.join(', ') || author || 'Unknown Author',
+            ),
+            isbn: normalizeIsbn(extractIsbn(bookData.industryIdentifiers)),
             coverUrl: getHighResCoverUrl(
               bookData.imageLinks?.thumbnail ||
                 bookData.imageLinks?.smallThumbnail,
             ),
             publishedDate: bookData.publishedDate || '',
-            genres: bookData.categories || undefined,
-            synopsis: bookData.description || undefined,
+            genres: bookData.categories
+              ? bookData.categories.map(toSentenceCase)
+              : undefined,
+            synopsis: normalizeText(bookData.description || undefined),
           };
         });
       }
@@ -216,16 +236,20 @@ export async function searchBookByTitle(
         results = data.items.map((item: GoogleBooksItem) => {
           const bookData = item.volumeInfo;
           return {
-            title: bookData.title || 'Unknown Title',
-            author: bookData.authors?.join(', ') || 'Unknown Author',
-            isbn: extractIsbn(bookData.industryIdentifiers),
+            title: normalizeTitle(bookData.title || 'Unknown Title'),
+            author: normalizeName(
+              bookData.authors?.join(', ') || 'Unknown Author',
+            ),
+            isbn: normalizeIsbn(extractIsbn(bookData.industryIdentifiers)),
             coverUrl: getHighResCoverUrl(
               bookData.imageLinks?.thumbnail ||
                 bookData.imageLinks?.smallThumbnail,
             ),
             publishedDate: bookData.publishedDate || '',
-            genres: bookData.categories || undefined,
-            synopsis: bookData.description || undefined,
+            genres: bookData.categories
+              ? bookData.categories.map(toSentenceCase)
+              : undefined,
+            synopsis: normalizeText(bookData.description || undefined),
           };
         });
       }
@@ -245,16 +269,20 @@ export async function searchBookByTitle(
             (item: GoogleBooksItem) => {
               const bookData = item.volumeInfo;
               return {
-                title: bookData.title || 'Unknown Title',
-                author: bookData.authors?.join(', ') || 'Unknown Author',
-                isbn: extractIsbn(bookData.industryIdentifiers),
+                title: normalizeTitle(bookData.title || 'Unknown Title'),
+                author: normalizeName(
+                  bookData.authors?.join(', ') || 'Unknown Author',
+                ),
+                isbn: normalizeIsbn(extractIsbn(bookData.industryIdentifiers)),
                 coverUrl: getHighResCoverUrl(
                   bookData.imageLinks?.thumbnail ||
                     bookData.imageLinks?.smallThumbnail,
                 ),
                 publishedDate: bookData.publishedDate || '',
-                genres: bookData.categories || undefined,
-                synopsis: bookData.description || undefined,
+                genres: bookData.categories
+                  ? bookData.categories.map(toSentenceCase)
+                  : undefined,
+                synopsis: normalizeText(bookData.description || undefined),
               };
             },
           );
@@ -294,9 +322,11 @@ export async function searchBookByTitle(
 
         if (data.docs && data.docs.length > 0) {
           results = data.docs.map((doc: OpenLibraryDoc) => ({
-            title: doc.title || 'Unknown Title',
-            author: doc.author_name?.join(', ') || 'Unknown Author',
-            isbn: doc.isbn?.[0] || '',
+            title: normalizeTitle(doc.title || 'Unknown Title'),
+            author: normalizeName(
+              doc.author_name?.join(', ') || 'Unknown Author',
+            ),
+            isbn: normalizeIsbn(doc.isbn?.[0] || ''),
             coverUrl: getHighResCoverUrl(
               doc.cover_i
                 ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`

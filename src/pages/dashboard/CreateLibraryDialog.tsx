@@ -73,7 +73,7 @@ export function CreateLibraryDialog({
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 size={18} className="animate-spin" /> Abstracting
+                    <Loader2 size={18} className="animate-spin" /> Creating...
                   </>
                 ) : (
                   'Create Collection'

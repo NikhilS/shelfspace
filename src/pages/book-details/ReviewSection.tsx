@@ -11,7 +11,7 @@ interface ReviewSectionProps {
   libraryId: string;
   book: Book;
   reviews: Review[];
-  setReviews: React.Dispatch<React.SetStateAction<Review[]>>;
+  setReviewsOptimistically: (reviews: Review[]) => void;
   canEdit: boolean;
   addReview: (rating: number, text: string) => Promise<void>;
 }
@@ -20,7 +20,7 @@ export function ReviewSection({
   libraryId,
   book,
   reviews,
-  setReviews,
+  setReviewsOptimistically,
   canEdit,
   addReview,
 }: ReviewSectionProps) {
@@ -47,7 +47,7 @@ export function ReviewSection({
     };
 
     const originalReviews = [...reviews];
-    setReviews(prev => [tempReview, ...prev]);
+    setReviewsOptimistically([tempReview, ...reviews]);
     setIsReviewing(false);
     setReviewRating(0);
     setReviewText('');
@@ -57,7 +57,7 @@ export function ReviewSection({
       await addReview(tempReview.rating, tempReview.text);
       toast.success('Review added');
     } catch {
-      setReviews(originalReviews);
+      setReviewsOptimistically(originalReviews);
       setIsReviewing(true);
       setReviewRating(tempReview.rating);
       setReviewText(tempReview.text);

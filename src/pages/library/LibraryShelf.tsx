@@ -201,7 +201,10 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
                       className="py-4 px-6"
                       onClick={() =>
                         navigate(`/library/${libraryId}/book/${book.id}`, {
-                          state: {from: location.pathname + location.search},
+                          state: {
+                            from: location.pathname + location.search,
+                            bookList: books.map(b => b.id),
+                          },
                         })
                       }
                     >
@@ -252,7 +255,10 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
                       className="py-4 px-6 font-body-md text-body-md text-on-surface-variant"
                       onClick={() =>
                         navigate(`/library/${libraryId}/book/${book.id}`, {
-                          state: {from: location.pathname + location.search},
+                          state: {
+                            from: location.pathname + location.search,
+                            bookList: books.map(b => b.id),
+                          },
                         })
                       }
                     >
@@ -262,7 +268,10 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
                       className="hidden sm:table-cell py-4 px-6 text-right font-body-md text-outline whitespace-nowrap"
                       onClick={() =>
                         navigate(`/library/${libraryId}/book/${book.id}`, {
-                          state: {from: location.pathname + location.search},
+                          state: {
+                            from: location.pathname + location.search,
+                            bookList: books.map(b => b.id),
+                          },
                         })
                       }
                     >
@@ -308,7 +317,10 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
               }
               onClick={() =>
                 navigate(`/library/${libraryId}/book/${book.id}`, {
-                  state: {from: location.pathname + location.search},
+                  state: {
+                    from: location.pathname + location.search,
+                    bookList: books.map(b => b.id),
+                  },
                 })
               }
             />

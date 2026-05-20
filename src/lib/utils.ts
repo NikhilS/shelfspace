@@ -18,6 +18,38 @@ export function toTitleCase(str: string) {
   });
 }
 
+export function toSentenceCase(str: string) {
+  if (!str) return '';
+  const trimmed = str.trim();
+  if (trimmed.length === 0) return '';
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+}
+
+export function normalizeEmail(email?: string): string {
+  if (!email) return '';
+  return email.trim().toLowerCase();
+}
+
+export function normalizeName(name?: string): string {
+  if (!name) return '';
+  return toTitleCase(name.trim());
+}
+
+export function normalizeTitle(title?: string): string {
+  if (!title) return '';
+  return title.trim();
+}
+
+export function normalizeIsbn(isbn?: string): string {
+  if (!isbn) return '';
+  return isbn.replace(/[^0-9X]/gi, '').toUpperCase();
+}
+
+export function normalizeText(text?: string): string {
+  if (!text) return '';
+  return text.trim();
+}
+
 export function getFirestoreTime(
   dateObj?: string | number | Date | FirestoreDate | null,
 ): number {

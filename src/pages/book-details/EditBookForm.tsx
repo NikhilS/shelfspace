@@ -23,17 +23,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
+import {
+  toSentenceCase,
+  normalizeTitle,
+  normalizeName,
+  normalizeIsbn,
+  normalizeText,
+} from '../../lib/utils';
 
 interface EditBookFormProps {
   libraryId: string;
   book: Book;
   bookBase: Book | null;
   bookDetails: BookDetailsPayload | null;
-  setBookBase: React.Dispatch<React.SetStateAction<Book | null>>;
-  setBookDetails: React.Dispatch<
-    React.SetStateAction<BookDetailsPayload | null>
-  >;
   updateBook: (cleanForm: Partial<Book & BookDetailsPayload>) => Promise<void>;
+  updateBookOptimistically: (
+    partialBook: Partial<Book & BookDetailsPayload>,
+  ) => void;
   onClose: () => void;
 }
 
@@ -55,9 +61,8 @@ export function EditBookForm({
   book,
   bookBase,
   bookDetails,
-  setBookBase,
-  setBookDetails,
   updateBook,
+  updateBookOptimistically,
   onClose,
 }: EditBookFormProps) {
   const [isSavingDetails, setIsSavingDetails] = useState(false);
@@ -94,19 +99,19 @@ export function EditBookForm({
     setIsSavingDetails(true);
     try {
       const cleanForm: Partial<Book & BookDetailsPayload> = {
-        title: data.title,
-        author: data.author,
+        title: normalizeTitle(data.title),
+        author: normalizeName(data.author),
         format: data.format,
-        isbn: data.isbn,
+        isbn: normalizeIsbn(data.isbn),
         publishedDate: data.publishedDate,
-        series: data.series,
+        series: normalizeText(data.series),
         coverUrl: data.coverUrl,
       };
 
       if (data.genresInput) {
         cleanForm.genres = data.genresInput
           .split(',')
-          .map(g => g.trim())
+          .map(g => toSentenceCase(g.trim()))
           .filter(Boolean)
           .slice(0, 20);
       }
@@ -120,15 +125,14 @@ export function EditBookForm({
       });
 
       // Optimistic update
-      setBookBase(prev => (prev ? ({...prev, ...cleanForm} as Book) : null));
+      updateBookOptimistically(cleanForm);
       onClose();
 
       await updateBook(cleanForm);
 
       toast.success('Book details updated');
     } catch {
-      setBookBase(originalBookBase);
-      setBookDetails(originalBookDetails);
+      updateBookOptimistically({...originalBookBase, ...originalBookDetails});
       toast.error('Failed to update book details');
     } finally {
       setIsSavingDetails(false);

@@ -141,7 +141,10 @@ describe('SpruceUpView', () => {
     expect(screen.getByText('Group 1: Dune')).toBeInTheDocument();
 
     // Should show the missing metadata section
-    expect(screen.getByText('Books with Missing Metadata')).toBeInTheDocument();
+    expect(screen.getByText('Library Integrity')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {name: /Missing Metadata/i}),
+    ).toBeInTheDocument();
     expect(screen.getByText('Lacking Meta')).toBeInTheDocument();
   });
 

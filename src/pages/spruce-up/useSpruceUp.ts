@@ -389,6 +389,101 @@ export function useSpruceUp(libraryId: string | undefined) {
     setFixingProgress(0);
   };
 
+  const handleBulkFixGenreAPI = async () => {
+    const selectedBooks = booksWithDetails.filter(b => selectedIds.has(b.id));
+    if (selectedBooks.length === 0 || fixingAll) return;
+    const targets = selectedBooks.filter(
+      b => !b.genres || b.genres.length === 0,
+    );
+    if (targets.length === 0) {
+      toast.info('Selected books already have genres');
+      return;
+    }
+    setFixingAll(true);
+    setFixingProgress(0);
+    await processBooksGenreAPI(targets);
+    setFixingAll(false);
+    setFixingProgress(0);
+  };
+
+  const handleBulkForceGenreAPI = async () => {
+    const selectedBooks = booksWithDetails.filter(b => selectedIds.has(b.id));
+    if (selectedBooks.length === 0 || fixingAll) return;
+    setFixingAll(true);
+    setFixingProgress(0);
+    await processBooksGenreAPI(selectedBooks);
+    setFixingAll(false);
+    setFixingProgress(0);
+  };
+
+  const processBooksGenreAPI = async (booksToProcess: Book[]) => {
+    const BATCH_SIZE = 5;
+    let successCount = 0;
+
+    for (let i = 0; i < booksToProcess.length; i += BATCH_SIZE) {
+      const chunk = booksToProcess.slice(i, i + BATCH_SIZE);
+
+      setProcessingIds(prev => {
+        const next = {...prev};
+        chunk.forEach(b => (next[b.id] = true));
+        return next;
+      });
+
+      try {
+        const results = await Promise.all(
+          chunk.map(async b => {
+            try {
+              const enriched = await getTieredMetadata(b);
+              if (enriched && enriched.genres && enriched.genres.length > 0) {
+                return {id: b.id, genres: enriched.genres};
+              }
+            } catch (e) {
+              console.warn(`Failed to fetch metadata for ${b.title}`, e);
+            }
+            return null;
+          }),
+        );
+
+        const validResults = results.filter(
+          (r): r is {id: string; genres: string[]} => r !== null,
+        );
+
+        if (validResults.length > 0) {
+          const batch = writeBatch(db);
+          validResults.forEach(res => {
+            batch.update(doc(db, 'libraries', libraryId!, 'books', res.id), {
+              genres: res.genres,
+              updatedAt: serverTimestamp(),
+            });
+            successCount++;
+          });
+          await batch.commit();
+
+          setBooks(prev =>
+            prev.map(b => {
+              const res = validResults.find(r => r.id === b.id);
+              if (res) return {...b, genres: res.genres};
+              return b;
+            }),
+          );
+        }
+      } catch (error) {
+        console.error('Batch API Genre failed:', error);
+      } finally {
+        setProcessingIds(prev => {
+          const next = {...prev};
+          chunk.forEach(b => (next[b.id] = false));
+          return next;
+        });
+        setFixingProgress(prev => prev + chunk.length);
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`Updated genres for ${successCount} books via API`);
+    }
+  };
+
   const handleBulkFixGenreAI = async () => {
     const selectedBooks = booksWithDetails.filter(b => selectedIds.has(b.id));
     if (selectedBooks.length === 0 || fixingAll) return;
@@ -694,6 +789,8 @@ export function useSpruceUp(libraryId: string | undefined) {
     handleForceResyncAllMetadata,
     handleBulkFixMetadata,
     handleBulkForceResync,
+    handleBulkFixGenreAPI,
+    handleBulkForceGenreAPI,
     handleBulkFixGenreAI,
     handleBulkForceGenreAI,
   };

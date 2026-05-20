@@ -7,6 +7,14 @@ This file tracks feature ideas, planned improvements, and requested features for
 - [ ] Add richer sharing modes (edit vs. view-only access).
 - [ ] Normalize categories into a [standard taxonomy](https://www.bisg.org/BISAC-Subject-Codes-main).
 
+### Tech Debt & Code Review Findings (The "Angry Senior Dev" List)
+- [x] **Dual Source of Truth for State**: `activeIndex` in `BookDetailsView` vs the `react-router` URL `bookId` param. Navigating via browser back/forward buttons won't reliably update `activeIndex`, leading to out-of-sync slides.
+- [x] **Stale Location State**: `location.state.bookList` is used to populate Swiper. A hard refresh on a direct book URL results in an empty `bookList`, breaking the swiper completely and dropping the user into a fallback view.
+- [x] **Unconstrained Cache Warming Hack**: `PrefetchAdjacentBooks` blindly sets up dummy `onSnapshot` listeners. This consumes concurrent connections and could trigger billable reads. Use standard application-level caching or `getDoc` with proper cache policies instead of hanging listeners.
+- [x] **Optimistic Deletion Race Condition**: `handleDeleteBook` navigates back *before* waiting for the delete to succeed. If the exact deletion fails, the user is stranded on the previous page without realizing the book didn't actually delete.
+- [x] **Virtual Swiper + Live Data Mismatch**: If a book is deleted (or added) by another session, the underlying data changes, but `location.state.bookList` is frozen. Virtual Swiper might choke on shifting indices if not reconciled gracefully.
+- [x] **Hook Spam in Virtual Slides**: Every virtual slide mounts its own `useAuth`, `useBook`, `useBookInsights`. If Swiper buffers 5 slides, that's pulling redundant connections and heavy documents simultaneously. Slides should delay heavy data hook loading until they are adjacent or active.
+
 
 ## Completed
 - [x] Configure PWA installation

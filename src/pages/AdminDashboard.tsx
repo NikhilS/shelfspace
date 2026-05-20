@@ -109,7 +109,7 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="layout-page">
+    <div className="flex-1 flex flex-col min-w-0">
       <div className="layout-page-content max-w-4xl mx-auto pt-16">
         <div className="flex items-center gap-4 mb-8">
           <div className="w-16 h-16 bg-surface-container rounded-full flex items-center justify-center text-primary shadow-sm border border-outline-variant/30">

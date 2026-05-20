@@ -198,7 +198,10 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                   className="w-32 md:w-40 flex-shrink-0 relative group cursor-pointer"
                   onClick={() =>
                     navigate(`/library/${library.id}/book/${book.id}`, {
-                      state: {from: location.pathname + location.search},
+                      state: {
+                        from: location.pathname + location.search,
+                        bookList: readingBooks.map(b => b.id),
+                      },
                     })
                   }
                 >
@@ -231,7 +234,10 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                     <Button
                       onClick={() =>
                         navigate(`/library/${library.id}/book/${book.id}`, {
-                          state: {from: location.pathname + location.search},
+                          state: {
+                            from: location.pathname + location.search,
+                            bookList: readingBooks.map(b => b.id),
+                          },
                         })
                       }
                     >

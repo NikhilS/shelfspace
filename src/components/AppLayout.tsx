@@ -109,10 +109,7 @@ export default function AppLayout({children}: AppLayoutProps) {
                 <Menu className="w-6 h-6" />
               </button>
             </div>
-            <div className="text-xl font-serif font-medium text-primary w-1/3 text-center md:hidden">
-              Athenaeum
-            </div>
-            <div className="text-xl font-serif font-medium text-primary w-1/3 text-center max-md:hidden">
+            <div className="text-xl font-serif font-semibold text-primary w-1/3 text-center tracking-tight md:hidden">
               Athenaeum
             </div>
             <div className="flex items-center justify-end space-x-4 w-1/3 ml-auto text-on-surface-variant">

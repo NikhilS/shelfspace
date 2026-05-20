@@ -12,6 +12,8 @@ interface SpruceUpActionBarProps {
   onForceResyncAll: () => void;
   onFixGenreAI: () => void;
   onForceGenreAI: () => void;
+  onFixGenreAPI: () => void;
+  onForceGenreAPI: () => void;
 }
 
 export function SpruceUpActionBar({
@@ -23,6 +25,8 @@ export function SpruceUpActionBar({
   onForceResyncAll,
   onFixGenreAI,
   onForceGenreAI,
+  onFixGenreAPI,
+  onForceGenreAPI,
 }: SpruceUpActionBarProps) {
   if (selectedCount === 0 && !isProcessing) return null;
 
@@ -66,6 +70,34 @@ export function SpruceUpActionBar({
           <RefreshCw className="w-4 h-4" />
           <span className="hidden sm:inline">Force Sync All</span>
           <span className="sm:hidden text-xs">Force Sync</span>
+        </Button>
+
+        <div className="h-6 w-[1px] bg-outline-variant mx-1 hidden md:block" />
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onFixGenreAPI}
+          disabled={isProcessing || !isOnline}
+          className="flex items-center gap-2"
+          title="Fills in missing genres using Google Books/OpenLibrary"
+        >
+          <Wand2 className="w-4 h-4" />
+          <span className="hidden sm:inline">Fix Genre (API)</span>
+          <span className="sm:hidden text-xs">Genre (API)</span>
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onForceGenreAPI}
+          disabled={isProcessing || !isOnline}
+          className="flex items-center gap-2"
+          title="Refreshes genres from external APIs"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span className="hidden sm:inline">Force Sync Genre (API)</span>
+          <span className="sm:hidden text-xs">Sync Genre (API)</span>
         </Button>
 
         <div className="h-6 w-[1px] bg-outline-variant mx-1 hidden md:block" />

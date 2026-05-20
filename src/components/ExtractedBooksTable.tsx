@@ -1,6 +1,13 @@
 import React, {useState, useRef, useEffect} from 'react';
 import {BookPlus, Loader2, X} from 'lucide-react';
-import {toTitleCase, cn, triggerHaptics} from '../lib/utils';
+import {
+  toTitleCase,
+  cn,
+  triggerHaptics,
+  normalizeTitle,
+  normalizeName,
+  normalizeIsbn,
+} from '../lib/utils';
 import {toast} from 'sonner';
 import {Checkbox} from './ui/checkbox';
 import {Button} from './ui/button';
@@ -105,11 +112,11 @@ export default function ExtractedBooksTable({
 
       // Map extracted books directly to BookDetails for saving
       let booksToSave: BookDetails[] = selectedBooks.map(book => {
-        const cleanIsbn = (book.isbn || '').trim().replace(/[^0-9X]/gi, '');
+        const cleanIsbn = normalizeIsbn(book.isbn);
         return {
-          title: book.title,
-          author: book.author,
-          isbn: cleanIsbn && cleanIsbn !== 'null' ? cleanIsbn : '',
+          title: normalizeTitle(book.title),
+          author: normalizeName(book.author),
+          isbn: cleanIsbn && cleanIsbn !== 'NULL' ? cleanIsbn : '',
           coverUrl: '',
           publishedDate: '',
           genres: book.genres,

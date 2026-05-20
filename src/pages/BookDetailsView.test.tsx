@@ -2,7 +2,7 @@ import React from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import {render} from '@testing-library/react';
 import BookDetailsView from './BookDetailsView';
-import {MemoryRouter} from 'react-router-dom';
+import {MemoryRouter, Route, Routes} from 'react-router-dom';
 import {DebugProvider} from '../contexts/DebugContext';
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -20,8 +20,7 @@ vi.mock('firebase/firestore', () => ({
   getDoc: vi.fn().mockResolvedValue({exists: () => false}),
   collection: vi.fn(),
   query: vi.fn(),
-  onSnapshot: vi.fn((_ref, cb) => {
-    cb();
+  onSnapshot: vi.fn((...args) => {
     return () => {};
   }),
   orderBy: vi.fn(),
@@ -37,8 +36,13 @@ describe('BookDetailsView', () => {
   it('renders loading state initially', () => {
     const {container} = render(
       <DebugProvider>
-        <MemoryRouter>
-          <BookDetailsView />
+        <MemoryRouter initialEntries={['/library/123/book/456']}>
+          <Routes>
+            <Route
+              path="/library/:libraryId/book/:bookId"
+              element={<BookDetailsView />}
+            />
+          </Routes>
         </MemoryRouter>
       </DebugProvider>,
     );

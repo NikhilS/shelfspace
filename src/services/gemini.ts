@@ -1,6 +1,7 @@
 import {GoogleGenAI, Type} from '@google/genai';
 import Papa from 'papaparse';
 import {logger} from '../contexts/DebugContext';
+import {toSentenceCase} from '../lib/utils';
 
 export async function generateClusterNames(
   clusters: {id: number; books: {title: string; author?: string}[]}[],
@@ -760,7 +761,12 @@ ${JSON.stringify(booksPromptData, null, 2)}`;
     try {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) {
-        return parsed as {id: string; genres: string[]}[];
+        return parsed.map((item: {id: string; genres?: string[]}) => ({
+          id: item.id,
+          genres: Array.isArray(item.genres)
+            ? item.genres.map((g: string) => toSentenceCase(g))
+            : [],
+        })) as {id: string; genres: string[]}[];
       }
       return [];
     } catch (e) {

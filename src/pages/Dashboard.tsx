@@ -30,9 +30,9 @@ export default function Dashboard() {
           <span>Create Library</span>
         </button>
       </SidebarActions>
-      <div className="layout-page">
+      <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* Main Canvas */}
-        <main className="layout-page-content">
+        <div className="layout-page-content">
           <div className="layout-header border-none pb-0">
             <div>
               <h2 className="layout-header-title">My Libraries</h2>
@@ -81,7 +81,7 @@ export default function Dashboard() {
               </div>
             )}
           </ErrorBoundary>
-        </main>
+        </div>
       </div>
     </>
   );
