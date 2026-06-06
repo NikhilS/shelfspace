@@ -5,6 +5,7 @@ import {
   DocumentData,
   WithFieldValue,
   UpdateData,
+  PartialWithFieldValue,
 } from 'firebase/firestore';
 
 /**
@@ -38,11 +39,9 @@ export class ClientBulkWriter {
   ): void {
     const batch = this.getBatch();
     if (options?.merge) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      batch.set(docRef, data as any, {merge: true});
+      batch.set(docRef, data as PartialWithFieldValue<T>, {merge: true});
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      batch.set(docRef, data as any);
+      batch.set(docRef, data);
     }
     this.currentCount++;
     this.checkCommit();
@@ -53,8 +52,7 @@ export class ClientBulkWriter {
     data: UpdateData<T>,
   ): void {
     const batch = this.getBatch();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    batch.update(docRef, data as any);
+    batch.update(docRef, data);
     this.currentCount++;
     this.checkCommit();
   }

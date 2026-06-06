@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
 import React from 'react';
 import {render, screen, fireEvent, waitFor, act} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -15,7 +14,7 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
-    ...(actual as any),
+    ...(actual as Record<string, unknown>),
     useParams: () => ({id: 'lib123'}),
     useNavigate: () => vi.fn(),
   };
@@ -33,12 +32,12 @@ vi.mock('../services/bookApi', () => ({
 }));
 
 vi.mock('firebase/firestore', async importOriginal => {
-  const actual = await importOriginal();
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return {
-    ...(actual as any),
+    ...actual,
     getFirestore: vi.fn(),
-    collection: vi.fn(),
-    doc: vi.fn(),
+    collection: vi.fn(() => ({})),
+    doc: vi.fn(() => ({id: 'mock-doc-id'})),
     writeBatch: vi.fn(() => ({
       set: vi.fn(),
       update: vi.fn(),
@@ -60,6 +59,16 @@ vi.mock('firebase/firestore', async importOriginal => {
 
 vi.mock('../firebase', () => ({
   db: {},
+  auth: {
+    currentUser: {
+      uid: 'user1',
+      email: 'test@example.com',
+      emailVerified: true,
+      isAnonymous: false,
+      providerData: [],
+    },
+  },
+  uploadBase64Image: vi.fn(() => Promise.resolve('mocked-url')),
   handleFirestoreError: vi.fn(),
   OperationType: {
     CREATE: 'create',
@@ -117,15 +126,13 @@ describe('AddBookView', () => {
     const video = await waitFor(() => {
       const v = document.querySelector('video');
       expect(v).not.toBeNull();
+      expect(v!.onloadedmetadata).not.toBeNull();
       return v;
     });
 
-    if (video) {
+    if (video && video.onloadedmetadata) {
       act(() => {
-        if (video.onloadedmetadata) {
-          // @ts-ignore
-          video.onloadedmetadata(new Event('loadedmetadata'));
-        }
+        video.onloadedmetadata!(new Event('loadedmetadata'));
       });
     }
 
@@ -167,15 +174,13 @@ describe('AddBookView', () => {
     const video2 = await waitFor(() => {
       const v = document.querySelector('video');
       expect(v).not.toBeNull();
+      expect(v!.onloadedmetadata).not.toBeNull();
       return v;
     });
 
-    if (video2) {
+    if (video2 && video2.onloadedmetadata) {
       act(() => {
-        if (video2.onloadedmetadata) {
-          // @ts-ignore
-          video2.onloadedmetadata(new Event('loadedmetadata'));
-        }
+        video2.onloadedmetadata!(new Event('loadedmetadata'));
       });
     }
 

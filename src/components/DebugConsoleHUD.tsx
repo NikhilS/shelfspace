@@ -173,7 +173,7 @@ export const DebugConsoleHUD: React.FC = () => {
               initial={{opacity: 0, scale: 0.8, x: 20}}
               animate={{opacity: 1, scale: 1, x: 0}}
               exit={{opacity: 0, scale: 0.8, x: 20}}
-              className="flex items-center gap-3 bg-slate-900/95 backdrop-blur-md border border-slate-700/50 px-4 py-2 rounded-full shadow-2xl"
+              className="flex items-center gap-2 sm:gap-3 bg-slate-900/95 backdrop-blur-md border border-slate-700/50 p-2 sm:px-4 sm:py-2 rounded-full shadow-2xl"
             >
               <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
                 <span className="relative flex h-2 w-2">
@@ -184,17 +184,20 @@ export const DebugConsoleHUD: React.FC = () => {
                     className={`relative inline-flex rounded-full h-2 w-2 ${isOnline ? 'bg-cyan-500' : 'bg-red-500'}`}
                   ></span>
                 </span>
-                <span>{isOnline ? 'ONLINE' : 'OFFLINE'}</span>
+                <span className="hidden sm:inline">
+                  {isOnline ? 'ONLINE' : 'OFFLINE'}
+                </span>
               </div>
-              <div className="h-4 w-px bg-slate-700"></div>
+              <div className="h-4 w-px bg-slate-700 hidden sm:block"></div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsExpanded(true)}
-                className="h-7 px-2.5 rounded-full text-xs font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 transition-all flex items-center gap-1.5"
+                className="h-7 px-2 sm:px-2.5 rounded-full text-xs font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 transition-all flex items-center gap-1.5"
+                title="Console [Ctrl+~]"
               >
                 <Terminal size={12} />
-                <span>Console [Ctrl+~]</span>
+                <span className="hidden sm:inline">Console [Ctrl+~]</span>
               </Button>
             </motion.div>
           )}
@@ -278,16 +281,17 @@ export const DebugConsoleHUD: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveTab('logs')}
-                  className={`h-8 px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1.5 ${
+                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
                     activeTab === 'logs'
                       ? 'bg-slate-800/80 text-white border border-slate-700/50'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
                   }`}
+                  title="Logs"
                 >
                   <Terminal size={12} className="opacity-75" />
-                  Logs
+                  <span className="hidden sm:inline">Logs</span>
                   {filteredLogs.length > 0 && (
-                    <span className="ml-1 text-[9px] bg-slate-900 px-1.5 py-0.25 rounded-full text-slate-400">
+                    <span className="ml-[2px] sm:ml-1 text-[9px] bg-slate-900 px-1.5 py-0.25 rounded-full text-slate-400">
                       {filteredLogs.length}
                     </span>
                   )}
@@ -297,16 +301,17 @@ export const DebugConsoleHUD: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveTab('network')}
-                  className={`h-8 px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1.5 ${
+                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
                     activeTab === 'network'
                       ? 'bg-slate-800/80 text-white border border-slate-700/50'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
                   }`}
+                  title="Network & DB Ops"
                 >
                   <Activity size={12} className="opacity-75" />
-                  Network &amp; DB Ops
+                  <span className="hidden sm:inline">Network &amp; DB Ops</span>
                   {networkLogs.length > 0 && (
-                    <span className="ml-1 text-[9px] bg-slate-900 px-1.5 py-0.25 rounded-full text-slate-400">
+                    <span className="ml-[2px] sm:ml-1 text-[9px] bg-slate-900 px-1.5 py-0.25 rounded-full text-slate-400">
                       {networkLogs.length}
                     </span>
                   )}
@@ -316,16 +321,17 @@ export const DebugConsoleHUD: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveTab('state')}
-                  className={`h-8 px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1.5 ${
+                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
                     activeTab === 'state'
                       ? 'bg-slate-800/80 text-white border border-slate-700/50'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
                   }`}
+                  title="Active Page State"
                 >
                   <Share2 size={12} className="opacity-75" />
-                  Active Page State
+                  <span className="hidden sm:inline">Active Page State</span>
                   {Object.keys(activeStates).length > 0 && (
-                    <span className="ml-1 text-[9px] bg-cyan-900/40 border border-cyan-500/20 px-1.5 py-0.25 rounded-full text-cyan-400">
+                    <span className="ml-[2px] sm:ml-1 text-[9px] bg-cyan-900/40 border border-cyan-500/20 px-1.5 py-0.25 rounded-full text-cyan-400">
                       {Object.keys(activeStates).length}
                     </span>
                   )}
@@ -335,14 +341,15 @@ export const DebugConsoleHUD: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveTab('diagnostics')}
-                  className={`h-8 px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1.5 ${
+                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
                     activeTab === 'diagnostics'
                       ? 'bg-slate-800/80 text-white border border-slate-700/50'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
                   }`}
+                  title="Diagnostics"
                 >
                   <Cpu size={12} className="opacity-75" />
-                  Diagnostics
+                  <span className="hidden sm:inline">Diagnostics</span>
                 </Button>
               </div>
 
@@ -353,10 +360,10 @@ export const DebugConsoleHUD: React.FC = () => {
                   variant="ghost"
                   onClick={handleExportLogs}
                   title="Export Telemetry JSON"
-                  className="h-8 px-2.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-md gap-1 text-[11px]"
+                  className="h-8 px-2 sm:px-2.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-md gap-1 text-[11px]"
                 >
                   <Download size={12} />
-                  <span>Export</span>
+                  <span className="hidden sm:inline">Export</span>
                 </Button>
 
                 <Button
@@ -364,10 +371,10 @@ export const DebugConsoleHUD: React.FC = () => {
                   variant="ghost"
                   onClick={handleClearLogs}
                   title="Clear Telemetry Console Logs"
-                  className="h-8 px-2.5 hover:bg-red-950 hover:text-red-300 text-slate-400 rounded-md gap-1 text-[11px] transition-all"
+                  className="h-8 px-2 sm:px-2.5 hover:bg-red-950 hover:text-red-300 text-slate-400 rounded-md gap-1 text-[11px] transition-all"
                 >
                   <Trash2 size={12} />
-                  <span>Clear</span>
+                  <span className="hidden sm:inline">Clear</span>
                 </Button>
               </div>
             </div>

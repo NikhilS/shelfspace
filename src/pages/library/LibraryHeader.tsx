@@ -71,15 +71,15 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
               <button
                 onClick={onRefreshHero}
                 disabled={isRefreshingHero}
-                className="flex items-center gap-1.5 font-label-caps text-white bg-white/10 hover:bg-white/20 active:bg-white/30 transition-colors px-3 py-1.5 rounded-lg border border-white/15 backdrop-blur-sm disabled:opacity-50 cursor-pointer text-xs ml-auto sm:ml-4 shadow-sm"
-                title="Generate a fun & playful new library banner"
+                className="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 active:bg-white/30 transition-colors p-2 rounded-lg border border-white/15 backdrop-blur-sm disabled:opacity-50 cursor-pointer ml-auto sm:ml-4 shadow-sm"
+                title={isRefreshingHero ? 'Refreshing...' : 'Refresh Banner'}
+                aria-label="Refresh Banner"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${
                     isRefreshingHero ? 'animate-spin' : ''
                   }`}
                 />
-                {isRefreshingHero ? 'Refreshing...' : 'Refresh Banner'}
               </button>
             )}
           </div>

@@ -10,8 +10,7 @@ import ScrollToTop from './components/ScrollToTop';
 import {RequireLibraryPermission} from './components/RequireLibraryPermission';
 import {BookLoader} from './components/BookLoader';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function lazyWithRetry<T extends React.ComponentType<any>>(
+function lazyWithRetry<T extends React.ComponentType>(
   factory: () => Promise<{default: T}>,
 ): React.LazyExoticComponent<T> {
   return lazy(async () => {

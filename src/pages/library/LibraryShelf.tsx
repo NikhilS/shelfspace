@@ -114,13 +114,15 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
                   HTMLTableSectionElement,
                   React.HTMLAttributes<HTMLTableSectionElement>
                 >((props, ref) => <thead {...props} ref={ref} />),
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                TableRow: ({item, ...props}) => (
-                  <tr
-                    {...props}
-                    className="group hover:bg-surface-container-low/50 transition-colors cursor-pointer border-b border-surface-variant/60"
-                  />
-                ),
+                TableRow: ({item, ...props}) => {
+                  void item;
+                  return (
+                    <tr
+                      {...props}
+                      className="group hover:bg-surface-container-low/50 transition-colors cursor-pointer border-b border-surface-variant/60"
+                    />
+                  );
+                },
                 TableBody: React.forwardRef<
                   HTMLTableSectionElement,
                   React.HTMLAttributes<HTMLTableSectionElement>

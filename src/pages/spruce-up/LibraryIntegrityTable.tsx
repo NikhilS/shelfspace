@@ -87,9 +87,33 @@ export function LibraryIntegrityTable({
 
   return (
     <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-hidden shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
+      {/* MOBILE SELECT ALL BAR - Renders only on mobile */}
+      <div className="flex sm:hidden items-center justify-between p-4 bg-surface-variant/10 border-b border-outline-variant/30">
+        <div className="flex items-center gap-2.5">
+          <Checkbox
+            checked={
+              allPageSelected || (somePageSelected ? 'indeterminate' : false)
+            }
+            onCheckedChange={handleToggleSelectPage}
+            id="mobile-select-all-checkbox"
+            aria-label="Select all on this page"
+          />
+          <label
+            htmlFor="mobile-select-all-checkbox"
+            className="text-xs font-bold text-on-surface cursor-pointer select-none"
+          >
+            Select All ({paginatedBooks.length} books)
+          </label>
+        </div>
+        <span className="text-[10px] font-mono text-on-surface-variant bg-surface-variant/30 py-0.5 px-2 rounded-full font-bold">
+          Page {currentPage} of{' '}
+          {Math.ceil(filteredBooks.length / PAGE_SIZE) || 1}
+        </span>
+      </div>
+
+      <div className="overflow-x-auto sm:overflow-visible">
+        <table className="w-full text-left border-collapse block sm:table">
+          <thead className="hidden sm:table-header-group">
             <tr className="bg-surface-variant/50 border-b border-outline-variant">
               <th className="py-4 px-6 w-12">
                 <Checkbox
@@ -101,23 +125,23 @@ export function LibraryIntegrityTable({
                   aria-label="Select all on this page"
                 />
               </th>
-              <th className="py-4 px-6 text-sm font-bold text-on-surface uppercase tracking-wider uppercase">
+              <th className="py-4 px-6 text-sm font-bold text-on-surface uppercase tracking-wider">
                 Book Info
               </th>
-              <th className="py-4 px-6 text-sm font-bold text-on-surface uppercase tracking-wider uppercase">
+              <th className="py-4 px-6 text-sm font-bold text-on-surface uppercase tracking-wider">
                 Current Genre
               </th>
-              <th className="py-4 px-6 text-sm font-bold text-on-surface uppercase tracking-wider uppercase">
+              <th className="py-4 px-6 text-sm font-bold text-on-surface uppercase tracking-wider">
                 Integrity Status
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-outline-variant/30">
+          <tbody className="divide-y divide-outline-variant/30 block sm:table-row-group">
             {paginatedBooks.length === 0 ? (
-              <tr>
+              <tr className="block sm:table-row">
                 <td
                   colSpan={4}
-                  className="py-20 text-center text-on-surface-variant font-medium"
+                  className="py-20 text-center text-on-surface-variant font-medium block sm:table-cell"
                 >
                   <div className="flex flex-col items-center gap-3">
                     <CheckCircle2 className="w-12 h-12 text-success/50" />
@@ -140,13 +164,13 @@ export function LibraryIntegrityTable({
                   <tr
                     key={book.id}
                     className={cn(
-                      'group hover:bg-primary/5 transition-colors cursor-pointer',
+                      'group hover:bg-primary/5 transition-colors cursor-pointer flex flex-row items-start gap-4 p-4 sm:table-row sm:p-0',
                       isSelected && 'bg-primary/10',
                     )}
                     onClick={() => onToggleSelect(book.id)}
                   >
                     <td
-                      className="py-4 px-6"
+                      className="py-0.5 sm:py-4 px-0 sm:px-6 block sm:table-cell flex-shrink-0"
                       onClick={e => e.stopPropagation()}
                     >
                       <Checkbox
@@ -155,25 +179,74 @@ export function LibraryIntegrityTable({
                         aria-label={`Select ${book.title}`}
                       />
                     </td>
-                    <td className="py-4 px-6 max-w-md">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
+                    <td className="py-0 sm:py-4 px-0 sm:px-6 max-w-md block sm:table-cell flex-1 min-w-0">
+                      <div className="flex items-start sm:items-center gap-3">
+                        <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center text-primary flex-shrink-0 hidden sm:flex">
                           <BookIcon className="w-4 h-4" />
                         </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-on-surface truncate leading-tight">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-on-surface text-sm sm:text-base leading-snug break-words">
                             {book.title}
                           </p>
                           <div className="flex items-center gap-1.5 text-on-surface-variant mt-1">
-                            <User size={14} className="flex-shrink-0" />
+                            <User
+                              size={13}
+                              className="flex-shrink-0 text-on-surface-variant/70"
+                            />
                             <p className="text-xs font-medium truncate">
                               {book.author}
                             </p>
                           </div>
+
+                          {/* Mobile-only Genres indicator */}
+                          {book.genres && book.genres.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5 sm:hidden">
+                              {book.genres.slice(0, 2).map((g, i) => (
+                                <span
+                                  key={i}
+                                  className="text-[9px] px-1.5 py-0.5 bg-surface-variant text-on-surface-variant rounded-full font-medium border border-outline-variant/30"
+                                >
+                                  {g}
+                                </span>
+                              ))}
+                              {book.genres.length > 2 && (
+                                <span className="text-[9px] px-1.5 py-0.5 bg-surface-variant text-on-surface-variant rounded-full font-medium">
+                                  +{book.genres.length - 2}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Mobile-only Integrity status */}
+                          <div className="flex flex-wrap gap-1.5 mt-2 sm:hidden">
+                            {missingFields.length === 0 ? (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-success">
+                                <CheckCircle2 size={11} />
+                                Complete
+                              </span>
+                            ) : (
+                              missingFields.map(field => (
+                                <span
+                                  key={field}
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-error/10 text-error rounded text-[9px] font-bold border border-error/15"
+                                >
+                                  <AlertCircle size={9} />
+                                  Missing {field}
+                                </span>
+                              ))
+                            )}
+                            {book.coverUrl &&
+                              book.coverUrl.includes('zoom=1') && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-secondary/10 text-secondary rounded text-[9px] font-bold border border-secondary/15">
+                                  <HelpCircle size={9} />
+                                  Low Res
+                                </span>
+                              )}
+                          </div>
                         </div>
                       </div>
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-6 hidden sm:table-cell">
                       {book.genres && book.genres.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {book.genres.slice(0, 2).map((g, i) => (
@@ -196,7 +269,7 @@ export function LibraryIntegrityTable({
                         </p>
                       )}
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-6 hidden sm:table-cell">
                       <div className="flex flex-wrap gap-2">
                         {missingFields.length === 0 ? (
                           <span className="inline-flex items-center gap-1 text-xs font-bold text-success">
@@ -229,6 +302,7 @@ export function LibraryIntegrityTable({
           </tbody>
         </table>
       </div>
+
       {filteredBooks.length > PAGE_SIZE && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-outline-variant bg-surface-variant/20">
           <p className="text-xs font-medium text-on-surface-variant">

@@ -58,8 +58,7 @@ export class DebugTelemetryEngine {
   }
 
   // Add Log Entry
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public addLog(type: LogLevel, message: string, payload?: any) {
+  public addLog(type: LogLevel, message: string, payload?: unknown) {
     const timestampObj = new Date();
     const timestamp = timestampObj.toLocaleTimeString([], {
       hour12: false,
@@ -85,13 +84,15 @@ export class DebugTelemetryEngine {
     // Process type-specific metric aggregations on the telemetry stream
     if (type === 'db_read') {
       this.metrics.totalFirestoreReads++;
-      if (payload?.fromCache) {
+      const p = payload as {fromCache?: boolean} | undefined;
+      if (p?.fromCache) {
         this.metrics.firestoreCacheHits++;
       }
     } else if (type === 'api_res') {
       this.metrics.totalApiRequests++;
-      if (payload?.durationMs) {
-        this.latencies.push(payload.durationMs);
+      const p = payload as {durationMs?: number} | undefined;
+      if (p?.durationMs) {
+        this.latencies.push(p.durationMs);
         if (this.latencies.length > 50) this.latencies.shift(); // keep sliding window
         const sum = this.latencies.reduce((a, b) => a + b, 0);
         this.metrics.averageApiLatency = Math.round(
@@ -100,12 +101,14 @@ export class DebugTelemetryEngine {
       }
     } else if (type === 'gen_ai') {
       this.metrics.totalGeminiQueries++;
-      if (payload?.tokens) {
-        this.metrics.totalGeminiTokens += payload.tokens;
+      const p = payload as {tokens?: number} | undefined;
+      if (p?.tokens) {
+        this.metrics.totalGeminiTokens += p.tokens;
       }
     } else if (type === 'worker') {
-      if (payload?.activeCount !== undefined) {
-        this.metrics.activeWorkers = payload.activeCount;
+      const p = payload as {activeCount?: number} | undefined;
+      if (p?.activeCount !== undefined) {
+        this.metrics.activeWorkers = p.activeCount;
       }
     }
 
@@ -206,8 +209,7 @@ export function interceptConsoleLogs() {
         args.length > 1 ? args : undefined,
       );
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    originalLog.apply(window.console, args as any[]);
+    originalLog(...args);
   };
 
   window.console.warn = function (...args: unknown[]) {
@@ -231,8 +233,7 @@ export function interceptConsoleLogs() {
         args.length > 1 ? args : undefined,
       );
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    originalWarn.apply(window.console, args as any[]);
+    originalWarn(...args);
   };
 
   window.console.error = function (...args: unknown[]) {
@@ -256,8 +257,7 @@ export function interceptConsoleLogs() {
         args.length > 1 ? args : undefined,
       );
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    originalError.apply(window.console, args as any[]);
+    originalError(...args);
   };
 
   window.console.info = function (...args: unknown[]) {
@@ -281,8 +281,7 @@ export function interceptConsoleLogs() {
         args.length > 1 ? args : undefined,
       );
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    originalInfo.apply(window.console, args as any[]);
+    originalInfo(...args);
   };
 
   isIntercepted = true;
