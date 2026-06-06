@@ -73,14 +73,12 @@ const INITIAL_SCANNED_ITEMS = [
     title: 'The Secret History',
     author: 'Donna Tartt',
     status: 'verified',
-    cover: '📖',
   },
   {
     isbn: '9780451528650',
     title: 'Meditations',
     author: 'Marcus Aurelius',
     status: 'verified',
-    cover: '✒️',
   },
 ];
 
@@ -128,21 +126,18 @@ export default function Login() {
           title: 'Dune',
           author: 'Frank Herbert',
           status: 'verified',
-          cover: '🏜️',
         },
         {
           isbn: '9780140449136',
           title: 'The Republic',
           author: 'Plato',
           status: 'verified',
-          cover: '🏛️',
         },
         {
           isbn: '9780451526342',
           title: '1984',
           author: 'George Orwell',
           status: 'verified',
-          cover: '👁️',
         },
       ];
       const randomBook =
@@ -455,8 +450,8 @@ export default function Login() {
               {/* Float box displaying active curation overlay */}
               <div className="bg-[#1a2f4b]/95 border border-white/10 text-white/90 p-4 rounded shadow-lg max-w-[280px] self-end text-left sm:translate-y-4">
                 <div className="flex gap-2.5 items-start">
-                  <div className="w-8 h-12 bg-white/10 rounded-sm flex items-center justify-center text-lg shadow-inner">
-                    🌌
+                  <div className="w-8 h-12 bg-white/10 rounded-sm flex items-center justify-center text-secondary shadow-inner">
+                    <Compass className="w-5 h-5" />
                   </div>
                   <div>
                     <h4 className="font-serif text-[11px] text-[#e5bc92] uppercase font-bold tracking-widest leading-none mb-1">
@@ -672,7 +667,9 @@ export default function Login() {
                               animate={{opacity: 1, x: 0}}
                               className="space-y-3"
                             >
-                              <div className="text-3xl text-secondary">🌌</div>
+                              <div className="text-secondary">
+                                <Compass className="w-8 h-8" />
+                              </div>
                               <div>
                                 <h4 className="font-serif text-lg font-bold text-primary leading-tight">
                                   {hoveredBook.title}
@@ -799,7 +796,9 @@ export default function Login() {
                                 className="flex justify-between items-center p-3 bg-surface border border-outline-variant/20 rounded-md shadow-inner"
                               >
                                 <div className="flex items-center gap-3">
-                                  <span className="text-xl">{item.cover}</span>
+                                  <div className="w-8 h-10 bg-secondary/10 text-secondary border border-secondary/20 rounded flex items-center justify-center flex-shrink-0">
+                                    <BookOpen className="w-4 h-4" />
+                                  </div>
                                   <div>
                                     <span className="block font-serif text-sm font-bold text-primary line-clamp-1">
                                       {item.title}
@@ -909,7 +908,7 @@ export default function Login() {
 
                           <div className="space-y-3">
                             <div className="flex items-center gap-4 p-2 bg-surface/50 border border-outline-variant/20 rounded">
-                              <span className="text-2xl">🏛️</span>
+                              <BookOpen className="w-5 h-5 text-secondary shrink-0" />
                               <div>
                                 <h5 className="font-serif text-sm font-bold text-[#021a35]">
                                   The Republic
@@ -921,7 +920,7 @@ export default function Login() {
                             </div>
 
                             <div className="flex items-center gap-4 p-2 bg-surface/50 border border-outline-variant/20 rounded">
-                              <span className="text-2xl">✒️</span>
+                              <BookOpen className="w-5 h-5 text-secondary shrink-0" />
                               <div>
                                 <h5 className="font-serif text-sm font-bold text-[#021a35]">
                                   Meditations
@@ -1082,7 +1081,7 @@ export default function Login() {
 
                           {integrityState.status === 'Healed' && (
                             <div className="bg-[#ebd9bd]/25 border border-secondary/20 p-3 rounded text-secondary flex items-start gap-2">
-                              <span className="text-base">✨</span>
+                              <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                               <span className="text-[11px] font-sans leading-snug">
                                 <strong>System Audit perfect:</strong> All dummy
                                 duplicates merged on core ISBN matching rules.
@@ -1150,8 +1149,8 @@ export default function Login() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Column 1: Constellations */}
             <div className="flex flex-col gap-4 text-left p-6 rounded-lg bg-surface-container-low border border-outline-variant/20 hover:border-outline-variant/55 transition-all">
-              <div className="w-10 h-10 bg-secondary/10 text-secondary rounded flex items-center justify-center font-bold text-lg border border-secondary/20">
-                🌌
+              <div className="w-10 h-10 bg-secondary/10 text-secondary rounded flex items-center justify-center border border-secondary/20">
+                <Compass className="w-5 h-5" />
               </div>
               <h3 className="font-serif text-xl font-bold text-primary mt-2">
                 Celestial Tag Maps
@@ -1169,8 +1168,8 @@ export default function Login() {
 
             {/* Column 2: Curation */}
             <div className="flex flex-col gap-4 text-left p-6 rounded-lg bg-surface-container-low border border-outline-variant/20 hover:border-outline-variant/55 transition-all">
-              <div className="w-10 h-10 bg-secondary/10 text-secondary rounded flex items-center justify-center font-bold text-lg border border-secondary/20">
-                ✨
+              <div className="w-10 h-10 bg-secondary/10 text-secondary rounded flex items-center justify-center border border-secondary/20">
+                <Sparkles className="w-5 h-5" />
               </div>
               <h3 className="font-serif text-xl font-bold text-primary mt-2">
                 The daily AI Critic
@@ -1188,8 +1187,8 @@ export default function Login() {
 
             {/* Column 3: Integrity */}
             <div className="flex flex-col gap-4 text-left p-6 rounded-lg bg-surface-container-low border border-outline-variant/20 hover:border-outline-variant/55 transition-all">
-              <div className="w-10 h-10 bg-secondary/10 text-secondary rounded flex items-center justify-center font-bold text-lg border border-secondary/20">
-                🧬
+              <div className="w-10 h-10 bg-secondary/10 text-secondary rounded flex items-center justify-center border border-secondary/20">
+                <Database className="w-5 h-5" />
               </div>
               <h3 className="font-serif text-xl font-bold text-primary mt-2">
                 Parchment Score Audit

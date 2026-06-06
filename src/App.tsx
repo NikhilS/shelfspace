@@ -122,6 +122,15 @@ function AnimatedRoutes() {
           />
 
           <Route
+            path="/library/:id/collection"
+            element={
+              <RequireLibraryPermission requires="viewer">
+                <LibraryView />
+              </RequireLibraryPermission>
+            }
+          />
+
+          <Route
             path="/library/:id/add"
             element={
               <RequireLibraryPermission requires="editor">

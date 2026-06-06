@@ -6,6 +6,7 @@ import {
   Wand2,
   Settings,
   Share2,
+  BookOpen,
   Library as LibraryIcon,
 } from 'lucide-react';
 import SidebarActions from './SidebarActions';
@@ -37,7 +38,9 @@ export function LibrarySidebarNav({
     return null;
   }
 
-  const isLibraryView = location.pathname === `/library/${libraryId}`;
+  const isLibraryHomeActive = location.pathname === `/library/${libraryId}`;
+  const isCollectionsActive =
+    location.pathname === `/library/${libraryId}/collection`;
 
   const handleSettings = () => {
     if (onOpenSettings) onOpenSettings();
@@ -76,10 +79,18 @@ export function LibrarySidebarNav({
       <SidebarActions>
         <Link
           to={`/library/${libraryId}`}
-          className={`sidebar-nav-item ${isLibraryView ? 'active' : ''}`}
+          className={`sidebar-nav-item ${isLibraryHomeActive ? 'active' : ''}`}
         >
           <LibraryIcon className="w-5 h-5 flex-shrink-0" />
-          <span>Library View</span>
+          <span>Library Home</span>
+        </Link>
+
+        <Link
+          to={`/library/${libraryId}/collection`}
+          className={`sidebar-nav-item ${isCollectionsActive ? 'active' : ''}`}
+        >
+          <BookOpen className="w-5 h-5 flex-shrink-0" />
+          <span>Collections</span>
         </Link>
 
         <Link

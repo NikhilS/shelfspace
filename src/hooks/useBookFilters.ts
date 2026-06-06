@@ -1,5 +1,10 @@
 import {useMemo, useDeferredValue} from 'react';
-import {useSearchParams} from 'react-router-dom';
+import {
+  useSearchParams,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import {Book} from '../types';
 import {getFirestoreTime, toTitleCase} from '../lib/utils';
 
@@ -7,9 +12,13 @@ export type SortOption = 'added' | 'title' | 'author';
 
 export function useBookFilters(books: Book[]) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const {id} = useParams<{id: string}>();
 
-  const currentTab =
-    (searchParams.get('tab') as 'overview' | 'collection') || 'overview';
+  const currentTab = location.pathname.endsWith('/collection')
+    ? 'collection'
+    : 'overview';
   const sortBy = (searchParams.get('sort') as SortOption) || 'added';
   const sortOrder = (searchParams.get('order') as 'asc' | 'desc') || 'desc';
   const viewMode =
@@ -150,22 +159,21 @@ export function useBookFilters(books: Book[]) {
   };
 
   const selectGenreAndGoToCollection = (genre: string) => {
-    setSearchParams(
-      prev => {
-        if (genre) prev.set('genre', genre);
-        else prev.delete('genre');
-        prev.set('tab', 'collection');
-        prev.set('filters', 'true');
-        return prev;
-      },
-      {replace: true},
-    );
+    const params = new URLSearchParams(searchParams);
+    if (genre) params.set('genre', genre);
+    else params.delete('genre');
+    params.set('filters', 'true');
+    params.delete('tab');
+    void navigate(`/library/${id}/collection?${params.toString()}`);
   };
 
   return {
     currentTab,
-    setCurrentTab: (tab: 'overview' | 'collection') =>
-      setSearchParamsValue('tab', tab),
+    setCurrentTab: (tab: 'overview' | 'collection') => {
+      void navigate(
+        tab === 'collection' ? `/library/${id}/collection` : `/library/${id}`,
+      );
+    },
     sortBy,
     setSortBy: handleSort,
     handleSort,

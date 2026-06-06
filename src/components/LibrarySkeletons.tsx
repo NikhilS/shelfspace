@@ -140,7 +140,7 @@ interface LibraryMainSkeletonProps {
   tab?: 'overview' | 'collection';
 }
 
-// MAIN skeleton page that pieces together Header, Tabs and Tab Content
+// MAIN skeleton page that pieces together Header and Tab Content
 export function LibraryMainSkeleton({
   tab = 'overview',
 }: LibraryMainSkeletonProps) {
@@ -148,12 +148,13 @@ export function LibraryMainSkeleton({
     <div className="flex-grow flex flex-col min-h-screen w-full">
       <div className="flex-1 flex flex-col min-w-0">
         <LibraryHeaderSkeleton />
-        <LibraryTabsSkeleton />
-        {tab === 'overview' ? (
-          <LibraryOverviewSkeleton />
-        ) : (
-          <LibraryCollectionSkeleton />
-        )}
+        <div className="pt-6">
+          {tab === 'overview' ? (
+            <LibraryOverviewSkeleton />
+          ) : (
+            <LibraryCollectionSkeleton />
+          )}
+        </div>
       </div>
     </div>
   );

@@ -180,7 +180,7 @@ export function EditBookForm({
         await new Promise(r => setTimeout(r, 400));
         setFlashLog('Calibrating brightness & color contrast...');
         await new Promise(r => setTimeout(r, 400));
-        setFlashLog('Running Nanobanana Flash™ straightening engine...');
+        setFlashLog('Running Curator Lens™ straightening engine...');
         try {
           const cleaned = await applyNanobananaFlash(base64Data, {
             straighten: true,
@@ -194,7 +194,7 @@ export function EditBookForm({
               id: 'captured-cleaned',
               url: cleaned,
               label: 'Cleaned Photo',
-              description: 'Nanobanana Flash™ applied',
+              description: 'Curator Lens™ applied',
             },
             {
               id: 'captured-raw',
@@ -231,7 +231,7 @@ export function EditBookForm({
     setIsCameraActive(false);
   };
 
-  // Toggle nanobanana flash processing on/off for current raw image
+  // Toggle Curator Lens™ processing on/off for current raw image
   const handleToggleNanobanana = async (checked: boolean) => {
     setUseNanobananaFlash(checked);
     if (!registeredRawCover) return;
@@ -255,11 +255,11 @@ export function EditBookForm({
             id: 'captured-cleaned',
             url: cleaned,
             label: 'Cleaned Photo',
-            description: 'Nanobanana Flash™ applied',
+            description: 'Curator Lens™ applied',
           },
           ...prev.filter(s => s.id !== 'captured-cleaned'),
         ]);
-        toast.success('Cover enhanced with Nanobanana Flash™!');
+        toast.success('Cover enhanced with Curator Lens™!');
       } catch (err) {
         console.error(err);
         toast.error('Could not apply enhancement');
@@ -418,7 +418,7 @@ export function EditBookForm({
                             <Loader2 className="w-10 h-10 animate-spin text-primary" />
                             <div className="space-y-1">
                               <p className="text-sm font-semibold tracking-tight text-ink">
-                                Nanobanana Flash™ Active
+                                Curator Lens™ Active
                               </p>
                               <p className="text-xs text-on-surface-variant italic animate-pulse">
                                 {flashLog}
@@ -469,7 +469,7 @@ export function EditBookForm({
                       )}
                     </div>
 
-                    {/* NANOBANANA FLASH SWITCH */}
+                    {/* CURATOR LENS SWITCH */}
                     {registeredRawCover && (
                       <div className="flex items-center justify-between p-3.5 rounded-xl bg-primary/5 border border-primary/15 animate-in fade-in duration-300">
                         <div className="flex items-start gap-2.5">
@@ -479,7 +479,7 @@ export function EditBookForm({
                               className="text-sm font-medium text-ink block leading-tight cursor-pointer"
                               htmlFor="nanobanana-toggle"
                             >
-                              Nanobanana Flash™ Enhancer
+                              Curator Lens™ Enhancer
                             </Label>
                             <p className="text-xs text-on-surface-variant leading-relaxed">
                               Straightens perspective and cleans margins using

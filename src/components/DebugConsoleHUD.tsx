@@ -616,7 +616,7 @@ export const DebugConsoleHUD: React.FC = () => {
                                     </span>
                                   ) : (
                                     <span className="text-[9px] font-bold bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">
-                                      🛜 FROM SERVER READ
+                                      • SERVER READ
                                     </span>
                                   )}
                                 </div>

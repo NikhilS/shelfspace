@@ -381,22 +381,7 @@ export default function LibraryView() {
             />
           </ErrorBoundary>
 
-          {/* Tabs Navigation */}
-          <div className="w-full px-4 sm:px-8 pt-4 border-b border-outline-variant/30 flex flex-col sm:flex-row justify-between sm:items-end gap-3 sm:gap-0 bg-surface-container-lowest">
-            <div className="flex gap-6 overflow-x-auto no-scrollbar">
-              {(['overview', 'collection'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => filters.setCurrentTab(tab)}
-                  className={`pb-3 font-label-caps uppercase cursor-pointer tracking-wider text-sm transition-colors border-b-2 whitespace-nowrap ${filters.currentTab === tab ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'}`}
-                >
-                  {toTitleCase(tab)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative flex-grow flex flex-col">
+          <div className="relative flex-grow flex flex-col pt-6">
             <AnimatePresence mode="wait">
               {isBooksLoading && books.length === 0 ? (
                 filters.currentTab === 'overview' ? (
