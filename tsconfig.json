@@ -6,6 +6,9 @@
       "@/*": ["./src/*"]
     },
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "strict": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

@@ -23,19 +23,6 @@ vi.mock('firebase/firestore', () => ({
   deleteField: vi.fn(),
 }));
 
-vi.mock('recharts', () => ({
-  ScatterChart: () => <div data-testid="scatter-chart" />,
-  Scatter: () => <div />,
-  XAxis: () => <div />,
-  YAxis: () => <div />,
-  CartesianGrid: () => <div />,
-  Tooltip: () => <div />,
-  ResponsiveContainer: ({children}: {children: React.ReactNode}) => (
-    <div>{children}</div>
-  ),
-  Cell: () => <div />,
-}));
-
 describe('ConstellationMap', () => {
   it('renders loading state initially', () => {
     const {container} = render(

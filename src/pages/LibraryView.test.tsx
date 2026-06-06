@@ -79,17 +79,6 @@ vi.mock('firebase/firestore', () => {
   };
 });
 
-vi.mock('recharts', async () => {
-  const actual = (await vi.importActual('recharts')) as import('vitest').Mock;
-  return {
-    ...actual,
-
-    ResponsiveContainer: ({children}: {children: React.ReactNode}) => (
-      <div style={{width: 800, height: 800}}>{children}</div>
-    ),
-  };
-});
-
 describe('LibraryView', () => {
   it('renders loading state initially', () => {
     const {container} = render(

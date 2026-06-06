@@ -2,16 +2,84 @@ import {GoogleGenAI, Type} from '@google/genai';
 import Papa from 'papaparse';
 import {logger} from '../contexts/DebugContext';
 import {toSentenceCase} from '../lib/utils';
+import {auth} from '../firebase';
+
+const isBrowser =
+  typeof window !== 'undefined' && process.env.NODE_ENV !== 'test';
+
+export function isApiKeyError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes('GEMINI_API_KEY') ||
+    msg.includes('key not valid') ||
+    msg.includes('API_KEY_INVALID') ||
+    msg.includes('INVALID_ARGUMENT') ||
+    msg.includes('API key')
+  );
+}
+
+function getGeminiClient(): GoogleGenAI {
+  const apiKey =
+    typeof process !== 'undefined'
+      ? process.env.GEMINI_API_KEY
+      : import.meta.env.VITE_GEMINI_API_KEY;
+
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+    throw new Error(
+      'AI features require a valid GEMINI_API_KEY. Please set this in the Settings > Secrets menu.',
+    );
+  }
+
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
+
+async function runClientProxy(
+  action: string,
+  payload: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Authentication required for AI actions');
+  }
+  const token = await currentUser.getIdToken();
+  const response = await fetch('/api/gemini/action', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({action, payload}),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || `HTTP error ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.result;
+}
 
 export async function generateClusterNames(
   clusters: {id: number; books: {title: string; author?: string}[]}[],
 ): Promise<Record<number, string>> {
+  if (isBrowser) {
+    return runClientProxy('generateClusterNames', {clusters}) as Promise<
+      Record<number, string>
+    >;
+  }
   try {
-    const apiKey =
-      typeof process !== 'undefined'
-        ? process.env.GEMINI_API_KEY
-        : import.meta.env.VITE_GEMINI_API_KEY;
-    const ai = new GoogleGenAI({apiKey});
+    const ai = getGeminiClient();
 
     // Group books to avoid massive prompts just in case
     const prompt = `I have clustered a library of books into thematic constellations. For each cluster, I will provide a list of books. 
@@ -41,7 +109,7 @@ ${clusters
 `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -68,17 +136,27 @@ ${clusters
 
     return result;
   } catch (err) {
-    console.error('Failed to generate cluster names:', err);
+    if (isApiKeyError(err)) {
+      console.info(
+        'Cluster name generation is pending valid GEMINI_API_KEY configuration.',
+      );
+    } else {
+      console.error('Failed to generate cluster names:', err);
+    }
     return {};
   }
 }
 
 export function handleGeminiError(error: unknown): never {
-  console.error('Error calling Gemini:', error);
   const errorMessage = error instanceof Error ? error.message : String(error);
+  if (isApiKeyError(error)) {
+    console.info('Gemini API key is invalid or not set.');
+    throw error;
+  }
+  console.error('Error calling Gemini:', error);
   const status =
     typeof error === 'object' && error !== null && 'status' in error
-      ? error.status
+      ? (error as {status?: number}).status
       : undefined;
   if (
     status === 429 ||
@@ -99,13 +177,18 @@ export async function generateBookEmbeddings(
   texts: string[],
   onProgress?: (completed: number, total: number) => void,
 ): Promise<number[][]> {
+  if (isBrowser) {
+    const result = (await runClientProxy('generateBookEmbeddings', {
+      texts,
+    })) as number[][];
+    if (onProgress) {
+      onProgress(texts.length, texts.length);
+    }
+    return result;
+  }
   try {
     if (!texts || texts.length === 0) return [];
-    const apiKey =
-      typeof process !== 'undefined'
-        ? process.env.GEMINI_API_KEY
-        : import.meta.env.VITE_GEMINI_API_KEY;
-    const ai = new GoogleGenAI({apiKey});
+    const ai = getGeminiClient();
 
     const embeddings: number[][] = new Array(texts.length).fill([]);
 
@@ -151,17 +234,19 @@ export async function extractBooksFromImage(
   base64Image: string,
   mimeType: string,
 ): Promise<{title: string; author: string; isbn?: string}[]> {
+  if (isBrowser) {
+    return runClientProxy('extractBooksFromImage', {
+      base64Image,
+      mimeType,
+    }) as Promise<{title: string; author: string; isbn?: string}[]>;
+  }
   try {
     logger.info(`Starting book extraction from image (${mimeType})...`);
     if (!base64Image || base64Image === 'data:,') {
       logger.error('Invalid image data: image is empty');
       throw new Error('Invalid image data provided.');
     }
-    const apiKey =
-      typeof process !== 'undefined'
-        ? process.env.GEMINI_API_KEY
-        : import.meta.env.VITE_GEMINI_API_KEY;
-    const ai = new GoogleGenAI({apiKey});
+    const ai = getGeminiClient();
 
     // Strategy: Try with Pro first, fallback to Flash. Use schema for both.
     const extractionSchema = {
@@ -218,26 +303,32 @@ export async function extractBooksFromImage(
       ]);
       logger.info('Gemini 3.1 Pro response received.');
     } catch (e: unknown) {
+      if (isApiKeyError(e)) {
+        throw e;
+      }
       const isTimeout = e instanceof Error && e.message === 'API_TIMEOUT';
       logger.warn(
         `Gemini 3.1 Pro ${isTimeout ? 'timed out' : 'failed'}, retrying with flash: ${e instanceof Error ? e.message : String(e)}`,
       );
       try {
         response = await Promise.race([
-          generateCall('gemini-3-flash-preview'),
+          generateCall('gemini-3.5-flash'),
           timeoutPromise(20000), // 20s timeout for flash
         ]);
-        logger.info('Gemini 3 Flash response received.');
+        logger.info('Gemini 3.5 Flash response received.');
       } catch (err: unknown) {
+        if (isApiKeyError(err)) {
+          throw err;
+        }
         logger.warn(
-          'Gemini 3 Flash failed, falling back to Gemini 2.5 Flash:',
-          err,
+          'Gemini 3.5 Flash failed, falling back to Gemini 3.5 Flash backup: ' +
+            (err instanceof Error ? err.message : String(err)),
         );
         response = await Promise.race([
-          generateCall('gemini-2.5-flash'),
-          timeoutPromise(20000), // 20s timeout for 2.5 flash
+          generateCall('gemini-3.5-flash'),
+          timeoutPromise(20000), // 20s timeout for backup flash
         ]);
-        logger.info('Gemini 2.5 Flash response received.');
+        logger.info('Gemini 3.5 Flash backup response received.');
       }
     }
 
@@ -260,18 +351,24 @@ export async function extractBooksFromImage(
         logger.info(`Successfully parsed ${parsed.length} books from image`);
         return parsed;
       }
-      logger.error('Gemini response is not an array');
+      logger.warn('Gemini response is not an array');
       return [];
     } catch (e: unknown) {
-      logger.error(
+      logger.warn(
         `Failed to parse Gemini JSON: ${e instanceof Error ? e.message : String(e)}`,
       );
       return [];
     }
   } catch (error) {
-    logger.error(
-      `Fatal error in extraction: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    if (isApiKeyError(error)) {
+      logger.info(
+        'Book extraction is pending valid GEMINI_API_KEY configuration.',
+      );
+    } else {
+      logger.error(
+        `Fatal error in extraction: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     handleGeminiError(error);
   }
 }
@@ -284,6 +381,16 @@ export async function extractBooksFromCsv(csvText: string): Promise<
     format?: 'physical' | 'digital';
   }[]
 > {
+  if (isBrowser) {
+    return runClientProxy('extractBooksFromCsv', {csvText}) as Promise<
+      {
+        title: string;
+        author: string;
+        isbn?: string;
+        format?: 'physical' | 'digital';
+      }[]
+    >;
+  }
   try {
     // 1. Parse CSV locally using PapaParse
     const parsed = await new Promise<Papa.ParseResult<unknown>>(
@@ -304,11 +411,7 @@ export async function extractBooksFromCsv(csvText: string): Promise<
     // Extract first 3 rows to give structural context
     const sampleRows = rows.slice(0, 3);
 
-    const apiKey =
-      typeof process !== 'undefined'
-        ? process.env.GEMINI_API_KEY
-        : import.meta.env.VITE_GEMINI_API_KEY;
-    const ai = new GoogleGenAI({apiKey});
+    const ai = getGeminiClient();
     const response = await ai.models.generateContent({
       model: 'gemini-3.1-pro-preview',
       contents: `You are a data mapping assistant. I am providing you with the first few rows of a CSV file parsed as JSON arrays.
@@ -348,7 +451,7 @@ export async function extractBooksFromCsv(csvText: string): Promise<
     try {
       schema = JSON.parse(text);
     } catch (e) {
-      console.error('Failed to parse Gemini schema response:', e);
+      console.warn('Failed to parse Gemini schema response:', e);
       return [];
     }
 
@@ -422,13 +525,14 @@ export async function extractBooksFromCsv(csvText: string): Promise<
 export async function enrichBooksMetadata(
   books: {id: string; title: string; author: string; synopsis?: string}[],
 ): Promise<{id: string; series: string}[]> {
+  if (isBrowser) {
+    return runClientProxy('enrichBooksMetadata', {books}) as Promise<
+      {id: string; series: string}[]
+    >;
+  }
   try {
     if (!books || books.length === 0) return [];
-    const apiKey =
-      typeof process !== 'undefined'
-        ? process.env.GEMINI_API_KEY
-        : import.meta.env.VITE_GEMINI_API_KEY;
-    const ai = new GoogleGenAI({apiKey});
+    const ai = getGeminiClient();
 
     const prompt = `Act as an expert librarian. I have a list of books. For each book, please determine:
     1. The book series it belongs to. If it is a standalone book, return 'Standalone'.
@@ -442,7 +546,7 @@ export async function enrichBooksMetadata(
     `;
 
     const fetchPromise = ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -468,13 +572,25 @@ export async function enrichBooksMetadata(
       }
       return [];
     } catch (e) {
-      console.error('Failed to parse Gemini response:', e);
+      if (isApiKeyError(e)) {
+        console.info(
+          'Metadata enrichment parse check completed (key pending).',
+        );
+      } else {
+        console.error('Failed to parse Gemini response:', e);
+      }
       return [];
     }
   } catch (error) {
     if (error instanceof Error && error.message === 'TIMEOUT') {
       logger.warn('Gemini metadata enrichment timed out.');
       return [];
+    }
+    if (isApiKeyError(error)) {
+      console.info(
+        'Metadata enrichment is pending valid GEMINI_API_KEY configuration.',
+      );
+      throw error;
     }
     handleGeminiError(error);
   }
@@ -483,12 +599,13 @@ export async function enrichBooksMetadata(
 export async function generateLibraryRecommendations(
   libraryBooks: {title: string; author: string}[],
 ): Promise<string> {
+  if (isBrowser) {
+    return runClientProxy('generateLibraryRecommendations', {
+      libraryBooks,
+    }) as Promise<string>;
+  }
   try {
-    const apiKey =
-      typeof process !== 'undefined'
-        ? process.env.GEMINI_API_KEY
-        : import.meta.env.VITE_GEMINI_API_KEY;
-    const ai = new GoogleGenAI({apiKey});
+    const ai = getGeminiClient();
     // Limit to 100 books to provide more context for recommendations
     const limitedBooks = libraryBooks.slice(0, 100);
     const bookList = limitedBooks
@@ -521,6 +638,13 @@ export async function generateBookInsights(
   type: 'summary' | 'catchup' | 'similar' | 'author_bio' | 'synopsis',
   signal?: AbortSignal,
 ): Promise<string> {
+  if (isBrowser) {
+    return runClientProxy(
+      'generateBookInsights',
+      {title, author, type},
+      signal,
+    ) as Promise<string>;
+  }
   let prompt = '';
   switch (type) {
     case 'summary':
@@ -544,17 +668,13 @@ export async function generateBookInsights(
       break;
   }
 
-  const apiKey =
-    typeof process !== 'undefined'
-      ? process.env.GEMINI_API_KEY
-      : import.meta.env.VITE_GEMINI_API_KEY;
-  const ai = new GoogleGenAI({apiKey});
+  const ai = getGeminiClient();
 
   let retries = 3;
   while (retries > 0) {
     try {
       const response = await ai.models.generateContent({
-        model: retries > 1 ? 'gemini-3.1-pro-preview' : 'gemini-2.5-flash',
+        model: retries > 1 ? 'gemini-3.1-pro-preview' : 'gemini-3.5-flash',
         contents: prompt,
         config: {
           systemInstruction: 'You are an expert librarian.',
@@ -586,18 +706,19 @@ export async function generateBookInsights(
 export async function generateLibraryHeroImage(
   libraryName: string,
 ): Promise<string | null> {
+  if (isBrowser) {
+    return (await runClientProxy('generateLibraryHeroImage', {
+      libraryName,
+    })) as string | null;
+  }
   try {
-    const apiKey =
-      typeof process !== 'undefined'
-        ? process.env.GEMINI_API_KEY
-        : import.meta.env.VITE_GEMINI_API_KEY;
-    const ai = new GoogleGenAI({apiKey});
+    const ai = getGeminiClient();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
           {
-            text: `A beautiful, atmospheric, and cozy library themed hero image for a book collection named '${libraryName}'. High quality, digital art, warm lighting, inviting, no text in the image.`,
+            text: `Beautiful and stunning watercolor anime-style library-themed hero banner for a book collection named '${libraryName}'. Cozy Ghibli-inspired aesthetic, warm glowing sunbeams filtering through giant wooden windows, towering bookshelves filled with colorful adventure and fantasy books, soft whimsical light dust motes, magical and comforting atmosphere, masterpiece scene art style, strictly no text or characters of alphabet on the image.`,
           },
         ],
       },
@@ -610,27 +731,36 @@ export async function generateLibraryHeroImage(
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
-        const base64 = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-        return await compressImage(base64);
+        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
       }
     }
     return null;
   } catch (error) {
-    console.error('Error generating library hero image:', error);
-    return null;
+    if (isApiKeyError(error)) {
+      console.info(
+        'Library hero image generation is pending valid GEMINI_API_KEY configuration.',
+      );
+      throw error;
+    } else {
+      console.error('Error generating library hero image:', error);
+      return null;
+    }
   }
 }
 
 export async function getPickOfTheDay(
   books: {title: string; author: string}[],
 ): Promise<{title: string; author: string; reason: string} | null> {
+  if (isBrowser) {
+    return runClientProxy('getPickOfTheDay', {books}) as Promise<{
+      title: string;
+      author: string;
+      reason: string;
+    } | null>;
+  }
   try {
     if (!books || books.length === 0) return null;
-    const apiKey =
-      typeof process !== 'undefined'
-        ? process.env.GEMINI_API_KEY
-        : import.meta.env.VITE_GEMINI_API_KEY;
-    const ai = new GoogleGenAI({apiKey});
+    const ai = getGeminiClient();
     const shuffled = [...books];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -660,13 +790,16 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
     let response;
     try {
       response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.5-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
         },
       });
     } catch (e: unknown) {
+      if (isApiKeyError(e)) {
+        throw e;
+      }
       console.warn('Fallback to pro model due to error in pick of the day:', e);
       try {
         response = await ai.models.generateContent({
@@ -677,9 +810,12 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
           },
         });
       } catch (err: unknown) {
-        console.warn('Fallback to 2.5 flash model:', err);
+        if (isApiKeyError(err)) {
+          throw err;
+        }
+        console.warn('Fallback to 3.5 flash model:', err);
         response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.5-flash',
           contents: prompt,
           config: {
             responseMimeType: 'application/json',
@@ -704,7 +840,13 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
       return null;
     }
   } catch (err) {
-    console.error('Pick of the day error:', err);
+    if (isApiKeyError(err)) {
+      console.info(
+        'Pick of the day is pending valid GEMINI_API_KEY configuration.',
+      );
+    } else {
+      console.error('Pick of the day error:', err);
+    }
     return null;
   }
 }
@@ -712,13 +854,14 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
 export async function classifyBooks(
   batch: {id: string; title: string; author: string; synopsis?: string}[],
 ): Promise<{id: string; genres: string[]}[]> {
+  if (isBrowser) {
+    return runClientProxy('classifyBooks', {batch}) as Promise<
+      {id: string; genres: string[]}[]
+    >;
+  }
   try {
     if (!batch || batch.length === 0) return [];
-    const apiKey =
-      typeof process !== 'undefined'
-        ? process.env.GEMINI_API_KEY
-        : import.meta.env.VITE_GEMINI_API_KEY;
-    const ai = new GoogleGenAI({apiKey});
+    const ai = getGeminiClient();
 
     const booksPromptData = batch.map(b => ({
       id: b.id,
@@ -748,7 +891,7 @@ Books to classify:
 ${JSON.stringify(booksPromptData, null, 2)}`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -770,37 +913,22 @@ ${JSON.stringify(booksPromptData, null, 2)}`;
       }
       return [];
     } catch (e) {
-      console.error('Failed to parse Gemini classification response:', e);
+      if (isApiKeyError(e)) {
+        console.info(
+          'Book classification parse check completed (key pending).',
+        );
+      } else {
+        console.error('Failed to parse Gemini classification response:', e);
+      }
       return [];
     }
   } catch (error) {
+    if (isApiKeyError(error)) {
+      console.info(
+        'Book classification is pending valid GEMINI_API_KEY configuration.',
+      );
+      throw error;
+    }
     handleGeminiError(error);
   }
-}
-
-async function compressImage(dataUrl: string): Promise<string> {
-  if (typeof window === 'undefined') return dataUrl; // Skip compression on server for now
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      // Scale down to max 800px width to save space
-      const maxWidth = 800;
-      const scale = Math.min(1, maxWidth / img.width);
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        resolve(dataUrl);
-        return;
-      }
-
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      // Compress as JPEG with 0.6 quality (should easily fit in 1MB)
-      resolve(canvas.toDataURL('image/jpeg', 0.6));
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
 }

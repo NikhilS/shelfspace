@@ -1,7 +1,13 @@
 import React, {useState, useEffect} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
-import {auth, db, handleFirestoreError, OperationType} from '../firebase';
+import {
+  auth,
+  db,
+  handleFirestoreError,
+  OperationType,
+  uploadBase64Image,
+} from '../firebase';
 import {
   collection,
   getDocs,
@@ -17,6 +23,8 @@ import {toTitleCase, getFirestoreTime} from '../lib/utils';
 import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {motion, AnimatePresence} from 'motion/react';
 import {format} from 'date-fns';
+import {Library} from '../types';
+import {generateLibraryHeroImage} from '../services/gemini';
 
 // Hooks
 import {useLibraryData} from '../hooks/useLibraryData';
@@ -24,6 +32,7 @@ import {getAccessFromLibrary} from '../hooks/useLibraryAccess';
 import {useBookFilters} from '../hooks/useBookFilters';
 import {useSelection} from '../hooks/useSelection';
 import {usePickOfTheDay} from '../hooks/usePickOfTheDay';
+import {useDebugInspect} from '../hooks/useDebugInspect';
 
 // Components
 import {LibraryHeader} from './library/LibraryHeader';
@@ -32,7 +41,11 @@ import {LibraryCollection} from './library/LibraryCollection';
 import {LibrarySettingsModals} from './library/LibrarySettingsModals';
 import {BulkActionsBar} from './library/BulkActionsBar';
 import {ErrorBoundary} from '../components/ErrorBoundary';
-import {PageLoading} from '../components/PageLoading';
+import {
+  LibraryMainSkeleton,
+  LibraryOverviewSkeleton,
+  LibraryCollectionSkeleton,
+} from '../components/LibrarySkeletons';
 import {useDebug} from '../contexts/DebugContext';
 
 export default function LibraryView() {
@@ -55,6 +68,18 @@ export default function LibraryView() {
 
   // Pick of the Day logic
   const picker = usePickOfTheDay(books, filters.currentTab);
+
+  // Debug inspector registration for telemetry of state views
+  useDebugInspect('LibraryView_ActiveFilters', {
+    search: filters.search,
+    currentTab: filters.currentTab,
+    selectedGenre: filters.selectedGenre,
+    sortBy: filters.sortBy,
+    totalBooksLoaded: books.length,
+    selectedIdsLength: selection.selectedBooks?.size || 0,
+    isSyncing,
+    isLoading,
+  });
 
   // Local state for modals and UI
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -250,6 +275,50 @@ export default function LibraryView() {
 
   const {setDebugData} = useDebug();
 
+  const [isRefreshingHero, setIsRefreshingHero] = useState(false);
+
+  const handleRefreshHero = async () => {
+    if (!id || !library || isRefreshingHero) return;
+    setIsRefreshingHero(true);
+    const toastId = toast.loading('Generating a fun & playful hero banner...');
+    try {
+      const url = await generateLibraryHeroImage(library.name);
+      if (url) {
+        const storagePath = `libraries/${id}/hero.png`;
+        const storageUrl = await uploadBase64Image(url, storagePath);
+        await updateDoc(doc(db, 'libraries', id), {
+          heroImageUrl: storageUrl,
+        });
+        toast.success('Hero image refreshed!', {id: toastId});
+      } else {
+        toast.error('Failed to generate a new hero image.', {id: toastId});
+      }
+    } catch (error) {
+      console.error('Error refreshing hero image:', error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const isKeyErr =
+        errMsg.includes('GEMINI_API_KEY') ||
+        errMsg.includes('key not valid') ||
+        errMsg.includes('API_KEY_INVALID') ||
+        errMsg.includes('INVALID_ARGUMENT') ||
+        errMsg.includes('API key') ||
+        errMsg.includes('Secrets');
+
+      if (isKeyErr) {
+        toast.error(
+          'Gemini API Key is invalid or pending. Please configure a valid key in Settings > Secrets.',
+          {id: toastId, duration: 6000},
+        );
+      } else {
+        toast.error(`Failed to generate a new hero image: ${errMsg}`, {
+          id: toastId,
+        });
+      }
+    } finally {
+      setIsRefreshingHero(false);
+    }
+  };
+
   useEffect(() => {
     if (library) {
       setDebugData(
@@ -266,12 +335,20 @@ export default function LibraryView() {
     }
   }, [library, books, setDebugData]);
 
-  if ((isLoading || isBooksLoading) && books.length === 0) {
+  if (isLoading && !library) {
     return (
-      <PageLoading
-        title="Opening the vaults..."
-        subtitle="Fetching catalog, blowing off dust, and retrieving your reading history."
-      />
+      <>
+        <LibrarySidebarNav
+          libraryId={id}
+          onOpenSettings={() =>
+            setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)
+          }
+          onOpenShare={() => setIsSettingsOpen(!isSettingsOpen)}
+          isSettingsOpen={isAdvancedSettingsOpen}
+          isShareOpen={isSettingsOpen}
+        />
+        <LibraryMainSkeleton tab={filters.currentTab} />
+      </>
     );
   }
 
@@ -298,6 +375,9 @@ export default function LibraryView() {
               isOwner={isOwner}
               isSyncing={isSyncing}
               role={access.role}
+              canEdit={canEdit}
+              isRefreshingHero={isRefreshingHero}
+              onRefreshHero={handleRefreshHero}
             />
           </ErrorBoundary>
 
@@ -318,7 +398,13 @@ export default function LibraryView() {
 
           <div className="relative flex-grow flex flex-col">
             <AnimatePresence mode="wait">
-              {filters.currentTab === 'overview' ? (
+              {isBooksLoading && books.length === 0 ? (
+                filters.currentTab === 'overview' ? (
+                  <LibraryOverviewSkeleton key="overview-skeleton" />
+                ) : (
+                  <LibraryCollectionSkeleton key="collection-skeleton" />
+                )
+              ) : filters.currentTab === 'overview' ? (
                 <motion.div
                   key="overview"
                   initial={{opacity: 0, x: -10}}
@@ -338,6 +424,10 @@ export default function LibraryView() {
                       setCurrentTab={filters.setCurrentTab}
                       setFilterGenre={filters.setFilterGenre}
                       setIsFiltersOpen={filters.setIsFiltersOpen}
+                      selectGenreAndGoToCollection={
+                        filters.selectGenreAndGoToCollection
+                      }
+                      pickError={picker.error}
                     />
                   </ErrorBoundary>
                 </motion.div>

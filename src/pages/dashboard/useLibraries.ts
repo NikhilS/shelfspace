@@ -1,6 +1,11 @@
 import {useState, useEffect} from 'react';
 import {useAuth} from '../../contexts/AuthContext';
-import {db, handleFirestoreError, OperationType} from '../../firebase';
+import {
+  db,
+  handleFirestoreError,
+  OperationType,
+  uploadBase64Image,
+} from '../../firebase';
 import {
   collection,
   query,
@@ -108,8 +113,10 @@ export function useLibraries() {
         .then(async url => {
           if (url) {
             try {
+              const storagePath = `libraries/${docRef.id}/hero.png`;
+              const storageUrl = await uploadBase64Image(url, storagePath);
               await updateDoc(doc(db, 'libraries', docRef.id), {
-                heroImageUrl: url,
+                heroImageUrl: storageUrl,
               });
             } catch (e) {
               console.error('Failed to save hero image', e);

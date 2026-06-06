@@ -1,11 +1,13 @@
 # Wish List & Feature Requests
 
-This file tracks feature ideas, planned improvements, and requested features for the Athenaeum library app. You can ask the AI agent to append items here, mark them as complete, or implement them directly.
+This file tracks feature ideas, planned improvements, and requested features for the book(ish) library app. You can ask the AI agent to append items here, mark them as complete, or implement them directly.
 
 ## Planned Features / Ideas
 - [ ] Date Handling: Migrate manual timestamp manipulations and `Intl.DateTimeFormat` usage to a standard library like `date-fns` or `dayjs` for consistency.
-- [ ] Add richer sharing modes (edit vs. view-only access).
 - [ ] Normalize categories into a [standard taxonomy](https://www.bisg.org/BISAC-Subject-Codes-main).
+- [ ] Revamp non-logged in landing page by looking at all the functionality the app now offers and updating the landing page to reflect those. Make it a great marketing page for the app.
+- [ ] The "spruce up" page is getting a bit unwieldy. Create a (tabular or other) representation of all the functionality on that page and the details of how each works.
+- [ ] What are all the checks that happen when I open a library? What loading indicators and statuses do you display as we go through those checks?
 
 ### Tech Debt & Code Review Findings (The "Angry Senior Dev" List)
 - [x] **Dual Source of Truth for State**: `activeIndex` in `BookDetailsView` vs the `react-router` URL `bookId` param. Navigating via browser back/forward buttons won't reliably update `activeIndex`, leading to out-of-sync slides.
@@ -15,6 +17,42 @@ This file tracks feature ideas, planned improvements, and requested features for
 - [x] **Virtual Swiper + Live Data Mismatch**: If a book is deleted (or added) by another session, the underlying data changes, but `location.state.bookList` is frozen. Virtual Swiper might choke on shifting indices if not reconciled gracefully.
 - [x] **Hook Spam in Virtual Slides**: Every virtual slide mounts its own `useAuth`, `useBook`, `useBookInsights`. If Swiper buffers 5 slides, that's pulling redundant connections and heavy documents simultaneously. Slides should delay heavy data hook loading until they are adjacent or active.
 
+## Code & Architectural Review Findings (AppSec & Senior Staff Review)
+
+### [x] Topic 1: API Key Leakage & Client-Side SDK Usage
+- **Location**: `src/services/gemini.ts` & `vite.config.ts`
+- **Issue Category**: Architectural Anti-Pattern & Critical Security Vulnerability (Sensitive Data Exposure)
+- **Description**: The Gemini API calls (generating cluster names, extracting books from images, pre-populating fields, insights) are executed directly on the client browser using the client-side GoogleGenAI SDK and relying on `import.meta.env.VITE_GEMINI_API_KEY` (which is compiled and exposed, or requires the user's browser environment to hold a private key). This exposes the API token to malicious actors, can run up catastrophic bills (denial of wallet), and breaks the environment's full-stack security protocol.
+- **Severity**: Critical
+- **Remediation/Refactored Code**: Migrate all Gemini API endpoints and interactions from client-side `src/services/gemini.ts` to server-side `/server.ts` under `/api/gemini/*` endpoints. Keep `GEMINI_API_KEY` strictly on the backend as a standard node environment variable (`process.env.GEMINI_API_KEY`), and delete any `VITE_GEMINI_API_KEY` injections. Update the frontend `src/services/gemini.ts` to call our backend Express proxies instead of direct `GoogleGenAI` initialization.
+
+### [x] Topic 2: Tight Coupling & Anti-God Class Enforcement
+- **Location**: `/src/pages/book-details/EditBookForm.tsx`
+- **Issue Category**: Architectural Anti-Pattern (God Component / Monolithic File)
+- **Description**: `EditBookForm.tsx` has grown to over 900 lines of code. It manages state for book deletion, camera/cropper inputs, search criteria across multiple APIs (Google Books, Open Library), and suggestions interface, resulting in a low separation of concerns. This hurts code navigation and readability.
+- **Severity**: High
+- **Remediation/Refactored Code**: Extract camera state/components (`CoverCamera.tsx`), form handlers, and metadata loaders into modular custom hooks (e.g., `useMetadataLoader.ts`) or separate presentation sub-components.
+
+### [x] Topic 3: Code Reuse & DRY Principle Violation
+- **Location**: `/server.ts` & `/src/lib/metadataUtils.ts`
+- **Issue Category**: Code Redundancy (DRY Principle Violation)
+- **Description**: The book metadata merging structures and validation schemas in `metadataUtils.ts` (used by the backfill metadata background jobs) are duplicated across both server-side resync utilities and client-side processing handlers.
+- **Severity**: Medium
+- **Remediation/Refactored Code**: Consolidate shared utilities, schema validators, types, and model mappings inside `/src/lib/utils.ts` and import them from there.
+
+### [x] Topic 4: Rate Limiting & Concurrency Vulnerability
+- **Location**: `/server.ts` [Resync Background Worker]
+- **Issue Category**: Performance & Scalability Issue (Rate Limiting Vulnerability)
+- **Description**: The server-side metadata backfiller splits books into chunks and fires non-blocking API lookups concurrently via `Promise.all`. While efficient for small batches, large libraries will exhaust Google Books and Open Library rate-limits, resulting in silent HTTP 429 failures or blocked IPs.
+- **Severity**: Medium
+- **Remediation/Refactored Code**: Introduce a throttled concurrency helper with built-in retries and exponential backoff.
+
+### [x] Topic 5: Deficient Error Propagation Pattern
+- **Location**: Everywhere
+- **Issue Category**: Deficient Error Propagation Pattern
+- **Description**: If a Firebase Firestore operation fails, the application prints the stack trace via `console.error` and occasionally shows generic error page alerts, but fails to recover or allow users to retry smoothly.
+- **Severity**: Low
+- **Remediation/Refactored Code**: Introduce local retry buttons, finer-grained Error Boundaries, and unified visual error toasts.
 
 ## Completed
 - [x] Configure PWA installation

@@ -7,17 +7,60 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
+import {getStorage, ref, uploadString, getDownloadURL} from 'firebase/storage';
+import {toast} from 'sonner';
 import firebaseConfig from '../firebase-applet-config.json';
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
+
+/**
+ * Uploads a base64 image data URL (e.g. data:image/png;base64,...) to Cloud Storage.
+ * @param base64Data The base64 data string.
+ * @param path The path in Firebase Storage (e.g. 'libraries/123/hero.png')
+ */
+export async function uploadBase64Image(
+  base64Data: string,
+  path: string,
+): Promise<string> {
+  if (!base64Data || !base64Data.startsWith('data:')) {
+    // If it's already a URL or empty, return it directly.
+    return base64Data;
+  }
+  const storageRef = ref(storage, path);
+  await uploadString(storageRef, base64Data, 'data_url');
+  return await getDownloadURL(storageRef);
+}
+
+const usePersistentCache = (() => {
+  if (typeof window === 'undefined') return false;
+  if (process.env.NODE_ENV === 'test') return true;
+  try {
+    // If in an iframe (e.g. AI Studio preview), partitioned storage may cause IndexedDB to fail.
+    // We disable local storage caching in iframes to prevent console.error messages from Firestore.
+    if (window.self !== window.top) {
+      return false;
+    }
+    if (!window.localStorage) return false;
+    const testKey = '__test_local_storage__';
+    window.localStorage.setItem(testKey, 'test');
+    window.localStorage.removeItem(testKey);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 export const db = initializeFirestore(
   app,
-  {
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager(),
-    }),
-  },
+  usePersistentCache
+    ? {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      }
+    : {},
   firebaseConfig.firestoreDatabaseId,
 );
 
@@ -72,8 +115,9 @@ export function handleFirestoreError(
   operationType: OperationType,
   path: string | null,
 ) {
+  const errMessage = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMessage,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -92,5 +136,17 @@ export function handleFirestoreError(
     path,
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
+
+  // Determine a polished, descriptive, localized toast message
+  const pathLabel = path ? `on "${path.split('/').pop() || path}"` : '';
+  const friendlyMsg = `Database operation (${operationType}) failed ${pathLabel}`;
+
+  toast.error(friendlyMsg, {
+    description: errMessage.includes('permission-denied')
+      ? 'You do not have permission to modify or read this resource. Please make sure you are an owner/editor.'
+      : `${errMessage}. Please check your connection and try again.`,
+    duration: 6000,
+  });
+
   throw new Error(JSON.stringify(errInfo));
 }

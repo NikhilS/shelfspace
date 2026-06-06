@@ -1,18 +1,11 @@
 import React, {useMemo} from 'react';
 import {motion} from 'motion/react';
 import {Book, Library} from '../../types';
-import {Book as BookIcon, Sparkles, RefreshCw, Loader2} from 'lucide-react';
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  Legend,
-} from 'recharts';
+import {Book as BookIcon, Sparkles, RefreshCw} from 'lucide-react';
 import {toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {useNavigate, useLocation} from 'react-router-dom';
 import {Button} from '@/components/ui/button';
+import {BookLoader} from '../../components/BookLoader';
 import {format} from 'date-fns';
 
 import {User} from 'firebase/auth';
@@ -32,6 +25,8 @@ interface LibraryOverviewProps {
   setCurrentTab: (tab: 'overview' | 'collection') => void;
   setFilterGenre: (genre: string) => void;
   setIsFiltersOpen: (open: boolean) => void;
+  selectGenreAndGoToCollection?: (genre: string) => void;
+  pickError?: string | null;
 }
 
 export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
@@ -44,6 +39,8 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
   setCurrentTab,
   setFilterGenre,
   setIsFiltersOpen,
+  selectGenreAndGoToCollection,
+  pickError,
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -52,8 +49,17 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
     const counts: Record<string, number> = {};
     books.forEach(b => {
       if (b.genres && Array.isArray(b.genres)) {
+        const countedForBook = new Set<string>();
         b.genres.forEach(g => {
-          counts[g] = (counts[g] || 0) + 1;
+          if (!g) return;
+          const segments = g.split('/');
+          if (segments.length > 0) {
+            const rootCategory = toTitleCase(segments[0].trim());
+            if (rootCategory && !countedForBook.has(rootCategory)) {
+              countedForBook.add(rootCategory);
+              counts[rootCategory] = (counts[rootCategory] || 0) + 1;
+            }
+          }
         });
       }
     });
@@ -118,65 +124,67 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
               Top Categories
             </p>
             <div
-              className="w-full flex-grow flex items-center justify-center"
-              style={{minHeight: '320px', height: '320px'}}
+              className="w-full flex-grow flex flex-col"
+              style={{minHeight: '320px'}}
             >
               {topCategories.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={topCategories}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
-                      paddingAngle={5}
-                      isAnimationActive={false}
-                      onClick={data => {
-                        if (data?.name) {
-                          setFilterGenre(data.name);
-                          setCurrentTab('collection');
-                          setIsFiltersOpen(true);
-                        }
-                      }}
-                      className="cursor-pointer outline-none"
-                    >
-                      {topCategories.map((_, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={
-                            [
-                              '#2f4d40',
-                              '#7d5633',
-                              '#021a35',
-                              '#8397b8',
-                              '#a3a099',
-                              '#8a7122',
-                              '#82312a',
-                            ][index % 7]
+                <div className="flex flex-col gap-4 justify-center h-full pt-2">
+                  {topCategories.map(category => {
+                    const maxCount = Math.max(
+                      ...topCategories.map(c => c.value),
+                    );
+                    const widthPercent = Math.max(
+                      2,
+                      (category.value / maxCount) * 100,
+                    );
+
+                    return (
+                      <div
+                        key={category.name}
+                        className="group flex flex-col gap-2 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm p-1 -m-1"
+                        onClick={() => {
+                          if (selectGenreAndGoToCollection) {
+                            selectGenreAndGoToCollection(category.name);
+                          } else {
+                            setFilterGenre(category.name);
+                            setCurrentTab('collection');
+                            setIsFiltersOpen(true);
                           }
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor:
-                          'var(--color-surface-container-high, #fff)',
-                        border: '1px solid var(--color-surface-variant, #ccc)',
-                        borderRadius: '4px',
-                        color: 'var(--color-on-surface, #000)',
-                      }}
-                      itemStyle={{color: 'var(--color-on-surface, #000)'}}
-                    />
-                    <Legend
-                      verticalAlign="bottom"
-                      wrapperStyle={{fontSize: '12px', paddingTop: '10px'}}
-                      iconType="circle"
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            if (selectGenreAndGoToCollection) {
+                              selectGenreAndGoToCollection(category.name);
+                            } else {
+                              setFilterGenre(category.name);
+                              setCurrentTab('collection');
+                              setIsFiltersOpen(true);
+                            }
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-serif text-base font-bold text-primary group-hover:text-secondary group-focus-visible:text-secondary transition-colors">
+                            {category.name || 'Uncategorized'}
+                          </span>
+                          <span className="font-sans text-xs font-bold text-on-surface-variant group-hover:text-secondary group-focus-visible:text-secondary transition-colors uppercase tracking-wider">
+                            {category.value}{' '}
+                            {category.value === 1 ? 'vol' : 'vols'}
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-secondary/40 group-hover:bg-secondary group-focus-visible:bg-secondary transition-colors duration-300"
+                            style={{width: `${widthPercent}%`}}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <p className="font-body-md text-on-surface-variant italic">
@@ -259,7 +267,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
             </div>
           )}
           <div className="bg-gradient-to-br from-surface-container-low to-surface border border-outline-variant/30 p-8 relative overflow-hidden min-h-[220px] flex items-center">
-            <div className="absolute top-6 right-6 text-[#A8C7FA] opacity-50">
+            <div className="absolute top-6 right-6 text-secondary/30">
               <Sparkles size={32} />
             </div>
             <Button
@@ -273,7 +281,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
             </Button>
             {isGeneratingPick ? (
               <div className="w-full flex flex-col items-center justify-center gap-4 py-8">
-                <Loader2 className="animate-spin text-primary" size={32} />
+                <BookLoader size="md" />
                 <p className="font-body-md text-on-surface-variant animate-pulse">
                   Curating your pick of the day...
                 </p>
@@ -311,7 +319,64 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                   </div>
                 </div>
               </div>
-            ) : null}
+            ) : books.length === 0 ? (
+              <div className="w-full flex flex-col items-center justify-center gap-2 py-8 text-center z-10 relative px-6">
+                <p className="font-serif text-lg font-bold text-primary">
+                  Your Library is Empty
+                </p>
+                <p className="font-body-md text-on-surface-variant max-w-md">
+                  Add books to your collection to unlock personalized thematic
+                  recommendations from the AI curator.
+                </p>
+              </div>
+            ) : pickError ? (
+              <div className="w-full flex flex-col items-center justify-center gap-4 py-8 text-center z-10 relative px-6">
+                <div className="space-y-1">
+                  <p className="font-serif text-lg font-bold text-accent">
+                    AI Curator Offline
+                  </p>
+                  <p className="font-body-md text-on-surface-variant max-w-md">
+                    {pickError.includes('GEMINI_API_KEY') ||
+                    pickError.includes('API key') ||
+                    pickError.includes('key not valid') ||
+                    pickError.includes('API_KEY_INVALID')
+                      ? 'The AI recommendations require a valid GEMINI_API_KEY. Please set this in the Settings > Secrets menu at the top-right.'
+                      : `An error occurred: ${pickError}`}
+                  </p>
+                </div>
+                <Button
+                  onClick={() => generateNewPick()}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 bg-surface hover:bg-surface-container border-outline/30"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Retry Recommendation
+                </Button>
+              </div>
+            ) : (
+              <div className="w-full flex flex-col items-center justify-center gap-4 py-8 text-center z-10 relative px-6">
+                <div className="space-y-1">
+                  <p className="font-serif text-lg font-bold text-primary">
+                    Discover Your Next Book
+                  </p>
+                  <p className="font-body-md text-on-surface-variant max-w-md">
+                    Check the Settings &gt; Secrets menu to verify your
+                    GEMINI_API_KEY is configured, then click below to curate a
+                    custom book recommendation.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => generateNewPick()}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 bg-surface hover:bg-surface-container"
+                >
+                  <RefreshCw className="w-4 h-4 animate-spin-slow" />
+                  Generate Recommendation
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>

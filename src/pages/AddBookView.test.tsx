@@ -15,7 +15,7 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
-    ...(actual as unknown),
+    ...(actual as any),
     useParams: () => ({id: 'lib123'}),
     useNavigate: () => vi.fn(),
   };
@@ -35,7 +35,7 @@ vi.mock('../services/bookApi', () => ({
 vi.mock('firebase/firestore', async importOriginal => {
   const actual = await importOriginal();
   return {
-    ...(actual as unknown),
+    ...(actual as any),
     getFirestore: vi.fn(),
     collection: vi.fn(),
     doc: vi.fn(),

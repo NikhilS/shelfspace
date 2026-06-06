@@ -36,8 +36,8 @@ describe('AppLayout', () => {
 
   it('renders navigation links and user info', () => {
     renderAppLayout();
-    // Athenaeum header/brand
-    expect(screen.getAllByText('Athenaeum').length).toBeGreaterThan(0);
+    // book(ish) header/brand
+    expect(screen.getAllByText('book(ish)').length).toBeGreaterThan(0);
     // User placeholder icon "T" since email is "test@example.com"
     expect(screen.getByText('T')).toBeInTheDocument();
   });

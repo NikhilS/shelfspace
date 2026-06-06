@@ -17,6 +17,7 @@ interface MetadataSectionProps {
   onFixAll: () => Promise<void>;
   onForceResync: () => void;
   onFixMetadata: (book: Book) => Promise<void>;
+  emptyCoverUrls?: Set<string>;
 }
 
 export function MetadataSection({
@@ -29,6 +30,7 @@ export function MetadataSection({
   onFixAll,
   onForceResync,
   onFixMetadata,
+  emptyCoverUrls = new Set(),
 }: MetadataSectionProps) {
   return (
     <section>
@@ -92,7 +94,9 @@ export function MetadataSection({
                   {b.author}
                 </p>
                 <ul className="text-xs text-error mt-2 list-disc list-inside">
-                  {!b.coverUrl && <li>Missing Cover</li>}
+                  {(!b.coverUrl || emptyCoverUrls.has(b.coverUrl)) && (
+                    <li>Missing Cover</li>
+                  )}
                   {!b.synopsis && <li>Missing Synopsis</li>}
                   {!b.publishedDate && <li>Missing Published Date</li>}
                   {(!b.genres || b.genres.length === 0) && (

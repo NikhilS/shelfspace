@@ -1,10 +1,11 @@
 import React from 'react';
 import {useParams} from 'react-router-dom';
-import {Loader2, RefreshCw} from 'lucide-react';
+import {RefreshCw} from 'lucide-react';
 import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import ConstellationChart from '../components/ConstellationChart';
 import {useConstellationData} from '../hooks/useConstellationData';
 import {Button} from '@/components/ui/button';
+import {BookLoader} from '../components/BookLoader';
 
 export default function ConstellationMap() {
   const {id: libraryId} = useParams<{id: string}>();
@@ -38,7 +39,7 @@ export default function ConstellationMap() {
 
         {loading ? (
           <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container rounded-3xl border border-outline-variant p-8">
-            <Loader2 size={48} className="text-primary animate-spin mb-4" />
+            <BookLoader size="lg" className="mb-4" />
             <p className="text-on-surface-variant font-medium animate-pulse">
               {progress}
             </p>

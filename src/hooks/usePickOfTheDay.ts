@@ -11,10 +11,13 @@ export function usePickOfTheDay(books: Book[], currentTab: string) {
     reason: string;
   } | null>(null);
   const [isGeneratingPick, setIsGeneratingPick] = useState(false);
+  const [hasAttempted, setHasAttempted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const generateNewPick = async () => {
-    if (books.length === 0 || isGeneratingPick) return;
+  const generateNewPick = async (isManualClick = false) => {
+    if (books.length === 0 || (isGeneratingPick && !isManualClick)) return;
     setIsGeneratingPick(true);
+    setError(null);
     try {
       const shuffled = [...books];
       for (let i = shuffled.length - 1; i > 0; i--) {
@@ -57,11 +60,16 @@ export function usePickOfTheDay(books: Book[], currentTab: string) {
           coverUrl,
           reason: pick.reason,
         });
+      } else {
+        setError('No recommendation found.');
       }
     } catch (e) {
-      console.error(e);
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      console.warn('Pick of the day generation failed:', msg);
     } finally {
       setIsGeneratingPick(false);
+      setHasAttempted(true);
     }
   };
 
@@ -70,11 +78,26 @@ export function usePickOfTheDay(books: Book[], currentTab: string) {
       books.length > 0 &&
       !pickOfTheDay &&
       !isGeneratingPick &&
+      !hasAttempted &&
       currentTab === 'overview'
     ) {
-      void generateNewPick();
+      void generateNewPick(false);
     }
-  }, [books, currentTab, pickOfTheDay, isGeneratingPick]);
+  }, [books.length, currentTab, pickOfTheDay, isGeneratingPick, hasAttempted]);
 
-  return {pickOfTheDay, isGeneratingPick, generateNewPick};
+  // Reset attempt state if library becomes empty or when user changes tab, or we can just let books trigger it
+  useEffect(() => {
+    if (books.length === 0) {
+      setHasAttempted(false);
+      setError(null);
+      setPickOfTheDay(null);
+    }
+  }, [books.length]);
+
+  return {
+    pickOfTheDay,
+    isGeneratingPick,
+    generateNewPick: () => generateNewPick(true),
+    error,
+  };
 }

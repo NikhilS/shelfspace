@@ -2,7 +2,7 @@ import React from 'react';
 import {motion} from 'motion/react';
 import {Library, Book} from '../../types';
 import {toTitleCase} from '../../lib/utils';
-import {CloudUpload} from 'lucide-react';
+import {CloudUpload, RefreshCw} from 'lucide-react';
 
 interface LibraryHeaderProps {
   library: Library;
@@ -10,6 +10,9 @@ interface LibraryHeaderProps {
   isOwner: boolean;
   isSyncing?: boolean;
   role?: 'owner' | 'editor' | 'viewer' | null;
+  canEdit?: boolean;
+  isRefreshingHero?: boolean;
+  onRefreshHero?: () => void;
 }
 
 export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
@@ -18,6 +21,9 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   isOwner,
   isSyncing = false,
   role,
+  canEdit = false,
+  isRefreshingHero = false,
+  onRefreshHero,
 }) => {
   return (
     <div
@@ -60,6 +66,21 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
                 <CloudUpload className="w-3.5 h-3.5" />
                 Syncing
               </span>
+            )}
+            {canEdit && onRefreshHero && (
+              <button
+                onClick={onRefreshHero}
+                disabled={isRefreshingHero}
+                className="flex items-center gap-1.5 font-label-caps text-white bg-white/10 hover:bg-white/20 active:bg-white/30 transition-colors px-3 py-1.5 rounded-lg border border-white/15 backdrop-blur-sm disabled:opacity-50 cursor-pointer text-xs ml-auto sm:ml-4 shadow-sm"
+                title="Generate a fun & playful new library banner"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${
+                    isRefreshingHero ? 'animate-spin' : ''
+                  }`}
+                />
+                {isRefreshingHero ? 'Refreshing...' : 'Refresh Banner'}
+              </button>
             )}
           </div>
         </motion.div>

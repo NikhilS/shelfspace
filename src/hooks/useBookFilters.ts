@@ -1,7 +1,7 @@
 import {useMemo, useDeferredValue} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {Book} from '../types';
-import {getFirestoreTime} from '../lib/utils';
+import {getFirestoreTime, toTitleCase} from '../lib/utils';
 
 export type SortOption = 'added' | 'title' | 'author';
 
@@ -37,7 +37,15 @@ export function useBookFilters(books: Book[]) {
   const availableGenres = useMemo(() => {
     const genres = new Set<string>();
     books.forEach(b => {
-      if (b.genres) b.genres.forEach(g => genres.add(g));
+      if (b.genres) {
+        b.genres.forEach(g => {
+          if (!g) return;
+          g.split('/').forEach(seg => {
+            const clean = toTitleCase(seg.trim());
+            if (clean) genres.add(clean);
+          });
+        });
+      }
     });
     return Array.from(genres).sort();
   }, [books]);
@@ -59,7 +67,16 @@ export function useBookFilters(books: Book[]) {
         if (!titleMatch && !authorMatch) return false;
       }
 
-      if (filterGenre && !book.genres?.includes(filterGenre)) return false;
+      if (filterGenre) {
+        const normalizedFilter = filterGenre.trim().toLowerCase();
+        const hasMatch = book.genres?.some(g => {
+          if (!g) return false;
+          if (g.trim().toLowerCase() === normalizedFilter) return true;
+          const segments = g.split('/').map(seg => seg.trim().toLowerCase());
+          return segments.includes(normalizedFilter);
+        });
+        if (!hasMatch) return false;
+      }
       if (filterAuthor && book.author !== filterAuthor) return false;
 
       if (filterYearMin || filterYearMax) {
@@ -132,6 +149,19 @@ export function useBookFilters(books: Book[]) {
     }
   };
 
+  const selectGenreAndGoToCollection = (genre: string) => {
+    setSearchParams(
+      prev => {
+        if (genre) prev.set('genre', genre);
+        else prev.delete('genre');
+        prev.set('tab', 'collection');
+        prev.set('filters', 'true');
+        return prev;
+      },
+      {replace: true},
+    );
+  };
+
   return {
     currentTab,
     setCurrentTab: (tab: 'overview' | 'collection') =>
@@ -149,6 +179,7 @@ export function useBookFilters(books: Book[]) {
     setSearchQuery: (q: string) => setSearchParamsValue('q', q),
     filterGenre,
     setFilterGenre: (genre: string) => setSearchParamsValue('genre', genre),
+    selectGenreAndGoToCollection,
     filterAuthor,
     setFilterAuthor: (author: string) => setSearchParamsValue('author', author),
     filterYearMin,

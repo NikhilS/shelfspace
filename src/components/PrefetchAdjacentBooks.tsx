@@ -13,6 +13,8 @@ export function PrefetchAdjacentBooks({
   currentIndex: number;
   radius?: number;
 }) {
+  const bookListKey = bookList.join(',');
+
   useEffect(() => {
     const start = Math.max(0, currentIndex - radius);
     const end = Math.min(bookList.length - 1, currentIndex + radius);
@@ -28,7 +30,7 @@ export function PrefetchAdjacentBooks({
         console.warn('Prefetch book details error', error);
       });
     }
-  }, [libraryId, bookList, currentIndex, radius]);
+  }, [libraryId, bookListKey, currentIndex, radius]);
 
   return null;
 }

@@ -12,9 +12,16 @@ import {
   serverTimestamp,
   addDoc,
 } from 'firebase/firestore';
-import {db, handleFirestoreError, OperationType} from '../../firebase';
+import {
+  db,
+  handleFirestoreError,
+  OperationType,
+  uploadBase64Image,
+} from '../../firebase';
 import {Book, BookDetailsPayload, FirestoreDate} from '../../types';
+export type {Book, BookDetailsPayload, FirestoreDate};
 import {useAuth} from '../../contexts/AuthContext';
+import {parseGenres} from '../../lib/utils';
 
 export interface Review {
   id: string;
@@ -28,6 +35,7 @@ export interface Review {
 export function useBook(
   libraryId: string | undefined,
   bookId: string | undefined,
+  passedCanEdit?: boolean,
 ) {
   const {user} = useAuth();
   const [bookBase, setBookBase] = useState<Book | null>(null);
@@ -36,7 +44,9 @@ export function useBook(
   );
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [canEdit, setCanEdit] = useState(false);
+  const [canEditLocal, setCanEditLocal] = useState(false);
+
+  const canEdit = passedCanEdit !== undefined ? passedCanEdit : canEditLocal;
 
   const book = useMemo(() => {
     if (!bookBase) return null;
@@ -44,6 +54,7 @@ export function useBook(
   }, [bookBase, bookDetails]);
 
   useEffect(() => {
+    if (passedCanEdit !== undefined) return;
     if (!libraryId || !user) return;
 
     const unsubscribe = onSnapshot(
@@ -51,7 +62,7 @@ export function useBook(
       libDoc => {
         if (libDoc.exists()) {
           const data = libDoc.data();
-          setCanEdit(
+          setCanEditLocal(
             data.ownerId === user.uid ||
               (user.email &&
                 data.access &&
@@ -71,7 +82,7 @@ export function useBook(
     );
 
     return () => unsubscribe();
-  }, [libraryId, user]);
+  }, [libraryId, user, passedCanEdit]);
 
   useEffect(() => {
     if (!libraryId || !bookId) return;
@@ -82,7 +93,16 @@ export function useBook(
       doc(db, 'libraries', libraryId, 'books', bookId),
       docSnap => {
         if (docSnap.exists()) {
-          setBookBase({id: docSnap.id, ...docSnap.data()} as Book);
+          const data = docSnap.data();
+          const rawGenres =
+            data.genres ||
+            data.genre ||
+            data.categories ||
+            data.category ||
+            data.tags ||
+            data.subjects;
+          const parsedGenres = parseGenres(rawGenres);
+          setBookBase({id: docSnap.id, ...data, genres: parsedGenres} as Book);
           setIsLoading(false);
         } else {
           setBookBase(null);
@@ -243,10 +263,22 @@ export function useBook(
   const updateBook = async (cleanForm: Partial<Book & BookDetailsPayload>) => {
     if (!libraryId || !bookId || !book) return;
     try {
-      await updateDoc(
-        doc(db, 'libraries', libraryId, 'books', bookId),
-        cleanForm,
-      );
+      const cargo = {...cleanForm};
+
+      if (cargo.coverUrl && cargo.coverUrl.startsWith('data:')) {
+        const storagePath = `libraries/${libraryId}/books/${bookId}/cover.png`;
+        cargo.coverUrl = await uploadBase64Image(cargo.coverUrl, storagePath);
+      }
+
+      if (cargo.coverUrlRaw && cargo.coverUrlRaw.startsWith('data:')) {
+        const storagePath = `libraries/${libraryId}/books/${bookId}/cover_raw.png`;
+        cargo.coverUrlRaw = await uploadBase64Image(
+          cargo.coverUrlRaw,
+          storagePath,
+        );
+      }
+
+      await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), cargo);
     } catch (e) {
       handleFirestoreError(
         e,

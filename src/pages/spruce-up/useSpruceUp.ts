@@ -1,4 +1,4 @@
-import {useMemo, useState, useEffect} from 'react';
+import {useMemo, useState, useEffect, useRef} from 'react';
 import {
   collection,
   doc,
@@ -13,6 +13,7 @@ import {
 import {auth, db, handleFirestoreError, OperationType} from '../../firebase';
 import {Book, BookDetailsPayload} from '../../types';
 import {getTieredMetadata} from '../../lib/metadataUtils';
+import {mergeBookMetadata} from '../../lib/utils';
 import {classifyBooks} from '../../services/gemini';
 import {toast} from 'sonner';
 import {logger} from '../../contexts/DebugContext';
@@ -123,8 +124,13 @@ export function useSpruceUp(libraryId: string | undefined) {
   // Selection & Filtering
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<
-    'all' | 'missing_metadata' | 'missing_genre' | 'low_res_cover'
+    | 'all'
+    | 'missing_metadata'
+    | 'missing_genre'
+    | 'low_res_cover'
+    | 'missing_cover'
   >('missing_metadata');
+  const [emptyCoverUrls, setEmptyCoverUrls] = useState<Set<string>>(new Set());
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -267,6 +273,68 @@ export function useSpruceUp(libraryId: string | undefined) {
     }));
   }, [books, bookDetailsMap]);
 
+  const checkedUrlsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const googleCoverUrls = booksWithDetails
+      .map(b => b.coverUrl)
+      .filter(
+        (url): url is string =>
+          !!url &&
+          (url.includes('google.com') || url.includes('googleapis.com')),
+      );
+
+    googleCoverUrls.forEach(url => {
+      if (checkedUrlsRef.current.has(url)) return;
+      checkedUrlsRef.current.add(url);
+
+      const cacheKey = `bk_empty_google_cover_${url}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached !== null) {
+        if (cached === 'true') {
+          setEmptyCoverUrls(prev => {
+            const next = new Set(prev);
+            next.add(url);
+            return next;
+          });
+        }
+        return;
+      }
+
+      fetch(url, {method: 'GET', credentials: 'omit'})
+        .then(async res => {
+          if (!res.ok) return;
+          const contentLength = res.headers.get('content-length');
+          if (contentLength) {
+            const sizeStatus = parseInt(contentLength, 10) === 9103;
+            localStorage.setItem(cacheKey, String(sizeStatus));
+            if (sizeStatus) {
+              setEmptyCoverUrls(prev => {
+                const next = new Set(prev);
+                next.add(url);
+                return next;
+              });
+            }
+            return;
+          }
+          // Fallback to blob size
+          const blob = await res.blob();
+          const sizeStatus = blob.size === 9103;
+          localStorage.setItem(cacheKey, String(sizeStatus));
+          if (sizeStatus) {
+            setEmptyCoverUrls(prev => {
+              const next = new Set(prev);
+              next.add(url);
+              return next;
+            });
+          }
+        })
+        .catch(err => {
+          console.warn('Error checking Google books empty cover url', url, err);
+        });
+    });
+  }, [booksWithDetails]);
+
   const duplicates = useMemo(() => {
     const allDuplicates = findDuplicates(booksWithDetails);
 
@@ -283,13 +351,14 @@ export function useSpruceUp(libraryId: string | undefined) {
     return booksWithDetails.filter(b => {
       return (
         !b.coverUrl ||
+        emptyCoverUrls.has(b.coverUrl) ||
         !b.synopsis ||
         !b.publishedDate ||
         !b.genres ||
         b.genres.length === 0
       );
     });
-  }, [booksWithDetails]);
+  }, [booksWithDetails, emptyCoverUrls]);
 
   const handleDelete = async (id: string) => {
     if (!libraryId) return;
@@ -572,6 +641,9 @@ export function useSpruceUp(libraryId: string | undefined) {
   ) => {
     let successCount = 0;
     try {
+      const {ClientBulkWriter} = await import('../../lib/clientBulkWriter');
+      const writer = new ClientBulkWriter(db, 50); // Safe batchSize for client actions
+
       const concurrencyLimit = 5;
       for (let i = 0; i < booksToProcess.length; i += concurrencyLimit) {
         const chunk = booksToProcess.slice(i, i + concurrencyLimit);
@@ -590,43 +662,24 @@ export function useSpruceUp(libraryId: string | undefined) {
 
               const enriched = await getTieredMetadata(bookArg);
 
-              const newData: Partial<Book> = {};
-              const heavyData: BookDetailsPayload = {};
+              let newData: Partial<Book> = {};
+              let heavyData: BookDetailsPayload = {};
 
               if (enriched) {
-                // If forceResync is true, we overwrite. Otherwise we only fill missing.
-                if (forceResync) {
-                  if (enriched.coverUrl) newData.coverUrl = enriched.coverUrl;
-                  if (enriched.synopsis) heavyData.synopsis = enriched.synopsis;
-                  if (enriched.authorBio)
-                    heavyData.authorBio = enriched.authorBio;
-                  if (enriched.publishedDate)
-                    newData.publishedDate = enriched.publishedDate;
-                  if (enriched.genres && enriched.genres.length > 0)
-                    newData.genres = enriched.genres;
-                } else {
-                  if (!b.coverUrl && enriched.coverUrl) {
-                    newData.coverUrl = enriched.coverUrl;
+                const merged = mergeBookMetadata(b, enriched, forceResync);
+                newData = merged.newData as Partial<Book>;
+                heavyData = merged.heavyData as BookDetailsPayload;
+
+                if (!forceResync) {
+                  if (merged.newData.coverUrl) {
                     logger.info(`Found coverURL for "${bookArg.title}"`);
                   }
-                  if (!b.synopsis && enriched.synopsis) {
-                    heavyData.synopsis = enriched.synopsis;
+                  if (merged.heavyData.synopsis) {
                     logger.info(`Found synopsis for "${bookArg.title}"`);
                   }
-                  if (!b.authorBio && enriched.authorBio) {
-                    heavyData.authorBio = enriched.authorBio;
-                  }
-                  if (!b.publishedDate && enriched.publishedDate) {
-                    newData.publishedDate = enriched.publishedDate;
-                  }
-                  if (
-                    (!b.genres || b.genres.length === 0) &&
-                    enriched.genres &&
-                    enriched.genres.length > 0
-                  ) {
-                    newData.genres = enriched.genres;
+                  if (merged.newData.genres) {
                     logger.info(
-                      `Found genres for "${bookArg.title}": ${enriched.genres.join(', ')}`,
+                      `Found genres for "${bookArg.title}": ${(merged.newData.genres as string[]).join(', ')}`,
                     );
                   }
                 }
@@ -656,8 +709,6 @@ export function useSpruceUp(libraryId: string | undefined) {
               }
 
               if (hasNewLightData || hasNewHeavyData || hasLegacyData) {
-                const batch = writeBatch(db);
-
                 const fbNewData: DocumentData = {...newData};
                 if (hasLegacyData) {
                   fbNewData.synopsis = deleteField();
@@ -666,7 +717,7 @@ export function useSpruceUp(libraryId: string | undefined) {
                   fbNewData.clusterCoordinates = deleteField();
                 }
 
-                batch.update(
+                writer.update(
                   doc(db, 'libraries', libraryId!, 'books', b.id),
                   fbNewData,
                 );
@@ -679,7 +730,7 @@ export function useSpruceUp(libraryId: string | undefined) {
                     'bookDetails',
                     b.id,
                   );
-                  batch.set(detailsRef, heavyData, {merge: true});
+                  writer.set(detailsRef, heavyData, {merge: true});
 
                   setBookDetailsMap(prev => ({
                     ...prev,
@@ -689,8 +740,6 @@ export function useSpruceUp(libraryId: string | undefined) {
                     },
                   }));
                 }
-
-                await batch.commit();
 
                 setBooks(prev =>
                   prev.map(bookItem => {
@@ -716,6 +765,8 @@ export function useSpruceUp(libraryId: string | undefined) {
           }),
         );
       }
+
+      await writer.close();
     } finally {
       if (successCount > 0) {
         toast.success(`Fixed metadata for ${successCount} books`);
@@ -793,5 +844,6 @@ export function useSpruceUp(libraryId: string | undefined) {
     handleBulkForceGenreAPI,
     handleBulkFixGenreAI,
     handleBulkForceGenreAI,
+    emptyCoverUrls,
   };
 }

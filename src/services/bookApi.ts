@@ -19,6 +19,54 @@ export interface BookDetails {
   format?: 'physical' | 'digital';
 }
 
+const memoryCache = new Map<string, unknown>();
+
+export function clearBookCache(): void {
+  memoryCache.clear();
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const keys = Object.keys(window.localStorage);
+      for (const k of keys) {
+        if (k.startsWith('bk_cache_')) {
+          window.localStorage.removeItem(k);
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+function getCache<T>(key: string): T | null {
+  if (memoryCache.has(key)) {
+    return memoryCache.get(key) as T;
+  }
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const item = window.localStorage.getItem(`bk_cache_${key}`);
+      if (item) {
+        const parsed = JSON.parse(item);
+        memoryCache.set(key, parsed);
+        return parsed as T;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+  return null;
+}
+
+function setCache<T>(key: string, value: T): void {
+  memoryCache.set(key, value);
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(`bk_cache_${key}`, JSON.stringify(value));
+    } catch {
+      // Ignore
+    }
+  }
+}
+
 interface GoogleBooksItem {
   volumeInfo: {
     title?: string;
@@ -79,7 +127,7 @@ function getHighResCoverUrl(url: string | undefined): string {
 
 const getGoogleBooksUrl = (query: string): string => {
   const apiKey =
-    typeof process !== 'undefined'
+    typeof process !== 'undefined' && process.env
       ? process.env.BOOKS_API_KEY || process.env.VITE_BOOKS_API_KEY
       : import.meta.env.VITE_BOOKS_API_KEY;
   const baseUrl = `https://www.googleapis.com/books/v1/volumes?q=${query}`;
@@ -90,20 +138,39 @@ export async function searchBookByIsbn(
   isbn: string,
   signal?: AbortSignal,
 ): Promise<BookDetails | null> {
+  const normalizedIsbnKey = isbn.trim().toUpperCase();
+  const cached = getCache<BookDetails | null>(`isbn_${normalizedIsbnKey}`);
+  if (cached !== null && cached !== undefined) {
+    return cached;
+  }
+
+  let googleBooksSucceeded = false;
+  let result: BookDetails | null = null;
+
   try {
     let response = await fetch(getGoogleBooksUrl(`isbn:${isbn}`), {signal});
-    if (response.ok) {
+    if (response.status === 429) {
+      console.warn(
+        'Google Books API rate limit (429) on ISBN search. Proceeding to OpenLibrary...',
+      );
+    } else if (response.ok) {
       let data = (await response.json()) as GoogleBooksResponse;
 
       // Fallback to general search if isbn: prefix fails
       if (!data.items || data.items.length === 0) {
         response = await fetch(getGoogleBooksUrl(isbn), {signal});
-        data = (await response.json()) as GoogleBooksResponse;
+        if (response.status === 429) {
+          console.warn(
+            'Google Books API rate limit (429) on general ISBN search. Proceeding to OpenLibrary...',
+          );
+        } else if (response.ok) {
+          data = (await response.json()) as GoogleBooksResponse;
+        }
       }
 
       if (data.items && data.items.length > 0) {
         const bookData = data.items[0].volumeInfo;
-        return {
+        result = {
           title: normalizeTitle(bookData.title || 'Unknown Title'),
           author: normalizeName(
             bookData.authors?.join(', ') || 'Unknown Author',
@@ -121,11 +188,19 @@ export async function searchBookByIsbn(
             : undefined,
           synopsis: normalizeText(bookData.description || undefined),
         };
+        googleBooksSucceeded = true;
       }
     }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (_error) {
-    // Silently fallback to OpenLibrary if Google Books fails (e.g., ad blocker)
+    console.warn(
+      'Google Books ISBN search failed, proceeding to OpenLibrary fallback:',
+      _error,
+    );
+  }
+
+  if (googleBooksSucceeded && result) {
+    setCache(`isbn_${normalizedIsbnKey}`, result);
+    return result;
   }
 
   // Fallback to OpenLibrary
@@ -135,7 +210,9 @@ export async function searchBookByIsbn(
       `https://openlibrary.org/search.json?isbn=${isbn}&limit=1`,
       {signal},
     );
-    if (response.ok) {
+    if (response.status === 429) {
+      console.warn('OpenLibrary API rate limit (429) on ISBN search.');
+    } else if (response.ok) {
       let data = (await response.json()) as OpenLibraryResponse;
 
       // Fallback to general search if isbn= prefix fails
@@ -144,12 +221,18 @@ export async function searchBookByIsbn(
           `https://openlibrary.org/search.json?q=${isbn}&limit=1`,
           {signal},
         );
-        data = (await response.json()) as OpenLibraryResponse;
+        if (response.status === 429) {
+          console.warn(
+            'OpenLibrary API rate limit (429) on general ISBN search.',
+          );
+        } else if (response.ok) {
+          data = (await response.json()) as OpenLibraryResponse;
+        }
       }
 
       if (data.docs && data.docs.length > 0) {
         const doc = data.docs[0];
-        return {
+        result = {
           title: normalizeTitle(doc.title || 'Unknown Title'),
           author: normalizeName(
             doc.author_name?.join(', ') || 'Unknown Author',
@@ -162,12 +245,15 @@ export async function searchBookByIsbn(
           ),
           publishedDate: doc.first_publish_year?.toString() || '',
         };
+        setCache(`isbn_${normalizedIsbnKey}`, result);
+        return result;
       }
     }
   } catch (_error) {
-    console.error('OpenLibrary ISBN search failed:', _error);
+    console.warn('OpenLibrary ISBN search failed:', _error);
   }
 
+  setCache(`isbn_${normalizedIsbnKey}`, null);
   return null;
 }
 
@@ -177,6 +263,13 @@ export async function searchBookByTitleAndAuthor(
   signal?: AbortSignal,
 ): Promise<BookDetails[]> {
   if (!title && !author) return [];
+
+  const cacheKey = `title_author_${encodeURIComponent((title || '').trim().toLowerCase())}_${encodeURIComponent((author || '').trim().toLowerCase())}`;
+  const cached = getCache<BookDetails[]>(cacheKey);
+  if (cached !== null && cached !== undefined) {
+    return cached;
+  }
+
   let results: BookDetails[] = [];
   try {
     const q = encodeURIComponent(
@@ -185,7 +278,11 @@ export async function searchBookByTitleAndAuthor(
     const response = await fetch(getGoogleBooksUrl(`${q}&maxResults=5`), {
       signal,
     });
-    if (response.ok) {
+    if (response.status === 429) {
+      console.warn(
+        'Google Books API rate limit (429) on title & author search.',
+      );
+    } else if (response.ok) {
       const data = (await response.json()) as GoogleBooksResponse;
       if (data.items && data.items.length > 0) {
         results = data.items.map((item: GoogleBooksItem) => {
@@ -211,8 +308,10 @@ export async function searchBookByTitleAndAuthor(
     }
   } catch (_error) {
     if ((_error as Error).name === 'AbortError') throw _error;
-    console.error('Google Books search failed:', _error);
+    console.warn('Google Books search failed:', _error);
   }
+
+  setCache(cacheKey, results);
   return results;
 }
 
@@ -221,15 +320,21 @@ export async function searchBookByTitle(
   signal?: AbortSignal,
 ): Promise<BookDetails[]> {
   if (!query) return [];
-  let results: BookDetails[] = [];
   const normalizedQuery = query.toLowerCase().trim();
+  const cacheKey = `title_${encodeURIComponent(normalizedQuery)}`;
+  const cached = getCache<BookDetails[]>(cacheKey);
+  if (cached !== null && cached !== undefined) {
+    return cached;
+  }
+
+  let results: BookDetails[] = [];
 
   try {
-    const q = encodeURIComponent(
-      `intitle:${encodeURIComponent(query)}&maxResults=10`,
-    );
+    const q = `intitle:${encodeURIComponent(query)}&maxResults=10`;
     const response = await fetch(getGoogleBooksUrl(q), {signal});
-    if (response.ok) {
+    if (response.status === 429) {
+      console.warn('Google Books API rate limit (429) on title search.');
+    } else if (response.ok) {
       const data = (await response.json()) as GoogleBooksResponse;
 
       if (data.items && data.items.length > 0) {
@@ -261,7 +366,11 @@ export async function searchBookByTitle(
         getGoogleBooksUrl(`${encodeURIComponent(query)}&maxResults=10`),
         {signal},
       );
-      if (fallbackResponse.ok) {
+      if (fallbackResponse.status === 429) {
+        console.warn(
+          'Google Books API rate limit (429) on general fallback title search.',
+        );
+      } else if (fallbackResponse.ok) {
         const fallbackData =
           (await fallbackResponse.json()) as GoogleBooksResponse;
         if (fallbackData.items && fallbackData.items.length > 0) {
@@ -300,7 +409,7 @@ export async function searchBookByTitle(
     }
   } catch (_error) {
     if ((_error as Error).name === 'AbortError') throw _error;
-    console.error('Google Books search failed:', _error);
+    console.warn('Google Books title search failed:', _error);
   }
 
   if (results.length === 0) {
@@ -309,7 +418,9 @@ export async function searchBookByTitle(
         `https://openlibrary.org/search.json?title=${encodeURIComponent(query)}&limit=10`,
         {signal},
       );
-      if (response.ok) {
+      if (response.status === 429) {
+        console.warn('OpenLibrary API rate limit (429) on title search.');
+      } else if (response.ok) {
         let data = (await response.json()) as OpenLibraryResponse;
 
         if (!data.docs || data.docs.length === 0) {
@@ -317,7 +428,13 @@ export async function searchBookByTitle(
             `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10`,
             {signal},
           );
-          data = (await response.json()) as OpenLibraryResponse;
+          if (response.status === 429) {
+            console.warn(
+              'OpenLibrary API rate limit (429) on general fallback search.',
+            );
+          } else if (response.ok) {
+            data = (await response.json()) as OpenLibraryResponse;
+          }
         }
 
         if (data.docs && data.docs.length > 0) {
@@ -338,12 +455,12 @@ export async function searchBookByTitle(
       }
     } catch (_error) {
       if ((_error as Error).name === 'AbortError') throw _error;
-      console.error('OpenLibrary title search failed:', _error);
+      console.warn('OpenLibrary title search failed:', _error);
     }
   }
 
   // Sort results to prioritize exact matches
-  return results.sort((a, b) => {
+  const sorted = results.sort((a, b) => {
     const aTitle = (a.title || '').toLowerCase();
     const bTitle = (b.title || '').toLowerCase();
 
@@ -366,4 +483,7 @@ export async function searchBookByTitle(
 
     return 0;
   });
+
+  setCache(cacheKey, sorted);
+  return sorted;
 }

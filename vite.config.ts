@@ -62,8 +62,8 @@ export default defineConfig(({mode}) => {
           ],
         },
         manifest: {
-          name: 'Athenaeum Library',
-          short_name: 'Athenaeum',
+          name: 'book(ish) Library',
+          short_name: 'book(ish)',
           description: 'Modern Archivist Personal Library Catalog',
           theme_color: '#fcf9f3',
           background_color: '#fcf9f3',

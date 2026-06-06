@@ -18,6 +18,7 @@ interface BookContentProps {
   bookId: string;
   isActive: boolean;
   onNavigateBack: () => void;
+  canEdit: boolean;
 }
 
 export function BookContent({
@@ -25,6 +26,7 @@ export function BookContent({
   bookId,
   isActive,
   onNavigateBack,
+  canEdit: passedCanEdit,
 }: BookContentProps) {
   const {user} = useAuth();
 
@@ -41,7 +43,7 @@ export function BookContent({
     updateBook,
     updateBookOptimistically,
     setReviewsOptimistically,
-  } = useBook(libraryId, bookId);
+  } = useBook(libraryId, bookId, passedCanEdit);
 
   const [isEditingDetails, setIsEditingDetails] = useState(false);
 
@@ -158,12 +160,7 @@ export function BookContent({
 
         {/* Right Column */}
         <div className="md:col-span-8 flex flex-col gap-10">
-          <BookHeader
-            book={book}
-            canEdit={canEdit}
-            onEdit={startEditing}
-            onDelete={handleDeleteBook}
-          />
+          <BookHeader book={book} canEdit={canEdit} onEdit={startEditing} />
 
           <ReadingStatusSelect
             libraryId={libraryId}
@@ -266,6 +263,7 @@ export function BookContent({
             updateBook={updateBook}
             updateBookOptimistically={updateBookOptimistically}
             onClose={() => setIsEditingDetails(false)}
+            onDelete={handleDeleteBook}
           />
         )}
       </AnimatePresence>

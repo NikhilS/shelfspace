@@ -7,9 +7,15 @@ import React from 'react';
 import {Book} from '../types';
 
 // Mock dependencies
+const mockBatch = {
+  update: vi.fn(),
+  commit: vi.fn(() => Promise.resolve()),
+};
+
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn(),
   updateDoc: vi.fn(() => Promise.resolve()),
+  writeBatch: vi.fn(() => mockBatch),
 }));
 
 vi.mock('../firebase', () => ({
@@ -96,7 +102,7 @@ describe('useSelection', () => {
       await result.current.handleBulkStatusChange('reading');
     });
 
-    expect(updateDoc).toHaveBeenCalledTimes(2);
+    expect(mockBatch.update).toHaveBeenCalledTimes(2);
     expect(toast.success).toHaveBeenCalledWith('Updated status for 2 books');
     expect(result.current.selectedBooks.size).toBe(0);
   });

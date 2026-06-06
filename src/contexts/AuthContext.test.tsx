@@ -64,12 +64,8 @@ describe('AuthContext', () => {
 
   it('provides user when authenticated', async () => {
     vi.mocked(onAuthStateChanged).mockImplementation(((
-      _auth: import('firebase/auth').Auth,
-      callback:
-        | ((user: import('firebase/auth').User | null) => void)
-        | import('firebase/auth').NextOrObserver<
-            import('firebase/auth').User | null
-          >,
+      _auth: any,
+      callback: any,
     ) => {
       const cb =
         typeof callback === 'function'
@@ -79,9 +75,9 @@ describe('AuthContext', () => {
         uid: '123',
         email: 'test@example.com',
         emailVerified: true,
-      } as import('firebase/auth').User);
+      } as any);
       return () => {};
-    }) as unknown);
+    }) as any);
 
     vi.mocked(getDoc).mockImplementation(async (ref: any) => {
       // Simulate that both allowlist and user documents exist
@@ -105,8 +101,8 @@ describe('AuthContext', () => {
 
   it('creates user doc if it does not exist', async () => {
     vi.mocked(onAuthStateChanged).mockImplementation(((
-      _auth: unknown,
-      callback: unknown,
+      _auth: any,
+      callback: any,
     ) => {
       const cb =
         typeof callback === 'function'
@@ -118,9 +114,9 @@ describe('AuthContext', () => {
         displayName: 'New User',
         photoURL: 'http://example.com/photo.jpg',
         emailVerified: true,
-      } as unknown);
+      } as any);
       return () => {};
-    }) as unknown);
+    }) as any);
 
     vi.mocked(getDoc).mockImplementation(async (ref: any) => {
       if (ref === 'appSettings/allowlist/users/new@example.com') {
@@ -156,8 +152,8 @@ describe('AuthContext', () => {
 
   it('handles user sign out', async () => {
     vi.mocked(onAuthStateChanged).mockImplementation(((
-      _auth: unknown,
-      callback: unknown,
+      _auth: any,
+      callback: any,
     ) => {
       const cb =
         typeof callback === 'function'
@@ -165,7 +161,7 @@ describe('AuthContext', () => {
           : callback.next?.bind(callback);
       cb?.(null);
       return () => {};
-    }) as unknown);
+    }) as any);
 
     render(
       <AuthProvider>

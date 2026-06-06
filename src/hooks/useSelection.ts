@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {doc, updateDoc} from 'firebase/firestore';
+import {doc} from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../firebase';
 import {Book} from '../types';
 import {toast} from 'sonner';
@@ -40,13 +40,18 @@ export function useSelection(
   const handleBulkStatusChange = async (newStatus: string) => {
     if (selectedBooks.size === 0 || !userId || !libraryId) return;
     try {
-      const promises = Array.from(selectedBooks).map(bookId => {
+      const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
+      const writer = new ClientBulkWriter(db);
+
+      const booksArray = Array.from(selectedBooks);
+      booksArray.forEach(bookId => {
         const bookRef = doc(db, 'libraries', libraryId, 'books', bookId);
-        return updateDoc(bookRef, {
+        writer.update(bookRef, {
           [`userStatuses.${userId}`]: newStatus,
         });
       });
-      await Promise.all(promises);
+
+      await writer.close();
       toast.success(`Updated status for ${selectedBooks.size} books`);
       clearSelection();
     } catch (error) {

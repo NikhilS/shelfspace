@@ -1,4 +1,4 @@
-import React, {useMemo} from 'react';
+import React, {useMemo, useState, useEffect} from 'react';
 import {
   CheckCircle2,
   AlertCircle,
@@ -15,16 +15,29 @@ interface LibraryIntegrityTableProps {
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
-  filter: 'all' | 'missing_metadata' | 'missing_genre' | 'low_res_cover';
+  filter:
+    | 'all'
+    | 'missing_metadata'
+    | 'missing_genre'
+    | 'low_res_cover'
+    | 'missing_cover';
+  emptyCoverUrls?: Set<string>;
 }
 
 export function LibraryIntegrityTable({
   books,
   selectedIds,
   onToggleSelect,
-  onToggleSelectAll,
   filter,
+  emptyCoverUrls = new Set(),
 }: LibraryIntegrityTableProps) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 50;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
+
   const sortedBooks = useMemo(() => {
     return [...books].sort((a, b) => a.title.localeCompare(b.title));
   }, [books]);
@@ -33,21 +46,44 @@ export function LibraryIntegrityTable({
     if (filter === 'all') return sortedBooks;
     return sortedBooks.filter(b => {
       const isMissingGenre = !b.genres || b.genres.length === 0;
-      const isMissingMetadata = !b.synopsis || !b.publishedDate || !b.coverUrl;
+      const isMissingMetadata =
+        !b.synopsis ||
+        !b.publishedDate ||
+        !b.coverUrl ||
+        emptyCoverUrls.has(b.coverUrl);
       const isLowResCover = b.coverUrl && b.coverUrl.includes('zoom=1'); // Heuristic
+      const isMissingCover = !b.coverUrl || emptyCoverUrls.has(b.coverUrl);
 
       if (filter === 'missing_metadata')
         return isMissingMetadata || isMissingGenre;
       if (filter === 'missing_genre') return isMissingGenre;
       if (filter === 'low_res_cover') return isLowResCover;
+      if (filter === 'missing_cover') return isMissingCover;
       return true;
     });
   }, [sortedBooks, filter]);
 
-  const allSelected =
-    filteredBooks.length > 0 && filteredBooks.every(b => selectedIds.has(b.id));
-  const someSelected =
-    filteredBooks.some(b => selectedIds.has(b.id)) && !allSelected;
+  const paginatedBooks = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredBooks.slice(start, start + PAGE_SIZE);
+  }, [filteredBooks, currentPage]);
+
+  const allPageSelected =
+    paginatedBooks.length > 0 &&
+    paginatedBooks.every(b => selectedIds.has(b.id));
+  const somePageSelected =
+    paginatedBooks.some(b => selectedIds.has(b.id)) && !allPageSelected;
+
+  const handleToggleSelectPage = () => {
+    paginatedBooks.forEach(b => {
+      const isSel = selectedIds.has(b.id);
+      if (allPageSelected) {
+        if (isSel) onToggleSelect(b.id);
+      } else {
+        if (!isSel) onToggleSelect(b.id);
+      }
+    });
+  };
 
   return (
     <div className="bg-surface-container border border-outline-variant rounded-2xl overflow-hidden shadow-sm">
@@ -58,10 +94,11 @@ export function LibraryIntegrityTable({
               <th className="py-4 px-6 w-12">
                 <Checkbox
                   checked={
-                    allSelected || (someSelected ? 'indeterminate' : false)
+                    allPageSelected ||
+                    (somePageSelected ? 'indeterminate' : false)
                   }
-                  onCheckedChange={onToggleSelectAll}
-                  aria-label="Select all"
+                  onCheckedChange={handleToggleSelectPage}
+                  aria-label="Select all on this page"
                 />
               </th>
               <th className="py-4 px-6 text-sm font-bold text-on-surface uppercase tracking-wider uppercase">
@@ -76,7 +113,7 @@ export function LibraryIntegrityTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant/30">
-            {filteredBooks.length === 0 ? (
+            {paginatedBooks.length === 0 ? (
               <tr>
                 <td
                   colSpan={4}
@@ -89,10 +126,11 @@ export function LibraryIntegrityTable({
                 </td>
               </tr>
             ) : (
-              filteredBooks.map(book => {
+              paginatedBooks.map(book => {
                 const isSelected = selectedIds.has(book.id);
                 const missingFields = [];
-                if (!book.coverUrl) missingFields.push('Cover');
+                if (!book.coverUrl || emptyCoverUrls.has(book.coverUrl))
+                  missingFields.push('Cover');
                 if (!book.synopsis) missingFields.push('Synopsis');
                 if (!book.genres || book.genres.length === 0)
                   missingFields.push('Genre');
@@ -119,17 +157,9 @@ export function LibraryIntegrityTable({
                     </td>
                     <td className="py-4 px-6 max-w-md">
                       <div className="flex items-center gap-3">
-                        {book.coverUrl ? (
-                          <img
-                            src={book.coverUrl}
-                            alt={book.title}
-                            className="w-10 h-14 object-cover rounded-md shadow-sm bg-surface-variant border border-outline-variant/30"
-                          />
-                        ) : (
-                          <div className="w-10 h-14 bg-surface-variant rounded-md flex items-center justify-center text-on-surface-variant/50 border border-outline-variant/30">
-                            <BookIcon className="w-5 h-5" />
-                          </div>
-                        )}
+                        <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
+                          <BookIcon className="w-4 h-4" />
+                        </div>
                         <div className="min-w-0">
                           <p className="font-bold text-on-surface truncate leading-tight">
                             {book.title}
@@ -199,6 +229,56 @@ export function LibraryIntegrityTable({
           </tbody>
         </table>
       </div>
+      {filteredBooks.length > PAGE_SIZE && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-outline-variant bg-surface-variant/20">
+          <p className="text-xs font-medium text-on-surface-variant">
+            Showing{' '}
+            <span className="font-bold">
+              {(currentPage - 1) * PAGE_SIZE + 1}
+            </span>{' '}
+            to{' '}
+            <span className="font-bold">
+              {Math.min(currentPage * PAGE_SIZE, filteredBooks.length)}
+            </span>{' '}
+            of <span className="font-bold">{filteredBooks.length}</span> books
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className={cn(
+                'px-4 py-2 text-xs font-bold rounded-lg border transition-all select-none',
+                currentPage === 1
+                  ? 'bg-transparent text-on-surface-variant/30 border-outline-variant/30 cursor-not-allowed'
+                  : 'bg-surface border-outline-variant text-on-surface hover:bg-surface-variant/50 cursor-pointer',
+              )}
+            >
+              Previous
+            </button>
+            <button
+              onClick={() =>
+                setCurrentPage(prev =>
+                  Math.min(
+                    Math.ceil(filteredBooks.length / PAGE_SIZE),
+                    prev + 1,
+                  ),
+                )
+              }
+              disabled={
+                currentPage === Math.ceil(filteredBooks.length / PAGE_SIZE)
+              }
+              className={cn(
+                'px-4 py-2 text-xs font-bold rounded-lg border transition-all select-none',
+                currentPage === Math.ceil(filteredBooks.length / PAGE_SIZE)
+                  ? 'bg-transparent text-on-surface-variant/30 border-outline-variant/30 cursor-not-allowed'
+                  : 'bg-surface border-outline-variant text-on-surface hover:bg-surface-variant/50 cursor-pointer',
+              )}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

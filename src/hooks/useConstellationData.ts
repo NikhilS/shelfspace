@@ -1,11 +1,5 @@
 import {useState, useEffect} from 'react';
-import {
-  collection,
-  doc,
-  getDocs,
-  writeBatch,
-  deleteField,
-} from 'firebase/firestore';
+import {collection, doc, getDocs, deleteField} from 'firebase/firestore';
 import {db} from '../firebase';
 import {generateBookEmbeddings, generateClusterNames} from '../services/gemini';
 import {kmeans} from '../lib/clustering';
@@ -98,27 +92,25 @@ export function useConstellationData(libraryId: string | undefined) {
           }
 
           setProgress(`Saving embeddings to library... (0/${toEmbed.length})`);
-          const BATCH_SIZE = 50;
-          for (let i = 0; i < toEmbed.length; i += BATCH_SIZE) {
-            const batch = writeBatch(db);
-            const slice = toEmbed.slice(i, i + BATCH_SIZE);
-            const eSlice = embeddings.slice(i, i + BATCH_SIZE);
-            for (let j = 0; j < slice.length; j++) {
-              const ref = doc(
-                db,
-                'libraries',
-                libraryId,
-                'bookDetails',
-                slice[j].id,
-              );
-              batch.set(ref, {embedding: eSlice[j]}, {merge: true});
-              slice[j].embedding = eSlice[j];
-            }
-            await batch.commit();
-            setProgress(
-              `Saving embeddings to library... (${Math.min(i + BATCH_SIZE, toEmbed.length)}/${toEmbed.length})`,
+          const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
+          const writer = new ClientBulkWriter(db, 50);
+
+          for (let j = 0; j < toEmbed.length; j++) {
+            const ref = doc(
+              db,
+              'libraries',
+              libraryId,
+              'bookDetails',
+              toEmbed[j].id,
             );
+            writer.set(ref, {embedding: embeddings[j]}, {merge: true});
+            toEmbed[j].embedding = embeddings[j];
           }
+
+          await writer.close();
+          setProgress(
+            `Saving embeddings to library... (${toEmbed.length}/${toEmbed.length})`,
+          );
         }
 
         setProgress('Running UMAP dimensionality reduction...');
@@ -137,27 +129,18 @@ export function useConstellationData(libraryId: string | undefined) {
         const embeddingData = validBooks.map(b => b.embedding as number[]);
 
         setProgress('Projecting semantic space with UMAP...');
-        const fittings = await new Promise<number[][]>((resolve, reject) => {
-          const worker = new Worker(
-            new URL('../workers/umapWorker.ts', import.meta.url),
-            {
-              type: 'module',
-            },
-          );
-          worker.onmessage = e => {
-            if (e.data.error) {
-              reject(new Error(e.data.error));
-            } else {
-              resolve(e.data.reduced);
-            }
-            worker.terminate();
-          };
-          worker.onerror = err => {
-            reject(err);
-            worker.terminate();
-          };
-          worker.postMessage({embeddings: embeddingData, nNeighbors});
-        });
+        await new Promise(r => setTimeout(r, 60));
+
+        const fittings = await (async () => {
+          const {UMAP} = await import('umap-js');
+          const umap = new UMAP({
+            nNeighbors,
+            minDist: 0.1,
+            nComponents: 2,
+            nEpochs: 400,
+          });
+          return umap.fit(embeddingData);
+        })();
 
         setProgress('Clustering to find relationships...');
         await new Promise(r => setTimeout(r, 100));
@@ -227,20 +210,18 @@ export function useConstellationData(libraryId: string | undefined) {
     try {
       setLoading(true);
       setProgress('Clearing old embeddings...');
-      const BATCH_SIZE = 400;
-      for (let i = 0; i < books.length; i += BATCH_SIZE) {
-        const batch = writeBatch(db);
-        const slice = books.slice(i, i + BATCH_SIZE);
-        for (let j = 0; j < slice.length; j++) {
-          batch.update(
-            doc(db, 'libraries', libraryId, 'bookDetails', slice[j].id),
-            {
-              embedding: deleteField(),
-            },
-          );
-        }
-        await batch.commit();
+      const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
+      const writer = new ClientBulkWriter(db, 400);
+
+      for (let j = 0; j < books.length; j++) {
+        writer.update(
+          doc(db, 'libraries', libraryId, 'bookDetails', books[j].id),
+          {
+            embedding: deleteField(),
+          },
+        );
       }
+      await writer.close();
       setClusterNames({});
       setReclusterTrigger(prev => prev + 1);
     } catch (err) {

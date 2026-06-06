@@ -1,7 +1,10 @@
 {
-  "name": "Athenaeum",
+  "name": "book(ish)",
   "description": "A book librarian and companion app to organize your physical bookshelves, extract books from photos, and share libraries.",
   "requestFramePermissions": [
     "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

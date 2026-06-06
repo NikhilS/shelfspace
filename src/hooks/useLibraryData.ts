@@ -3,6 +3,8 @@ import {doc, collection, onSnapshot, query, orderBy} from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../firebase';
 import {Library, Book} from '../types';
 import {toast} from 'sonner';
+import {parseGenres} from '../lib/utils';
+import {DebugTelemetryEngine} from '../lib/telemetry';
 
 export function useLibraryData(
   libraryId: string | undefined,
@@ -25,6 +27,13 @@ export function useLibraryData(
       libRef,
       {includeMetadataChanges: true},
       docSnap => {
+        const fromCache = docSnap.metadata.fromCache;
+        DebugTelemetryEngine.getInstance().addLog(
+          'db_read',
+          `Read library document: "libraries/${libraryId}"`,
+          {path: `libraries/${libraryId}`, fromCache, exists: docSnap.exists()},
+        );
+
         if (docSnap.exists()) {
           setLibrary({id: docSnap.id, ...docSnap.data()} as Library);
         } else {
@@ -52,10 +61,20 @@ export function useLibraryData(
       snapshot => {
         setIsSyncing(snapshot.metadata.hasPendingWrites);
 
+        const fromCache = snapshot.metadata.fromCache;
+        DebugTelemetryEngine.getInstance().addLog(
+          'db_read',
+          `Queried books collection of length ${snapshot.size}`,
+          {
+            path: `libraries/${libraryId}/books`,
+            fromCache,
+            size: snapshot.size,
+          },
+        );
+
         const bks: Book[] = [];
         snapshot.forEach(doc => {
           const data = doc.data();
-          let parsedGenres: string[] = [];
           const rawGenres =
             data.genres ||
             data.genre ||
@@ -64,28 +83,7 @@ export function useLibraryData(
             data.tags ||
             data.subjects;
 
-          if (rawGenres) {
-            let tempGenres: string[] = [];
-            if (Array.isArray(rawGenres)) {
-              tempGenres = rawGenres.map(g => String(g));
-            } else if (typeof rawGenres === 'string') {
-              tempGenres = [rawGenres];
-            } else if (typeof rawGenres === 'object' && rawGenres !== null) {
-              tempGenres = Object.values(rawGenres).map(g => String(g));
-            }
-
-            const result = new Set<string>();
-            tempGenres.forEach((g: string) => {
-              if (typeof g === 'string') {
-                const splits = g
-                  .split(/[/,;]/)
-                  .map((s: string) => s.trim())
-                  .filter(Boolean);
-                splits.forEach((s: string) => result.add(s));
-              }
-            });
-            parsedGenres = Array.from(result);
-          }
+          const parsedGenres = parseGenres(rawGenres);
 
           bks.push({id: doc.id, ...data, genres: parsedGenres} as Book);
         });

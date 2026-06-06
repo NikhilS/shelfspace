@@ -2,26 +2,53 @@ import React, {Suspense, lazy} from 'react';
 import {BrowserRouter, Routes, Route, Navigate, Outlet} from 'react-router-dom';
 import {AuthProvider, useAuth} from './contexts/AuthContext';
 import {DebugProvider} from './contexts/DebugContext';
-import {DebugOverlay} from './components/DebugOverlay';
+import {DebugConsoleHUD} from './components/DebugConsoleHUD';
 import {ErrorBoundary} from './components/ErrorBoundary';
 import {Toaster} from 'sonner';
 import AppLayout from './components/AppLayout';
 import ScrollToTop from './components/ScrollToTop';
 import {RequireLibraryPermission} from './components/RequireLibraryPermission';
+import {BookLoader} from './components/BookLoader';
 
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const LibraryView = lazy(() => import('./pages/LibraryView'));
-const BookDetailsView = lazy(() => import('./pages/BookDetailsView'));
-const AddBookView = lazy(() => import('./pages/AddBookView'));
-const ConstellationMap = lazy(() => import('./pages/ConstellationMap'));
-const Login = lazy(() => import('./pages/Login'));
-const SpruceUpView = lazy(() => import('./pages/SpruceUpView'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{default: T}>,
+): React.LazyExoticComponent<T> {
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch (error) {
+      console.warn('Dynamic import failed, retrying in 1 second...', error);
+      try {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return await factory();
+      } catch (retryError) {
+        console.error(
+          'Dynamic import failed after retry, reloading page...',
+          retryError,
+        );
+        window.location.reload();
+        return new Promise(() => {});
+      }
+    }
+  });
+}
+
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'));
+const LibraryView = lazyWithRetry(() => import('./pages/LibraryView'));
+const BookDetailsView = lazyWithRetry(() => import('./pages/BookDetailsView'));
+const AddBookView = lazyWithRetry(() => import('./pages/AddBookView'));
+const ConstellationMap = lazyWithRetry(
+  () => import('./pages/ConstellationMap'),
+);
+const Login = lazyWithRetry(() => import('./pages/Login'));
+const SpruceUpView = lazyWithRetry(() => import('./pages/SpruceUpView'));
+const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background text-primary font-serif italic text-xl animate-in fade-in duration-300">
-      Loading...
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <BookLoader size="lg" />
     </div>
   );
 }
@@ -32,8 +59,8 @@ function PageWrapper({children}: {children?: React.ReactNode}) {
       <ErrorBoundary>
         <Suspense
           fallback={
-            <div className="flex h-[50vh] items-center justify-center text-on-surface-variant font-serif italic text-lg animate-pulse">
-              Loading...
+            <div className="flex h-[50vh] items-center justify-center text-on-surface-variant font-serif italic text-lg animate-pulse gap-3">
+              <BookLoader size="md" />
             </div>
           }
         >
@@ -145,7 +172,7 @@ export default function App() {
             <AnimatedRoutes />
           </BrowserRouter>
           <Toaster position="bottom-right" />
-          <DebugOverlay />
+          <DebugConsoleHUD />
         </AuthProvider>
       </DebugProvider>
     </ErrorBoundary>

@@ -8,6 +8,7 @@ import type {Swiper as SwiperClass} from 'swiper';
 import {useLibraryData} from '../hooks/useLibraryData';
 import {useAuth} from '../contexts/AuthContext';
 import {PrefetchAdjacentBooks} from '../components/PrefetchAdjacentBooks';
+import {getAccessFromLibrary} from '../hooks/useLibraryAccess';
 
 import 'swiper/css';
 import 'swiper/css/virtual';
@@ -22,7 +23,14 @@ export default function BookDetailsView() {
   const backUrl = location.state?.from || `/library/${libraryId}`;
 
   // If we navigated here with a specified bookList, use it. Otherwise, fallback to library data.
-  const {books: libraryBooks} = useLibraryData(libraryId, user?.uid, navigate);
+  const {library, books: libraryBooks} = useLibraryData(
+    libraryId,
+    user?.uid,
+    navigate,
+  );
+
+  const access = getAccessFromLibrary(library, user?.uid, user?.email);
+  const canEdit = access.canEdit;
 
   // Create bookList safely. If hard refreshed, libraryBooks will load eventually
   const bookList: string[] =
@@ -122,6 +130,7 @@ export default function BookDetailsView() {
                     bookId={id}
                     isActive={isActive || activeIndex === index}
                     onNavigateBack={handleNavigateBack}
+                    canEdit={canEdit}
                   />
                 );
               }}

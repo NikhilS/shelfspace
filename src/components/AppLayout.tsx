@@ -44,9 +44,9 @@ export default function AppLayout({children}: AppLayoutProps) {
         <div className="px-8 mb-10 flex flex-col gap-1">
           <Link
             to="/"
-            className="font-headline-lg text-headline-lg text-primary tracking-tight"
+            className="font-headline-lg text-headline-lg text-primary tracking-tight italic"
           >
-            Athenaeum
+            book(ish)
           </Link>
           <span className="text-on-surface-variant font-label-caps text-label-caps opacity-80 uppercase tracking-widest mt-1 pl-1">
             Modern Archivist
@@ -109,8 +109,8 @@ export default function AppLayout({children}: AppLayoutProps) {
                 <Menu className="w-6 h-6" />
               </button>
             </div>
-            <div className="text-xl font-serif font-semibold text-primary w-1/3 text-center tracking-tight md:hidden">
-              Athenaeum
+            <div className="text-xl font-serif font-semibold text-primary w-1/3 text-center tracking-tight md:hidden italic">
+              book(ish)
             </div>
             <div className="flex items-center justify-end space-x-4 w-1/3 ml-auto text-on-surface-variant">
               <div

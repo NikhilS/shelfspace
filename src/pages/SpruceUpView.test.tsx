@@ -81,9 +81,9 @@ describe('SpruceUpView', () => {
       {id: '4', title: 'Lacking Meta', author: 'Someone'}, // Missing metadata
     ];
 
-    const createMockSnap = (docs: unknown[] = [], data: unknown = null) => ({
+    const createMockSnap = (docs: any[] = [], data: any = null) => ({
       docs,
-      forEach(cb: unknown) {
+      forEach(cb: any) {
         docs.forEach(cb);
       },
       exists: () => data !== null,
@@ -91,7 +91,7 @@ describe('SpruceUpView', () => {
     });
 
     (firestore.onSnapshot as import('vitest').Mock).mockImplementation(
-      (ref: unknown, cb: unknown) => {
+      (ref: any, cb: any) => {
         if (typeof ref === 'string') {
           if (ref === 'mock-books-collection') {
             cb(createMockSnap(mockBooks.map(b => ({id: b.id, data: () => b}))));
@@ -168,9 +168,9 @@ describe('SpruceUpView', () => {
       {id: '4', title: '1984', author: 'George Orwell', format: 'physical'}, // Duplicate
     ];
 
-    const createMockSnap = (docs: unknown[] = [], data: unknown = null) => ({
+    const createMockSnap = (docs: any[] = [], data: any = null) => ({
       docs,
-      forEach(cb: unknown) {
+      forEach(cb: any) {
         docs.forEach(cb);
       },
       exists: () => data !== null,
@@ -178,7 +178,7 @@ describe('SpruceUpView', () => {
     });
 
     (firestore.onSnapshot as import('vitest').Mock).mockImplementation(
-      (ref: unknown, cb: unknown) => {
+      (ref: any, cb: any) => {
         if (typeof ref === 'string') {
           if (ref === 'mock-books-collection') {
             cb(createMockSnap(mockBooks.map(b => ({id: b.id, data: () => b}))));
@@ -236,9 +236,9 @@ describe('SpruceUpView', () => {
       {id: '2', title: 'Dune', author: 'Frank Herbert', isbn: '123'}, // Duplicate
     ];
 
-    const createMockSnap = (docs: unknown[] = [], data: unknown = null) => ({
+    const createMockSnap = (docs: any[] = [], data: any = null) => ({
       docs,
-      forEach(cb: unknown) {
+      forEach(cb: any) {
         docs.forEach(cb);
       },
       exists: () => data !== null,
@@ -246,7 +246,7 @@ describe('SpruceUpView', () => {
     });
 
     (firestore.onSnapshot as import('vitest').Mock).mockImplementation(
-      (ref: unknown, cb: unknown) => {
+      (ref: any, cb: any) => {
         if (typeof ref === 'string') {
           if (ref === 'mock-books-collection') {
             cb(createMockSnap(mockBooks.map(b => ({id: b.id, data: () => b}))));
@@ -295,7 +295,7 @@ describe('SpruceUpView', () => {
 
   it('shows error toast when loading data fails', async () => {
     (firestore.onSnapshot as import('vitest').Mock).mockImplementation(
-      (_ref: unknown, _ok: unknown, errCb: unknown) => {
+      (_ref: any, _ok: any, errCb: any) => {
         errCb(new Error('Permission denied'));
         return vi.fn();
       },

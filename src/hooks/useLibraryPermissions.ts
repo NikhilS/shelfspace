@@ -16,6 +16,8 @@ export function useLibraryPermissions(
   const [role, setRole] = useState<'owner' | 'editor' | 'viewer' | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const email = user?.email?.toLowerCase();
+
   useEffect(() => {
     if (!libraryId || !userId || !user) {
       setLoading(false);
@@ -33,12 +35,8 @@ export function useLibraryPermissions(
 
           if (library.ownerId === userId) {
             assignedRole = 'owner';
-          } else if (
-            user.email &&
-            library.access &&
-            library.access[user.email.toLowerCase()]
-          ) {
-            assignedRole = library.access[user.email.toLowerCase()];
+          } else if (email && library.access && library.access[email]) {
+            assignedRole = library.access[email];
           }
 
           setRole(assignedRole);
@@ -74,7 +72,7 @@ export function useLibraryPermissions(
     };
 
     void checkPerms();
-  }, [libraryId, userId, user]);
+  }, [libraryId, userId, email]);
 
   return {canEdit, isOwner, canDelete, canView, role, loading};
 }

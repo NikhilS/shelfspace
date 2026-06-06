@@ -8,6 +8,7 @@ import {useOnlineStatus} from '../hooks/useOnlineStatus';
 import {DuplicateSection} from './spruce-up/DuplicateSection';
 import {LibraryIntegrityTable} from './spruce-up/LibraryIntegrityTable';
 import {SpruceUpActionBar} from './spruce-up/SpruceUpActionBar';
+import {SpruceUpOperationsDirectory} from './spruce-up/SpruceUpOperationsDirectory';
 import {PageLoading} from '../components/PageLoading';
 
 export default function SpruceUpView() {
@@ -33,6 +34,7 @@ export default function SpruceUpView() {
     handleBulkForceGenreAPI,
     handleBulkFixGenreAI,
     handleBulkForceGenreAI,
+    emptyCoverUrls,
   } = useSpruceUp(libraryId);
 
   if (loading) {
@@ -46,13 +48,19 @@ export default function SpruceUpView() {
 
   const filteredBooks = booksWithDetails.filter(b => {
     const isMissingGenre = !b.genres || b.genres.length === 0;
-    const isMissingMetadata = !b.synopsis || !b.publishedDate || !b.coverUrl;
+    const isMissingMetadata =
+      !b.synopsis ||
+      !b.publishedDate ||
+      !b.coverUrl ||
+      emptyCoverUrls.has(b.coverUrl);
     const isLowResCover = b.coverUrl && b.coverUrl.includes('zoom=1');
+    const isMissingCover = !b.coverUrl || emptyCoverUrls.has(b.coverUrl);
 
     if (filter === 'missing_metadata')
       return isMissingMetadata || isMissingGenre;
     if (filter === 'missing_genre') return isMissingGenre;
     if (filter === 'low_res_cover') return isLowResCover;
+    if (filter === 'missing_cover') return isMissingCover;
     return true;
   });
 
@@ -91,6 +99,22 @@ export default function SpruceUpView() {
             transition={{duration: 0.4}}
             className="flex flex-col gap-10"
           >
+            <SpruceUpOperationsDirectory
+              books={booksWithDetails}
+              duplicateGroupsCount={duplicates.length}
+              selectedCount={selectedIds.size}
+              isOnline={isOnline}
+              isProcessing={fixingAll}
+              progress={fixingProgress}
+              onFixMetadata={handleBulkFixMetadata}
+              onForceResyncAll={handleBulkForceResync}
+              onFixGenreAPI={handleBulkFixGenreAPI}
+              onForceGenreAPI={handleBulkForceGenreAPI}
+              onFixGenreAI={handleBulkFixGenreAI}
+              onForceGenreAI={handleBulkForceGenreAI}
+              emptyCoverUrls={emptyCoverUrls}
+            />
+
             <section>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div className="flex items-center gap-4">
@@ -111,6 +135,12 @@ export default function SpruceUpView() {
                       Missing Genre
                     </button>
                     <button
+                      onClick={() => setFilter('missing_cover')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filter === 'missing_cover' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-primary'}`}
+                    >
+                      No Cover
+                    </button>
+                    <button
                       onClick={() => setFilter('all')}
                       className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filter === 'all' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-primary'}`}
                     >
@@ -126,6 +156,7 @@ export default function SpruceUpView() {
                 onToggleSelect={toggleSelect}
                 onToggleSelectAll={() => toggleSelectAll(filteredBooks)}
                 filter={filter}
+                emptyCoverUrls={emptyCoverUrls}
               />
             </section>
 

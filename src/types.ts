@@ -36,6 +36,7 @@ export interface Book extends Omit<BookDetails, 'synopsis'> {
     embedding: boolean;
     clusterCoordinates: boolean;
   };
+  coverUrlRaw?: string;
 }
 
 export interface BookDetailsPayload {

@@ -12,16 +12,16 @@ import {
 import * as THREE from 'three';
 
 const CLUSTER_COLORS = [
-  '#3b82f6',
-  '#ef4444',
-  '#10b981',
-  '#f59e0b',
-  '#8b5cf6',
-  '#ec4899',
-  '#14b8a6',
-  '#f97316',
-  '#6366f1',
-  '#84cc16',
+  '#FF5A5F', // Nebula Rose / Deep Pink-Red
+  '#00E5FF', // Electric Cyan / Luminous Turquoise
+  '#FFC107', // Solar Gold / Radiant Yellow
+  '#A855F7', // Deep Violet / Stellar Amethyst
+  '#00E676', // Emerald Aurora / Glowing Green
+  '#FF4081', // Celestial Magenta / Hot Pink
+  '#38BDF8', // Hypergiant Blue / Neon Sky
+  '#FF7043', // Solar Flare / Vibrant Orange-Red
+  '#1DE9B6', // Aquamarine / Neon Mint
+  '#9C27B0', // Cosmic Purple / Lilac-Magenta
 ];
 
 function InteractiveStar({
@@ -114,7 +114,7 @@ function StarField({
       ] as [number, number, number],
       color:
         d.clusterId === -1
-          ? '#64748b' // subdued noise color
+          ? '#4b5e7d' // subdued noise color matching Oxford Blue
           : CLUSTER_COLORS[d.clusterId % CLUSTER_COLORS.length],
     }));
   }, [plotData, bounds]);
@@ -157,9 +157,9 @@ export default function ConstellationChart({
   } | null>(null);
 
   return (
-    <div className="relative w-full h-[600px] md:h-[700px] bg-gray-900 rounded-3xl border border-outline-variant shadow-sm overflow-hidden">
+    <div className="relative w-full h-[600px] md:h-[700px] bg-[#021a35] rounded-lg border border-outline-variant shadow-sm overflow-hidden">
       <Canvas camera={{position: [0, 0, 35], fov: 60}}>
-        <color attach="background" args={['#0f172a']} />
+        <color attach="background" args={['#021a35']} />
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1.5} />
         <pointLight position={[-10, -10, -10]} intensity={0.5} />
@@ -167,11 +167,11 @@ export default function ConstellationChart({
         <Stars
           radius={50}
           depth={50}
-          count={5000}
-          factor={4}
+          count={2000}
+          factor={3}
           saturation={0}
           fade
-          speed={1}
+          speed={0.5}
         />
 
         <OrbitControls
@@ -201,44 +201,46 @@ export default function ConstellationChart({
             zIndexRange={[100, 0]}
             pointerEvents="none"
           >
-            <div className="bg-surface/95 backdrop-blur-md border border-outline-variant/50 p-3 shadow-2xl rounded-xl w-48 sm:w-56 pointer-events-none transform transition-opacity duration-200">
+            <div className="bg-surface/95 backdrop-blur-md border border-outline-variant/40 p-4 shadow-xl rounded-lg w-48 sm:w-56 pointer-events-none transform transition-opacity duration-200">
               {hoveredNode.data.book.coverUrl && (
                 <img
                   src={hoveredNode.data.book.coverUrl}
                   alt={hoveredNode.data.book.title}
-                  className="w-full h-32 object-cover rounded mb-2 border border-outline-variant/20 shadow-inner"
+                  className="w-full h-32 object-cover rounded-sm mb-2.5 border border-outline-variant/20 shadow-inner"
                 />
               )}
-              <p className="font-bold text-on-surface text-sm leading-tight mb-1">
+              <p className="font-serif text-on-surface text-sm font-semibold tracking-tight leading-tight mb-1">
                 {hoveredNode.data.book.title}
               </p>
-              <p className="text-on-surface-variant text-xs">
+              <p className="text-on-surface-variant text-xs mb-2">
                 {hoveredNode.data.book.author}
               </p>
-              {hoveredNode.data.book.genres &&
-                hoveredNode.data.book.genres.length > 0 && (
-                  <p className="font-label-caps text-label-caps text-primary mt-2">
-                    {hoveredNode.data.book.genres[0]}
-                  </p>
+              <div className="flex flex-wrap gap-1 items-center mt-1">
+                {hoveredNode.data.book.genres &&
+                  hoveredNode.data.book.genres.length > 0 && (
+                    <span className="inline-block px-1.5 py-0.5 rounded-sm font-label-caps text-[9px] tracking-wider bg-secondary/10 text-secondary">
+                      {hoveredNode.data.book.genres[0]}
+                    </span>
+                  )}
+                {hoveredNode.data.clusterId >= 0 ? (
+                  <span className="inline-block px-1.5 py-0.5 rounded-sm font-label-caps text-[9px] tracking-wider bg-tertiary-container/10 text-on-tertiary-container border border-on-tertiary-container/10">
+                    {clusterNames[hoveredNode.data.clusterId] ||
+                      `Constellation ${hoveredNode.data.clusterId + 1}`}
+                  </span>
+                ) : (
+                  <span className="inline-block px-1.5 py-0.5 rounded-sm font-label-caps text-[9px] tracking-wider bg-surface-variant text-on-surface-variant">
+                    Uncategorized
+                  </span>
                 )}
-              {hoveredNode.data.clusterId >= 0 ? (
-                <span className="inline-block mt-2 px-2 py-0.5 rounded font-label-caps text-label-caps bg-secondary-container text-secondary-container-on">
-                  {clusterNames[hoveredNode.data.clusterId] ||
-                    `Cluster ${hoveredNode.data.clusterId + 1}`}
-                </span>
-              ) : (
-                <span className="inline-block mt-2 px-2 py-0.5 rounded font-label-caps text-label-caps bg-surface-variant text-on-surface-variant">
-                  Uncategorized Star
-                </span>
-              )}
+              </div>
             </div>
           </Html>
         )}
       </Canvas>
 
       {/* Map Legend */}
-      <div className="absolute bottom-4 left-4 bg-surface/80 backdrop-blur border border-outline-variant/50 p-3 rounded-xl shadow-lg pointer-events-auto">
-        <h4 className="font-label-caps text-label-caps text-on-surface mb-2">
+      <div className="absolute bottom-4 left-4 bg-surface-container/95 backdrop-blur border border-outline-variant/30 p-4 rounded-lg shadow-lg pointer-events-auto max-w-[240px]">
+        <h4 className="font-label-caps text-label-caps text-primary mb-2.5">
           Constellations
         </h4>
         <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
@@ -251,7 +253,7 @@ export default function ConstellationChart({
                     key="noise"
                     className="flex items-center gap-2 text-xs text-on-surface"
                   >
-                    <div className="w-3 h-3 rounded-full bg-slate-500 opacity-50"></div>
+                    <div className="w-2.5 h-2.5 rounded bg-slate-400 opacity-40"></div>
                     <span>Uncategorized</span>
                   </div>
                 );
@@ -261,13 +263,13 @@ export default function ConstellationChart({
                   className="flex items-center gap-2 text-xs text-on-surface"
                 >
                   <div
-                    className="w-3 h-3 rounded-full shadow-md"
+                    className="w-2.5 h-2.5 rounded shadow-sm"
                     style={{
                       backgroundColor:
                         CLUSTER_COLORS[cid % CLUSTER_COLORS.length],
                     }}
                   ></div>
-                  <span className="font-medium drop-shadow-sm">
+                  <span className="font-medium">
                     {clusterNames[cid] || `Cluster ${cid + 1}`}
                   </span>
                 </div>

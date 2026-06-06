@@ -32,7 +32,7 @@ interface LibrarySettingsModalsProps {
 
 const shareSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
-  role: z.enum(['editor', 'viewer']).default('viewer'),
+  role: z.enum(['editor', 'viewer']),
 });
 
 type ShareFormValues = z.infer<typeof shareSchema>;

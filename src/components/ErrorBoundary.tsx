@@ -6,6 +6,7 @@ interface Props {
   children: ReactNode;
   fallback?: ReactNode;
   name?: string;
+  onReset?: () => void;
 }
 
 interface State {
@@ -32,6 +33,17 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleReset = () => {
+    if (this.props.onReset) {
+      try {
+        this.props.onReset();
+      } catch (err) {
+        console.error('Error boundary onReset callback failed:', err);
+      }
+    }
+    this.setState({hasError: false, error: null});
+  };
+
+  private handleFullReload = () => {
     window.location.reload();
   };
 
@@ -53,15 +65,31 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.props.name
               ? `The ${this.props.name} failed to render.`
               : 'An unexpected error occurred while rendering this part of the application.'}{' '}
-            We've been notified and are looking into it.
+            {this.state.error?.message ? (
+              <span className="block mt-2 font-mono text-xs text-error/80 bg-error/5 border border-error/10 p-2 rounded">
+                Ref: {this.state.error.message.substring(0, 150)}
+              </span>
+            ) : (
+              'We have been notified and are looking into it.'
+            )}
           </p>
-          <Button
-            onClick={this.handleReset}
-            className="flex items-center gap-2"
-          >
-            <RefreshCcw size={18} />
-            Try Refreshing
-          </Button>
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <Button
+              onClick={this.handleReset}
+              className="flex items-center gap-2"
+            >
+              <RefreshCcw size={18} />
+              Try Again
+            </Button>
+            <Button
+              onClick={this.handleFullReload}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <RefreshCcw size={18} className="animate-spin-once" />
+              Reload Page
+            </Button>
+          </div>
         </div>
       );
     }
