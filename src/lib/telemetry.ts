@@ -250,6 +250,15 @@ export function interceptConsoleLogs() {
       })
       .join(' ');
 
+    // Ignore benign internal Firestore stream timeout logs to keep console clean
+    if (
+      msg.includes('Disconnecting idle stream') ||
+      msg.includes('Timed out waiting for new targets') ||
+      msg.includes('GrpcConnection RPC')
+    ) {
+      return;
+    }
+
     if (!msg.includes('[TELEMETRY_INTERNAL]')) {
       DebugTelemetryEngine.getInstance().addLog(
         'error',

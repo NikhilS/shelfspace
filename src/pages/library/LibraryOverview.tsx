@@ -259,10 +259,11 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
             <div className="bg-surface-container-lowest p-8 shadow-[0_8px_32px_rgba(26,47,75,0.06)] border border-surface-variant flex flex-col gap-4 justify-center items-center text-center">
               <BookIcon className="w-12 h-12 text-on-surface-variant opacity-70" />
               <p className="font-body-lg text-on-surface-variant">
-                You aren't currently reading any books in this library.
+                No active reads in this library. Found something good on your
+                shelf? Mark it as "Reading" to get cozy and start tracking!
               </p>
               <Button onClick={() => setCurrentTab('collection')}>
-                Browse Collection
+                Explore My Books
               </Button>
             </div>
           )}
@@ -322,26 +323,26 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
             ) : books.length === 0 ? (
               <div className="w-full flex flex-col items-center justify-center gap-2 py-8 text-center z-10 relative px-6">
                 <p className="font-serif text-lg font-bold text-primary">
-                  Your Library is Empty
+                  Empty Bookshelves
                 </p>
                 <p className="font-body-md text-on-surface-variant max-w-md">
-                  Add books to your collection to unlock personalized thematic
-                  recommendations from the AI curator.
+                  Add some books to your shelf to unlock personalized, cozy
+                  thematic recommendations from our AI curator!
                 </p>
               </div>
             ) : pickError ? (
               <div className="w-full flex flex-col items-center justify-center gap-4 py-8 text-center z-10 relative px-6">
                 <div className="space-y-1">
                   <p className="font-serif text-lg font-bold text-accent">
-                    AI Curator Offline
+                    AI Curator Snoozing
                   </p>
                   <p className="font-body-md text-on-surface-variant max-w-md">
                     {pickError.includes('GEMINI_API_KEY') ||
                     pickError.includes('API key') ||
                     pickError.includes('key not valid') ||
                     pickError.includes('API_KEY_INVALID')
-                      ? 'The AI recommendations require a valid GEMINI_API_KEY. Please set this in the Settings > Secrets menu at the top-right.'
-                      : `An error occurred: ${pickError}`}
+                      ? 'AI recommendations need a GEMINI_API_KEY. Set it in Settings > Secrets (top-right corner) to get started!'
+                      : `Something went wrong: ${pickError}`}
                   </p>
                 </div>
                 <Button
@@ -351,19 +352,19 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                   className="gap-2 bg-surface hover:bg-surface-container border-outline/30"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  Retry Recommendation
+                  Try Again
                 </Button>
               </div>
             ) : (
               <div className="w-full flex flex-col items-center justify-center gap-4 py-8 text-center z-10 relative px-6">
                 <div className="space-y-1">
                   <p className="font-serif text-lg font-bold text-primary">
-                    Discover Your Next Book
+                    Discover Your Next Read
                   </p>
                   <p className="font-body-md text-on-surface-variant max-w-md">
-                    Check the Settings &gt; Secrets menu to verify your
-                    GEMINI_API_KEY is configured, then click below to curate a
-                    custom book recommendation.
+                    Need inspiration? Ensure your GEMINI_API_KEY is configured
+                    in Settings &gt; Secrets, then click below to let our AI
+                    curator pick a book for you.
                   </p>
                 </div>
                 <Button
@@ -373,7 +374,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                   className="gap-2 bg-surface hover:bg-surface-container"
                 >
                   <RefreshCw className="w-4 h-4 animate-spin-slow" />
-                  Generate Recommendation
+                  Surprise Me
                 </Button>
               </div>
             )}

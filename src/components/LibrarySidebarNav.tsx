@@ -107,7 +107,7 @@ export function LibrarySidebarNav({
             className={`sidebar-nav-item ${location.pathname.includes('/spruce-up') ? 'active' : ''}`}
           >
             <Wand2 className="w-5 h-5 flex-shrink-0" />
-            <span>Spruce Up Library</span>
+            <span>Shelf Care</span>
           </Link>
         )}
       </SidebarActions>

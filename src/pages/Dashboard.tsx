@@ -37,8 +37,8 @@ export default function Dashboard() {
             <div>
               <h2 className="layout-header-title">My Libraries</h2>
               <p className="layout-header-subtitle">
-                Your curated collections, meticulously organized for deep focus
-                and easy retrieval.
+                Your custom reading nooks, book sanctuaries, and cozy shelves.
+                Let's find your next favorite page turner!
               </p>
             </div>
           </div>
@@ -59,11 +59,11 @@ export default function Dashboard() {
                   <LibraryIcon className="w-10 h-10 text-on-surface-variant" />
                 </div>
                 <h3 className="text-2xl font-serif font-bold mb-3 text-primary tracking-tight">
-                  The Archives are Empty
+                  No Bookshelves Yet!
                 </h3>
                 <p className="text-on-surface-variant text-lg max-w-md mx-auto mb-8">
-                  Establish your first collection to begin cataloging your
-                  physical volumes.
+                  Create your first library collection to begin cataloging your
+                  paperbacks, hardcovers, and favorite books.
                 </p>
                 <Button
                   onClick={() => setIsCreating(true)}

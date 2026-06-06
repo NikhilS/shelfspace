@@ -200,52 +200,46 @@ export default function SpruceUpView() {
         <div className="layout-header mb-6">
           <div>
             <h2 className="layout-header-title text-3xl font-serif tracking-tight pr-4">
-              Spruce Up Library
+              Shelf Care
             </h2>
             <p className="layout-header-subtitle font-sans text-xs sm:text-sm text-on-surface-variant/80 mt-1 max-w-2xl leading-relaxed">
-              Verify catalog completeness, cure description gaps, and align
-              BISAC categories using intelligent automated lookup profiles and
-              Generative Gemini models.
+              Time for a little tidy-up! Audit your collection's health, patch
+              up missing summaries, and organize genres using friendly Gemini
+              AI.
             </p>
           </div>
         </div>
 
         <ErrorBoundary name="Spruce Up View Workspace">
-          {/* STEP 1: INTERACTIVE DIAGNOSTIC LENSES (BENTO GRID - OPTIMISED FOR 2X2 MOBILE GRID) */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 sm:mb-8">
+          {/* STEP 1: INTERACTIVE DIAGNOSTIC LENSES (COMPACT, HORIZONTAL SCROLL ON MOBILE, SINGLE-ROW GRID ON DESKTOP) */}
+          <div className="flex overflow-x-auto pb-3 mb-6 sm:mb-8 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-none gap-3 sm:grid sm:grid-cols-4">
             {/* LENS A: Description Gaps */}
             <button
               type="button"
               onClick={() => setFilter('missing_metadata')}
               aria-label="Missing Metadata"
-              className={`border rounded-xl p-3 sm:p-4 transition-all cursor-pointer select-none space-y-2 sm:space-y-3 shadow-inner relative overflow-hidden flex flex-col justify-between text-left ${
+              className={`flex items-center justify-between gap-3 border rounded-xl p-3 sm:p-3.5 transition-all cursor-pointer select-none shadow-sm flex-shrink-0 w-[220px] sm:w-auto text-left ${
                 filter === 'missing_metadata'
-                  ? 'bg-primary/[0.03] border-primary ring-1 ring-primary/20'
+                  ? 'bg-primary/[0.04] border-primary ring-1 ring-primary/20'
                   : 'bg-surface hover:bg-surface-variant/10 border-outline-variant/30 hover:border-outline-variant/60'
               }`}
             >
-              <div className="flex items-start justify-between w-full">
-                <div className="p-1.5 sm:p-2 bg-amber-500/10 text-amber-600 rounded-lg">
-                  <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1.5 sm:p-2 bg-amber-500/10 text-amber-600 rounded-lg flex-shrink-0">
+                  <FileText className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                 </div>
-                <span className="font-mono text-lg sm:text-2xl font-black text-amber-600">
-                  {missingMetadataBooks.length}
-                </span>
+                <div className="min-w-0">
+                  <h4 className="font-sans font-bold text-xs text-on-surface leading-tight truncate">
+                    Summary Gaps
+                  </h4>
+                  <p className="text-[9px] text-on-surface-variant leading-none mt-0.5 truncate">
+                    Needs description or cover art
+                  </p>
+                </div>
               </div>
-              <div className="min-h-[46px] sm:min-h-0">
-                <h4 className="font-sans font-bold text-[11px] sm:text-xs text-on-surface leading-snug">
-                  Description Gaps
-                </h4>
-                <p className="text-[9px] sm:text-[10px] text-on-surface-variant leading-tight sm:leading-relaxed mt-0.5 max-w-[120px] sm:max-w-none">
-                  Missing outlines, synopses, or release data.
-                </p>
-              </div>
-              <div className="pt-0.5 sm:pt-1 flex items-center gap-1 w-full text-[8px] sm:text-[9px]">
-                <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-primary" />
-                <span className="uppercase font-bold tracking-wider text-primary">
-                  Smart Fill
-                </span>
-              </div>
+              <span className="font-mono text-xs sm:text-sm font-black text-amber-600 bg-amber-500/5 px-2 py-0.5 rounded-full flex-shrink-0">
+                {missingMetadataBooks.length}
+              </span>
             </button>
 
             {/* LENS B: Unclassified / Missing Taxonomy */}
@@ -253,34 +247,28 @@ export default function SpruceUpView() {
               type="button"
               onClick={() => setFilter('missing_genre')}
               aria-label="Missing Genre"
-              className={`border rounded-xl p-3 sm:p-4 transition-all cursor-pointer select-none space-y-2 sm:space-y-3 shadow-inner relative overflow-hidden flex flex-col justify-between text-left ${
+              className={`flex items-center justify-between gap-3 border rounded-xl p-3 sm:p-3.5 transition-all cursor-pointer select-none shadow-sm flex-shrink-0 w-[220px] sm:w-auto text-left ${
                 filter === 'missing_genre'
-                  ? 'bg-primary/[0.03] border-primary ring-1 ring-primary/20'
+                  ? 'bg-primary/[0.04] border-primary ring-1 ring-primary/20'
                   : 'bg-surface hover:bg-surface-variant/10 border-outline-variant/30 hover:border-outline-variant/60'
               }`}
             >
-              <div className="flex items-start justify-between w-full">
-                <div className="p-1.5 sm:p-2 bg-indigo-500/10 text-indigo-600 rounded-lg">
-                  <Bookmark className="w-4 h-4 sm:w-5 sm:h-5" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1.5 sm:p-2 bg-indigo-500/10 text-indigo-600 rounded-lg flex-shrink-0">
+                  <Bookmark className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                 </div>
-                <span className="font-mono text-lg sm:text-2xl font-black text-indigo-600">
-                  {missingGenreBooks.length}
-                </span>
+                <div className="min-w-0">
+                  <h4 className="font-sans font-bold text-xs text-on-surface leading-tight truncate">
+                    Mystery Genres
+                  </h4>
+                  <p className="text-[9px] text-on-surface-variant leading-none mt-0.5 truncate">
+                    Unclassified genre territory
+                  </p>
+                </div>
               </div>
-              <div className="min-h-[46px] sm:min-h-0">
-                <h4 className="font-sans font-bold text-[11px] sm:text-xs text-on-surface leading-snug">
-                  Taxonomy & Genres
-                </h4>
-                <p className="text-[9px] sm:text-[10px] text-on-surface-variant leading-tight sm:leading-relaxed mt-0.5 max-w-[120px] sm:max-w-none">
-                  Volumes lacking appropriate BISAC classification mapping.
-                </p>
-              </div>
-              <div className="pt-0.5 sm:pt-1 flex items-center gap-1 w-full text-[8px] sm:text-[9px]">
-                <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-indigo-500" />
-                <span className="uppercase font-bold tracking-wider text-indigo-500">
-                  Gemini AI
-                </span>
-              </div>
+              <span className="font-mono text-xs sm:text-sm font-black text-indigo-600 bg-indigo-500/5 px-2 py-0.5 rounded-full flex-shrink-0">
+                {missingGenreBooks.length}
+              </span>
             </button>
 
             {/* LENS C: Cover Illustrations */}
@@ -288,34 +276,28 @@ export default function SpruceUpView() {
               type="button"
               onClick={() => setFilter('missing_cover')}
               aria-label="No Cover"
-              className={`border rounded-xl p-3 sm:p-4 transition-all cursor-pointer select-none space-y-2 sm:space-y-3 shadow-inner relative overflow-hidden flex flex-col justify-between text-left ${
+              className={`flex items-center justify-between gap-3 border rounded-xl p-3 sm:p-3.5 transition-all cursor-pointer select-none shadow-sm flex-shrink-0 w-[220px] sm:w-auto text-left ${
                 filter === 'missing_cover' || filter === 'low_res_cover'
-                  ? 'bg-primary/[0.03] border-primary ring-1 ring-primary/20'
+                  ? 'bg-primary/[0.04] border-primary ring-1 ring-primary/20'
                   : 'bg-surface hover:bg-surface-variant/10 border-outline-variant/30 hover:border-outline-variant/60'
               }`}
             >
-              <div className="flex items-start justify-between w-full">
-                <div className="p-1.5 sm:p-2 bg-teal-500/10 text-teal-600 rounded-lg">
-                  <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1.5 sm:p-2 bg-teal-500/10 text-teal-600 rounded-lg flex-shrink-0">
+                  <ImageIcon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                 </div>
-                <span className="font-mono text-lg sm:text-2xl font-black text-teal-600">
-                  {missingCoverBooks.length}
-                </span>
+                <div className="min-w-0">
+                  <h4 className="font-sans font-bold text-xs text-on-surface leading-tight truncate">
+                    Covers & Art
+                  </h4>
+                  <p className="text-[9px] text-on-surface-variant leading-none mt-0.5 truncate">
+                    Cover art is missing or blurry
+                  </p>
+                </div>
               </div>
-              <div className="min-h-[46px] sm:min-h-0">
-                <h4 className="font-sans font-bold text-[11px] sm:text-xs text-on-surface leading-snug">
-                  Art & Covers
-                </h4>
-                <p className="text-[9px] sm:text-[10px] text-on-surface-variant leading-tight sm:leading-relaxed mt-0.5 max-w-[120px] sm:max-w-none">
-                  Empty covers or low-res placeholder images.
-                </p>
-              </div>
-              <div className="pt-0.5 sm:pt-1 flex items-center gap-1 w-full text-[8px] sm:text-[9px]">
-                <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-teal-500" />
-                <span className="uppercase font-bold tracking-wider text-teal-500">
-                  Deep Scrape
-                </span>
-              </div>
+              <span className="font-mono text-xs sm:text-sm font-black text-teal-600 bg-teal-500/5 px-2 py-0.5 rounded-full flex-shrink-0">
+                {missingCoverBooks.length}
+              </span>
             </button>
 
             {/* LENS D: All Books / General Registry */}
@@ -323,33 +305,28 @@ export default function SpruceUpView() {
               type="button"
               onClick={() => setFilter('all')}
               aria-label="Show All"
-              className={`border rounded-xl p-3 sm:p-4 transition-all cursor-pointer select-none space-y-2 sm:space-y-3 shadow-inner relative overflow-hidden flex flex-col justify-between text-left ${
+              className={`flex items-center justify-between gap-3 border rounded-xl p-3 sm:p-3.5 transition-all cursor-pointer select-none shadow-sm flex-shrink-0 w-[220px] sm:w-auto text-left ${
                 filter === 'all'
-                  ? 'bg-primary/[0.03] border-primary ring-1 ring-primary/20'
+                  ? 'bg-primary/[0.04] border-primary ring-1 ring-primary/20'
                   : 'bg-surface hover:bg-surface-variant/10 border-outline-variant/30 hover:border-outline-variant/60'
               }`}
             >
-              <div className="flex items-start justify-between w-full">
-                <div className="p-1.5 sm:p-2 bg-primary/10 text-primary rounded-lg">
-                  <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1.5 sm:p-2 bg-primary/10 text-primary rounded-lg flex-shrink-0">
+                  <BookOpen className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                 </div>
-                <span className="font-mono text-lg sm:text-2xl font-black text-primary">
-                  {booksWithDetails.length}
-                </span>
+                <div className="min-w-0">
+                  <h4 className="font-sans font-bold text-xs text-on-surface leading-tight truncate">
+                    All Volumes
+                  </h4>
+                  <p className="text-[9px] text-on-surface-variant leading-none mt-0.5 truncate">
+                    Your entire book collection
+                  </p>
+                </div>
               </div>
-              <div className="min-h-[46px] sm:min-h-0">
-                <h4 className="font-sans font-bold text-[11px] sm:text-xs text-on-surface leading-snug">
-                  Unified Catalog
-                </h4>
-                <p className="text-[9px] sm:text-[10px] text-on-surface-variant leading-tight sm:leading-relaxed mt-0.5 max-w-[120px] sm:max-w-none">
-                  Browse complete catalogue files or perform bulk checks.
-                </p>
-              </div>
-              <div className="pt-0.5 sm:pt-1 flex items-center gap-1 w-full text-[8px] sm:text-[9px]">
-                <span className="uppercase font-bold tracking-wider text-on-surface-variant">
-                  Operations
-                </span>
-              </div>
+              <span className="font-mono text-xs sm:text-sm font-black text-primary bg-primary/5 px-2 py-0.5 rounded-full flex-shrink-0">
+                {booksWithDetails.length}
+              </span>
             </button>
           </div>
 

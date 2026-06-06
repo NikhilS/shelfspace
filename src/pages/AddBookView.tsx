@@ -75,10 +75,10 @@ export default function AddBookView() {
       <div className="layout-page-content">
         <div className="layout-header">
           <div>
-            <h2 className="layout-header-title">Add Books</h2>
+            <h2 className="layout-header-title">Expand Your Shelves</h2>
             <p className="layout-header-subtitle">
-              Grow your library by searching, scanning, or importing your
-              collections.
+              Grow your library! Dust off your books and add them via
+              barcode-scan, snapshot, CSV upload, or lookup.
             </p>
           </div>
         </div>
@@ -146,7 +146,7 @@ export default function AddBookView() {
                   setAllowDuplicates(checked === true)
                 }
               />
-              Allow duplicates
+              Allow duplicate copies
             </label>
           </div>
 

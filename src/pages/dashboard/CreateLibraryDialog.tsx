@@ -51,7 +51,7 @@ export function CreateLibraryDialog({
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="Library Name (e.g. Private Study)"
+              placeholder="Give your library a name... (e.g. Cozy Corner or Dream Shelf)"
               className="flex-1 px-6 py-4 text-base sm:text-lg"
               autoFocus
               disabled={isSubmitting}

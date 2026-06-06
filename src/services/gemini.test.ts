@@ -250,7 +250,7 @@ describe('gemini service', () => {
       const result = await getPickOfTheDay([
         {title: 'Dune', author: 'Herbert'},
       ]);
-      expect(result?.title).toBe('1984');
+      expect(result?.[0]?.title).toBe('1984');
     });
 
     it('returns null on invalid response', async () => {

@@ -750,13 +750,16 @@ export async function generateLibraryHeroImage(
 
 export async function getPickOfTheDay(
   books: {title: string; author: string}[],
-): Promise<{title: string; author: string; reason: string} | null> {
+): Promise<{title: string; author: string; reason: string}[] | null> {
   if (isBrowser) {
-    return runClientProxy('getPickOfTheDay', {books}) as Promise<{
-      title: string;
-      author: string;
-      reason: string;
-    } | null>;
+    return runClientProxy('getPickOfTheDay', {books}) as Promise<
+      | {
+          title: string;
+          author: string;
+          reason: string;
+        }[]
+      | null
+    >;
   }
   try {
     if (!books || books.length === 0) return null;
@@ -766,7 +769,7 @@ export async function getPickOfTheDay(
       const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
-    const sampleBooks = shuffled.slice(0, 50);
+    const sampleBooks = shuffled.slice(0, 100);
     const bookList = sampleBooks
       .map(
         (b, i) =>
@@ -777,12 +780,16 @@ export async function getPickOfTheDay(
 
 ${bookList}
 
-Based on the themes and genres of these books, please recommend exactly ONE new book that I would enjoy reading. 
-CRITICAL RULE: The book you recommend MUST NOT be in the list above.
+Based on the themes, genres, and styles of these books, please recommend 10 non-obvious, deeply engaging new books that I would enjoy reading. 
+Think like an expert librarian who suggests gems that are highly relevant but not necessarily mainstream or obvious.
 
-Explain in exactly 1-2 sentences WHY this specific book is a great recommendation based on my current library.
+CRITICAL RULES:
+1. The books you recommend MUST NOT be in the list above.
+2. Provide exactly 10 distinct recommendations.
 
-Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. The object MUST have:
+Explain in 1-2 sentences WHY each specific book is a great recommendation based on my current library and interests, highlighting the unexpected or complementary connections.
+
+Return ONLY a JSON array of 10 objects. Do not include markdown formatting like \`\`\`json. Each object in the array MUST have:
 - title (the book title)
 - author (the book author)
 - reason (your 1-2 sentence explanation)`;
@@ -832,8 +839,20 @@ Return ONLY a JSON object. Do not include markdown formatting like \`\`\`json. T
         .replace(/\n?```$/, '')
         .trim();
       const parsed = JSON.parse(text);
-      if (parsed.title && parsed.author && parsed.reason) {
-        return parsed as {title: string; author: string; reason: string};
+      if (Array.isArray(parsed)) {
+        return parsed.filter(p => p.title && p.author && p.reason) as {
+          title: string;
+          author: string;
+          reason: string;
+        }[];
+      } else if (
+        parsed &&
+        typeof parsed === 'object' &&
+        parsed.title &&
+        parsed.author &&
+        parsed.reason
+      ) {
+        return [parsed] as {title: string; author: string; reason: string}[];
       }
       return null;
     } catch {

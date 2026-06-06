@@ -311,7 +311,7 @@ describe('SpruceUpView', () => {
 
     await waitFor(() => {
       // It should display 'Failed to load data' from toast
-      expect(screen.queryByText('Spruce Up Library')).toBeInTheDocument();
+      expect(screen.queryByText('Shelf Care')).toBeInTheDocument();
       // We know loading becomes false after error, so we will see the UI.
     });
   });
