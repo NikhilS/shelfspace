@@ -10,13 +10,41 @@ import {getTieredMetadata} from './src/lib/metadataUtils';
 import {throttledMapWithRetry, mergeBookMetadata} from './src/lib/utils';
 import * as geminiService from './src/services/gemini';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+let appFilename = '';
+let appDirname = '';
+
+try {
+  if (typeof __filename !== 'undefined') {
+    appFilename = __filename;
+  } else if (typeof import.meta !== 'undefined' && import.meta.url) {
+    appFilename = fileURLToPath(import.meta.url);
+  }
+} catch {
+  // Safe fallback
+}
+
+try {
+  if (typeof __dirname !== 'undefined') {
+    appDirname = __dirname;
+  } else if (appFilename) {
+    appDirname = path.dirname(appFilename);
+  } else {
+    appDirname = process.cwd();
+  }
+} catch {
+  appDirname = process.cwd();
+}
 
 // Read firebase config
-const firebaseConfig = JSON.parse(
-  fs.readFileSync(path.join(__dirname, 'firebase-applet-config.json'), 'utf-8'),
-);
+let configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+if (!fs.existsSync(configPath)) {
+  configPath = path.join(appDirname, 'firebase-applet-config.json');
+}
+if (!fs.existsSync(configPath)) {
+  configPath = path.join(appDirname, '..', 'firebase-applet-config.json');
+}
+
+const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 
 // Initialize Firebase Admin
 if (!admin.apps.length) {
@@ -506,7 +534,7 @@ async function startServer() {
       }
       try {
         let template = fs.readFileSync(
-          path.resolve(__dirname, 'index.html'),
+          path.resolve(appDirname, 'index.html'),
           'utf-8',
         );
         template = await vite.transformIndexHtml(url, template);

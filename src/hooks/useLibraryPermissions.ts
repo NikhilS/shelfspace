@@ -8,17 +8,21 @@ export function useLibraryPermissions(
   libraryId: string | undefined,
   userId: string | undefined,
 ) {
-  const {user} = useAuth();
-  const [canEdit, setCanEdit] = useState(false);
-  const [canDelete, setCanDelete] = useState(false);
-  const [canView, setCanView] = useState(false);
-  const [isOwner, setIsOwner] = useState(false);
+  const {user, isAuthReady} = useAuth();
   const [role, setRole] = useState<'owner' | 'editor' | 'viewer' | null>(null);
   const [loading, setLoading] = useState(true);
 
   const email = user?.email?.toLowerCase();
 
   useEffect(() => {
+    if (!isAuthReady) {
+      setLoading(true);
+      return;
+    }
+
+    setRole(null);
+    setLoading(true);
+
     if (!libraryId || !userId || !user) {
       setLoading(false);
       return;
@@ -40,39 +44,24 @@ export function useLibraryPermissions(
           }
 
           setRole(assignedRole);
-          const isOwnerVal = assignedRole === 'owner';
-          setIsOwner(isOwnerVal);
-
-          setCanEdit(assignedRole === 'owner' || assignedRole === 'editor');
-          setCanDelete(assignedRole === 'owner' || assignedRole === 'editor');
-          setCanView(
-            assignedRole === 'owner' ||
-              assignedRole === 'editor' ||
-              assignedRole === 'viewer',
-          );
         } else {
-          // If library doesn't exist, they can't do anything
           setRole(null);
-          setIsOwner(false);
-          setCanEdit(false);
-          setCanDelete(false);
-          setCanView(false);
         }
       } catch (err) {
         handleFirestoreError(err, OperationType.GET, `libraries/${libraryId}`);
-        // Default to denied on error
         setRole(null);
-        setIsOwner(false);
-        setCanEdit(false);
-        setCanDelete(false);
-        setCanView(false);
       } finally {
         setLoading(false);
       }
     };
 
     void checkPerms();
-  }, [libraryId, userId, email]);
+  }, [libraryId, userId, email, isAuthReady]);
+
+  const isOwner = role === 'owner';
+  const canEdit = role === 'owner' || role === 'editor';
+  const canDelete = role === 'owner' || role === 'editor';
+  const canView = role === 'owner' || role === 'editor' || role === 'viewer';
 
   return {canEdit, isOwner, canDelete, canView, role, loading};
 }

@@ -36,12 +36,8 @@ import {LibraryCollection} from './library/LibraryCollection';
 import {LibrarySettingsModals} from './library/LibrarySettingsModals';
 import {BulkActionsBar} from './library/BulkActionsBar';
 import {ErrorBoundary} from '../components/ErrorBoundary';
-import {
-  LibraryMainSkeleton,
-  LibraryOverviewSkeleton,
-  LibraryCollectionSkeleton,
-} from '../components/LibrarySkeletons';
 import {useDebug} from '../contexts/DebugContext';
+import {PageLoading} from '../components/PageLoading';
 
 export default function LibraryView() {
   const {id} = useParams<{id: string}>();
@@ -330,24 +326,16 @@ export default function LibraryView() {
     }
   }, [library, books, setDebugData]);
 
-  if (isLoading && !library) {
+  const isLibraryLoading = isLoading || (isBooksLoading && books.length === 0);
+
+  if (isLibraryLoading || !library) {
     return (
-      <>
-        <LibrarySidebarNav
-          libraryId={id}
-          onOpenSettings={() =>
-            setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)
-          }
-          onOpenShare={() => setIsSettingsOpen(!isSettingsOpen)}
-          isSettingsOpen={isAdvancedSettingsOpen}
-          isShareOpen={isSettingsOpen}
-        />
-        <LibraryMainSkeleton tab={filters.currentTab} />
-      </>
+      <PageLoading
+        title="Opening the archives..."
+        subtitle="Verifying credentials, consulting the catalog, and preparing your collection."
+      />
     );
   }
-
-  if (!library) return null;
 
   return (
     <>
@@ -378,13 +366,7 @@ export default function LibraryView() {
 
           <div className="relative flex-grow flex flex-col pt-6">
             <AnimatePresence mode="wait">
-              {isBooksLoading && books.length === 0 ? (
-                filters.currentTab === 'overview' ? (
-                  <LibraryOverviewSkeleton key="overview-skeleton" />
-                ) : (
-                  <LibraryCollectionSkeleton key="collection-skeleton" />
-                )
-              ) : filters.currentTab === 'overview' ? (
+              {filters.currentTab === 'overview' ? (
                 <motion.div
                   key="overview"
                   initial={{opacity: 0, x: -10}}
