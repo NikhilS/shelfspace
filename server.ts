@@ -6,6 +6,9 @@ import admin from 'firebase-admin';
 import fs from 'fs';
 
 import {getFirestore} from 'firebase-admin/firestore';
+import {getTieredMetadata} from './src/lib/metadataUtils';
+import {throttledMapWithRetry, mergeBookMetadata} from './src/lib/utils';
+import * as geminiService from './src/services/gemini';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -249,9 +252,6 @@ async function startServer() {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // Lazy import to avoid server/client mismatch during initialization
-      const {getTieredMetadata} = await import('./src/lib/metadataUtils');
-
       // Background process
       void (async () => {
         try {
@@ -286,8 +286,6 @@ async function startServer() {
           const writer = db.bulkWriter();
 
           // Process with safe concurrency & automatic retry with exponential backoff
-          const {throttledMapWithRetry} = await import('./src/lib/utils');
-
           await throttledMapWithRetry(
             books,
             3, // Safe concurrency limit to avoid overwhelming APIs
@@ -317,7 +315,6 @@ async function startServer() {
                 );
 
                 if (enriched) {
-                  const {mergeBookMetadata} = await import('./src/lib/utils');
                   const {newData, heavyData} = mergeBookMetadata(
                     b,
                     enriched,
@@ -419,9 +416,7 @@ async function startServer() {
       return res.status(401).json({error: 'Unauthorized: Invalid token'});
     }
 
-    let geminiService: typeof import('./src/services/gemini') | null = null;
     try {
-      geminiService = await import('./src/services/gemini');
       let result;
 
       switch (action) {

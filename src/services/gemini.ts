@@ -1,11 +1,39 @@
 import {GoogleGenAI, Type} from '@google/genai';
 import Papa from 'papaparse';
-import {logger} from '../contexts/DebugContext';
 import {toSentenceCase} from '../lib/utils';
-import {auth} from '../firebase';
 
 const isBrowser =
   typeof window !== 'undefined' && process.env.NODE_ENV !== 'test';
+
+const logger = {
+  info: (msg: string) => {
+    if (isBrowser) {
+      import('../contexts/DebugContext')
+        .then(m => m.logger.info(msg))
+        .catch(() => console.info(msg));
+    } else {
+      console.info(msg);
+    }
+  },
+  warn: (msg: string) => {
+    if (isBrowser) {
+      import('../contexts/DebugContext')
+        .then(m => m.logger.warn(msg))
+        .catch(() => console.warn(msg));
+    } else {
+      console.warn(msg);
+    }
+  },
+  error: (msg: string) => {
+    if (isBrowser) {
+      import('../contexts/DebugContext')
+        .then(m => m.logger.error(msg))
+        .catch(() => console.error(msg));
+    } else {
+      console.error(msg);
+    }
+  },
+};
 
 export function isApiKeyError(err: unknown): boolean {
   if (!err) return false;
@@ -46,6 +74,7 @@ async function runClientProxy(
   payload: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<unknown> {
+  const {auth} = await import('../firebase');
   const currentUser = auth.currentUser;
   if (!currentUser) {
     throw new Error('Authentication required for AI actions');

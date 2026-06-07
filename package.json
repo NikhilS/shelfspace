@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "gts clean",
     "lint": "gts lint",
@@ -74,6 +75,7 @@
     "@types/three": "^0.184.0",
     "@vitest/coverage-v8": "^4.1.5",
     "autoprefixer": "^10.4.21",
+    "esbuild": "^0.28.0",
     "eslint-plugin-unused-imports": "^4.4.1",
     "gts": "^7.0.0",
     "jsdom": "^29.1.1",
