@@ -144,7 +144,7 @@ export function BookContent({
                     book.userStatuses[user?.uid || ''] === 'reading'
                       ? 'bg-primary text-on-primary'
                       : book.userStatuses[user?.uid || ''] === 'finished'
-                        ? 'bg-[#2f4d40] text-white'
+                        ? 'bg-on-tertiary-fixed-variant text-white'
                         : 'bg-error text-on-error'
                   }`}
                 >

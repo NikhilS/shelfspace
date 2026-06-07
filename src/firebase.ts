@@ -7,7 +7,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
-import {getStorage, ref, uploadString, getDownloadURL} from 'firebase/storage';
+import {getStorage} from 'firebase/storage';
 import {toast} from 'sonner';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -15,52 +15,38 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-/**
- * Uploads a base64 image data URL (e.g. data:image/png;base64,...) to Cloud Storage.
- * @param base64Data The base64 data string.
- * @param path The path in Firebase Storage (e.g. 'libraries/123/hero.png')
- */
-export async function uploadBase64Image(
-  base64Data: string,
-  path: string,
-): Promise<string> {
-  if (!base64Data || !base64Data.startsWith('data:')) {
-    // If it's already a URL or empty, return it directly.
-    return base64Data;
-  }
-  const storageRef = ref(storage, path);
-  await uploadString(storageRef, base64Data, 'data_url');
-  return await getDownloadURL(storageRef);
-}
-
-const usePersistentCache = (() => {
-  if (typeof window === 'undefined') return false;
-  if (process.env.NODE_ENV === 'test') return true;
-  try {
-    // If in an iframe (e.g. AI Studio preview), partitioned storage may cause IndexedDB to fail.
-    // We disable local storage caching in iframes to prevent console.error messages from Firestore.
-    if (window.self !== window.top) {
-      return false;
+const firestoreCacheConfig = (() => {
+  if (typeof window === 'undefined') return {};
+  if (process.env.NODE_ENV === 'test') {
+    try {
+      return {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      };
+    } catch {
+      return {};
     }
-    if (!window.localStorage) return false;
-    const testKey = '__test_local_storage__';
-    window.localStorage.setItem(testKey, 'test');
-    window.localStorage.removeItem(testKey);
-    return true;
-  } catch {
-    return false;
+  }
+  try {
+    // Dynamic initialization of persistent cache, catching partitioning exceptions gracefully
+    return {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    };
+  } catch (e) {
+    console.warn(
+      'Storage partitioning restricted IndexedDB. Falling back to memory state.',
+      e,
+    );
+    return {};
   }
 })();
 
 export const db = initializeFirestore(
   app,
-  usePersistentCache
-    ? {
-        localCache: persistentLocalCache({
-          tabManager: persistentMultipleTabManager(),
-        }),
-      }
-    : {},
+  firestoreCacheConfig,
   firebaseConfig.firestoreDatabaseId,
 );
 

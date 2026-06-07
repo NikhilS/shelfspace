@@ -1,9 +1,11 @@
 import {useState} from 'react';
 import {collection, doc, serverTimestamp, increment} from 'firebase/firestore';
-import {db, auth, uploadBase64Image} from '../../firebase';
+import {db, auth} from '../../firebase';
+import {uploadBase64Image} from '../../services/db/storage';
 import {BookDetails} from '../../services/bookApi';
 import {useAuth} from '../../contexts/AuthContext';
 import {logger} from '../../contexts/DebugContext';
+import {generateBookEmbeddings} from '../../services/gemini';
 
 enum OperationType {
   CREATE = 'create',
@@ -72,12 +74,36 @@ export function useAddBooks(libraryId?: string) {
     logger.info(`[useAddBooks] Starting addBooks for ${books.length} books`);
 
     try {
+      // 1. Pre-generate embeddings for newly added books
+      let embeddings: number[][] = [];
+      try {
+        const texts = books.map(b => {
+          const parts = [b.title];
+          if (b.author) parts.push(`by ${b.author}`);
+          if (b.genres && b.genres.length > 0)
+            parts.push(`[${b.genres.join(', ')}]`);
+          if (b.synopsis) parts.push(b.synopsis);
+          return parts.join(' - ');
+        });
+
+        logger.info(
+          `[useAddBooks] Generating embeddings for ${books.length} books...`,
+        );
+        embeddings = await generateBookEmbeddings(texts);
+        logger.info('[useAddBooks] Generated embeddings successfully.');
+      } catch (err) {
+        logger.error(
+          `[useAddBooks] Failed to generate embeddings for added books: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
       const {ClientBulkWriter} = await import('../../lib/clientBulkWriter');
       const writer = new ClientBulkWriter(db, 50); // Safe batchSize
 
       let addedCount = 0;
 
-      for (const book of books) {
+      for (let i = 0; i < books.length; i++) {
+        const book = books[i];
         const cleanBook = Object.fromEntries(
           Object.entries(book).filter(
             ([, v]) => v !== undefined && v !== null && v !== '',
@@ -131,10 +157,12 @@ export function useAddBooks(libraryId?: string) {
           format: lightweightData.format || 'physical',
         });
 
+        const finalEmbedding = (embeddings && embeddings[i]) || embedding;
+
         const heavyData = {
           synopsis,
           authorBio,
-          embedding,
+          embedding: finalEmbedding,
           clusterCoordinates,
         };
         const cleanHeavy = Object.fromEntries(

@@ -1,11 +1,8 @@
 import {useState, useEffect} from 'react';
 import {useAuth} from '../../contexts/AuthContext';
-import {
-  db,
-  handleFirestoreError,
-  OperationType,
-  uploadBase64Image,
-} from '../../firebase';
+import {db, handleFirestoreError, OperationType} from '../../firebase';
+import {reconcileBookCount} from '../../services/db/books';
+import {uploadBase64Image} from '../../services/db/storage';
 import {
   collection,
   query,
@@ -13,7 +10,6 @@ import {
   onSnapshot,
   or,
   FieldPath,
-  getCountFromServer,
   updateDoc,
   doc,
   addDoc,
@@ -66,11 +62,10 @@ export function useLibraries() {
         // Auto-migrate legacy libraries missing bookCount
         libs.forEach(async lib => {
           if (lib.bookCount === undefined) {
-            const coll = collection(db, 'libraries', lib.id, 'books');
             try {
-              const countSnap = await getCountFromServer(coll);
+              const count = await reconcileBookCount(lib.id);
               await updateDoc(doc(db, 'libraries', lib.id), {
-                bookCount: countSnap.data().count,
+                bookCount: count,
               });
             } catch (e) {
               console.error(`Failed to migrate bookCount for lib ${lib.id}`, e);

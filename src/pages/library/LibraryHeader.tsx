@@ -27,7 +27,7 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
 }) => {
   return (
     <div
-      className={`w-full h-[280px] sm:h-[400px] relative overflow-hidden flex items-end ${!library.heroImageUrl ? 'bg-[#021a35]' : ''}`}
+      className={`w-full h-[280px] sm:h-[400px] relative overflow-hidden flex items-end ${!library.heroImageUrl ? 'bg-primary' : ''}`}
     >
       {library.heroImageUrl && (
         <img
@@ -36,19 +36,26 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
           className="w-full h-full object-cover absolute inset-0"
         />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-[#021a35] via-[#021a35]/40 to-transparent opacity-90" />
+      <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/40 to-transparent opacity-90" />
       <div className="relative z-10 w-full max-w-[1200px] mx-auto px-6 sm:px-10 pb-10 sm:pb-16 text-white translate-y-4">
         <motion.div
           initial={{opacity: 0, y: 10}}
           animate={{opacity: 1, y: 0}}
           transition={{delay: 0.1, duration: 0.5}}
         >
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-headline-xl sm:text-headline-2xl font-headline-xl text-on-primary drop-shadow-md">
+          <div className="flex flex-wrap items-center gap-3 mb-2 max-w-full">
+            <h1
+              className="font-headline-xl text-on-primary drop-shadow-md line-clamp-2 break-words"
+              style={{
+                fontSize: 'clamp(1.5rem, 5.5vw, 2.5rem)',
+                lineHeight: '1.15',
+              }}
+              title={library.name}
+            >
               {toTitleCase(library.name)}
             </h1>
             {role === 'viewer' && (
-              <span className="font-label-caps text-[10px] tracking-wider uppercase bg-surface-container-high/80 text-on-surface-variant px-2 py-1 flex items-center justify-center rounded border border-outline-variant/30 backdrop-blur-sm shadow-sm inline-flex">
+              <span className="font-label-caps text-[10px] tracking-wider uppercase bg-surface-container-high/80 text-on-surface-variant px-2 py-1 flex items-center justify-center rounded border border-outline-variant/30 backdrop-blur-sm shadow-sm inline-flex shrink-0">
                 Read-Only
               </span>
             )}

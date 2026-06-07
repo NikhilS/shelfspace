@@ -1,13 +1,8 @@
 import React, {useState, useEffect} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
-import {
-  auth,
-  db,
-  handleFirestoreError,
-  OperationType,
-  uploadBase64Image,
-} from '../firebase';
+import {auth, db, handleFirestoreError, OperationType} from '../firebase';
+import {uploadBase64Image} from '../services/db/storage';
 import {
   collection,
   getDocs,

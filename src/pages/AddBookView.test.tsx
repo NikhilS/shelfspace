@@ -68,7 +68,6 @@ vi.mock('../firebase', () => ({
       providerData: [],
     },
   },
-  uploadBase64Image: vi.fn(() => Promise.resolve('mocked-url')),
   handleFirestoreError: vi.fn(),
   OperationType: {
     CREATE: 'create',
@@ -78,6 +77,10 @@ vi.mock('../firebase', () => ({
     GET: 'get',
     WRITE: 'write',
   },
+}));
+
+vi.mock('../services/db/storage', () => ({
+  uploadBase64Image: vi.fn(() => Promise.resolve('mocked-url')),
 }));
 
 describe('AddBookView', () => {

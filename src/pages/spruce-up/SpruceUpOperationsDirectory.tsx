@@ -360,7 +360,7 @@ export function SpruceUpOperationsDirectory({
                               <span className="font-serif text-xs font-bold block leading-none">
                                 {op.name}
                               </span>
-                              <span className="font-sans text-[9px] text-[#7d5633] tracking-wide block mt-1">
+                              <span className="font-sans text-[9px] text-secondary tracking-wide block mt-1">
                                 {op.engine}
                               </span>
                             </div>

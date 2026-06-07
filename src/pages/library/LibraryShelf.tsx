@@ -189,11 +189,11 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
                   .split('')
                   .reduce((acc, char) => acc + char.charCodeAt(0), 0);
                 const gradients = [
-                  'from-[#2f4d40] to-[#163428]',
-                  'from-[#7d5633] to-[#2e1500]',
-                  'from-[#021a35] to-[#041c37]',
-                  'from-[#8397b8] to-[#4b5f7e]',
-                  'from-[#e5e2dc] to-[#dcdad4]',
+                  'from-on-tertiary-fixed-variant to-tertiary-container',
+                  'from-secondary to-on-secondary-fixed',
+                  'from-primary to-on-primary-fixed',
+                  'from-on-primary-container to-surface-tint',
+                  'from-surface-container-highest to-surface-dim',
                 ];
                 const gradientClass = gradients[hash % gradients.length];
 

@@ -12,12 +12,8 @@ import {
   serverTimestamp,
   addDoc,
 } from 'firebase/firestore';
-import {
-  db,
-  handleFirestoreError,
-  OperationType,
-  uploadBase64Image,
-} from '../../firebase';
+import {db, handleFirestoreError, OperationType} from '../../firebase';
+import {uploadBase64Image} from '../../services/db/storage';
 import {Book, BookDetailsPayload, FirestoreDate} from '../../types';
 export type {Book, BookDetailsPayload, FirestoreDate};
 import {useAuth} from '../../contexts/AuthContext';
@@ -179,6 +175,7 @@ export function useBook(
     batch.delete(doc(db, 'libraries', libraryId, 'bookDetails', bookId));
     batch.update(doc(db, 'libraries', libraryId), {
       bookCount: increment(-1),
+      updatedAt: serverTimestamp(),
     });
 
     // Cleanup reviews (small scale deletion)
