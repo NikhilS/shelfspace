@@ -7,6 +7,7 @@ import {useAddBooks} from './add-book/useAddBooks';
 import {useExistingBooks} from './add-book/useExistingBooks';
 import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {Checkbox} from '../components/ui/checkbox';
+import {isDuplicateBook, normalizeBookDetails} from '../lib/utils';
 import {
   Select,
   SelectContent,
@@ -33,39 +34,17 @@ export default function AddBookView() {
   const {addBooks, isAddingAll} = useAddBooks(libraryId);
 
   const handleAdd = async (book: BookDetails) => {
-    const cleanNewIsbn = (book.isbn || '').trim().replace(/[^0-9X]/gi, '');
-    const cleanNewTitle = (book.title || '').trim().toLowerCase();
-    const cleanNewAuthor = (book.author || '').trim().toLowerCase();
+    const bookToAdd = normalizeBookDetails(book);
 
-    if (
-      !allowDuplicates &&
-      existingBooks.some(b => {
-        const cleanExistingIsbn = (b.isbn || '')
-          .trim()
-          .replace(/[^0-9X]/gi, '');
-        const hasSameIsbn =
-          cleanExistingIsbn.length >= 10 &&
-          cleanNewIsbn.length >= 10 &&
-          cleanExistingIsbn === cleanNewIsbn;
-        const hasSameTitleAndAuthor =
-          (b.title || '').trim().toLowerCase() === cleanNewTitle &&
-          (b.author || '').trim().toLowerCase() === cleanNewAuthor;
-        return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
-      })
-    ) {
-      toast.info(`Skipped duplicate: ${book.title}`);
+    if (!allowDuplicates && isDuplicateBook(bookToAdd, existingBooks)) {
+      toast.info(`Skipped duplicate: ${bookToAdd.title}`);
       return;
     }
 
     try {
-      const bookToAdd = {
-        ...book,
-        format: book.format || 'physical',
-      } as BookDetails;
       await addBooks([bookToAdd]);
-      toast.success(`Added ${bookToAdd.title}`);
     } catch {
-      toast.error('Failed to add book');
+      // Handled inside useAddBooks
     }
   };
 

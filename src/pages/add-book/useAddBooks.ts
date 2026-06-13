@@ -6,6 +6,7 @@ import {BookDetails} from '../../services/bookApi';
 import {useAuth} from '../../contexts/AuthContext';
 import {logger} from '../../contexts/DebugContext';
 import {generateBookEmbeddings} from '../../services/gemini';
+import {toast} from 'sonner';
 
 enum OperationType {
   CREATE = 'create',
@@ -73,6 +74,13 @@ export function useAddBooks(libraryId?: string) {
     setIsAddingAll(true);
     logger.info(`[useAddBooks] Starting addBooks for ${books.length} books`);
 
+    const toastId = toast.loading(
+      `Preparing to add ${books.length} book${books.length === 1 ? '' : 's'} to your library...`,
+      {
+        description: 'Starting background sync...',
+      },
+    );
+
     try {
       // 1. Pre-generate embeddings for newly added books
       let embeddings: number[][] = [];
@@ -104,6 +112,14 @@ export function useAddBooks(libraryId?: string) {
 
       for (let i = 0; i < books.length; i++) {
         const book = books[i];
+        const added = i;
+        const remaining = books.length - i;
+
+        toast.loading(`Processing "${book.title || 'Untitled Book'}"...`, {
+          id: toastId,
+          description: `Added: ${added} | Remaining: ${remaining} (Working...)`,
+        });
+
         const cleanBook = Object.fromEntries(
           Object.entries(book).filter(
             ([, v]) => v !== undefined && v !== null && v !== '',
@@ -188,11 +204,33 @@ export function useAddBooks(libraryId?: string) {
         updatedAt: serverTimestamp(),
       });
 
+      toast.loading(
+        `Committing ${books.length} book${books.length === 1 ? '' : 's'}...`,
+        {
+          id: toastId,
+          description: 'Writing securely to cloud...',
+        },
+      );
+
       logger.info(
         `[useAddBooks] Committing additions for ${addedCount} books via ClientBulkWriter...`,
       );
       await writer.close();
       logger.info('[useAddBooks] Batch commit successful.');
+
+      const successTitle =
+        books.length === 1
+          ? `Successfully added "${books[0].title}"!`
+          : `Successfully added ${books.length} books!`;
+      const successDesc =
+        books.length === 1
+          ? 'Your book is now on your shelves.'
+          : `Added: ${books.length} | Remaining: 0 (Done)`;
+
+      toast.success(successTitle, {
+        id: toastId,
+        description: successDesc,
+      });
 
       logger.info(`[useAddBooks] Successfully added ${books.length} books.`);
       return books;
@@ -200,6 +238,10 @@ export function useAddBooks(libraryId?: string) {
       logger.error(
         `[useAddBooks] Failed to add books: ${err instanceof Error ? err.message : String(err)}`,
       );
+      toast.error('Failed to add books', {
+        id: toastId,
+        description: err instanceof Error ? err.message : String(err),
+      });
       handleFirestoreError(
         err,
         OperationType.WRITE,

@@ -442,7 +442,7 @@ export async function extractBooksFromCsv(csvText: string): Promise<
 
     const ai = getGeminiClient();
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
+      model: 'gemini-3.5-flash',
       contents: `You are a data mapping assistant. I am providing you with the first few rows of a CSV file parsed as JSON arrays.
       
       CSV Sample Rows:
@@ -703,7 +703,12 @@ export async function generateBookInsights(
   while (retries > 0) {
     try {
       const response = await ai.models.generateContent({
-        model: retries > 1 ? 'gemini-3.1-pro-preview' : 'gemini-3.5-flash',
+        model:
+          type === 'catchup'
+            ? 'gemini-3.5-flash'
+            : retries > 1
+              ? 'gemini-3.1-pro-preview'
+              : 'gemini-3.5-flash',
         contents: prompt,
         config: {
           systemInstruction: 'You are an expert librarian.',

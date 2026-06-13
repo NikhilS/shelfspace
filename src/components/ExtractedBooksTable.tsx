@@ -4,9 +4,8 @@ import {
   toTitleCase,
   cn,
   triggerHaptics,
-  normalizeTitle,
-  normalizeName,
-  normalizeIsbn,
+  filterDuplicateBooks,
+  normalizeBookDetails,
 } from '../lib/utils';
 import {toast} from 'sonner';
 import {Checkbox} from './ui/checkbox';
@@ -110,48 +109,22 @@ export default function ExtractedBooksTable({
         phase: 'saving',
       });
 
-      // Map extracted books directly to BookDetails for saving
-      let booksToSave: BookDetails[] = selectedBooks.map(book => {
-        const cleanIsbn = normalizeIsbn(book.isbn);
-        return {
-          title: normalizeTitle(book.title),
-          author: normalizeName(book.author),
-          isbn: cleanIsbn && cleanIsbn !== 'NULL' ? cleanIsbn : '',
-          coverUrl: '',
-          publishedDate: '',
-          genres: book.genres,
-          format: book.format || csvFormat,
-        };
-      });
+      // Normalize and filter duplicate books
+      const mappedBooksInput = selectedBooks.map(book => ({
+        ...book,
+        format: book.format || csvFormat,
+      }));
 
-      logger.info(
-        `[ExtractedBooksTable] Normalized ${booksToSave.length} books to save`,
-      );
+      let booksToSave: BookDetails[];
 
-      // Simple duplicate filtering
       if (!allowDuplicates) {
-        const initialCount = booksToSave.length;
-        booksToSave = booksToSave.filter(book => {
-          const cleanNewIsbn = book.isbn.trim().replace(/[^0-9X]/gi, '');
-          const cleanNewTitle = book.title.trim().toLowerCase();
-          const cleanNewAuthor = book.author.trim().toLowerCase();
+        const {unique, duplicatesFromInput} = filterDuplicateBooks(
+          mappedBooksInput,
+          existingBooks,
+        );
+        booksToSave = unique;
 
-          return !existingBooks.some(b => {
-            const cleanExistingIsbn = (b.isbn || '')
-              .trim()
-              .replace(/[^0-9X]/gi, '');
-            const hasSameIsbn =
-              cleanExistingIsbn.length >= 10 &&
-              cleanNewIsbn.length >= 10 &&
-              cleanExistingIsbn === cleanNewIsbn;
-            const hasSameTitleAndAuthor =
-              (b.title || '').trim().toLowerCase() === cleanNewTitle &&
-              (b.author || '').trim().toLowerCase() === cleanNewAuthor;
-            return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
-          });
-        });
-
-        const duplicateCount = initialCount - booksToSave.length;
+        const duplicateCount = duplicatesFromInput.length;
         if (duplicateCount > 0) {
           logger.info(
             `[ExtractedBooksTable] Filtered out ${duplicateCount} duplicate books.`,
@@ -161,7 +134,14 @@ export default function ExtractedBooksTable({
             `Skipped ${duplicateCount} duplicate book${duplicateCount === 1 ? '' : 's'}.`,
           );
         }
+      } else {
+        // Just normalize all books to save
+        booksToSave = mappedBooksInput.map(book => normalizeBookDetails(book));
       }
+
+      logger.info(
+        `[ExtractedBooksTable] Normalized ${booksToSave.length} books to save`,
+      );
 
       if (booksToSave.length === 0) {
         triggerHaptics([50, 100, 50]);
@@ -179,7 +159,6 @@ export default function ExtractedBooksTable({
       await addBooks(booksToSave);
 
       triggerHaptics([30, 50, 30]);
-      toast.success(`Successfully added ${booksToSave.length} books`);
 
       // Clear added books from the table - THIS TRIGGERS UNMOUNT if table becomes empty
       setExtractedBooks(prev =>
@@ -198,7 +177,6 @@ export default function ExtractedBooksTable({
     } catch (e: unknown) {
       console.error('Error adding extracted books:', e);
       triggerHaptics([50, 100, 50]);
-      toast.error('An error occurred while adding books to your library.');
     } finally {
       logger.info(
         '[ExtractedBooksTable] handleAddSelectedExtracted finally cleaning up',

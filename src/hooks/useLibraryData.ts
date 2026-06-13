@@ -1,5 +1,13 @@
 import {useState, useEffect} from 'react';
-import {doc, collection, onSnapshot, query, orderBy} from 'firebase/firestore';
+import {
+  doc,
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  updateDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../firebase';
 import {Library, Book} from '../types';
 import {toast} from 'sonner';
@@ -107,6 +115,29 @@ export function useLibraryData(
       unsubscribeBooks();
     };
   }, [libraryId, userId, navigate]);
+
+  // Auto-reconcile parent library's bookCount when actual books are loaded in memory
+  useEffect(() => {
+    if (!library || isBooksLoading || isLoading) return;
+    if (library.bookCount !== books.length) {
+      const libRef = doc(db, 'libraries', library.id);
+      updateDoc(libRef, {
+        bookCount: books.length,
+        updatedAt: serverTimestamp(),
+      }).catch(err => {
+        console.error(
+          '[useLibraryData] Failed to auto-reconcile bookCount:',
+          err,
+        );
+      });
+    }
+  }, [
+    library?.id,
+    library?.bookCount,
+    books.length,
+    isBooksLoading,
+    isLoading,
+  ]);
 
   return {library, books, isLoading, isBooksLoading, isSyncing};
 }

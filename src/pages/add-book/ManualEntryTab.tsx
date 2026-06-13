@@ -18,11 +18,8 @@ import {
 } from '../../components/ui/select';
 import {
   triggerHaptics,
-  toSentenceCase,
-  normalizeTitle,
-  normalizeName,
-  normalizeIsbn,
-  normalizeText,
+  isDuplicateBook,
+  normalizeBookDetails,
 } from '../../lib/utils';
 
 interface ManualEntryTabProps {
@@ -78,58 +75,22 @@ export function ManualEntryTab({
   const formatValue = watch('format');
 
   const onSubmit = async (data: ManualEntryFormValues) => {
-    const cleanNewIsbn = (data.isbn || '').trim().replace(/[^0-9X]/gi, '');
-    const cleanNewTitle = data.title.trim().toLowerCase();
-    const cleanNewAuthor = data.author.trim().toLowerCase();
+    const newBook = normalizeBookDetails({...data, coverUrl});
 
-    if (
-      !allowDuplicates &&
-      existingBooks.some(b => {
-        const cleanExistingIsbn = (b.isbn || '')
-          .trim()
-          .replace(/[^0-9X]/gi, '');
-        const hasSameIsbn =
-          cleanExistingIsbn.length >= 10 &&
-          cleanNewIsbn.length >= 10 &&
-          cleanExistingIsbn === cleanNewIsbn;
-        const hasSameTitleAndAuthor =
-          (b.title || '').trim().toLowerCase() === cleanNewTitle &&
-          (b.author || '').trim().toLowerCase() === cleanNewAuthor;
-        return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
-      })
-    ) {
+    if (!allowDuplicates && isDuplicateBook(newBook, existingBooks)) {
       triggerHaptics([50, 100, 50]);
-      toast.info(`Skipped duplicate: ${data.title}`);
+      toast.info(`Skipped duplicate: ${newBook.title}`);
       return;
     }
 
     setIsAdding(true);
     try {
-      const newBook: BookDetails = {
-        title: normalizeTitle(data.title),
-        author: normalizeName(data.author),
-        isbn: normalizeIsbn(data.isbn),
-        series: normalizeText(data.series),
-        synopsis: normalizeText(data.synopsis),
-        publishedDate: data.publishedDate || '',
-        format: data.format,
-        coverUrl,
-        genres: data.genresInput
-          ? data.genresInput
-              .split(',')
-              .map(g => toSentenceCase(g.trim()))
-              .filter(Boolean)
-          : [],
-      };
-
       await addBooks([newBook]);
       triggerHaptics([30, 50, 30]);
-      toast.success(`Added ${newBook.title}`);
       reset();
       setCoverUrl('');
     } catch {
       triggerHaptics([50, 100, 50]);
-      toast.error('Failed to add book');
     } finally {
       setIsAdding(false);
     }

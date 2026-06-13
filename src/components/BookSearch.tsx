@@ -6,7 +6,7 @@ import {
   BookDetails,
 } from '../services/bookApi';
 import {toast} from 'sonner';
-import {toTitleCase} from '../lib/utils';
+import {toTitleCase, isDuplicateBook, normalizeBookDetails} from '../lib/utils';
 import {Button} from '@/components/ui/button';
 
 interface BookSearchProps {
@@ -71,33 +71,16 @@ export default function BookSearch({
   };
 
   const handleAddClick = async (book: BookDetails) => {
-    const cleanNewIsbn = (book.isbn || '').trim().replace(/[^0-9X]/gi, '');
-    const cleanNewTitle = (book.title || '').trim().toLowerCase();
-    const cleanNewAuthor = (book.author || '').trim().toLowerCase();
+    const bookToAdd = normalizeBookDetails(book);
 
-    if (
-      !allowDuplicates &&
-      existingBooks.some(b => {
-        const cleanExistingIsbn = (b.isbn || '')
-          .trim()
-          .replace(/[^0-9X]/gi, '');
-        const hasSameIsbn =
-          cleanExistingIsbn.length >= 10 &&
-          cleanNewIsbn.length >= 10 &&
-          cleanExistingIsbn === cleanNewIsbn;
-        const hasSameTitleAndAuthor =
-          (b.title || '').trim().toLowerCase() === cleanNewTitle &&
-          (b.author || '').trim().toLowerCase() === cleanNewAuthor;
-        return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
-      })
-    ) {
-      toast.info(`Skipped duplicate: ${book.title}`);
+    if (!allowDuplicates && isDuplicateBook(bookToAdd, existingBooks)) {
+      toast.info(`Skipped duplicate: ${bookToAdd.title}`);
       return;
     }
 
     setIsAdding(book.isbn || book.title);
     try {
-      await onAdd(book);
+      await onAdd(bookToAdd);
     } finally {
       setIsAdding(null);
     }

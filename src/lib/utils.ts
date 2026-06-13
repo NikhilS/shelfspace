@@ -1,4 +1,5 @@
 import {FirestoreDate} from '../types';
+import {BookDetails} from '../services/bookApi';
 import {clsx, type ClassValue} from 'clsx';
 import {twMerge} from 'tailwind-merge';
 
@@ -244,4 +245,95 @@ export async function throttledMapWithRetry<T, R>(
   );
   await Promise.all(workers);
   return results;
+}
+
+export interface GenericBookInput {
+  title: string;
+  author: string;
+  isbn?: string;
+  coverUrl?: string;
+  publishedDate?: string;
+  genres?: string[];
+  genresInput?: string;
+  series?: string;
+  synopsis?: string;
+  authorBio?: string;
+  format?: 'physical' | 'digital';
+}
+
+export function normalizeBookDetails(raw: GenericBookInput): BookDetails {
+  const title = normalizeTitle(raw.title || 'Unknown Title');
+  const author = normalizeName(raw.author || 'Unknown Author');
+  const isbn = normalizeIsbn(raw.isbn || '');
+
+  let genres: string[] = [];
+  if (raw.genresInput) {
+    genres = raw.genresInput
+      .split(',')
+      .map(g => toSentenceCase(g.trim()))
+      .filter(Boolean);
+  } else if (raw.genres) {
+    genres = raw.genres;
+  }
+
+  return {
+    title,
+    author,
+    isbn: isbn && isbn !== 'NULL' ? isbn : '',
+    coverUrl: raw.coverUrl || '',
+    publishedDate: raw.publishedDate || '',
+    genres,
+    series: normalizeText(raw.series || ''),
+    synopsis: normalizeText(raw.synopsis || ''),
+    authorBio: normalizeText(raw.authorBio || ''),
+    format: raw.format || 'physical',
+  };
+}
+
+export function isDuplicateBook(
+  newBook: {isbn?: string; title: string; author: string},
+  existingBooks: Array<{isbn?: string; title: string; author: string}>,
+): boolean {
+  const cleanNewIsbn = normalizeIsbn(newBook.isbn || '');
+  const cleanNewTitle = normalizeTitle(newBook.title).toLowerCase();
+  const cleanNewAuthor = normalizeName(newBook.author).toLowerCase();
+
+  return existingBooks.some(b => {
+    const cleanExistingIsbn = normalizeIsbn(b.isbn || '');
+    const cleanExistingTitle = normalizeTitle(b.title).toLowerCase();
+    const cleanExistingAuthor = normalizeName(b.author).toLowerCase();
+
+    const hasSameIsbn =
+      cleanExistingIsbn.length >= 10 &&
+      cleanNewIsbn.length >= 10 &&
+      cleanExistingIsbn === cleanNewIsbn;
+
+    const hasSameTitleAndAuthor =
+      cleanExistingTitle === cleanNewTitle &&
+      cleanExistingAuthor === cleanNewAuthor;
+
+    return hasSameIsbn || (cleanNewTitle && hasSameTitleAndAuthor);
+  });
+}
+
+export function filterDuplicateBooks(
+  books: GenericBookInput[],
+  existingBooks: Array<{isbn?: string; title: string; author: string}>,
+): {unique: BookDetails[]; duplicatesFromInput: GenericBookInput[]} {
+  const uniqueNormalized: BookDetails[] = [];
+  const duplicatesFromInput: GenericBookInput[] = [];
+
+  for (const book of books) {
+    const normalized = normalizeBookDetails(book);
+    const isDup =
+      isDuplicateBook(normalized, existingBooks) ||
+      isDuplicateBook(normalized, uniqueNormalized);
+    if (isDup) {
+      duplicatesFromInput.push(book);
+    } else {
+      uniqueNormalized.push(normalized);
+    }
+  }
+
+  return {unique: uniqueNormalized, duplicatesFromInput};
 }

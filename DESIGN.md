@@ -1,123 +1,205 @@
-# Design Document: Bibliophile Hub (V3.0)
+# Design Document: Bibliophile Hub (V4.0)
 
 ## Executive Summary
-Bibliophile Hub is a high-performance library management and semantic discovery platform. It leverages a hybrid cloud architecture (Express + Vite + Firebase) and state-of-the-art Generative AI (Google Gemini) to transform a flat list of books into an interactive, AI-enriched knowledge graph. The system excels at structured data extraction from unstructured sources (images, CSVs) and provides novel spatial navigation through thematic book clustering.
+Bibliophile Hub is a high-performance, secure, and visually cohesive library management and semantic discovery platform. By pairing a high-fidelity React 19 single-page application (SPA) with a resilient Express.js proxy backend, the system delivers lightning-fast rendering (60FPS scrolling) alongside state-of-the-art multimodal AI integrations.
+
+Leveraging the **Google Gemini SDK**, Bibliophile Hub converts flat metadata catalogs into an interactive thematic knowledge graph—providing physical/digital file scanners, CSV structure analyzers, UMAP-based spatial visualization, automatic series discovery, BISAC categorization, and personalized companion features. It is built upon a secure, offline-ready Firestore architecture.
 
 ---
 
 ## 1. System Architecture
 
-The platform follows a **Full-Stack SPA** architecture with a specialized backend service for long-running jobs and administrative operations.
+The application adopts a full-stack hybrid topology that combines rich, responsive browser capabilities with server-side proxy controls.
 
-### 1.1 Hybrid Computation Model
-- **Frontend (React 19 + Vite)**: Handles the immersive UI, real-time data synchronization via Firestore, and heavy non-blocking compute (UMAP projection) using Web Workers.
-- **Backend (Express + Firebase Admin SDK)**: Provides a stable environment for atomic batch operations, such as library-wide deduplication and the "Background Resync" engine which prevents client-side timeouts during large-scale metadata enrichment.
-- **AI Orchestration (Google GenAI SDK)**: A multi-model pipeline utilizing `Gemini 3.1 Pro` for multimodal analysis and `Gemini Flash` for high-throughput metadata mapping.
+```mermaid
+graph TD
+    %% Frontend Block
+    subgraph Frontend [Client-Side Desktop First UI]
+        UI[React 19 / Vite SPA]
+        UWorker[Web Worker - UMAP Compute]
+        FStore[Firestore SDK - Offline First Cache]
+    end
 
-### 1.2 Data Infrastructure: The Split-Collection Pattern
-To optimize for **Total Cost of Ownership (TCO)** and **Time to First Paint (TTFP)**, the system implements a split-collection strategy for books.
+    %% Backend Block
+    subgraph Backend [Express Proxies & Security Host]
+        API[Express.js App - Port 3000]
+        AdminSDK[Firebase Admin SDK]
+        Bulk[Firestore BulkWriter Batching]
+    end
 
-| Collection | Role | Data Content |
-| :--- | :--- | :--- |
-| `books` | **Primary Index** | Lightweight metadata (Title, Author, ISBN) for high-speed list rendering. |
-| `bookDetails`| **Metadata Vault**| High-payload fields (Synopsis, Embeddings, Multi-paragraph bios). |
+    %% External Services
+    subgraph External [External Cloud Interfaces]
+        Gemini[Google Gemini API]
+        FAuth[Firebase Authenticator + Allowlist]
+        BooksAPI[Tiered APIs: Google Books / OpenLibrary]
+    end
 
-**Architectural Insight:** By separating the 768-dimensional embedding vectors (approx. 6KB per book) into `bookDetails`, we reduce the egress overhead of the primary `libraryView` by ~95%, enabling smooth 60FPS scrolling with thousands of entries.
-
----
-
-## 2. Core Service Implementation
-
-### 2.1 Resilient Ingestion: Tiered Metadata Pipeline
-The internal `bookApi` service implements a "Fall-Back-Forward" strategy to maximize successful ingestion even when specific APIs are down or data is missing.
-
-```typescript
-// Architecture: Tiered Metadata Resolution
-export async function searchBookByIsbn(isbn: string): Promise<BookDetails | null> {
-  // Tier 1: Google Books API (Rich metadata, High-Res covers)
-  const gBooks = await fetchGoogleBooks(isbn);
-  if (gBooks) return mapToInternalSchema(gBooks);
-
-  // Tier 2: OpenLibrary API (Open-source fallback)
-  const olBooks = await fetchOpenLibrary(isbn);
-  if (olBooks) return mapToInternalSchema(olBooks);
-
-  // Tier 3 (Optional UI Trigger): Gemini Vision
-  // Used if current scans/photos fail to provide valid ISBNs.
-}
+    %% Connections
+    UI <-->|Active State & Rendering| UWorker
+    UI -->|Uncached Ops & Job Starts| API
+    UI <-->|Real-time Collection Updates| FStore
+    FStore <-->|Rule Guarded Synchronization| AdminSDK
+    API <-->|Decoded JWT Verify & Read| AdminSDK
+    API -->|Protected API Actions| Gemini
+    API -->|Throttled Requests| BooksAPI
+    UI <-->|Allowlist Checked Login| FAuth
 ```
 
-### 2.2 Semantic Constellation Map (UMAP Projection)
-The high-dimensional thematic relationship is projected into 2D space using **UMAP (Uniform Manifold Approximation and Projection)**.
+### 1.1 Multi-Tier Execution Model
+1. **Frontend Layer (React 19 + Tailwind CSS + Vite)**: 
+   - Uses **Animate Presence (`motion`)** for smooth, declarative transitions.
+   - Leverages Web Workers to offload memory-heavy multi-dimensional calculations (UMAP projections) from the main browser thread.
+   - Displays real-time database changes utilizing Firestore's persistent offline sync layer.
+2. **Backend Services (Express.js + Firebase Admin SDK)**:
+   - Hosted on port `3000` via our Node process to perform safe atomic database operations.
+   - Enforces administrative checks, handles clean library destruction (nested subcollections), updates library permission models, and manages bulk sync worker records.
+3. **Secure Secrets Proxy (`/api/gemini/action`)**:
+   - To robustly secure sensitive API keys, the browser never speaks directly to third-party endpoints. Instead, client-side hooks forward action envelopes to backend routes, validating current Firebase user session ID tokens (JWTs) before initializing the **Google GenAI SDK** using secure, server-side environment variables (`GEMINI_API_KEY`).
 
-1.  **Embedding Generation**: Synopses are converted into vectors using `gemini-embedding-2-preview`.
-2.  **Worker-Based Projection**: Since UMAP is computationally intensive, the calculation is offloaded to a `Web Worker`.
-3.  **Clustering**: K-Means identifies thematic groups.
-4.  **AI Labeling**: `Gemini Flash` analyzes the book titles within a cluster to generate a poetic name (e.g., *"Nebula of Stoic Philosophy"*).
+---
 
-```typescript
-// Web Worker Implementation (src/workers/umapWorker.ts)
-self.onmessage = async (e: MessageEvent) => {
-  const { embeddings, config } = e.data;
-  const umap = new UMAP(config);
-  const nRows = embeddings.length;
-  const nCols = embeddings[0].length;
+## 2. Split-Collection Data Blueprint
 
-  // Flattened access for performance
-  const data = new Float32Array(nRows * nCols);
-  embeddings.forEach((emb, i) => data.set(emb, i * nCols));
+To minimize Time to First Paint (TTFP) and reduce network egress overhead on large collections, the platform decouples UI-responsive navigation items from heavy semantic payloads.
 
-  const projection = umap.fit(data);
-  self.postMessage({ projection });
-};
+```mermaid
+graph LR
+    subgraph Library [Library Document]
+        Lib[Library Metadata: ID, Name, Owner, Access Matrix]
+    end
+
+    subgraph SplitData [Split-Collection Pattern]
+        Books[books Sub-Collection <br/><b>Primary Index</b><br/>- Title, Author, ISBN, Genres, CoverUrl<br/><i>Avg Size: 0.3 KB</i>]
+        Details[bookDetails Sub-Collection <br/><b>Metadata Vault</b><br/>- Synopsis, Author Biography, Embeddings 768d<br/><i>Avg Size: ~6.0 KB</i>]
+    end
+
+    Lib -->|Contains| Books
+    Lib -->|Contains| Details
+    Books -->|Linked 1:1 ID| Details
 ```
 
+### 2.1 Collection Demarcation
+- **Primary Index (`libraries/{id}/books`)**:
+  Contains short, lightweight properties strictly required for high-speed ledger list renders and filtering. Removing large text blocks ensures mobile and ultra-wide grid views load instantly.
+- **Metadata Vault (`libraries/{id}/bookDetails`)**:
+  Acts as a lazy-loaded repository storing high-payload attributes, detailed text passages, 1:1 author profiles, and 768-dimensional float arrays (`gemini-embedding-2-preview`) utilized in spatial math projects.
+- **Spruce Up Engine (Data Healing & Normalization)**:
+  An embedded automation system that migrates legacy systems (where syonpses and author bios were directly in the `books` document) by moving them to the `bookDetails` container—cleaning the primary collection.
+
 ---
 
-## 3. Background Processing & Jobs
+## 3. Advanced AI Orchestration Pipelines
 
-The Express backend manages the **Library Resync Service**. This service iterates through a library's entries and performs "data healing":
-- Generating missing covers via OpenLibrary.
-- Extracting missing genres or series info using `Gemini Flash`.
-- Pruning orphan `bookDetails` documents.
+Bibliophile Hub combines structural models into a powerful, multi-model generative intelligence pipeline.
 
-The progress is tracked via a `Job` entity in Firestore, allowing the frontend to show a real-time progress bar:
-```typescript
-// Background Job State
-interface Job {
-  status: 'running' | 'completed' | 'failed';
-  progress: number;
-  total: number;
-  updatedAt: Timestamp;
-}
+```mermaid
+flowchart TD
+    %% Injest Choice
+    A[UI Ingestion Trigger] -->|Spine Spine Photo| B[Vision Scanner]
+    A -->|CSV Document| C[CSV Column Indexer]
+
+    %% Vision Pipeline
+    B -->|Base64 Image Part| B1[Gemini 3.1 Pro Preview]
+    B1 -->|Retry Fallback| B2[Gemini 3.5 Flash]
+    B2 --> D[Structured JSON Book Array]
+
+    %% CSV Pipeline
+    C -->|Header Parse Samples| C1[Gemini 3.1 Pro Preview]
+    C1 -->|Map Column Indices| C2[PapaParse Stream Extraction]
+    C2 --> D
+
+    %% Enrichment Loop
+    D --> E[Tiered Metadata Integration Query]
+    E -->|1st Choice| E1[Google Books API]
+    E -->|Backup| E2[OpenLibrary Core]
+    E -->|No API Match| E3[Gemini Content Synthesis]
+
+    %% Finalize
+    E3 --> F[Gemini 3.5 Flash Classifier]
+    F -->|Output| G[Store Primary Metadata in books <br/>+ Vectorize Summary for bookDetails]
 ```
 
----
+### 3.1 Multimodal Spine Scanning & Book Extraction
+- High-resolution photographs of library bookshelves are processed through `gemini-3.1-pro-preview` using native JSON-schema structures to guarantee strict array outputs (`{ title, author, isbn }`).
+- A built-in race timeout of 30 seconds gracefully falls back to `gemini-3.5-flash` to handle high-traffic or regional rate limitations without crashing the parent layout.
 
-## 4. Security & Access Control
+### 3.2 Dynamic CSV Columns Mapping
+- Complex, custom CSV files are mapped on the fly. The pipeline parses the initial three text rows via `PapaParse` and consults `gemini-3.1-pro-preview` to detect user column indices—mapping arbitrary column names (e.g. "Author/Creator", "Title Name", "Hardcover/EPUB") into systematic JSON keys (`title`, `author`, `isbn`, `format`) dynamically.
 
-The system adheres to a **Zero-Trust Relational Model** enforced via Firestore Security Rules.
+### 3.3 Semantic Constellation Engine
+1. **Embeddings Collection**: Core book summaries are mapped into high-dimensional space utilizing `gemini-embedding-2-preview`.
+2. **Worker Isolation**: The multi-dimensional arrays are sent to a dedicated client-side **Web Worker (UMAP Projection Tool)**, preventing the UI main-thread from blocking.
+3. **Clustering & Intelligent Group Labels**: Points are categorized using automated K-Means math. To label clusters meaningfully (such as *"Stardust Fantasy"*), the titles of the 15 closest books in each group are forwarded to `gemini-3.5-flash` to generate poetic, contextual cluster titles.
 
-- **Library Ownership**: Every document has an `ownerId`.
-- **Shared Access**: Collaboration is enabled via a `sharedWith` array (list of guest emails). Access is granted only if the authenticated user matches either the owner or a guest.
-- **Relational Integrity**: `isValidBook()` rules verify that a book document's parent library actually exists and is owned/accessible by the requester.
-
----
-
-## 5. Design Decisions & Tradeoffs
-
-### 5.1 Choice of Gemini over OpenAI
-The decision to use Gemini was driven by its **multimodal native architecture**. Extracting lists of books from a single photo of a shelf requires a massive context window and strong spatial reasoning (Vision), where `Gemini 3.1 Pro` outperformed competitors in terms of both extraction accuracy and latency for high-resolution images.
-
-### 5.2 Local Persistence vs Live Fetch
-The app uses **Firestore Persistence**. This "Offline-First" decision ensures that librarians can browse their collections in areas of poor connectivity (e.g., basement libraries) and reduces the perceived latency of the application to near-zero for repeat visits.
-
-### 5.3 Selection of Recharts
-For the Constellation Map, `recharts` was selected over raw `d3` to maintain high developer velocity while providing a declarative, React-friendly way to manage the SVG layer. Custom voronoi-based hit detection was implemented on top of the chart to handle high-density point interaction.
+### 3.4 Interactive Companion Helpers
+- **Spoiler-Driven Plot Catchups**: `gemini-3.1-pro-preview` synthesizes structured, spoiler-rich act breakdowns for returning readers.
+- **Similar Recommendations**: Calculates surrounding thematic vectors to suggest 5 relevant companion books based on library history.
+- **AI Artistry**: Draws watercolor, Ghibli-inspired 16:9 scenic background canvas banners using `gemini-2.5-flash-image` (Imagen) from the user's custom library name.
 
 ---
 
-## 6. Future Roadmap (The "Librarian's Vision")
-- **Audio-Visual Ingestion**: Real-time video stream shelf scanning.
-- **Public Shared Links**: Read-only public galleries for collectors to showcase their library.
-- **Physical/Digital Sync**: Integration with Kindle/Calibre metadata exports.
+## 4. Security & Access Enforcements
+
+Enforced through strict server-side credentials and client-side page route protections.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Client Application
+    participant Guard as RequireLibraryPermission
+    participant Rule as Firestore Security Engine
+    participant DB as Cloud Database
+
+    User->>Guard: Attempt Route Entry (Library Page)
+    Note over Guard: Check useLibraryPermissions Hooks
+    Guard->>Rule: Authenticates request via JWT Session
+    alt Valid Allowlist Email & Permitted Role
+        Rule-->>User: Grant Read stream for /books and /bookDetails
+        User->>DB: Render Dashboard view components
+    else Unauthorized or Role Mismatch
+        Rule-->>User: Deny Access (Missing Permissions)
+        Guard-->>User: Display Elegant Denied UI with Contact Request
+    end
+```
+
+### 4.1 Strict Google Authentication & App Allowlists
+- System access requires explicit verification against a global allowlist collection located in the Firestore DB (`appSettings/allowlist/users`).
+- **First-Run Bootstrapper**: In clean environments with empty allowlists, the first signing user is automatically registered as the administrative controller of the account.
+
+### 4.2 Unified Loading Protection Route
+- Previous versions suffered from split asynchronous checks, creating visible layout shifts and double loader indicators. The platform now implements a unified permission guard:
+```typescript
+// Enforced in src/components/RequireLibraryPermission.tsx
+// Blocks mounting child layouts until access, user credentials, 
+// and roles are fully determined behind a single, elegant loading state.
+```
+
+### 4.3 Database Integrity Rules
+- Deeply nested subcollection checks in `firestore.rules` verify document relationships: ensuring a child book document can only be edited or updated if its parent library exists and the authenticated actor corresponds to the authorized roles array.
+
+---
+
+## 5. Implementation Decisions & Tradeoffs
+
+```
+  ┌───────────────────────────────────────────────────────────────┐
+  │                        Design Choices                         │
+  ├────────────────────────────────┬──────────────────────────────┤
+  │ Model Preference               │ Multimodal Native: Gemini Pro│
+  │ Offline Sync Mode              │ Firestore Core Persistence   │
+  │ Graphical Engine               │ Recharts Declarative SVG     │
+  └────────────────────────────────┴──────────────────────────────┘
+```
+
+- **Gemini over OpenAI**: Selected for its generous context window and native multi-model vision accuracy. Shelf scans contain highly complex visual perspectives (angles, lighting, fonts) that require spatial reasoners.
+- **Local Persistence**: Relying on Firestore local cache offline mechanics provides instant index loads and offline reading capability inside remote or signal-dead archival rooms.
+- **Recharts for Constellation**: Choosing `recharts` allows highly extensible, performant React implementations while leveraging Web Worker math computations to keep frames fluid.
+
+---
+
+## 6. Development Milestones
+- [x] **Relational Schema Isolation**: Divide primary attributes from heavy vectors.
+- [x] **Unified Loader UX**: Implement a clean `<PageLoading />` wrapper across Permission Checks and Library views to completely eliminate double loading indicators.
+- [x] **Image & CSV Ingestion Engine**: Launch fast text scanners and schema mapping.
+- [ ] **Physical/Digital Live Scan**: Integrate real-time camera scanning for ISBN recognition.
+- [ ] **Public View Mode**: Create read-only, non-authenticated public gallery URLs for collectors to display their archives.

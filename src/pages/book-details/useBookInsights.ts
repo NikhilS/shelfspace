@@ -83,9 +83,15 @@ export function useBookInsights(
           }
         }
       } catch (error: unknown) {
-        if (error instanceof Error && error.message !== 'Aborted') {
-          console.error('Failed to auto-generate missing book info:', error);
+        if (
+          abortController.signal.aborted ||
+          (error instanceof Error &&
+            (error.name === 'AbortError' ||
+              error.message.toLowerCase().includes('abort')))
+        ) {
+          return;
         }
+        console.error('Failed to auto-generate missing book info:', error);
       }
     };
 

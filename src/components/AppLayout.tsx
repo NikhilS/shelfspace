@@ -96,12 +96,12 @@ export default function AppLayout({children}: AppLayoutProps) {
       </nav>
 
       {/* Main Content Wrapper */}
-      <main className="flex-1 min-w-0 flex flex-col md:ml-72 pt-16 md:pt-0 min-h-screen relative">
+      <main className="flex-1 min-w-0 flex flex-col md:ml-72 pt-20 md:pt-0 min-h-screen relative">
         <ConnectivityBanner />
         {/* TopNavBar */}
-        <header className="flex flex-col fixed md:sticky top-0 w-full md:w-auto mx-auto md:mx-0 z-30 bg-background/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-sm font-body-md text-on-background transition-all">
+        <header className="flex flex-col fixed md:sticky top-0 w-full z-30 bg-background/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-sm font-body-md text-on-background transition-all pt-4 md:pt-0">
           <div className="flex justify-between items-center h-16 px-4 md:px-8 w-full">
-            <div className="flex items-center space-x-6 w-1/3">
+            <div className="flex items-center space-x-6 w-1/3 h-full">
               <button
                 className="md:hidden p-2 -ml-2 text-on-surface hover:text-primary rounded-full hover:bg-surface-container transition-colors flex items-center justify-center"
                 onClick={() => setIsMobileNavOpen(true)}
@@ -109,15 +109,15 @@ export default function AppLayout({children}: AppLayoutProps) {
                 <Menu className="w-6 h-6" />
               </button>
             </div>
-            <div className="text-xl font-serif font-semibold text-primary w-1/3 text-center tracking-tight md:hidden italic">
+            <div className="text-xl font-serif font-semibold text-primary w-1/3 text-center tracking-tight md:hidden italic flex items-center justify-center h-full">
               book(ish)
             </div>
-            <div className="flex items-center justify-end space-x-4 w-1/3 ml-auto text-on-surface-variant">
+            <div className="flex items-center justify-end space-x-4 w-1/3 ml-auto text-on-surface-variant h-full">
               <div
                 id="header-actions-root"
                 className="flex items-center space-x-2"
               />
-              <div className="h-9 w-9 border border-outline-variant/30 shadow-sm rounded-full bg-surface-variant overflow-hidden cursor-pointer hover:border-primary/50 transition-colors">
+              <div className="h-9 w-9 border border-outline-variant/30 shadow-sm rounded-full bg-surface-variant overflow-hidden cursor-pointer hover:border-primary/50 transition-colors flex-shrink-0">
                 {user?.photoURL ? (
                   <img
                     src={user.photoURL}

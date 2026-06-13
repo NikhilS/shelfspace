@@ -1,4 +1,4 @@
-import {useState, useEffect} from 'react';
+import {useState, useEffect, useRef} from 'react';
 import {useAuth} from '../../contexts/AuthContext';
 import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {reconcileBookCount} from '../../services/db/books';
@@ -24,6 +24,8 @@ export function useLibraries() {
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const reconciledLibsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
@@ -59,16 +61,25 @@ export function useLibraries() {
         setLibraries(libs);
         setIsLoading(false);
 
-        // Auto-migrate legacy libraries missing bookCount
+        // Auto-reconcile bookCount if out of sync or legacy
         libs.forEach(async lib => {
-          if (lib.bookCount === undefined) {
+          if (
+            !reconciledLibsRef.current.has(lib.id) ||
+            lib.bookCount === undefined
+          ) {
+            reconciledLibsRef.current.add(lib.id);
             try {
               const count = await reconcileBookCount(lib.id);
-              await updateDoc(doc(db, 'libraries', lib.id), {
-                bookCount: count,
-              });
+              if (lib.bookCount !== count) {
+                await updateDoc(doc(db, 'libraries', lib.id), {
+                  bookCount: count,
+                });
+              }
             } catch (e) {
-              console.error(`Failed to migrate bookCount for lib ${lib.id}`, e);
+              console.error(
+                `Failed to reconcile bookCount for lib ${lib.id}`,
+                e,
+              );
             }
           }
         });

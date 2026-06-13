@@ -3,7 +3,11 @@ import {BookDetails, searchBookByIsbn} from '../../services/bookApi';
 import BarcodeScanner from '../../components/BarcodeScanner';
 import {Loader2, X, BookPlus} from 'lucide-react';
 import {toast} from 'sonner';
-import {toTitleCase, triggerHaptics} from '../../lib/utils';
+import {
+  toTitleCase,
+  triggerHaptics,
+  normalizeBookDetails,
+} from '../../lib/utils';
 import {Checkbox} from '../../components/ui/checkbox';
 import {Button} from '../../components/ui/button';
 import {logger} from '../../contexts/DebugContext';
@@ -99,21 +103,13 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
     setSelectedScanned(new Set());
 
     try {
-      const formattedBooks = booksToAdd.map(
-        b =>
-          ({
-            ...b,
-            isbn: b.isbn || '',
-            coverUrl: b.coverUrl || '',
-            publishedDate: b.publishedDate || '',
-            format: 'physical',
-          }) as BookDetails,
+      const formattedBooks = booksToAdd.map(b =>
+        normalizeBookDetails({...b, format: 'physical'}),
       );
 
       await addBooks(formattedBooks);
 
       triggerHaptics([30, 50, 30]);
-      toast.success(`Successfully added ${formattedBooks.length} books`);
     } catch {
       booksToAdd.forEach(b => {
         if (b.isbn) scannedRefs.current.add(b.isbn);
@@ -121,7 +117,6 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
       setScannedBooks(originalScanned);
       setSelectedScanned(originalSelected);
       triggerHaptics([50, 100, 50]);
-      toast.error('Failed to add some books');
     }
   };
 
