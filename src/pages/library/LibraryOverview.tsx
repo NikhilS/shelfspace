@@ -264,6 +264,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         alt={book.title}
                         className="relative w-full h-auto object-cover rounded-sm shadow-lg border border-outline-variant/20 z-10 aspect-[2/3]"
                         src={book.coverUrl}
+                        referrerPolicy="no-referrer"
                       />
                     ) : (
                       <div className="relative w-full h-48 sm:h-56 bg-surface-variant rounded-sm shadow-lg border border-outline-variant/20 z-10 flex items-center justify-center p-4 text-center">
@@ -340,6 +341,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         alt="Book Cover"
                         className="w-full h-auto object-cover rounded-sm shadow-md border border-outline-variant/20 aspect-[2/3]"
                         src={pickOfTheDay.coverUrl}
+                        referrerPolicy="no-referrer"
                       />
                     ) : (
                       <div className="w-full h-36 bg-surface-variant rounded-sm shadow-md border border-outline-variant/20 flex items-center justify-center p-2 text-center text-xs font-serif text-on-surface-variant">

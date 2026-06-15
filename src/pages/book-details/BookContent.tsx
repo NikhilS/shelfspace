@@ -4,7 +4,16 @@ import {useAuth} from '../../contexts/AuthContext';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {toTitleCase} from '../../lib/utils';
-import {Loader2, Book as BookIcon, User} from 'lucide-react';
+import {
+  Loader2,
+  Book as BookIcon,
+  User,
+  Globe,
+  Compass,
+  MapPin,
+  History,
+  Clock,
+} from 'lucide-react';
 import {ReviewSection} from './ReviewSection';
 import {EditBookForm} from './EditBookForm';
 import {useBook} from './useBook';
@@ -12,6 +21,11 @@ import {BookHeader} from './BookHeader';
 import {ReadingStatusSelect} from './ReadingStatusSelect';
 import {AiInsightsPanel} from './AiInsightsPanel';
 import {useDebug} from '../../contexts/DebugContext';
+
+const formatYear = (year: number) => {
+  if (year < 0) return `${Math.abs(year)} BCE`;
+  return `${year} CE`;
+};
 
 interface BookContentProps {
   libraryId: string;
@@ -130,6 +144,7 @@ export function BookContent({
                 src={book.coverUrl}
                 alt={book.title}
                 className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
               />
             ) : (
               <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
@@ -207,6 +222,160 @@ export function BookContent({
               </div>
             )}
           </section>
+
+          {/* Literary Setting Section */}
+          {book.geoMetadata && (
+            <section className="bg-surface-container-lowest rounded-lg border border-surface-variant p-8 architectural-shadow">
+              <div className="flex items-center gap-3 mb-6">
+                <Globe className="w-6 h-6 text-primary shrink-0" />
+                <h3 className="font-headline-md text-headline-md text-primary">
+                  Literary Setting
+                </h3>
+              </div>
+
+              {book.geoMetadata.isNonEarth ? (
+                <div className="flex items-start gap-4 p-5 rounded-lg bg-surface-variant/20 border border-outline-variant/30">
+                  <Compass className="w-6 h-6 text-primary shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-title-md text-title-md font-bold text-on-surface">
+                      Fictional / Non-Earth Realm
+                    </h4>
+                    <p className="font-body-md text-body-md text-on-surface-variant mt-2 leading-relaxed">
+                      The setting of this work is identified as being located in
+                      a fictional, fantasy, or non-earth universe (such as space
+                      or an imagined world).
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {book.geoMetadata.locations &&
+                  book.geoMetadata.locations.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {book.geoMetadata.locations.map((loc, idx) => {
+                        const getAdminLevelBadgeClass = (level: string) => {
+                          switch (level?.toLowerCase()) {
+                            case 'city':
+                              return 'bg-primary/10 text-primary border-primary/20';
+                            case 'state':
+                              return 'bg-secondary/10 text-secondary border-secondary/20';
+                            case 'country':
+                              return 'bg-tertiary/10 text-tertiary border-tertiary/20';
+                            default:
+                              return 'bg-outline/10 text-on-surface-variant border-outline/20';
+                          }
+                        };
+                        return (
+                          <div
+                            key={idx}
+                            className="p-5 rounded-lg border border-outline-variant/30 bg-surface/50 hover:bg-surface-variant/5 transition-all flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-start justify-between gap-2 mb-3">
+                                <span className="font-serif font-bold text-lg text-on-surface flex items-center gap-1.5 leading-snug">
+                                  <MapPin className="w-5 h-5 text-primary shrink-0" />
+                                  {loc.name}
+                                </span>
+                                <span
+                                  className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-sm border shrink-0 ${getAdminLevelBadgeClass(
+                                    loc.adminLevel,
+                                  )}`}
+                                >
+                                  {loc.adminLevel}
+                                </span>
+                              </div>
+                              {loc.rationale && (
+                                <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
+                                  {loc.rationale}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="font-body-md text-body-md text-on-surface-variant italic">
+                      No specific geographical locations have been mapped for
+                      this book yet.
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Temporal Setting Section */}
+          {book.temporalMetadata && (
+            <section
+              id="book-temporal-setting-section"
+              className="bg-surface-container-lowest rounded-lg border border-surface-variant p-8 architectural-shadow"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <History className="w-6 h-6 text-primary shrink-0" />
+                <h3 className="font-headline-md text-headline-md text-primary">
+                  Temporal Setting & Historical Era
+                </h3>
+              </div>
+
+              {book.temporalMetadata.isNonHistorical ? (
+                <div
+                  id="temporal-non-historical-badge"
+                  className="flex items-start gap-4 p-5 rounded-lg bg-surface-variant/20 border border-outline-variant/30"
+                >
+                  <Clock className="w-6 h-6 text-primary shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-title-md text-title-md font-bold text-on-surface">
+                      Non-Historical / Contemporary
+                    </h4>
+                    <p className="font-body-md text-body-md text-on-surface-variant mt-2 leading-relaxed">
+                      This work is set in contemporary/modern times, or has no
+                      specific historical/epoch setting.
+                    </p>
+                    {book.temporalMetadata.rationale && (
+                      <p className="font-body-sm text-body-sm text-on-surface-variant italic mt-3 border-l-2 border-outline-variant/30 pl-3 leading-relaxed">
+                        &ldquo;{book.temporalMetadata.rationale}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div id="temporal-historical-details" className="space-y-6">
+                  <div className="p-5 rounded-lg border border-outline-variant/30 bg-surface/50 hover:bg-surface-variant/5 transition-all">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                      <div>
+                        {book.temporalMetadata.eraName && (
+                          <h4 className="font-serif font-bold text-lg text-on-surface leading-snug mb-1">
+                            {book.temporalMetadata.eraName}
+                          </h4>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-mono font-bold tracking-wider uppercase text-primary bg-primary/10 border border-primary/20 px-2.5 py-0.5 rounded">
+                            {book.temporalMetadata.startYear !== undefined &&
+                            book.temporalMetadata.endYear !== undefined
+                              ? `${formatYear(book.temporalMetadata.startYear)} – ${formatYear(book.temporalMetadata.endYear)}`
+                              : book.temporalMetadata.startYear !== undefined
+                                ? `Circa ${formatYear(book.temporalMetadata.startYear)}`
+                                : 'Historical Epoch'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    {book.temporalMetadata.rationale && (
+                      <div className="mt-4 pt-4 border-t border-outline-variant/20">
+                        <h5 className="text-[11px] font-bold tracking-wider uppercase text-on-surface-variant mb-2">
+                          Historical Evidence & Rationale
+                        </h5>
+                        <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed italic">
+                          &ldquo;{book.temporalMetadata.rationale}&rdquo;
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Author Bio Bento Box */}
           <section className="bg-surface-container-lowest rounded-lg border border-surface-variant p-8 architectural-shadow">

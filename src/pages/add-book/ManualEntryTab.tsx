@@ -115,6 +115,7 @@ export function ManualEntryTab({
                   src={coverUrl}
                   alt="Cover"
                   className="w-32 h-48 object-cover rounded-xl shadow-[2px_4px_12px_rgb(26,47,75,0.1)] border border-outline-variant/40"
+                  referrerPolicy="no-referrer"
                 />
                 <button
                   type="button"

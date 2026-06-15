@@ -34,6 +34,7 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
           src={library.heroImageUrl}
           alt={library.name}
           className="w-full h-full object-cover absolute inset-0"
+          referrerPolicy="no-referrer"
         />
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/40 to-transparent opacity-90" />

@@ -207,6 +207,7 @@ export default function ConstellationChart({
                   src={hoveredNode.data.book.coverUrl}
                   alt={hoveredNode.data.book.title}
                   className="w-full h-32 object-cover rounded-sm mb-2.5 border border-outline-variant/20 shadow-inner"
+                  referrerPolicy="no-referrer"
                 />
               )}
               <p className="font-serif text-on-surface text-sm font-semibold tracking-tight leading-tight mb-1">

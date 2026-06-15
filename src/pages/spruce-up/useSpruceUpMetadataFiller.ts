@@ -6,7 +6,7 @@ import {
   deleteField,
   DocumentData,
 } from 'firebase/firestore';
-import {auth, db} from '../../firebase';
+import {db} from '../../firebase';
 import {Book, BookDetailsPayload} from '../../types';
 import {getTieredMetadata} from '../../lib/metadataUtils';
 import {mergeBookMetadata} from '../../lib/utils';
@@ -398,28 +398,17 @@ export function useSpruceUpMetadataFiller({
   const handleForceResyncAllMetadata = async () => {
     if (fixingAll || activeJob?.status === 'running') return;
 
+    setFixingAll(true);
+    setFixingProgress(0);
     try {
-      const token = await auth.currentUser?.getIdToken();
-
-      const response = await fetch(`/api/libraries/${libraryId}/resync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? {Authorization: `Bearer ${token}`} : {}),
-        },
-        body: JSON.stringify({isForceResync: true}),
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to start resync');
-      }
-
-      toast.success('Resync task added to backend queue');
+      await processBooksMetadata(booksWithDetails, true);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Failed to start resync',
       );
+    } finally {
+      setFixingAll(false);
+      setFixingProgress(0);
     }
   };
 

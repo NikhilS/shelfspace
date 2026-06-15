@@ -138,7 +138,7 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
 
       {scannedBooks.length > 0 && (
         <div className="w-full space-y-4">
-          <div className="flex items-center justify-between sticky top-0 bg-surface/80 backdrop-blur-xl py-3 px-2 z-10 border-b border-outline-variant/40 mb-2 rounded-t-xl -mx-2">
+          <div className="flex items-center justify-between sticky top-16 bg-surface/80 backdrop-blur-xl py-3 px-2 z-10 border-b border-outline-variant/40 mb-2 rounded-t-xl -mx-2">
             <h3 className="font-serif text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
               Scanned {scannedBooks.length} Books
             </h3>

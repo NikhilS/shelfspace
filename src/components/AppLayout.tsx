@@ -96,10 +96,10 @@ export default function AppLayout({children}: AppLayoutProps) {
       </nav>
 
       {/* Main Content Wrapper */}
-      <main className="flex-1 min-w-0 flex flex-col md:ml-72 pt-20 md:pt-0 min-h-screen relative">
+      <main className="flex-1 min-w-0 flex flex-col md:ml-72 pt-16 md:pt-0 min-h-screen relative">
         <ConnectivityBanner />
         {/* TopNavBar */}
-        <header className="flex flex-col fixed md:sticky top-0 w-full z-30 bg-background/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-sm font-body-md text-on-background transition-all pt-4 md:pt-0">
+        <header className="flex flex-col fixed md:sticky top-0 w-full z-30 bg-background/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-sm font-body-md text-on-background transition-all">
           <div className="flex justify-between items-center h-16 px-4 md:px-8 w-full">
             <div className="flex items-center space-x-6 w-1/3 h-full">
               <button

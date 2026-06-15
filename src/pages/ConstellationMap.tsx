@@ -1,11 +1,14 @@
-import React from 'react';
+import React, {Suspense, lazy} from 'react';
 import {useParams} from 'react-router-dom';
 import {RefreshCw} from 'lucide-react';
 import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
-import ConstellationChart from '../components/ConstellationChart';
 import {useConstellationData} from '../hooks/useConstellationData';
 import {Button} from '@/components/ui/button';
 import {BookLoader} from '../components/BookLoader';
+
+const ConstellationChart = lazy(
+  () => import('../components/ConstellationChart'),
+);
 
 export default function ConstellationMap() {
   const {id: libraryId} = useParams<{id: string}>();
@@ -49,7 +52,21 @@ export default function ConstellationMap() {
             <p className="text-on-surface-variant font-medium">{progress}</p>
           </div>
         ) : (
-          <ConstellationChart plotData={plotData} clusterNames={clusterNames} />
+          <Suspense
+            fallback={
+              <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container rounded-3xl border border-outline-variant p-8">
+                <BookLoader size="lg" className="mb-4" />
+                <p className="text-on-surface-variant font-medium animate-pulse">
+                  Loading 3D Constellation Engine...
+                </p>
+              </div>
+            }
+          >
+            <ConstellationChart
+              plotData={plotData}
+              clusterNames={clusterNames}
+            />
+          </Suspense>
         )}
       </div>
     </>

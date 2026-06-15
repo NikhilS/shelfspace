@@ -31,7 +31,7 @@ export function SpruceUpActionBar({
   if (selectedCount === 0 && !isProcessing) return null;
 
   return (
-    <div className="sticky top-0 z-20 bg-surface/80 backdrop-blur-md border-b border-outline-variant py-4 px-6 -mx-6 mb-6 flex flex-wrap items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+    <div className="sticky top-16 z-20 bg-surface/80 backdrop-blur-md border-b border-outline-variant py-4 px-6 -mx-6 mb-6 flex flex-wrap items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
       <div className="flex items-center gap-3">
         <div className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-bold flex items-center gap-2">
           {isProcessing ? (

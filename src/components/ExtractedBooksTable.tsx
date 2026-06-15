@@ -188,7 +188,7 @@ export default function ExtractedBooksTable({
 
   return (
     <div className="w-full space-y-4">
-      <div className="flex flex-col gap-2 sticky top-0 bg-surface/80 backdrop-blur-xl py-3 px-2 z-10 border-b border-outline-variant/40 mb-2 rounded-t-xl -mx-2">
+      <div className="flex flex-col gap-2 sticky top-16 bg-surface/80 backdrop-blur-xl py-3 px-2 z-10 border-b border-outline-variant/40 mb-2 rounded-t-xl -mx-2">
         <div className="flex items-center justify-between">
           <h3 className="font-serif text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
             Found {extractedBooks.length} Books

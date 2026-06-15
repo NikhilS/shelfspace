@@ -33,6 +33,7 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
                 alt={lib.name}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                 src={lib.heroImageUrl}
+                referrerPolicy="no-referrer"
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-surface-container">

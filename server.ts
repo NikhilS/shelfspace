@@ -4,6 +4,7 @@ import path from 'path';
 import {fileURLToPath} from 'url';
 import admin from 'firebase-admin';
 import fs from 'fs';
+import crypto from 'crypto';
 
 import {getFirestore} from 'firebase-admin/firestore';
 import {getTieredMetadata} from './src/lib/metadataUtils';
@@ -59,19 +60,120 @@ const db = getFirestore(
 );
 const dbAdmin = db;
 
+async function getCachedGeocode(
+  name: string,
+): Promise<{lat: number; lng: number} | undefined> {
+  try {
+    const normalized = name.toLowerCase().trim();
+    const hash = crypto.createHash('sha256');
+    hash.update(normalized);
+    const cacheKey = hash.digest('hex');
+    const docRef = dbAdmin.collection('geolocationCache').doc(cacheKey);
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      const data = docSnap.data();
+      if (data && data.coordinates) {
+        console.log(
+          `[Geocoding Cache] Hit for "${name}" -> (${data.coordinates.lat}, ${data.coordinates.lng})`,
+        );
+        return data.coordinates as {lat: number; lng: number};
+      }
+    }
+  } catch (error) {
+    console.error('[Geocoding Cache] Read error:', error);
+  }
+  return undefined;
+}
+
+async function setCachedGeocode(
+  name: string,
+  coordinates: {lat: number; lng: number},
+): Promise<void> {
+  try {
+    const normalized = name.toLowerCase().trim();
+    const hash = crypto.createHash('sha256');
+    hash.update(normalized);
+    const cacheKey = hash.digest('hex');
+    const docRef = dbAdmin.collection('geolocationCache').doc(cacheKey);
+    await docRef.set({
+      locationName: name,
+      coordinates,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    console.log(`[Geocoding Cache] Saved "${name}" to store.`);
+  } catch (error) {
+    console.error('[Geocoding Cache] Write error:', error);
+  }
+}
+
+async function geocodeLocation(
+  name: string,
+): Promise<{lat: number; lng: number} | undefined> {
+  // Try retrieving from Firestore cache first to avoid expensive Geocoding API billing
+  const cached = await getCachedGeocode(name);
+  if (cached) return cached;
+
+  const apiKey =
+    process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
+  if (!apiKey || apiKey === 'YOUR_API_KEY') {
+    console.warn(
+      `[Geocoding] Missing/placeholder API key, skipping real geocoding for: ${name}`,
+    );
+    return undefined;
+  }
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(name)}&key=${apiKey}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(
+        `[Geocoding] Failed to geocode ${name}: HTTP ${response.status}`,
+      );
+      return undefined;
+    }
+    const data = (await response.json()) as {
+      status: string;
+      results?: Array<{
+        geometry: {
+          location: {
+            lat: number;
+            lng: number;
+          };
+        };
+      }>;
+    };
+    if (data.status === 'OK' && data.results && data.results.length > 0) {
+      const coords = data.results[0].geometry.location;
+      // Save the geocoded coordinates to the persistent Firestore cache
+      await setCachedGeocode(name, coords);
+      return coords;
+    }
+    console.warn(
+      `[Geocoding] No results or error status from Google API for ${name}:`,
+      data.status,
+    );
+  } catch (error) {
+    console.error(`[Geocoding] Error during fetch for ${name}:`, error);
+  }
+  return undefined;
+}
+
+interface AuthenticatedRequest extends express.Request {
+  user: admin.auth.DecodedIdToken;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({limit: '50mb'}));
+  app.use(express.urlencoded({limit: '50mb', extended: true}));
 
-  app.delete('/api/libraries/:libraryId', async (req, res) => {
-    const {libraryId} = req.params;
-
-    if (!libraryId) {
-      return res.status(400).json({error: 'Missing libraryId'});
-    }
-
+  // Centralized Firebase ID Token authentication middleware for all /api endpoints
+  const authenticateToken = async (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
       return res.status(401).json({error: 'Unauthorized'});
@@ -80,6 +182,50 @@ async function startServer() {
     try {
       const token = authHeader.split(' ')[1];
       const decodedToken = await admin.auth().verifyIdToken(token);
+      (req as AuthenticatedRequest).user = decodedToken;
+      next();
+    } catch (error) {
+      console.error('[Auth Middleware] Token verification failed:', error);
+      return res.status(401).json({error: 'Unauthorized: Invalid token'});
+    }
+  };
+
+  // Centralized permission check helper to secure library resources
+  const checkLibraryAccess = async (
+    libraryId: string,
+    uid: string,
+    email?: string,
+  ) => {
+    const libRef = dbAdmin.collection('libraries').doc(libraryId);
+    const libSnap = await libRef.get();
+    if (!libSnap.exists) {
+      return {access: false, status: 404, message: 'Library not found'};
+    }
+    const libData = libSnap.data();
+    const ownerId = libData?.ownerId;
+    const sharedWith = libData?.sharedWith || [];
+    const normalizedEmail = email?.toLowerCase().trim() || '';
+
+    if (ownerId === uid) {
+      return {access: true, libRef};
+    }
+    if (normalizedEmail && sharedWith.includes(normalizedEmail)) {
+      return {access: true, libRef};
+    }
+    return {access: false, status: 403, message: 'Forbidden'};
+  };
+
+  app.use('/api', authenticateToken);
+
+  app.delete('/api/libraries/:libraryId', async (req, res) => {
+    const {libraryId} = req.params;
+
+    if (!libraryId) {
+      return res.status(400).json({error: 'Missing libraryId'});
+    }
+
+    try {
+      const decodedToken = (req as AuthenticatedRequest).user;
 
       const libRef = dbAdmin.collection('libraries').doc(libraryId);
       const libSnap = await libRef.get();
@@ -111,14 +257,8 @@ async function startServer() {
       return res.status(400).json({error: 'Missing libraryId or email'});
     }
 
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({error: 'Unauthorized'});
-    }
-
     try {
-      const token = authHeader.split(' ')[1];
-      const decodedToken = await admin.auth().verifyIdToken(token);
+      const decodedToken = (req as AuthenticatedRequest).user;
 
       const libRef = dbAdmin.collection('libraries').doc(libraryId);
       const libSnap = await libRef.get();
@@ -159,14 +299,8 @@ async function startServer() {
       return res.status(400).json({error: 'Missing libraryId or email'});
     }
 
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({error: 'Unauthorized'});
-    }
-
     try {
-      const token = authHeader.split(' ')[1];
-      const decodedToken = await admin.auth().verifyIdToken(token);
+      const decodedToken = (req as AuthenticatedRequest).user;
 
       const libRef = dbAdmin.collection('libraries').doc(libraryId);
       const libSnap = await libRef.get();
@@ -200,14 +334,8 @@ async function startServer() {
       return res.status(400).json({error: 'Missing library name'});
     }
 
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({error: 'Unauthorized'});
-    }
-
     try {
-      const token = authHeader.split(' ')[1];
-      const decodedToken = await admin.auth().verifyIdToken(token);
+      const decodedToken = (req as AuthenticatedRequest).user;
 
       const docRef = await dbAdmin.collection('libraries').add({
         name: name.trim(),
@@ -235,14 +363,8 @@ async function startServer() {
       return res.status(400).json({error: 'Missing libraryId'});
     }
 
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({error: 'Unauthorized'});
-    }
-
     try {
-      const token = authHeader.split(' ')[1];
-      const decodedToken = await admin.auth().verifyIdToken(token);
+      const decodedToken = (req as AuthenticatedRequest).user;
 
       const libSnap = await dbAdmin
         .collection('libraries')
@@ -432,18 +554,6 @@ async function startServer() {
       return res.status(400).json({error: 'Missing action'});
     }
 
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({error: 'Unauthorized'});
-    }
-
-    try {
-      const token = authHeader.split(' ')[1];
-      await admin.auth().verifyIdToken(token);
-    } catch {
-      return res.status(401).json({error: 'Unauthorized: Invalid token'});
-    }
-
     try {
       let result;
 
@@ -489,6 +599,33 @@ async function startServer() {
         case 'classifyBooks':
           result = await geminiService.classifyBooks(payload.batch);
           break;
+        case 'extractBookGeoMetadata':
+          result = await geminiService.extractBookGeoMetadata(
+            payload.title,
+            payload.author,
+            payload.synopsis,
+          );
+          break;
+        case 'extractBookGeoMetadataBatch':
+          result = await geminiService.extractBookGeoMetadataBatch(
+            payload.books as {
+              id: string;
+              title: string;
+              author: string;
+              synopsis?: string;
+            }[],
+          );
+          break;
+        case 'extractBookTemporalMetadataBatch':
+          result = await geminiService.extractBookTemporalMetadataBatch(
+            payload.books as {
+              id: string;
+              title: string;
+              author: string;
+              synopsis?: string;
+            }[],
+          );
+          break;
         default:
           return res.status(400).json({error: `Unknown action: ${action}`});
       }
@@ -512,6 +649,248 @@ async function startServer() {
     }
   });
 
+  app.post('/api/books/:libraryId/enrich-geo', async (req, res) => {
+    const {libraryId} = req.params;
+    const {bookId, title, author, synopsis} = req.body;
+
+    if (!libraryId || !bookId || !title || !author) {
+      return res.status(400).json({error: 'Missing required parameters'});
+    }
+
+    try {
+      const u = (req as AuthenticatedRequest).user;
+      const accessCheck = await checkLibraryAccess(libraryId, u.uid, u.email);
+      if (!accessCheck.access) {
+        return res
+          .status(accessCheck.status || 403)
+          .json({error: accessCheck.message});
+      }
+
+      console.log(`[Enrich Geo] Processing book: ${title}`);
+      const extracted = await geminiService.extractBookGeoMetadata(
+        title,
+        author,
+        synopsis,
+      );
+
+      let geoMetadata;
+      if (!extracted || extracted.isNonEarth) {
+        geoMetadata = {
+          isNonEarth: true,
+          locations: [],
+          lastSyncedAt: new Date().toISOString(),
+        };
+      } else {
+        const locationsWithCoords = [];
+        for (const loc of extracted.locations || []) {
+          let coords = await geocodeLocation(loc.name);
+          if (!coords) {
+            const staticDict: Record<string, {lat: number; lng: number}> = {
+              'paris, france': {lat: 48.8566, lng: 2.3522},
+              'kyoto, japan': {lat: 35.0116, lng: 135.7681},
+              'delhi, india': {lat: 28.6139, lng: 77.209},
+              'kyiv, ukraine': {lat: 50.4501, lng: 30.5234},
+              'new york, ny, usa': {lat: 40.7128, lng: -74.006},
+              'london, uk': {lat: 51.5074, lng: -0.1278},
+              'karachi, pakistan': {lat: 24.8607, lng: 67.0011},
+              'bombay, india': {lat: 18.975, lng: 72.8258},
+              'mumbai, india': {lat: 18.975, lng: 72.8258},
+              'gettysburg, pa, usa': {lat: 39.8309, lng: -77.2311},
+              'rome, italy': {lat: 41.9028, lng: 12.4964},
+            };
+            const lowerKey = loc.name.toLowerCase().trim();
+            if (staticDict[lowerKey]) {
+              coords = staticDict[lowerKey];
+            } else {
+              for (const [key, val] of Object.entries(staticDict)) {
+                if (lowerKey.includes(key) || key.includes(lowerKey)) {
+                  coords = val;
+                  break;
+                }
+              }
+            }
+          }
+          locationsWithCoords.push({
+            name: loc.name,
+            adminLevel: loc.adminLevel,
+            rationale: loc.rationale,
+            ...(coords ? {coordinates: coords} : {}),
+          });
+        }
+        geoMetadata = {
+          isNonEarth: false,
+          locations: locationsWithCoords.slice(0, 5),
+          lastSyncedAt: new Date().toISOString(),
+        };
+      }
+
+      // Secure backend Firestore update
+      const bookRef = dbAdmin
+        .collection('libraries')
+        .doc(libraryId)
+        .collection('books')
+        .doc(bookId);
+      await bookRef.update({geoMetadata});
+      console.log(
+        `[Enrich Geo] Successfully saved geoMetadata for "${title}" to Firestore.`,
+      );
+
+      return res.json({status: 'success', geoMetadata});
+    } catch (error) {
+      console.error('[Enrich Geo] Failed:', error);
+      return res
+        .status(500)
+        .json({error: error instanceof Error ? error.message : String(error)});
+    }
+  });
+
+  app.post('/api/books/:libraryId/batch-enrich-geo', async (req, res) => {
+    const {libraryId} = req.params;
+    const {books} = req.body;
+
+    if (!libraryId || !Array.isArray(books)) {
+      return res.status(400).json({error: 'Missing required parameters'});
+    }
+
+    try {
+      console.log(
+        `[Batch Enrich Geo] Processing batch of ${books.length} books in /api/books/${libraryId}/batch-enrich-geo`,
+      );
+
+      // Perform a single structured JSON schema call to Gemini for all books in the batch
+      const extractedBatch =
+        await geminiService.extractBookGeoMetadataBatch(books);
+      if (!extractedBatch || !Array.isArray(extractedBatch.enrichment)) {
+        throw new Error('Failed to extract geocoding metadata from books');
+      }
+
+      const results = [];
+
+      for (const item of extractedBatch.enrichment) {
+        try {
+          let geoMetadata;
+          if (item.isNonEarth) {
+            geoMetadata = {
+              isNonEarth: true,
+              locations: [],
+              lastSyncedAt: new Date().toISOString(),
+            };
+          } else {
+            const locationsWithCoords = [];
+            for (const loc of item.locations || []) {
+              let coords = await geocodeLocation(loc.name);
+              if (!coords) {
+                const staticDict: Record<string, {lat: number; lng: number}> = {
+                  'paris, france': {lat: 48.8566, lng: 2.3522},
+                  'kyoto, japan': {lat: 35.0116, lng: 135.7681},
+                  'delhi, india': {lat: 28.6139, lng: 77.209},
+                  'kyiv, ukraine': {lat: 50.4501, lng: 30.5234},
+                  'new york, ny, usa': {lat: 40.7128, lng: -74.006},
+                  'london, uk': {lat: 51.5074, lng: -0.1278},
+                  'karachi, pakistan': {lat: 24.8607, lng: 67.0011},
+                  'bombay, india': {lat: 18.975, lng: 72.8258},
+                  'mumbai, india': {lat: 18.975, lng: 72.8258},
+                  'gettysburg, pa, usa': {lat: 39.8309, lng: -77.2311},
+                  'rome, italy': {lat: 41.9028, lng: 12.4964},
+                };
+                const lowerKey = loc.name.toLowerCase().trim();
+                if (staticDict[lowerKey]) {
+                  coords = staticDict[lowerKey];
+                } else {
+                  for (const [key, val] of Object.entries(staticDict)) {
+                    if (lowerKey.includes(key) || key.includes(lowerKey)) {
+                      coords = val;
+                      break;
+                    }
+                  }
+                }
+              }
+              locationsWithCoords.push({
+                name: loc.name,
+                adminLevel: loc.adminLevel,
+                rationale: loc.rationale,
+                ...(coords ? {coordinates: coords} : {}),
+              });
+            }
+            geoMetadata = {
+              isNonEarth: false,
+              locations: locationsWithCoords.slice(0, 5),
+              lastSyncedAt: new Date().toISOString(),
+            };
+          }
+
+          results.push({id: item.id, geoMetadata});
+        } catch (err) {
+          console.error(`[Batch Enrich Geo] Skipped book ID ${item.id}:`, err);
+        }
+      }
+
+      return res.json({status: 'success', results});
+    } catch (error) {
+      console.error('[Batch Enrich Geo] Failed:', error);
+      return res
+        .status(500)
+        .json({error: error instanceof Error ? error.message : String(error)});
+    }
+  });
+
+  app.post('/api/books/:libraryId/batch-enrich-temporal', async (req, res) => {
+    const {libraryId} = req.params;
+    const {books} = req.body;
+
+    if (!libraryId || !Array.isArray(books)) {
+      return res.status(400).json({error: 'Missing required parameters'});
+    }
+
+    try {
+      console.log(
+        `[Batch Enrich Temporal] Processing batch of ${books.length} books in /api/books/${libraryId}/batch-enrich-temporal`,
+      );
+
+      const extractedBatch =
+        await geminiService.extractBookTemporalMetadataBatch(books);
+      if (!extractedBatch || !Array.isArray(extractedBatch.enrichment)) {
+        throw new Error('Failed to extract temporal metadata from books');
+      }
+
+      const results = [];
+
+      for (const item of extractedBatch.enrichment) {
+        try {
+          const temporalMetadata = {
+            isNonHistorical: item.isNonHistorical,
+            startYear: item.startYear !== undefined ? item.startYear : null,
+            endYear: item.endYear !== undefined ? item.endYear : null,
+            eraName: item.eraName || null,
+            rationale: item.rationale || null,
+            lastProcessedAt: new Date().toISOString(),
+          };
+
+          results.push({id: item.id, temporalMetadata});
+        } catch (err) {
+          console.error(
+            `[Batch Enrich Temporal] Skipped book ID ${item.id}:`,
+            err,
+          );
+        }
+      }
+
+      return res.json({status: 'success', results});
+    } catch (error) {
+      console.error('[Batch Enrich Temporal] Failed:', error);
+      return res
+        .status(500)
+        .json({error: error instanceof Error ? error.message : String(error)});
+    }
+  });
+
+  // Dedicated API 404 handler to prevent unmatched API requests from falling back to HTML
+  app.use('/api/*', (req, res) => {
+    res.status(404).json({
+      error: `Not Found: ${req.method} ${req.originalUrl}`,
+    });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -524,8 +903,10 @@ async function startServer() {
     // Fallback to index.html for SPA routing
     app.use('*', async (req, res, next) => {
       const url = req.originalUrl;
-      // Skip if it looks like a file request (has an extension) or is an internal Vite request
+      // Skip non-GET requests, API requests, file requests (extensions) or internal Vite requests
       if (
+        req.method !== 'GET' ||
+        url.startsWith('/api/') ||
         url.includes('.') ||
         url.startsWith('/@') ||
         url.startsWith('/node_modules/')
@@ -547,7 +928,10 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*', (req, res, next) => {
+      if (req.originalUrl.startsWith('/api/')) {
+        return next();
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

@@ -985,3 +985,374 @@ ${JSON.stringify(booksPromptData, null, 2)}`;
     handleGeminiError(error);
   }
 }
+
+export interface ExtractedGeoLocation {
+  name: string;
+  adminLevel: 'city' | 'state' | 'country' | 'region';
+  rationale: string;
+}
+
+export interface ExtractedGeoResponse {
+  isNonEarth: boolean;
+  locations: ExtractedGeoLocation[];
+}
+
+export async function extractBookGeoMetadata(
+  title: string,
+  author: string,
+  synopsis?: string,
+): Promise<ExtractedGeoResponse | null> {
+  if (isBrowser) {
+    return runClientProxy('extractBookGeoMetadata', {
+      title,
+      author,
+      synopsis,
+    }) as Promise<ExtractedGeoResponse | null>;
+  }
+  try {
+    const ai = getGeminiClient();
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        isNonEarth: {
+          type: Type.BOOLEAN,
+          description:
+            'Set to true ONLY if the entire work is sci-fi set in space/fictional planets, high fantasy set in completely fictional realms (like Middle-earth, Westeros, Narnia), or is a textbook, academic guide, or abstract literature with no logical earthly setting.',
+        },
+        locations: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: {
+                type: Type.STRING,
+                description:
+                  "Fully-qualified geographical name. Must include specific city, province/state, and country name combined to guarantee precise geocoding (e.g., 'Kyoto, Japan' instead of 'Kyoto', 'Delhi, India' instead of 'Delhi', 'Gettysburg, PA, USA' instead of 'Gettysburg').",
+              },
+              adminLevel: {
+                type: Type.STRING,
+                enum: ['city', 'state', 'country', 'region'],
+                description: 'Granularity type of setting.',
+              },
+              rationale: {
+                type: Type.STRING,
+                description:
+                  'A short context sentence (15 words max) describing why this spatial setting is vital to the story.',
+              },
+            },
+            required: ['name', 'adminLevel', 'rationale'],
+          },
+          description:
+            'At most 5 key geographical regions, cities, states, or countries central to the narrative, plot, setting, or historical backdrop. Return empty list if isNonEarth is true.',
+        },
+      },
+      required: ['isNonEarth', 'locations'],
+    };
+
+    const prompt = `You are a peerless, academic literary geographer with deep encyclopedic knowledge of world literature, non-fiction contexts, and global histories.
+Your task is to analyze details of the provided book (Title, Author, Synopsis) and determine exactly where the setting takes place on planet Earth.
+
+System Directives:
+1. Identify the primary locations (cities, regions, countries) where the actions, histories, or settings of the book take place.
+2. STRICTLY CAP extraction to NO MORE than 5 locations. Select only the most critical settings.
+3. Every location NAME must be globally unambiguous (e.g., 'Paris, France' instead of 'Paris', 'Springfield, IL, USA' instead of 'Springfield').
+4. If the book is set in a fictional realm (Middle-earth, Westeros, Narnia), outer space / sci-fi galaxies (e.g. 'Project Hail Mary'), or is an abstract academic, scientific or mathematical textbook, set 'isNonEarth' to true and return an empty locations list.
+
+Book Details:
+Title: ${title}
+Author: ${author}
+Synopsis: ${synopsis || 'No synopsis provided.'}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: schema,
+        temperature: 0.2,
+      },
+    });
+
+    const text = response.text;
+    if (!text) return null;
+
+    try {
+      return JSON.parse(text) as ExtractedGeoResponse;
+    } catch {
+      // Clean up markdown block format
+      const cleaned = text
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
+      return JSON.parse(cleaned) as ExtractedGeoResponse;
+    }
+  } catch (err) {
+    if (isApiKeyError(err)) {
+      console.info(
+        'Book geo extraction is pending valid GEMINI_API_KEY configuration.',
+      );
+      return null;
+    }
+    handleGeminiError(err);
+  }
+}
+
+export interface BatchExtractedGeoBookResult {
+  id: string;
+  isNonEarth: boolean;
+  locations: ExtractedGeoLocation[];
+}
+
+export interface BatchExtractedGeoResponse {
+  enrichment: BatchExtractedGeoBookResult[];
+}
+
+export async function extractBookGeoMetadataBatch(
+  books: {id: string; title: string; author: string; synopsis?: string}[],
+): Promise<BatchExtractedGeoResponse | null> {
+  if (isBrowser) {
+    return runClientProxy('extractBookGeoMetadataBatch', {
+      books,
+    }) as Promise<BatchExtractedGeoResponse | null>;
+  }
+  try {
+    const ai = getGeminiClient();
+
+    const batchSchema = {
+      type: Type.OBJECT,
+      properties: {
+        enrichment: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: {
+                type: Type.STRING,
+                description: 'The exact ID of the book provided in the input.',
+              },
+              isNonEarth: {
+                type: Type.BOOLEAN,
+                description:
+                  'Set to true ONLY if the entire work is sci-fi set in space/fictional planets, high fantasy set in completely fictional realms, or is a textbook, academic guide, or abstract literature with no logical earthly setting.',
+              },
+              locations: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: {
+                      type: Type.STRING,
+                      description:
+                        "Fully-qualified geographical name. Must include specific city, province/state, and country name combined to guarantee precise geocoding (e.g., 'Kyoto, Japan' instead of 'Kyoto', 'Delhi, India' instead of 'Delhi', 'Gettysburg, PA, USA' instead of 'Gettysburg').",
+                    },
+                    adminLevel: {
+                      type: Type.STRING,
+                      enum: ['city', 'state', 'country', 'region'],
+                      description: 'Granularity type of setting.',
+                    },
+                    rationale: {
+                      type: Type.STRING,
+                      description:
+                        'A short context sentence (15 words max) describing why this spatial setting is vital to the story.',
+                    },
+                  },
+                  required: ['name', 'adminLevel', 'rationale'],
+                },
+                description:
+                  'At most 5 key geographical regions, cities, states, or countries central to the narrative, plot, setting, or historical backdrop. Return empty list if isNonEarth is true.',
+              },
+            },
+            required: ['id', 'isNonEarth', 'locations'],
+          },
+          description:
+            'A list of geocoded settings for each of the books provided.',
+        },
+      },
+      required: ['enrichment'],
+    };
+
+    const prompt = `You are a peerless, academic literary geographer with deep encyclopedic knowledge of world literature, non-fiction contexts, and global histories.
+Your task is to analyze details of the provided list of books and determine exactly where the setting takes place on planet Earth for each book.
+
+System Directives:
+1. For each book, identify the primary locations (cities, regions, countries) where the actions, histories, or settings of the book take place.
+2. STRICTLY CAP extraction to NO MORE than 5 locations per book. Select only the most critical settings.
+3. Every location NAME must be globally unambiguous (e.g., 'Paris, France' instead of 'Paris', 'Springfield, IL, USA' instead of 'Springfield').
+4. If a book is set in a fictional realm (Middle-earth, Westeros, Narnia), outer space / sci-fi galaxies (e.g. 'Project Hail Mary'), or is an abstract academic, scientific or mathematical textbook, set 'isNonEarth' to true and return an empty locations list for that book.
+5. Map each parsed book specifically to the provided unique id in the output JSON.
+
+Books to analyze:
+${JSON.stringify(
+  books.map(b => ({
+    id: b.id,
+    title: b.title,
+    author: b.author,
+    synopsis: b.synopsis || '',
+  })),
+  null,
+  2,
+)}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: batchSchema,
+        temperature: 0.2,
+      },
+    });
+
+    const text = response.text;
+    if (!text) return null;
+
+    try {
+      return JSON.parse(text) as BatchExtractedGeoResponse;
+    } catch {
+      // Clean up markdown block format if needed
+      const cleaned = text
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
+      return JSON.parse(cleaned) as BatchExtractedGeoResponse;
+    }
+  } catch (err) {
+    if (isApiKeyError(err)) {
+      console.info(
+        'Book geo batch extraction is pending valid GEMINI_API_KEY configuration.',
+      );
+      return null;
+    }
+    handleGeminiError(err);
+  }
+}
+
+export interface TemporalBookResult {
+  id: string;
+  isNonHistorical: boolean;
+  startYear?: number;
+  endYear?: number;
+  eraName?: string;
+  rationale?: string;
+}
+
+export interface BatchTemporalResponse {
+  enrichment: TemporalBookResult[];
+}
+
+export async function extractBookTemporalMetadataBatch(
+  books: {id: string; title: string; author: string; synopsis?: string}[],
+): Promise<BatchTemporalResponse | null> {
+  if (isBrowser) {
+    return runClientProxy('extractBookTemporalMetadataBatch', {
+      books,
+    }) as Promise<BatchTemporalResponse | null>;
+  }
+  try {
+    const ai = getGeminiClient();
+
+    const batchSchema = {
+      type: Type.OBJECT,
+      properties: {
+        enrichment: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: {
+                type: Type.STRING,
+                description: 'The exact ID of the book provided in the input.',
+              },
+              isNonHistorical: {
+                type: Type.BOOLEAN,
+                description:
+                  'Set to true if the book is sci-fi/fantasy with entirely fictional settings, abstract technical/mathematical manuals, modern theoretical guidelines with no real-world earth timeline.',
+              },
+              startYear: {
+                type: Type.INTEGER,
+                description:
+                  'Approximate start year of the events or plot. Use negative values for BC/BCE (e.g. -44). Leave blank or omit if isNonHistorical is true.',
+              },
+              endYear: {
+                type: Type.INTEGER,
+                description:
+                  'Approximate end year of the events. Gap between start and end year must not exceed 100 years. Leave blank or omit if isNonHistorical is true.',
+              },
+              eraName: {
+                type: Type.STRING,
+                description:
+                  'Cohesive name label for this historical era (e.g., "Middle Ages", "Renaissance", "World War II", "Victorian Era", "Late Roman Republic"). 2-5 words max. Leave blank or omit if isNonHistorical is true.',
+              },
+              rationale: {
+                type: Type.STRING,
+                description:
+                  'Max 15 words explaining why this temporal context is critical to the story. Leave blank or omit if isNonHistorical is true.',
+              },
+            },
+            required: ['id', 'isNonHistorical'],
+          },
+          description:
+            'A list of temporal metadata for each of the books provided.',
+        },
+      },
+      required: ['enrichment'],
+    };
+
+    const prompt = `You are an academic bibliophile historian with encyclopedic knowledge of literature, historical timelines, and world histories.
+Your task is to analyze the provided list of books and determine the exact historical setting/era representing the plot or context of each book on earth.
+
+System Directives:
+1. For each book, identify if it possesses a real-world Earth historical setting.
+2. If a book is abstract academic, mathematics, modern theory, sci-fi (set in future epochs or space), or high fantasy (set in Middle-earth, Westeros, Narnia, or custom-lore realms), set isNonHistorical to true.
+3. For historical/historical-context books, determine the approximate startYear and endYear representing the core plot setting.
+4. Rule 1 (100-Year Spanning Cap): If a book covers a broad span (e.g., a massive biography/history), isolate the single most definitive or dramatic 100-year window (e.g., Pax Romana, Viking expansion) and cap the gap (endYear - startYear) to be NO MORE than 100 years.
+5. Rule 2 (Chronological Grounding): Years must represent real-world calendar parameters. BC/BCE is expressed as a negative integer.
+6. Rule 3 (Fictional/Abstract Exclusion): Science fiction, high fantasy, and abstract textbooks with no real setting must be marked isNonHistorical: true with other fields omitted.
+7. Map each parsed book precisely to the provided unique id in the output JSON.
+
+Books to analyze:
+${JSON.stringify(
+  books.map(b => ({
+    id: b.id,
+    title: b.title,
+    author: b.author,
+    synopsis: b.synopsis || '',
+  })),
+  null,
+  2,
+)}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: batchSchema,
+        temperature: 0.2,
+      },
+    });
+
+    const text = response.text;
+    if (!text) return null;
+
+    try {
+      return JSON.parse(text) as BatchTemporalResponse;
+    } catch {
+      // Clean up markdown block format if needed
+      const cleaned = text
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
+      return JSON.parse(cleaned) as BatchTemporalResponse;
+    }
+  } catch (err) {
+    if (isApiKeyError(err)) {
+      console.info(
+        'Book temporal batch extraction is pending valid GEMINI_API_KEY configuration.',
+      );
+      return null;
+    }
+    handleGeminiError(err);
+  }
+}

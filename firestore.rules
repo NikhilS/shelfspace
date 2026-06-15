@@ -83,6 +83,8 @@ service cloud.firestore {
              (!( 'genres' in data ) || (data.genres == null || data.genres is list)) &&
              (!( 'series' in data ) || (data.series == null || data.series is string)) &&
              (!( 'format' in data ) || (data.format == null || data.format is string)) &&
+             (!( 'geoMetadata' in data ) || (data.geoMetadata == null || data.geoMetadata is map)) &&
+             (!( 'temporalMetadata' in data ) || (data.temporalMetadata == null || data.temporalMetadata is map)) &&
              (!( 'userStatuses' in data ) || (data.userStatuses == null || data.userStatuses is map));
     }
 
@@ -117,6 +119,18 @@ service cloud.firestore {
              (!( 'progress' in data ) || (data.progress is number)) &&
              (!( 'total' in data ) || (data.total is number)) &&
              (!( 'error' in data ) || (data.error is string && data.error.size() <= 5000));
+    }
+
+    function isValidGeolocationCache(data) {
+      return data.keys().hasAll(['locationName', 'coordinates', 'createdAt']) &&
+             data.keys().size() == 3 &&
+             data.locationName is string && data.locationName.size() <= 1000 &&
+             data.coordinates is map &&
+             data.coordinates.keys().hasAll(['lat', 'lng']) &&
+             data.coordinates.keys().size() == 2 &&
+             data.coordinates.lat is number &&
+             data.coordinates.lng is number &&
+             data.createdAt is timestamp;
     }
 
     // ===============================================================
@@ -227,6 +241,11 @@ service cloud.firestore {
       match /jobs/{jobId} {
         allow read: if canAccessLibraryResource();
       }
+    }
+
+    match /geolocationCache/{locationKey} {
+      allow read: if isSignedIn() && isValidId(locationKey);
+      allow write: if false; // Only server-side admin writes allowed
     }
   }
 }

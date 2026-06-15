@@ -8,6 +8,8 @@ import {
   Share2,
   BookOpen,
   Library as LibraryIcon,
+  Globe,
+  History,
 } from 'lucide-react';
 import SidebarActions from './SidebarActions';
 import HeaderActions from './HeaderActions';
@@ -99,6 +101,22 @@ export function LibrarySidebarNav({
         >
           <Map className="w-5 h-5 flex-shrink-0" />
           <span>Constellation Map</span>
+        </Link>
+
+        <Link
+          to={`/library/${libraryId}/map`}
+          className={`sidebar-nav-item ${location.pathname.endsWith('/map') ? 'active' : ''}`}
+        >
+          <Globe className="w-5 h-5 flex-shrink-0" />
+          <span>World Map</span>
+        </Link>
+
+        <Link
+          to={`/library/${libraryId}/timeline`}
+          className={`sidebar-nav-item ${location.pathname.includes('/timeline') ? 'active' : ''}`}
+        >
+          <History className="w-5 h-5 flex-shrink-0" />
+          <span>Timeline</span>
         </Link>
 
         {canEdit && (

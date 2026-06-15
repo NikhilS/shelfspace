@@ -51,6 +51,34 @@
           "type": "object",
           "additionalProperties": { "type": "string", "enum": ["unset", "reading", "finished", "abandoned"] }
         },
+        "geoMetadata": {
+          "type": "object",
+          "properties": {
+            "isNonEarth": { "type": "boolean" },
+            "lastSyncedAt": { "type": "string", "format": "date-time" },
+            "locations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "adminLevel": { "type": "string", "enum": ["city", "state", "country", "region"] },
+                  "rationale": { "type": "string" },
+                  "coordinates": {
+                    "type": "object",
+                    "properties": {
+                      "lat": { "type": "number" },
+                      "lng": { "type": "number" }
+                    },
+                    "required": ["lat", "lng"]
+                  }
+                },
+                "required": ["name", "adminLevel", "rationale"]
+              }
+            }
+          },
+          "required": ["isNonEarth", "locations", "lastSyncedAt"]
+        },
         "addedAt": { "type": "string", "format": "date-time" },
         "addedBy": { "type": "string" }
       },
@@ -116,6 +144,24 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["status", "updatedAt"]
+    },
+    "GeolocationCache": {
+      "title": "GeolocationCache",
+      "description": "Cache of geocoding results for a given location name to prevent redundant API queries.",
+      "type": "object",
+      "properties": {
+        "locationName": { "type": "string" },
+        "coordinates": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          },
+          "required": ["lat", "lng"]
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["locationName", "coordinates", "createdAt"]
     }
   },
   "firestore": {
@@ -146,6 +192,10 @@
     "/libraries/{libraryId}/books/{bookId}/reviews/{reviewId}": {
       "schema": { "$ref": "#/entities/Review" },
       "description": "Reviews for a book."
+    },
+    "/geolocationCache/{locationKey}": {
+      "schema": { "$ref": "#/entities/GeolocationCache" },
+      "description": "Global geolocation cache mapped by SHA256 of location name."
     }
   }
 }

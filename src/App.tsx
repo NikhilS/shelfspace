@@ -40,9 +40,11 @@ const AddBookView = lazyWithRetry(() => import('./pages/AddBookView'));
 const ConstellationMap = lazyWithRetry(
   () => import('./pages/ConstellationMap'),
 );
+const WorldMap = lazyWithRetry(() => import('./pages/WorldMap'));
 const Login = lazyWithRetry(() => import('./pages/Login'));
 const SpruceUpView = lazyWithRetry(() => import('./pages/SpruceUpView'));
 const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
+const TimelineView = lazyWithRetry(() => import('./pages/TimelineView'));
 
 function LoadingScreen() {
   return (
@@ -149,10 +151,28 @@ function AnimatedRoutes() {
           />
 
           <Route
+            path="/library/:id/map"
+            element={
+              <RequireLibraryPermission requires="viewer">
+                <WorldMap />
+              </RequireLibraryPermission>
+            }
+          />
+
+          <Route
             path="/library/:id/spruce-up"
             element={
               <RequireLibraryPermission requires="editor">
                 <SpruceUpView />
+              </RequireLibraryPermission>
+            }
+          />
+
+          <Route
+            path="/library/:id/timeline"
+            element={
+              <RequireLibraryPermission requires="viewer">
+                <TimelineView />
               </RequireLibraryPermission>
             }
           />
