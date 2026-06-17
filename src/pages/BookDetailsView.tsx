@@ -1,6 +1,5 @@
 import React, {useState, useEffect} from 'react';
 import {useParams, useNavigate, useLocation} from 'react-router-dom';
-import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {BookContent} from './book-details/BookContent';
 import {Swiper, SwiperSlide} from 'swiper/react';
 import {Virtual} from 'swiper/modules';
@@ -77,18 +76,11 @@ export default function BookDetailsView() {
   };
 
   if (!libraryId || bookList.length === 0) {
-    return (
-      <>
-        <LibrarySidebarNav libraryId={libraryId} />
-        <div className="h-full w-full bg-surface" />
-      </>
-    );
+    return <div className="h-full w-full bg-surface" />;
   }
 
   return (
     <>
-      <LibrarySidebarNav libraryId={libraryId} />
-
       <PrefetchAdjacentBooks
         libraryId={libraryId}
         bookList={bookList}

@@ -5,7 +5,6 @@ import {toast} from 'sonner';
 import {useParams} from 'react-router-dom';
 import {useAddBooks} from './add-book/useAddBooks';
 import {useExistingBooks} from './add-book/useExistingBooks';
-import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {Checkbox} from '../components/ui/checkbox';
 import {isDuplicateBook, normalizeBookDetails} from '../lib/utils';
 import {
@@ -50,7 +49,6 @@ export default function AddBookView() {
 
   return (
     <>
-      <LibrarySidebarNav libraryId={libraryId} />
       <div className="layout-page-content">
         <div className="layout-header">
           <div>

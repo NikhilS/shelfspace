@@ -1,7 +1,6 @@
 import React, {Suspense, lazy} from 'react';
 import {useParams} from 'react-router-dom';
 import {RefreshCw} from 'lucide-react';
-import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {useConstellationData} from '../hooks/useConstellationData';
 import {Button} from '@/components/ui/button';
 import {BookLoader} from '../components/BookLoader';
@@ -17,7 +16,6 @@ export default function ConstellationMap() {
 
   return (
     <>
-      <LibrarySidebarNav libraryId={libraryId} />
       <div className="layout-page-content">
         <div className="layout-header border-none sm:flex-row sm:justify-between sm:items-start">
           <div>

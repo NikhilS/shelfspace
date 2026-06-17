@@ -5,6 +5,7 @@ import {useAuth} from '../contexts/AuthContext';
 import {Book} from '../types';
 import {toast} from 'sonner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
+import {apiClient} from '../lib/apiClient';
 
 export interface UseBulkEnrichmentConfig {
   books: Book[];
@@ -28,7 +29,7 @@ export function useBulkEnrichment({
   apiEndpoint,
   metadataField,
   batchSize = 10,
-  concurrencyLimit = 3,
+  concurrencyLimit = 5,
   filterPredicate,
   successToastMessage = 'Successfully enriched library books!',
   errorToastMessage = 'Some books could not be analyzed.',
@@ -77,21 +78,20 @@ export function useBulkEnrichment({
     );
 
     try {
-      const idToken = await user.getIdToken();
-      if (!idToken) throw new Error('Authorization required');
-
       const booksToProcess = [...booksToBackfill];
       const total = booksToProcess.length;
 
       // Define internal robust fetch with timeout and exponential backoff retry helper
-      const fetchWithRetry = async (
+      const fetchWithRetry = async <T>(
         url: string,
         options: RequestInit,
         retries = 3,
         delay = 1000,
-      ): Promise<Response> => {
+      ): Promise<T> => {
         let lastError: Error | null = null;
         for (let i = 0; i < retries; i++) {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeoutMs); // 3 minutes timeout by default
           try {
             const startTime = Date.now();
             DebugTelemetryEngine.getInstance().addLog(
@@ -100,10 +100,7 @@ export function useBulkEnrichment({
               {attempt: i + 1, url, method: options.method},
             );
 
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), timeoutMs); // 3 minutes timeout by default
-
-            const response = await fetch(url, {
+            const data = await apiClient.request<T>(url, {
               ...options,
               signal: controller.signal,
             });
@@ -113,24 +110,13 @@ export function useBulkEnrichment({
             const durationMs = Date.now() - startTime;
             DebugTelemetryEngine.getInstance().addLog(
               'api_res',
-              `[BulkEnrichment Response] HTTP ${response.status} from ${url} in ${durationMs}ms`,
-              {status: response.status, durationMs, url},
+              `[BulkEnrichment Response] Success from ${url} in ${durationMs}ms`,
+              {durationMs, url},
             );
 
-            if (response.ok) {
-              return response;
-            }
-
-            // Retry on rate limit 429 or server errors 5xx
-            if (response.status === 429 || response.status >= 500) {
-              lastError = new Error(
-                `Request failed with status ${response.status}`,
-              );
-            } else {
-              // 4xx errors are client errors (like 404, 401), do not retry
-              return response;
-            }
+            return data;
           } catch (err) {
+            clearTimeout(timeoutId);
             if (controller.signal.aborted) {
               lastError = new Error(
                 `Request timed out after ${timeoutMs / 1000} seconds`,
@@ -143,6 +129,11 @@ export function useBulkEnrichment({
               `[BulkEnrichment Fetch] Attempt ${i + 1}/${retries} got error: ${lastError.message}`,
               {error: lastError.message},
             );
+
+            const status = (err as {status?: number})?.status;
+            if (typeof status === 'number' && status < 500 && status !== 429) {
+              throw err;
+            }
           }
 
           if (i < retries - 1) {
@@ -190,30 +181,15 @@ export function useBulkEnrichment({
             synopsis: b.synopsis || b.description || '',
           }));
 
-          const response = await fetchWithRetry(apiEndpoint, {
+          interface EnrichmentResponse {
+            results: unknown[];
+          }
+
+          const data = await fetchWithRetry<EnrichmentResponse>(apiEndpoint, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${idToken}`,
-            },
             body: JSON.stringify({books: payload}),
           });
 
-          if (!response.ok) {
-            throw new Error(
-              `Enrichment failed with status: Code ${response.status}`,
-            );
-          }
-
-          const contentType = response.headers.get('content-type');
-          if (!contentType || !contentType.includes('application/json')) {
-            const text = await response.text();
-            throw new Error(
-              `Expected JSON but received: ${text.substring(0, 100)}`,
-            );
-          }
-
-          const data = await response.json();
           if (data && Array.isArray(data.results)) {
             DebugTelemetryEngine.getInstance().addLog(
               'worker',

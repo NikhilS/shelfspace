@@ -38,7 +38,7 @@ export interface BulkEnrichmentConfig<TResponse, TMetadata> {
   apiEndpoint: string;
   metadataField: keyof Book; // e.g., 'geoMetadata' | 'temporalMetadata'
   batchSize?: number;        // Default: 10
-  concurrencyLimit?: number; // Default: 3
+  concurrencyLimit?: number; // Default: 5
   
   // Custom filter to identify which books need enrichment
   filterPredicate: (book: Book) => boolean;

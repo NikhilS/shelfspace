@@ -5,7 +5,6 @@ import {uploadBase64Image} from '../../services/db/storage';
 import {BookDetails} from '../../services/bookApi';
 import {useAuth} from '../../contexts/AuthContext';
 import {logger} from '../../contexts/DebugContext';
-import {generateBookEmbeddings} from '../../services/gemini';
 import {toast} from 'sonner';
 
 enum OperationType {
@@ -82,27 +81,41 @@ export function useAddBooks(libraryId?: string) {
     );
 
     try {
-      // 1. Pre-generate embeddings for newly added books
-      let embeddings: number[][] = [];
-      try {
-        const texts = books.map(b => {
-          const parts = [b.title];
-          if (b.author) parts.push(`by ${b.author}`);
-          if (b.genres && b.genres.length > 0)
-            parts.push(`[${b.genres.join(', ')}]`);
-          if (b.synopsis) parts.push(b.synopsis);
-          return parts.join(' - ');
-        });
+      // 1. Give each new book an ID first so we can map results back correctly
+      const booksWithIds = books.map(b => ({
+        id: doc(collection(db, 'libraries', libraryId, 'books')).id,
+        ...b,
+      }));
 
+      // 2. Fetch all initial metadata from the unified layer
+      const enrichedDataMap: Record<string, unknown> = {};
+      try {
         logger.info(
-          `[useAddBooks] Generating embeddings for ${books.length} books...`,
+          `[useAddBooks] Requesting server-side enrich-create for ${booksWithIds.length} books...`,
         );
-        embeddings = await generateBookEmbeddings(texts);
-        logger.info('[useAddBooks] Generated embeddings successfully.');
+        const token = await auth.currentUser?.getIdToken();
+        const res = await fetch(
+          `/api/libraries/${libraryId}/metadata/enrich-create`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? {Authorization: `Bearer ${token}`} : {}),
+            },
+            body: JSON.stringify({books: booksWithIds}),
+          },
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'success' && data.results) {
+            data.results.forEach((r: {id: string; [key: string]: unknown}) => {
+              enrichedDataMap[r.id] = r;
+            });
+          }
+        }
       } catch (err) {
-        logger.error(
-          `[useAddBooks] Failed to generate embeddings for added books: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        logger.error(`[useAddBooks] Failed to fetch enrich-create: ${err}`);
       }
 
       const {ClientBulkWriter} = await import('../../lib/clientBulkWriter');
@@ -110,10 +123,10 @@ export function useAddBooks(libraryId?: string) {
 
       let addedCount = 0;
 
-      for (let i = 0; i < books.length; i++) {
-        const book = books[i];
+      for (let i = 0; i < booksWithIds.length; i++) {
+        const book = booksWithIds[i];
         const added = i;
-        const remaining = books.length - i;
+        const remaining = booksWithIds.length - i;
 
         toast.loading(`Processing "${book.title || 'Untitled Book'}"...`, {
           id: toastId,
@@ -126,13 +139,13 @@ export function useAddBooks(libraryId?: string) {
           ),
         ) as Record<string, string | string[] | undefined>;
 
+        const bookId = book.id;
+        const newDocRef = doc(db, 'libraries', libraryId, 'books', bookId);
+
         if (typeof cleanBook.title === 'string')
           cleanBook.title = cleanBook.title.slice(0, 500);
         if (typeof cleanBook.author === 'string')
           cleanBook.author = cleanBook.author.slice(0, 500);
-
-        const newDocRef = doc(collection(db, 'libraries', libraryId, 'books'));
-        const bookId = newDocRef.id;
 
         if (
           cleanBook.coverUrl &&
@@ -158,10 +171,12 @@ export function useAddBooks(libraryId?: string) {
           );
         }
 
+        const enrichedForBook = enrichedDataMap[bookId] || {};
+
         const {
-          synopsis,
-          authorBio,
-          embedding,
+          synopsis = enrichedForBook.synopsis || undefined,
+          authorBio = enrichedForBook.authorBio || undefined,
+          embedding = enrichedForBook.embeddings || undefined,
           clusterCoordinates,
           ...lightweightData
         } = cleanBook;
@@ -173,7 +188,7 @@ export function useAddBooks(libraryId?: string) {
           format: lightweightData.format || 'physical',
         });
 
-        const finalEmbedding = (embeddings && embeddings[i]) || embedding;
+        const finalEmbedding = embedding;
 
         const heavyData = {
           synopsis,

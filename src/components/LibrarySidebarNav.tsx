@@ -1,5 +1,10 @@
 import React from 'react';
-import {Link, useLocation, useNavigate} from 'react-router-dom';
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom';
 import {
   Map,
   Plus,
@@ -31,6 +36,7 @@ export function LibrarySidebarNav({
   isSettingsOpen = false,
   isShareOpen = false,
 }: LibrarySidebarNavProps) {
+  const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const {user} = useAuth();
@@ -44,14 +50,23 @@ export function LibrarySidebarNav({
   const isCollectionsActive =
     location.pathname === `/library/${libraryId}/collection`;
 
+  const isSettingsActive =
+    isSettingsOpen ||
+    (location.pathname === `/library/${libraryId}` &&
+      searchParams.get('settings') === 'true');
+  const isShareActive =
+    isShareOpen ||
+    (location.pathname === `/library/${libraryId}` &&
+      searchParams.get('share') === 'true');
+
   const handleSettings = () => {
     if (onOpenSettings) onOpenSettings();
-    else void navigate(`/library/${libraryId}`);
+    else void navigate(`/library/${libraryId}?settings=true`);
   };
 
   const handleShare = () => {
     if (onOpenShare) onOpenShare();
-    else void navigate(`/library/${libraryId}`);
+    else void navigate(`/library/${libraryId}?share=true`);
   };
 
   return (
@@ -61,7 +76,7 @@ export function LibrarySidebarNav({
           <button
             onClick={handleSettings}
             title="Library Settings"
-            className={`p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all ${isSettingsOpen ? 'text-primary bg-surface-container' : ''}`}
+            className={`p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all ${isSettingsActive ? 'text-primary bg-surface-container' : ''}`}
           >
             <Settings className="w-5 h-5 flex-shrink-0" />
           </button>
@@ -71,7 +86,7 @@ export function LibrarySidebarNav({
           <button
             onClick={handleShare}
             title="Share Library"
-            className={`p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all ${isShareOpen ? 'text-primary bg-surface-container' : ''}`}
+            className={`p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all ${isShareActive ? 'text-primary bg-surface-container' : ''}`}
           >
             <Share2 className="w-5 h-5 flex-shrink-0" />
           </button>

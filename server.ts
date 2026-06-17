@@ -7,9 +7,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 
 import {getFirestore} from 'firebase-admin/firestore';
-import {getTieredMetadata} from './src/lib/metadataUtils';
-import {throttledMapWithRetry, mergeBookMetadata} from './src/lib/utils';
-import * as geminiService from './src/services/gemini';
+import * as geminiService from './src/services/server/gemini';
 
 let appFilename = '';
 let appDirname = '';
@@ -355,198 +353,6 @@ async function startServer() {
   });
 
   // API Routes
-  app.post('/api/libraries/:libraryId/resync', async (req, res) => {
-    const {libraryId} = req.params;
-    const {isForceResync} = req.body;
-
-    if (!libraryId) {
-      return res.status(400).json({error: 'Missing libraryId'});
-    }
-
-    try {
-      const decodedToken = (req as AuthenticatedRequest).user;
-
-      const libSnap = await dbAdmin
-        .collection('libraries')
-        .doc(libraryId)
-        .get();
-      if (!libSnap.exists) {
-        return res.status(404).json({error: 'Library not found'});
-      }
-      const libData = libSnap.data();
-      if (
-        libData?.ownerId !== decodedToken.uid &&
-        !(libData?.sharedWith || []).includes(decodedToken.email || '')
-      ) {
-        return res.status(403).json({error: 'Forbidden'});
-      }
-
-      const jobRef = db
-        .collection('libraries')
-        .doc(libraryId)
-        .collection('jobs')
-        .doc('resync');
-
-      // Check if job is already running
-      const jobSnap = await jobRef.get();
-      if (jobSnap.exists && jobSnap.data()?.status === 'running') {
-        return res.status(400).json({error: 'Resync already in progress'});
-      }
-
-      // Start the job in the background
-      await jobRef.set({
-        status: 'running',
-        progress: 0,
-        total: 0,
-        startedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // Background process
-      void (async () => {
-        try {
-          const booksSnap = await db
-            .collection('libraries')
-            .doc(libraryId)
-            .collection('books')
-            .get();
-          const books = booksSnap.docs.map(d => {
-            const data = d.data();
-            return {
-              id: d.id,
-              title: data.title as string,
-              author: data.author as string,
-              isbn: data.isbn as string,
-              coverUrl: data.coverUrl as string,
-              synopsis: data.synopsis as string,
-              authorBio: data.authorBio as string,
-              publishedDate: data.publishedDate as string,
-              genres: data.genres as string[],
-              ...data,
-            };
-          });
-          const total = books.length;
-
-          await jobRef.update({total});
-
-          let processedCount = 0;
-          let successCount = 0;
-
-          // Initialize native Firestore Admin BulkWriter for ultra-fast, non-blocking throttled writes
-          const writer = db.bulkWriter();
-
-          // Process with safe concurrency & automatic retry with exponential backoff
-          await throttledMapWithRetry(
-            books,
-            3, // Safe concurrency limit to avoid overwhelming APIs
-            async b => {
-              try {
-                const bookArg = isForceResync
-                  ? {
-                      title: b.title,
-                      author: b.author,
-                      isbn: b.isbn,
-                    }
-                  : {
-                      id: b.id,
-                      title: b.title,
-                      author: b.author,
-                      isbn: b.isbn,
-                      synopsis: b.synopsis,
-                    };
-
-                const enriched = await getTieredMetadata(
-                  bookArg as {
-                    title: string;
-                    author: string;
-                    isbn?: string;
-                    synopsis?: string;
-                  },
-                );
-
-                if (enriched) {
-                  const {newData, heavyData} = mergeBookMetadata(
-                    b,
-                    enriched,
-                    isForceResync,
-                  );
-
-                  if (Object.keys(newData).length > 0 || isForceResync) {
-                    const updateData = {...newData};
-                    if (isForceResync) {
-                      updateData.synopsis = admin.firestore.FieldValue.delete();
-                      updateData.authorBio =
-                        admin.firestore.FieldValue.delete();
-                      updateData.embedding =
-                        admin.firestore.FieldValue.delete();
-                      updateData.clusterCoordinates =
-                        admin.firestore.FieldValue.delete();
-                    }
-                    const bookDocRef = db
-                      .collection('libraries')
-                      .doc(libraryId)
-                      .collection('books')
-                      .doc(b.id);
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    void writer.update(bookDocRef, updateData as any);
-                  }
-
-                  if (Object.keys(heavyData).length > 0) {
-                    const detailDocRef = db
-                      .collection('libraries')
-                      .doc(libraryId)
-                      .collection('bookDetails')
-                      .doc(b.id as string);
-                    void writer.set(detailDocRef, heavyData, {merge: true});
-                  }
-                  successCount++;
-                }
-              } catch (e) {
-                console.error(`Error processing book ${b.id}:`, e);
-                throw e; // Propagate up so throttledMapWithRetry can handle retrying
-              } finally {
-                processedCount++;
-                // Update progress periodically (every 5 books or at the end)
-                if (processedCount % 5 === 0 || processedCount === total) {
-                  await jobRef.update({
-                    progress: processedCount,
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                  });
-                }
-              }
-            },
-            {
-              retries: 3,
-              delay: 1000,
-              backoffFactor: 2,
-            },
-          );
-
-          // Complete and flush all buffered bulk writes before ending the job
-          await writer.close();
-
-          await jobRef.update({
-            status: 'completed',
-            completedAt: admin.firestore.FieldValue.serverTimestamp(),
-            successCount,
-          });
-        } catch (error) {
-          console.error('Background resync failed:', error);
-          await jobRef.update({
-            status: 'failed',
-            error: error instanceof Error ? error.message : String(error),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-        }
-      })();
-
-      return res.json({message: 'Resync job started', jobId: 'resync'});
-    } catch (error) {
-      console.error('Failed to start resync job:', error);
-      return res.status(500).json({error: 'Failed to start resync'});
-    }
-  });
-
   app.post('/api/gemini/action', async (req, res) => {
     const {action, payload} = req.body;
 
@@ -573,9 +379,6 @@ async function startServer() {
         case 'extractBooksFromCsv':
           result = await geminiService.extractBooksFromCsv(payload.csvText);
           break;
-        case 'enrichBooksMetadata':
-          result = await geminiService.enrichBooksMetadata(payload.books);
-          break;
         case 'generateLibraryRecommendations':
           result = await geminiService.generateLibraryRecommendations(
             payload.libraryBooks,
@@ -595,9 +398,6 @@ async function startServer() {
           break;
         case 'getPickOfTheDay':
           result = await geminiService.getPickOfTheDay(payload.books);
-          break;
-        case 'classifyBooks':
-          result = await geminiService.classifyBooks(payload.batch);
           break;
         case 'extractBookGeoMetadata':
           result = await geminiService.extractBookGeoMetadata(
@@ -744,145 +544,109 @@ async function startServer() {
     }
   });
 
-  app.post('/api/books/:libraryId/batch-enrich-geo', async (req, res) => {
-    const {libraryId} = req.params;
-    const {books} = req.body;
+  app.post(
+    '/api/libraries/:libraryId/metadata/enrich-create',
+    async (req, res) => {
+      const {libraryId} = req.params;
+      const {books} = req.body;
 
-    if (!libraryId || !Array.isArray(books)) {
-      return res.status(400).json({error: 'Missing required parameters'});
-    }
-
-    try {
-      console.log(
-        `[Batch Enrich Geo] Processing batch of ${books.length} books in /api/books/${libraryId}/batch-enrich-geo`,
-      );
-
-      // Perform a single structured JSON schema call to Gemini for all books in the batch
-      const extractedBatch =
-        await geminiService.extractBookGeoMetadataBatch(books);
-      if (!extractedBatch || !Array.isArray(extractedBatch.enrichment)) {
-        throw new Error('Failed to extract geocoding metadata from books');
+      if (!libraryId || !Array.isArray(books)) {
+        return res.status(400).json({error: 'Missing required parameters'});
       }
 
-      const results = [];
+      try {
+        console.log(
+          `[Metadata] Initial creation fetch requested for ${books.length} books`,
+        );
 
-      for (const item of extractedBatch.enrichment) {
-        try {
-          let geoMetadata;
-          if (item.isNonEarth) {
-            geoMetadata = {
-              isNonEarth: true,
-              locations: [],
-              lastSyncedAt: new Date().toISOString(),
-            };
-          } else {
-            const locationsWithCoords = [];
-            for (const loc of item.locations || []) {
-              let coords = await geocodeLocation(loc.name);
-              if (!coords) {
-                const staticDict: Record<string, {lat: number; lng: number}> = {
-                  'paris, france': {lat: 48.8566, lng: 2.3522},
-                  'kyoto, japan': {lat: 35.0116, lng: 135.7681},
-                  'delhi, india': {lat: 28.6139, lng: 77.209},
-                  'kyiv, ukraine': {lat: 50.4501, lng: 30.5234},
-                  'new york, ny, usa': {lat: 40.7128, lng: -74.006},
-                  'london, uk': {lat: 51.5074, lng: -0.1278},
-                  'karachi, pakistan': {lat: 24.8607, lng: 67.0011},
-                  'bombay, india': {lat: 18.975, lng: 72.8258},
-                  'mumbai, india': {lat: 18.975, lng: 72.8258},
-                  'gettysburg, pa, usa': {lat: 39.8309, lng: -77.2311},
-                  'rome, italy': {lat: 41.9028, lng: 12.4964},
-                };
-                const lowerKey = loc.name.toLowerCase().trim();
-                if (staticDict[lowerKey]) {
-                  coords = staticDict[lowerKey];
-                } else {
-                  for (const [key, val] of Object.entries(staticDict)) {
-                    if (lowerKey.includes(key) || key.includes(lowerKey)) {
-                      coords = val;
-                      break;
-                    }
-                  }
+        const {registry} = await import('./src/services/server/metadata');
+        const activeProviders = registry
+          .getAllProviders()
+          .filter(p => p.shouldFetchOnCreate() && p.isAvailable());
+
+        const results = [];
+        for (const book of books) {
+          const enrichedMetadata: Record<string, unknown> = {};
+
+          await Promise.allSettled(
+            activeProviders.map(async provider => {
+              try {
+                const res = await provider.fetch(book);
+                if (res) {
+                  enrichedMetadata[provider.getKey()] = res;
                 }
+              } catch (err) {
+                console.error(
+                  `Provider ${provider.getKey()} failed on create for book ${book.id}:`,
+                  err,
+                );
               }
-              locationsWithCoords.push({
-                name: loc.name,
-                adminLevel: loc.adminLevel,
-                rationale: loc.rationale,
-                ...(coords ? {coordinates: coords} : {}),
-              });
-            }
-            geoMetadata = {
-              isNonEarth: false,
-              locations: locationsWithCoords.slice(0, 5),
-              lastSyncedAt: new Date().toISOString(),
-            };
-          }
-
-          results.push({id: item.id, geoMetadata});
-        } catch (err) {
-          console.error(`[Batch Enrich Geo] Skipped book ID ${item.id}:`, err);
-        }
-      }
-
-      return res.json({status: 'success', results});
-    } catch (error) {
-      console.error('[Batch Enrich Geo] Failed:', error);
-      return res
-        .status(500)
-        .json({error: error instanceof Error ? error.message : String(error)});
-    }
-  });
-
-  app.post('/api/books/:libraryId/batch-enrich-temporal', async (req, res) => {
-    const {libraryId} = req.params;
-    const {books} = req.body;
-
-    if (!libraryId || !Array.isArray(books)) {
-      return res.status(400).json({error: 'Missing required parameters'});
-    }
-
-    try {
-      console.log(
-        `[Batch Enrich Temporal] Processing batch of ${books.length} books in /api/books/${libraryId}/batch-enrich-temporal`,
-      );
-
-      const extractedBatch =
-        await geminiService.extractBookTemporalMetadataBatch(books);
-      if (!extractedBatch || !Array.isArray(extractedBatch.enrichment)) {
-        throw new Error('Failed to extract temporal metadata from books');
-      }
-
-      const results = [];
-
-      for (const item of extractedBatch.enrichment) {
-        try {
-          const temporalMetadata = {
-            isNonHistorical: item.isNonHistorical,
-            startYear: item.startYear !== undefined ? item.startYear : null,
-            endYear: item.endYear !== undefined ? item.endYear : null,
-            eraName: item.eraName || null,
-            rationale: item.rationale || null,
-            lastProcessedAt: new Date().toISOString(),
-          };
-
-          results.push({id: item.id, temporalMetadata});
-        } catch (err) {
-          console.error(
-            `[Batch Enrich Temporal] Skipped book ID ${item.id}:`,
-            err,
+            }),
           );
+
+          results.push({id: book.id, ...enrichedMetadata});
         }
+
+        return res.json({status: 'success', results});
+      } catch (error) {
+        console.error('[Metadata Create Enrich] failed:', error);
+        return res.status(500).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  app.post(
+    '/api/libraries/:libraryId/metadata/:providerKey/bulk',
+    async (req, res) => {
+      const {libraryId, providerKey} = req.params;
+      const {books} = req.body;
+
+      if (!libraryId || !providerKey || !Array.isArray(books)) {
+        return res.status(400).json({error: 'Missing required parameters'});
       }
 
-      return res.json({status: 'success', results});
-    } catch (error) {
-      console.error('[Batch Enrich Temporal] Failed:', error);
-      return res
-        .status(500)
-        .json({error: error instanceof Error ? error.message : String(error)});
-    }
-  });
+      try {
+        console.log(
+          `[Metadata] Bulk fetch requested for ${providerKey} over ${books.length} books`,
+        );
+
+        const {registry} = await import('./src/services/server/metadata');
+        const provider = registry.getProvider(
+          providerKey as import('./src/types/metadata').MetadataKey,
+        );
+
+        if (!provider) {
+          return res
+            .status(400)
+            .json({error: `Unknown metadata provider: ${providerKey}`});
+        }
+
+        if (!provider.isAvailable()) {
+          return res.status(503).json({
+            error: `Provider ${providerKey} is not properly configured (e.g. missing API keys).`,
+          });
+        }
+
+        const extractedBatch = await provider.bulkFetch(books);
+
+        const results = [];
+        for (const [id, metadata] of Object.entries(extractedBatch)) {
+          if (metadata) {
+            results.push({id, [provider.getKey()]: metadata});
+          }
+        }
+
+        return res.json({status: 'success', results});
+      } catch (error) {
+        console.error(`[Metadata Bulk] ${providerKey} failed:`, error);
+        return res.status(500).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
 
   // Dedicated API 404 handler to prevent unmatched API requests from falling back to HTML
   app.use('/api/*', (req, res) => {

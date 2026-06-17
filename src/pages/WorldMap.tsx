@@ -3,7 +3,6 @@ import {useParams, useNavigate} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {useLibraryData} from '../hooks/useLibraryData';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
-import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {BulkEnrichmentBanner} from '../components/BulkEnrichmentBanner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
 import {
@@ -84,10 +83,10 @@ export default function WorldMap() {
     books,
     isBooksLoading,
     libraryId,
-    apiEndpoint: `/api/books/${libraryId}/batch-enrich-geo`,
+    apiEndpoint: `/api/libraries/${libraryId}/metadata/geoMetadata/bulk`,
     metadataField: 'geoMetadata',
     batchSize: 10,
-    concurrencyLimit: 3,
+    concurrencyLimit: 5,
     filterPredicate: filterGeoPredicate,
     successToastMessage:
       'Successfully backfilled literary settings map references!',
@@ -250,7 +249,6 @@ export default function WorldMap() {
 
   return (
     <>
-      <LibrarySidebarNav libraryId={libraryId} />
       <div className="layout-page-content" id="world-map-layout">
         {/* Dynamic header information block */}
         <div className="layout-header border-none flex flex-col md:flex-row md:justify-between md:items-start gap-4">
@@ -659,13 +657,13 @@ export default function WorldMap() {
                             id={cluster.id}
                           >
                             <div
-                              className={`absolute ${outerSize} bg-amber-500/20 rounded-full animate-ping group-hover:scale-125 transition-transform`}
+                              className={`absolute ${outerSize} bg-secondary-container/40 rounded-full group-hover:scale-125 transition-transform`}
                             />
                             <div
-                              className={`absolute ${middleSize} bg-orange-600/35 rounded-full animate-pulse`}
+                              className={`absolute ${middleSize} bg-secondary-container/60 rounded-full transition-transform`}
                             />
                             <div
-                              className={`${innerSize} bg-red-600 rounded-full border-2 border-white shadow-md shadow-red-500/50`}
+                              className={`${innerSize} bg-secondary-container rounded-full border-2 border-background shadow-md shadow-secondary-container/50`}
                             />
                           </div>
                         </AdvancedMarker>

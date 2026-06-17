@@ -4,6 +4,7 @@ import {useAuth} from '../contexts/AuthContext';
 import {Library, LogOut, Menu, Shield} from 'lucide-react';
 import {motion, AnimatePresence} from 'motion/react';
 import {ConnectivityBanner} from './ConnectivityBanner';
+import {LibrarySidebarNav} from './LibrarySidebarNav';
 
 interface AppLayoutProps {
   children?: React.ReactNode;
@@ -15,6 +16,9 @@ export default function AppLayout({children}: AppLayoutProps) {
   const location = useLocation();
 
   const isHome = location.pathname === '/';
+
+  const libraryIdMatch = location.pathname.match(/^\/library\/([^/]+)/);
+  const currentLibraryId = libraryIdMatch ? libraryIdMatch[1] : undefined;
 
   // Close mobile nav when location changes
   useEffect(() => {
@@ -78,6 +82,10 @@ export default function AppLayout({children}: AppLayoutProps) {
               </div>
               <span>Admin</span>
             </Link>
+          )}
+
+          {currentLibraryId && (
+            <LibrarySidebarNav libraryId={currentLibraryId} />
           )}
 
           <div

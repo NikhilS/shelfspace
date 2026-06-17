@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {useParams, useNavigate} from 'react-router-dom';
+import {useParams, useNavigate, useSearchParams} from 'react-router-dom';
 import {useAuth} from '../contexts/AuthContext';
 import {auth, db, handleFirestoreError, OperationType} from '../firebase';
 import {uploadBase64Image} from '../services/db/storage';
@@ -15,7 +15,6 @@ import {
 
 import {toast} from 'sonner';
 import {toTitleCase, getFirestoreTime} from '../lib/utils';
-import {LibrarySidebarNav} from '../components/LibrarySidebarNav';
 import {motion, AnimatePresence} from 'motion/react';
 import {format} from 'date-fns';
 import {Library} from '../types';
@@ -76,6 +75,29 @@ export default function LibraryView() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
   const [libraryToDelete, setLibraryToDelete] = useState(false);
+
+  // Sync open request parameters
+  const [searchParams, setSearchParams] = useSearchParams();
+  const settingsParam = searchParams.get('settings');
+  const shareParam = searchParams.get('share');
+
+  useEffect(() => {
+    if (settingsParam === 'true') {
+      setIsAdvancedSettingsOpen(true);
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('settings');
+      setSearchParams(newParams, {replace: true});
+    }
+  }, [settingsParam, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (shareParam === 'true') {
+      setIsSettingsOpen(true);
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('share');
+      setSearchParams(newParams, {replace: true});
+    }
+  }, [shareParam, searchParams, setSearchParams]);
 
   // Scroll restoration
   useEffect(() => {
@@ -339,16 +361,6 @@ export default function LibraryView() {
 
   return (
     <>
-      <LibrarySidebarNav
-        libraryId={id}
-        onOpenSettings={() =>
-          setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)
-        }
-        onOpenShare={() => setIsSettingsOpen(!isSettingsOpen)}
-        isSettingsOpen={isAdvancedSettingsOpen}
-        isShareOpen={isSettingsOpen}
-      />
-
       <div className="flex-grow flex flex-col min-h-screen w-full">
         <div className="flex-1 flex flex-col min-w-0">
           <ErrorBoundary name="Library Collection Header">
