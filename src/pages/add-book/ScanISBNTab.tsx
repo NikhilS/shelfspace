@@ -10,7 +10,7 @@ import {
 } from '../../lib/utils';
 import {Checkbox} from '../../components/ui/checkbox';
 import {Button} from '../../components/ui/button';
-import {logger} from '../../contexts/DebugContext';
+import {logger} from '../../stores/debugStore';
 
 interface ScanISBNTabProps {
   addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;

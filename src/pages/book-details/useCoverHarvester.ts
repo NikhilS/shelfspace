@@ -1,4 +1,4 @@
-import {useState, useEffect} from 'react';
+import {useQuery, useQueryClient} from '@tanstack/react-query';
 import {Book} from '../../types';
 import {normalizeIsbn} from '../../lib/utils';
 import {
@@ -14,13 +14,19 @@ export interface CoverSource {
 }
 
 export function useCoverHarvester(book: Book) {
-  const [coverSources, setCoverSources] = useState<CoverSource[]>([]);
-  const [isSearchingCovers, setIsSearchingCovers] = useState(false);
+  const queryClient = useQueryClient();
+  const queryKey = [
+    'coverHarvester',
+    book.id,
+    book.isbn,
+    book.title,
+    book.author,
+  ];
 
-  useEffect(() => {
-    let active = true;
-    const fetchCovers = async () => {
-      setIsSearchingCovers(true);
+  const query = useQuery({
+    queryKey,
+    staleTime: 1000 * 60 * 60, // 1 hour
+    queryFn: async () => {
       const sources: CoverSource[] = [];
 
       // Always retain existing cover as option 1
@@ -93,22 +99,23 @@ export function useCoverHarvester(book: Book) {
         console.warn('Cover lookup handled gracefully:', err);
       }
 
-      if (active) {
-        // Discard duplicates or empty URLs
-        const uniqueSources = sources.filter(
-          (src, idx, self) =>
-            src.url && self.findIndex(s => s.url === src.url) === idx,
-        );
-        setCoverSources(uniqueSources);
-        setIsSearchingCovers(false);
-      }
-    };
+      // Discard duplicates or empty URLs
+      return sources.filter(
+        (src, idx, self) =>
+          src.url && self.findIndex(s => s.url === src.url) === idx,
+      );
+    },
+  });
 
-    void fetchCovers();
-    return () => {
-      active = false;
-    };
-  }, [book.isbn, book.title, book.author, book?.coverUrl, book?.coverUrlRaw]);
+  const setCoverSources = (updater: (prev: CoverSource[]) => CoverSource[]) => {
+    queryClient.setQueryData(queryKey, (old: CoverSource[] | undefined) => {
+      return updater(old || []);
+    });
+  };
 
-  return {coverSources, isSearchingCovers, setCoverSources};
+  return {
+    coverSources: query.data || [],
+    isSearchingCovers: query.isFetching,
+    setCoverSources,
+  };
 }

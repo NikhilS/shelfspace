@@ -1,10 +1,10 @@
 import {useState, useEffect} from 'react';
 import {doc, setDoc} from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../../firebase';
-import {generateBookInsights} from '../../services/gemini';
 import {fetchAuthorBioFromWikipedia} from '../../services/wikipediaApi';
 import {Book, BookDetailsPayload} from '../../types';
 import {toast} from 'sonner';
+import {trpc} from '../../lib/trpc';
 
 export function useBookInsights(
   libraryId: string | undefined,
@@ -17,6 +17,9 @@ export function useBookInsights(
   const [insightContent, setInsightContent] = useState<string | null>(null);
   const [isGeneratingInsight, setIsGeneratingInsight] = useState(false);
 
+  const generateBookInsightsMutation =
+    trpc.gemini.generateBookInsights.useMutation();
+
   useEffect(() => {
     if (!book || !libraryId || !canEdit) return;
 
@@ -25,20 +28,20 @@ export function useBookInsights(
 
     if (!needsSynopsis && !needsBio) return;
 
-    const abortController = new AbortController();
+    // TRPC abort signals are handled per request, but we can manage a local unmount flag
+    let isMounted = true;
 
     const generateMissingInfo = async () => {
       try {
         const updates: Partial<BookDetailsPayload> = {};
 
         if (needsSynopsis) {
-          const synopsis = await generateBookInsights(
-            book.title,
-            book.author,
-            'synopsis',
-            abortController.signal,
-          );
-          if (abortController.signal.aborted) return;
+          const synopsis = await generateBookInsightsMutation.mutateAsync({
+            title: book.title,
+            author: book.author,
+            type: 'synopsis',
+          });
+          if (!isMounted) return;
           if (synopsis) updates.synopsis = synopsis;
         }
 
@@ -46,28 +49,24 @@ export function useBookInsights(
           // Try Wikipedia first
           let authorBio = await fetchAuthorBioFromWikipedia(book.author);
 
-          if (abortController.signal.aborted) return;
+          if (!isMounted) return;
 
           // Fallback to Gemini if Wikipedia returns nothing or a disambiguation page hint
           if (!authorBio || authorBio.includes('may refer to:')) {
-            authorBio = await generateBookInsights(
-              book.title,
-              book.author,
-              'author_bio',
-              abortController.signal,
-            );
+            authorBio = await generateBookInsightsMutation.mutateAsync({
+              title: book.title,
+              author: book.author,
+              type: 'author_bio',
+            });
           }
 
-          if (abortController.signal.aborted) return;
+          if (!isMounted) return;
           if (authorBio && !authorBio.includes('may refer to:')) {
             updates.authorBio = authorBio;
           }
         }
 
-        if (
-          Object.keys(updates).length > 0 &&
-          !abortController.signal.aborted
-        ) {
+        if (Object.keys(updates).length > 0 && isMounted) {
           try {
             await setDoc(
               doc(db, 'libraries', libraryId, 'bookDetails', book.id),
@@ -84,7 +83,7 @@ export function useBookInsights(
         }
       } catch (error: unknown) {
         if (
-          abortController.signal.aborted ||
+          !isMounted ||
           (error instanceof Error &&
             (error.name === 'AbortError' ||
               error.message.toLowerCase().includes('abort')))
@@ -99,7 +98,7 @@ export function useBookInsights(
 
     return () => {
       clearTimeout(timeoutId);
-      abortController.abort();
+      isMounted = false;
     };
   }, [
     book?.id,
@@ -119,7 +118,11 @@ export function useBookInsights(
     setInsightContent(null);
 
     try {
-      const content = await generateBookInsights(book.title, book.author, type);
+      const content = await generateBookInsightsMutation.mutateAsync({
+        title: book.title,
+        author: book.author,
+        type: type,
+      });
       setInsightContent(content);
     } catch {
       toast.error('Failed to generate insights. Please try again.');

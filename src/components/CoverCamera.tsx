@@ -114,7 +114,7 @@ export default function CoverCamera({onCapture, onCancel}: CoverCameraProps) {
   };
 
   return (
-    <div className="w-full max-w-sm mx-auto aspect-[3/4] bg-on-surface rounded-3xl overflow-hidden relative shadow-[0_8px_30px_rgb(26,47,75,0.12)] border border-outline-variant/20 mb-4">
+    <div className="w-full max-w-sm mx-auto aspect-[3/4] bg-on-surface rounded-3xl overflow-hidden relative shadow-elevation-3 border border-outline-variant/20 mb-4">
       <video
         ref={videoRef}
         autoPlay
@@ -126,7 +126,7 @@ export default function CoverCamera({onCapture, onCancel}: CoverCameraProps) {
         <Button
           variant="outline"
           onClick={captureCover}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-surface/95 backdrop-blur-md rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all outline-none"
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-surface/95 backdrop-blur-md rounded-full font-bold shadow-elevation-2 flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all outline-none"
         >
           <Camera size={18} strokeWidth={2} /> Capture Cover
         </Button>

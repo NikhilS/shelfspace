@@ -1,6 +1,6 @@
 import React, {useState, useEffect} from 'react';
 import {useParams, useNavigate, useSearchParams} from 'react-router-dom';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {auth, db, handleFirestoreError, OperationType} from '../firebase';
 import {uploadBase64Image} from '../services/db/storage';
 import {
@@ -18,7 +18,7 @@ import {toTitleCase, getFirestoreTime} from '../lib/utils';
 import {motion, AnimatePresence} from 'motion/react';
 import {format} from 'date-fns';
 import {Library} from '../types';
-import {generateLibraryHeroImage} from '../services/gemini';
+import {trpc} from '../lib/trpc';
 
 // Hooks
 import {useLibraryData} from '../hooks/useLibraryData';
@@ -35,7 +35,7 @@ import {LibraryCollection} from './library/LibraryCollection';
 import {LibrarySettingsModals} from './library/LibrarySettingsModals';
 import {BulkActionsBar} from './library/BulkActionsBar';
 import {ErrorBoundary} from '../components/ErrorBoundary';
-import {useDebug} from '../contexts/DebugContext';
+import {useDebug} from '../stores/debugStore';
 import {PageLoading} from '../components/PageLoading';
 
 export default function LibraryView() {
@@ -61,9 +61,9 @@ export default function LibraryView() {
 
   // Debug inspector registration for telemetry of state views
   useDebugInspect('LibraryView_ActiveFilters', {
-    search: filters.search,
+    searchQuery: filters.searchQuery,
     currentTab: filters.currentTab,
-    selectedGenre: filters.selectedGenre,
+    filterGenre: filters.filterGenre,
     sortBy: filters.sortBy,
     totalBooksLoaded: books.length,
     selectedIdsLength: selection.selectedBooks?.size || 0,
@@ -289,13 +289,17 @@ export default function LibraryView() {
   const {setDebugData} = useDebug();
 
   const [isRefreshingHero, setIsRefreshingHero] = useState(false);
+  const generateLibraryHeroImageMutation =
+    trpc.gemini.generateLibraryHeroImage.useMutation();
 
   const handleRefreshHero = async () => {
     if (!id || !library || isRefreshingHero) return;
     setIsRefreshingHero(true);
     const toastId = toast.loading('Generating a fun & playful hero banner...');
     try {
-      const url = await generateLibraryHeroImage(library.name);
+      const url = await generateLibraryHeroImageMutation.mutateAsync({
+        libraryName: library.name,
+      });
       if (url) {
         const storagePath = `libraries/${id}/hero.png`;
         const storageUrl = await uploadBase64Image(url, storagePath);

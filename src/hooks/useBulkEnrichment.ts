@@ -1,18 +1,18 @@
 import {useState, useEffect, useMemo, useCallback} from 'react';
 import {writeBatch, doc} from 'firebase/firestore';
 import {db} from '../firebase';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {Book} from '../types';
 import {toast} from 'sonner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
-import {apiClient} from '../lib/apiClient';
+import {trpcVanilla} from '../lib/trpc';
 
 export interface UseBulkEnrichmentConfig {
   books: Book[];
   isBooksLoading: boolean;
   libraryId: string | undefined;
-  apiEndpoint: string;
-  metadataField: 'geoMetadata' | 'temporalMetadata';
+  providerKey: string;
+  metadataField: string;
   batchSize?: number;
   concurrencyLimit?: number;
   filterPredicate: (book: Book) => boolean;
@@ -26,7 +26,7 @@ export function useBulkEnrichment({
   books,
   isBooksLoading,
   libraryId,
-  apiEndpoint,
+  providerKey,
   metadataField,
   batchSize = 10,
   concurrencyLimit = 5,
@@ -73,81 +73,13 @@ export function useBulkEnrichment({
         totalToProcess: booksToBackfill.length,
         batchSize,
         concurrencyLimit,
-        apiEndpoint,
+        providerKey,
       },
     );
 
     try {
       const booksToProcess = [...booksToBackfill];
       const total = booksToProcess.length;
-
-      // Define internal robust fetch with timeout and exponential backoff retry helper
-      const fetchWithRetry = async <T>(
-        url: string,
-        options: RequestInit,
-        retries = 3,
-        delay = 1000,
-      ): Promise<T> => {
-        let lastError: Error | null = null;
-        for (let i = 0; i < retries; i++) {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), timeoutMs); // 3 minutes timeout by default
-          try {
-            const startTime = Date.now();
-            DebugTelemetryEngine.getInstance().addLog(
-              'info',
-              `[BulkEnrichment Fetch] Attempt ${i + 1}/${retries}: ${options.method || 'GET'} ${url}`,
-              {attempt: i + 1, url, method: options.method},
-            );
-
-            const data = await apiClient.request<T>(url, {
-              ...options,
-              signal: controller.signal,
-            });
-
-            clearTimeout(timeoutId);
-
-            const durationMs = Date.now() - startTime;
-            DebugTelemetryEngine.getInstance().addLog(
-              'api_res',
-              `[BulkEnrichment Response] Success from ${url} in ${durationMs}ms`,
-              {durationMs, url},
-            );
-
-            return data;
-          } catch (err) {
-            clearTimeout(timeoutId);
-            if (controller.signal.aborted) {
-              lastError = new Error(
-                `Request timed out after ${timeoutMs / 1000} seconds`,
-              );
-            } else {
-              lastError = err instanceof Error ? err : new Error(String(err));
-            }
-            DebugTelemetryEngine.getInstance().addLog(
-              'warn',
-              `[BulkEnrichment Fetch] Attempt ${i + 1}/${retries} got error: ${lastError.message}`,
-              {error: lastError.message},
-            );
-
-            const status = (err as {status?: number})?.status;
-            if (typeof status === 'number' && status < 500 && status !== 429) {
-              throw err;
-            }
-          }
-
-          if (i < retries - 1) {
-            const waitTime = delay * Math.pow(2, i);
-            DebugTelemetryEngine.getInstance().addLog(
-              'info',
-              `[BulkEnrichment] Rate-limited or timed out. Waiting ${waitTime}ms before retry...`,
-              {waitTime},
-            );
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-          }
-        }
-        throw lastError || new Error('HTTP Request failed after retries');
-      };
 
       // Split the books into batch arrays
       const batches: Book[][] = [];
@@ -174,20 +106,23 @@ export function useBulkEnrichment({
         );
 
         try {
-          const payload = batch.map(b => ({
-            id: b.id,
-            title: b.title,
-            author: b.author || 'Unknown',
-            synopsis: b.synopsis || b.description || '',
-          }));
+          const payload = batch.map(b => {
+            const bookAny = b as Record<string, unknown>;
+            return {
+              id: b.id,
+              title: b.title,
+              author: b.author || 'Unknown',
+              synopsis:
+                (bookAny.synopsis as string) ||
+                (bookAny.description as string) ||
+                '',
+            };
+          });
 
-          interface EnrichmentResponse {
-            results: unknown[];
-          }
-
-          const data = await fetchWithRetry<EnrichmentResponse>(apiEndpoint, {
-            method: 'POST',
-            body: JSON.stringify({books: payload}),
+          const data = await trpcVanilla.metadata.bulkFetch.mutate({
+            libraryId: libraryId,
+            providerKey,
+            books: payload,
           });
 
           if (data && Array.isArray(data.results)) {
@@ -303,7 +238,7 @@ export function useBulkEnrichment({
     isBackfilling,
     user,
     batchSize,
-    apiEndpoint,
+    providerKey,
     metadataField,
     concurrencyLimit,
     successToastMessage,

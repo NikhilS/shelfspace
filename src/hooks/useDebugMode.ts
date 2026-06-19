@@ -1,4 +1,4 @@
-import {useDebug} from '../contexts/DebugContext';
+import {useDebug} from '../stores/debugStore';
 
 export function useDebugMode() {
   const {isDebugMode, toggleDebugMode} = useDebug();

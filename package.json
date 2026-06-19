@@ -30,7 +30,11 @@
     "@react-three/fiber": "^9.6.1",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.14",
+    "@tanstack/react-query": "^5.101.0",
     "@tanstack/react-table": "^8.21.3",
+    "@trpc/client": "^11.18.0",
+    "@trpc/react-query": "^11.18.0",
+    "@trpc/server": "^11.18.0",
     "@vis.gl/react-google-maps": "^1.8.3",
     "@vitejs/plugin-react": "^5.0.4",
     "@zxing/browser": "^0.1.5",
@@ -63,9 +67,12 @@
     "use-debounce": "^10.1.1",
     "vite": "^6.2.0",
     "vite-plugin-pwa": "^1.2.0",
-    "zod": "^4.4.2"
+    "zod": "^4.4.3",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "@mswjs/data": "^0.16.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -82,6 +89,7 @@
     "eslint-plugin-unused-imports": "^4.4.1",
     "gts": "^7.0.0",
     "jsdom": "^29.1.1",
+    "msw": "^2.14.6",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "^5.6.3",

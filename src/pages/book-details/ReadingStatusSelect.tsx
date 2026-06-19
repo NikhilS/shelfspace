@@ -1,6 +1,6 @@
 import React, {memo} from 'react';
 import {toast} from 'sonner';
-import {useAuth} from '../../contexts/AuthContext';
+import {useAuth} from '../../stores/authStore';
 import {Book, BookDetailsPayload} from './useBook';
 
 interface ReadingStatusSelectProps {

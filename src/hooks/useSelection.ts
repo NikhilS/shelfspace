@@ -1,41 +1,29 @@
-import {useState} from 'react';
 import {doc} from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../firebase';
 import {Book} from '../types';
 import {toast} from 'sonner';
+import {useUIStore} from '../stores/uiStore';
 
 export function useSelection(
   libraryId: string | undefined,
   userId: string | undefined,
 ) {
-  const [selectedBooks, setSelectedBooks] = useState<Set<string>>(new Set());
+  const {
+    selectedBookIds: selectedBooks,
+    toggleBookSelection: toggleStoreBook,
+    toggleAllBooks: toggleStoreAll,
+    clearSelection,
+  } = useUIStore();
 
   const toggleBookSelection = (e: React.MouseEvent, bookId: string) => {
     e.stopPropagation();
-    setSelectedBooks(prev => {
-      const next = new Set(prev);
-      if (next.has(bookId)) next.delete(bookId);
-      else next.add(bookId);
-      return next;
-    });
+    toggleStoreBook(bookId);
   };
 
   const toggleAllBooks = (shelfBooksList: Book[]) => {
     const listIds = shelfBooksList.map(b => b.id);
-    const allSelected = listIds.every(id => selectedBooks.has(id));
-
-    setSelectedBooks(prev => {
-      const next = new Set(prev);
-      if (allSelected) {
-        listIds.forEach(id => next.delete(id));
-      } else {
-        listIds.forEach(id => next.add(id));
-      }
-      return next;
-    });
+    toggleStoreAll(listIds);
   };
-
-  const clearSelection = () => setSelectedBooks(new Set());
 
   const handleBulkStatusChange = async (newStatus: string) => {
     if (selectedBooks.size === 0 || !userId || !libraryId) return;

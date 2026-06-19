@@ -1,7 +1,8 @@
 import React, {Suspense, lazy} from 'react';
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {BrowserRouter, Routes, Route, Navigate, Outlet} from 'react-router-dom';
-import {AuthProvider, useAuth} from './contexts/AuthContext';
-import {DebugProvider} from './contexts/DebugContext';
+import {useAuthStore} from './stores/authStore';
+import {useAppPermissions} from './hooks/useAppPermissions';
 import {DebugConsoleHUD} from './components/DebugConsoleHUD';
 import {ErrorBoundary} from './components/ErrorBoundary';
 import {Toaster} from 'sonner';
@@ -9,6 +10,7 @@ import AppLayout from './components/AppLayout';
 import ScrollToTop from './components/ScrollToTop';
 import {RequireLibraryPermission} from './components/RequireLibraryPermission';
 import {BookLoader} from './components/BookLoader';
+import {PageLoading} from './components/PageLoading';
 
 function lazyWithRetry<T extends React.ComponentType>(
   factory: () => Promise<{default: T}>,
@@ -60,8 +62,11 @@ function PageWrapper({children}: {children?: React.ReactNode}) {
       <ErrorBoundary>
         <Suspense
           fallback={
-            <div className="flex h-[50vh] items-center justify-center text-on-surface-variant font-serif italic text-lg animate-pulse gap-3">
-              <BookLoader size="md" />
+            <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh]">
+              <PageLoading
+                title="Loading module..."
+                subtitle="Downloading application assets and views."
+              />
             </div>
           }
         >
@@ -73,7 +78,7 @@ function PageWrapper({children}: {children?: React.ReactNode}) {
 }
 
 function PrivateRoute({children}: {children?: React.ReactNode}) {
-  const {user, isAuthReady} = useAuth();
+  const {user, isAuthReady} = useAuthStore();
 
   if (!isAuthReady) {
     return <LoadingScreen />;
@@ -191,18 +196,127 @@ function AnimatedRoutes() {
   );
 }
 
+import {httpBatchLink} from '@trpc/client';
+import {trpc} from './lib/trpc';
+import {auth} from './firebase';
+
+const queryClient = new QueryClient();
+
+const trpcClient = trpc.createClient({
+  links: [
+    httpBatchLink({
+      url: '/trpc',
+      async headers() {
+        const token = await auth.currentUser?.getIdToken();
+        return {
+          Authorization: token ? `Bearer ${token}` : '',
+        };
+      },
+    }),
+  ],
+});
+
+// Initialize Auth
+useAuthStore.getState()._initialize();
+
+function AuthGuard({children}: {children: React.ReactNode}) {
+  const {user, isAuthReady, authError, logOut} = useAuthStore();
+  const {isAppAllowed, isLoadingPermissions} = useAppPermissions();
+
+  if (isAuthReady && user && !isLoadingPermissions && !isAppAllowed) {
+    return (
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6 text-center text-on-surface">
+        <div className="max-w-md w-full bg-surface-variant/30 border border-outline-variant/30 rounded-2xl p-8 space-y-6">
+          <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-8 h-8"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-serif text-on-surface">Access Denied</h1>
+          <p className="text-on-surface-variant leading-relaxed">
+            It looks like {user.email} doesn't have access to this application
+            yet. Please contact the administrator to be added to the allowlist.
+          </p>
+          <div className="pt-4">
+            <button
+              onClick={logOut}
+              className="w-full bg-primary text-on-primary py-2 px-4 rounded-md font-medium"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthReady && authError) {
+    return (
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6 text-center text-on-surface">
+        <div className="max-w-md w-full bg-surface-variant/30 border border-outline-variant/30 rounded-2xl p-8 space-y-6">
+          <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-8 h-8"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-serif text-on-surface">Access Denied</h1>
+          <p className="text-on-surface-variant leading-relaxed">{authError}</p>
+          <div className="pt-4">
+            <button
+              onClick={logOut}
+              className="w-full bg-primary text-on-primary py-2 px-4 rounded-md font-medium"
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
-    <ErrorBoundary>
-      <DebugProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <AnimatedRoutes />
-          </BrowserRouter>
-          <Toaster position="bottom-right" />
-          <DebugConsoleHUD />
-        </AuthProvider>
-      </DebugProvider>
-    </ErrorBoundary>
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <ErrorBoundary>
+          <AuthGuard>
+            <BrowserRouter>
+              <AnimatedRoutes />
+            </BrowserRouter>
+            <Toaster position="bottom-right" />
+            <DebugConsoleHUD />
+          </AuthGuard>
+        </ErrorBoundary>
+      </QueryClientProvider>
+    </trpc.Provider>
   );
 }

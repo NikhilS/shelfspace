@@ -1,9 +1,9 @@
 import {useState, useEffect} from 'react';
 import {collection, doc, getDocs, deleteField} from 'firebase/firestore';
 import {db} from '../firebase';
-import {generateBookEmbeddings, generateClusterNames} from '../services/gemini';
 import {kmeans} from '../lib/clustering';
 import {BookDetails} from '../services/bookApi';
+import {trpc} from '../lib/trpc';
 
 interface BookDoc extends BookDetails {
   id: string;
@@ -24,6 +24,11 @@ export function useConstellationData(libraryId: string | undefined) {
   const [plotData, setPlotData] = useState<ScatterPoint[]>([]);
   const [clusterNames, setClusterNames] = useState<Record<number, string>>({});
   const [reclusterTrigger, setReclusterTrigger] = useState(0);
+
+  const generateBookEmbeddingsMutation =
+    trpc.gemini.generateBookEmbeddings.useMutation();
+  const generateClusterNamesMutation =
+    trpc.gemini.generateClusterNames.useMutation();
 
   useEffect(() => {
     let isMounted = true;
@@ -79,12 +84,12 @@ export function useConstellationData(libraryId: string | undefined) {
             return parts.join(' - ');
           });
 
-          const embeddings = await generateBookEmbeddings(
-            texts,
-            (completed, total) => {
-              setProgress(
-                `Generating AI embeddings... (${Math.round((completed / total) * 100)}%)`,
-              );
+          const embeddings = await generateBookEmbeddingsMutation.mutateAsync(
+            {texts},
+            {
+              onSuccess: () => {
+                setProgress('Generating AI embeddings... (100%)');
+              },
             },
           );
           if (!embeddings || embeddings.length !== toEmbed.length) {
@@ -177,7 +182,9 @@ export function useConstellationData(libraryId: string | undefined) {
         }));
 
         if (clusterArray.length > 0) {
-          const names = await generateClusterNames(clusterArray);
+          const names = await generateClusterNamesMutation.mutateAsync({
+            clusters: clusterArray,
+          });
           if (isMounted) setClusterNames(names);
         }
 

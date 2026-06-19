@@ -3,10 +3,10 @@ import {render, screen, fireEvent, waitFor} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import Dashboard from './Dashboard';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {addDoc} from 'firebase/firestore';
 
-vi.mock('../contexts/AuthContext');
+vi.mock('../stores/authStore');
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {

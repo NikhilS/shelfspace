@@ -3,8 +3,8 @@ import React from 'react';
 // SKELETON HEADER: Simulates the large hero banner area with corresponding dark-contrast background
 export function LibraryHeaderSkeleton() {
   return (
-    <div className="w-full h-[280px] sm:h-[400px] relative overflow-hidden flex items-end bg-[#021a35] animate-pulse">
-      <div className="absolute inset-0 bg-gradient-to-t from-[#021a35] via-[#021a35]/40 to-transparent opacity-90" />
+    <div className="w-full h-[280px] sm:h-[400px] relative overflow-hidden flex items-end bg-primary animate-pulse">
+      <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/40 to-transparent opacity-90" />
       <div className="relative z-10 w-full max-w-[1200px] mx-auto px-6 sm:px-10 pb-10 sm:pb-16 text-white translate-y-4">
         <div className="space-y-4">
           {/* Header Title Mask */}

@@ -1,4 +1,4 @@
-import {IMetadataProvider, MetadataKey} from '../../types/metadata';
+import {IMetadataProvider, MetadataKey} from '../../../types/metadata';
 
 export class MetadataRegistry {
   private static instance: MetadataRegistry;

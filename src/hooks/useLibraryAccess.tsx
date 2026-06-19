@@ -1,4 +1,3 @@
-import {createContext, useContext} from 'react';
 import {Library} from '../types';
 
 export interface LibraryAccess {
@@ -43,20 +42,4 @@ export function getAccessFromLibrary(
     canDelete: role === 'owner' || role === 'editor', // According to spec, editor can delete books. Owner can delete library
     canView: role === 'owner' || role === 'editor' || role === 'viewer',
   };
-}
-
-const LibraryAccessContext = createContext<LibraryAccess | null>(null);
-
-export function useLibraryAccess() {
-  const context = useContext(LibraryAccessContext);
-  if (!context) {
-    return {
-      role: null,
-      isOwner: false,
-      canEdit: false,
-      canDelete: false,
-      canView: false,
-    };
-  }
-  return context;
 }

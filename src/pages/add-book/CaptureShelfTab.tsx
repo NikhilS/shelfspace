@@ -2,7 +2,7 @@ import React, {useState} from 'react';
 import {BookDetails} from '../../services/bookApi';
 import CameraScanner from '../../components/CameraScanner';
 import ExtractedBooksTable from '../../components/ExtractedBooksTable';
-import {logger} from '../../contexts/DebugContext';
+import {logger} from '../../stores/debugStore';
 import {triggerHaptics} from '../../lib/utils';
 
 interface CaptureShelfTabProps {

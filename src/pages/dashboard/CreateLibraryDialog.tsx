@@ -69,7 +69,7 @@ export function CreateLibraryDialog({
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex-1 sm:flex-none justify-center px-8 py-6 font-body-md min-w-[140px] shadow-[0_2px_12px_rgb(26,47,75,0.12)] hover:-translate-y-[1px] transition-transform gap-2"
+                className="flex-1 sm:flex-none justify-center px-8 py-6 font-body-md min-w-[140px] shadow-elevation-1 hover:-translate-y-[1px] transition-transform gap-2"
               >
                 {isSubmitting ? (
                   <>

@@ -4,7 +4,7 @@ import {render} from '@testing-library/react';
 import ConstellationMap from './ConstellationMap';
 import {MemoryRouter} from 'react-router-dom';
 
-vi.mock('../contexts/AuthContext', () => ({
+vi.mock('../stores/authStore', () => ({
   useAuth: () => ({user: {uid: 'u1'}, logOut: vi.fn()}),
 }));
 

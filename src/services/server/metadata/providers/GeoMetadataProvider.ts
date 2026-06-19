@@ -7,6 +7,7 @@ import {
   extractBookGeoMetadata,
   extractBookGeoMetadataBatch,
   BatchExtractedGeoBookResult,
+  ExtractedGeoLocation,
 } from '../../gemini';
 import {MetadataRegistry} from '../registry';
 import {geocodeLocation} from '../../geolocation';
@@ -22,10 +23,15 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
     const synopsisProvider = MetadataRegistry.getInstance().getProvider(
       MetadataKey.SYNOPSIS,
     );
-    return synopsisProvider ? await synopsisProvider.fetch(book) : undefined;
+    return synopsisProvider
+      ? ((await synopsisProvider.fetch(book)) as string | undefined)
+      : undefined;
   }
 
-  private async processLocations(item: BatchExtractedGeoBookResult) {
+  private async processLocations(item: {
+    isNonEarth: boolean;
+    locations: ExtractedGeoLocation[] | undefined;
+  }) {
     if (item.isNonEarth) {
       return {
         isNonEarth: true,

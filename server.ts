@@ -8,6 +8,9 @@ import crypto from 'crypto';
 
 import {getFirestore} from 'firebase-admin/firestore';
 import * as geminiService from './src/services/server/gemini';
+import * as trpcExpress from '@trpc/server/adapters/express';
+import {appRouter} from './src/server/trpc/routers/_app';
+import {createContext} from './src/server/trpc/trpc';
 
 let appFilename = '';
 let appDirname = '';
@@ -166,25 +169,36 @@ async function startServer() {
   app.use(express.json({limit: '50mb'}));
   app.use(express.urlencoded({limit: '50mb', extended: true}));
 
+  // Mount tRPC adapter before standard API and static handlers
+  app.use(
+    '/trpc',
+    trpcExpress.createExpressMiddleware({
+      router: appRouter,
+      createContext,
+    }),
+  );
+
   // Centralized Firebase ID Token authentication middleware for all /api endpoints
   const authenticateToken = async (
     req: express.Request,
     res: express.Response,
     next: express.NextFunction,
-  ) => {
+  ): Promise<void> => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({error: 'Unauthorized'});
+      res.status(401).json({error: 'Unauthorized'});
+      return;
     }
 
     try {
       const token = authHeader.split(' ')[1];
       const decodedToken = await admin.auth().verifyIdToken(token);
-      (req as AuthenticatedRequest).user = decodedToken;
+      (req as unknown as AuthenticatedRequest).user = decodedToken;
       next();
     } catch (error) {
       console.error('[Auth Middleware] Token verification failed:', error);
-      return res.status(401).json({error: 'Unauthorized: Invalid token'});
+      res.status(401).json({error: 'Unauthorized: Invalid token'});
+      return;
     }
   };
 
@@ -223,7 +237,7 @@ async function startServer() {
     }
 
     try {
-      const decodedToken = (req as AuthenticatedRequest).user;
+      const decodedToken = (req as unknown as AuthenticatedRequest).user;
 
       const libRef = dbAdmin.collection('libraries').doc(libraryId);
       const libSnap = await libRef.get();
@@ -256,7 +270,7 @@ async function startServer() {
     }
 
     try {
-      const decodedToken = (req as AuthenticatedRequest).user;
+      const decodedToken = (req as unknown as AuthenticatedRequest).user;
 
       const libRef = dbAdmin.collection('libraries').doc(libraryId);
       const libSnap = await libRef.get();
@@ -298,7 +312,7 @@ async function startServer() {
     }
 
     try {
-      const decodedToken = (req as AuthenticatedRequest).user;
+      const decodedToken = (req as unknown as AuthenticatedRequest).user;
 
       const libRef = dbAdmin.collection('libraries').doc(libraryId);
       const libSnap = await libRef.get();
@@ -333,7 +347,7 @@ async function startServer() {
     }
 
     try {
-      const decodedToken = (req as AuthenticatedRequest).user;
+      const decodedToken = (req as unknown as AuthenticatedRequest).user;
 
       const docRef = await dbAdmin.collection('libraries').add({
         name: name.trim(),
@@ -353,102 +367,6 @@ async function startServer() {
   });
 
   // API Routes
-  app.post('/api/gemini/action', async (req, res) => {
-    const {action, payload} = req.body;
-
-    if (!action) {
-      return res.status(400).json({error: 'Missing action'});
-    }
-
-    try {
-      let result;
-
-      switch (action) {
-        case 'generateClusterNames':
-          result = await geminiService.generateClusterNames(payload.clusters);
-          break;
-        case 'generateBookEmbeddings':
-          result = await geminiService.generateBookEmbeddings(payload.texts);
-          break;
-        case 'extractBooksFromImage':
-          result = await geminiService.extractBooksFromImage(
-            payload.base64Image,
-            payload.mimeType,
-          );
-          break;
-        case 'extractBooksFromCsv':
-          result = await geminiService.extractBooksFromCsv(payload.csvText);
-          break;
-        case 'generateLibraryRecommendations':
-          result = await geminiService.generateLibraryRecommendations(
-            payload.libraryBooks,
-          );
-          break;
-        case 'generateBookInsights':
-          result = await geminiService.generateBookInsights(
-            payload.title,
-            payload.author,
-            payload.type,
-          );
-          break;
-        case 'generateLibraryHeroImage':
-          result = await geminiService.generateLibraryHeroImage(
-            payload.libraryName,
-          );
-          break;
-        case 'getPickOfTheDay':
-          result = await geminiService.getPickOfTheDay(payload.books);
-          break;
-        case 'extractBookGeoMetadata':
-          result = await geminiService.extractBookGeoMetadata(
-            payload.title,
-            payload.author,
-            payload.synopsis,
-          );
-          break;
-        case 'extractBookGeoMetadataBatch':
-          result = await geminiService.extractBookGeoMetadataBatch(
-            payload.books as {
-              id: string;
-              title: string;
-              author: string;
-              synopsis?: string;
-            }[],
-          );
-          break;
-        case 'extractBookTemporalMetadataBatch':
-          result = await geminiService.extractBookTemporalMetadataBatch(
-            payload.books as {
-              id: string;
-              title: string;
-              author: string;
-              synopsis?: string;
-            }[],
-          );
-          break;
-        default:
-          return res.status(400).json({error: `Unknown action: ${action}`});
-      }
-
-      return res.json({result});
-    } catch (error) {
-      if (
-        geminiService &&
-        typeof geminiService.isApiKeyError === 'function' &&
-        geminiService.isApiKeyError(error)
-      ) {
-        console.info(
-          `Gemini backend action ${action} is pending valid GEMINI_API_KEY configuration.`,
-        );
-      } else {
-        console.error(`Gemini backend action ${action} failed:`, error);
-      }
-      return res.status(500).json({
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
   app.post('/api/books/:libraryId/enrich-geo', async (req, res) => {
     const {libraryId} = req.params;
     const {bookId, title, author, synopsis} = req.body;
@@ -458,7 +376,7 @@ async function startServer() {
     }
 
     try {
-      const u = (req as AuthenticatedRequest).user;
+      const u = (req as unknown as AuthenticatedRequest).user;
       const accessCheck = await checkLibraryAccess(libraryId, u.uid, u.email);
       if (!accessCheck.access) {
         return res

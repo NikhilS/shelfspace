@@ -47,7 +47,7 @@ export class ClientBulkWriter {
     this.checkCommit();
   }
 
-  update<T = DocumentData>(
+  update<T extends DocumentData = DocumentData>(
     docRef: DocumentReference<T>,
     data: UpdateData<T>,
   ): void {

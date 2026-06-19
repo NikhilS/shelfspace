@@ -137,7 +137,7 @@ export default function BookSearch({
           searchResults.map((book, idx) => (
             <div
               key={idx}
-              className="bg-surface-container-low/60 p-3 sm:p-5 rounded-2xl sm:rounded-3xl border border-outline-variant/40 flex flex-row gap-3 sm:gap-6 shadow-[0_2px_8px_rgb(26,47,75,0.02)] hover:shadow-md hover:border-outline-variant/80 transition-all items-start sm:items-center group"
+              className="bg-surface-container-low/60 p-3 sm:p-5 rounded-2xl sm:rounded-3xl border border-outline-variant/40 flex flex-row gap-3 sm:gap-6 shadow-elevation-1 hover:shadow-md hover:border-outline-variant/80 transition-all items-start sm:items-center group"
             >
               {book.coverUrl ? (
                 <img
@@ -182,7 +182,7 @@ export default function BookSearch({
                   <Button
                     onClick={() => handleAddClick(book)}
                     disabled={isAdding === (book.isbn || book.title)}
-                    className="w-full rounded-full flex items-center justify-center gap-2 font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:scale-105 transition-all h-9"
+                    className="w-full rounded-full flex items-center justify-center gap-2 font-bold shadow-elevation-2 hover:scale-105 transition-all h-9"
                   >
                     {isAdding === (book.isbn || book.title) ? (
                       <Loader2 size={16} className="animate-spin" />
@@ -198,7 +198,7 @@ export default function BookSearch({
                 <Button
                   onClick={() => handleAddClick(book)}
                   disabled={isAdding === (book.isbn || book.title)}
-                  className="rounded-full flex items-center gap-2 font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:-translate-y-0.5 transition-all px-6 py-6"
+                  className="rounded-full flex items-center gap-2 font-bold shadow-elevation-2 hover:-translate-y-0.5 transition-all px-6 py-6"
                   title="Add to Library"
                 >
                   {isAdding === (book.isbn || book.title) ? (

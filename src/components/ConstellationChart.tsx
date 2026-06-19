@@ -114,7 +114,7 @@ function StarField({
       ] as [number, number, number],
       color:
         d.clusterId === -1
-          ? '#4b5e7d' // subdued noise color matching Oxford Blue
+          ? 'var(--color-surface-tint-value)' // subdued noise color matching Oxford Blue
           : CLUSTER_COLORS[d.clusterId % CLUSTER_COLORS.length],
     }));
   }, [plotData, bounds]);
@@ -157,9 +157,9 @@ export default function ConstellationChart({
   } | null>(null);
 
   return (
-    <div className="relative w-full h-[600px] md:h-[700px] bg-[#021a35] rounded-lg border border-outline-variant shadow-sm overflow-hidden">
+    <div className="relative w-full h-[600px] md:h-[700px] bg-primary rounded-lg border border-outline-variant shadow-sm overflow-hidden">
       <Canvas camera={{position: [0, 0, 35], fov: 60}}>
-        <color attach="background" args={['#021a35']} />
+        <color attach="background" args={['var(--color-primary-base)']} />
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1.5} />
         <pointLight position={[-10, -10, -10]} intensity={0.5} />

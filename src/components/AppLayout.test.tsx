@@ -2,10 +2,14 @@ import {render, screen, fireEvent} from '@testing-library/react';
 import {BrowserRouter} from 'react-router-dom';
 import {vi, describe, it, expect, beforeEach} from 'vitest';
 import AppLayout from './AppLayout';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 
-vi.mock('../contexts/AuthContext', () => ({
+vi.mock('../stores/authStore', () => ({
   useAuth: vi.fn(),
+}));
+
+vi.mock('../hooks/useAppPermissions', () => ({
+  useAppPermissions: vi.fn(() => ({isAdmin: false, isAppAllowed: true})),
 }));
 
 const renderAppLayout = () => {
@@ -23,7 +27,7 @@ describe('AppLayout', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useAuth as import('vitest').Mock).mockReturnValue({
+    (useAuth as unknown as import('vitest').Mock).mockReturnValue({
       user: {uid: 'user1', email: 'test@example.com', photoURL: null},
       logOut: mockLogOut,
     });

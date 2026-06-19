@@ -253,6 +253,7 @@ export function useSpruceUp(libraryId: string | undefined) {
 
   return {
     loading,
+    books,
     duplicates,
     processingIds,
     handleDelete,

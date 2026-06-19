@@ -114,7 +114,7 @@ export function ManualEntryTab({
                 <img
                   src={coverUrl}
                   alt="Cover"
-                  className="w-32 h-48 object-cover rounded-xl shadow-[2px_4px_12px_rgb(26,47,75,0.1)] border border-outline-variant/40"
+                  className="w-32 h-48 object-cover rounded-xl shadow-elevation-2 border border-outline-variant/40"
                   referrerPolicy="no-referrer"
                 />
                 <button
@@ -278,7 +278,7 @@ export function ManualEntryTab({
         <Button
           type="submit"
           disabled={!isValid || isAdding}
-          className="w-full rounded-full h-14 text-base font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:shadow-lg hover:-translate-y-0.5 mt-8 disabled:opacity-50"
+          className="w-full rounded-full h-14 text-base font-bold shadow-elevation-2 hover:shadow-lg hover:-translate-y-0.5 mt-8 disabled:opacity-50"
         >
           {isAdding ? (
             <Loader2

@@ -1,25 +1,19 @@
-import {useState, useEffect} from 'react';
+import {useQuery} from '@tanstack/react-query';
 import {Book} from '../types';
-import {getPickOfTheDay} from '../services/gemini';
 import {searchBookByTitleAndAuthor} from '../services/bookApi';
-import {logger} from '../contexts/DebugContext';
+import {logger} from '../stores/debugStore';
+import {trpc} from '../lib/trpc';
 
 export function usePickOfTheDay(books: Book[], currentTab: string) {
-  const [pickOfTheDay, setPickOfTheDay] = useState<{
-    title: string;
-    author: string;
-    coverUrl?: string;
-    reason: string;
-  } | null>(null);
-  const [isGeneratingPick, setIsGeneratingPick] = useState(false);
-  const [hasAttempted, setHasAttempted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const getPickOfTheDayMutation = trpc.gemini.getPickOfTheDay.useMutation();
 
-  const generateNewPick = async (isManualClick = false) => {
-    if (books.length === 0 || (isGeneratingPick && !isManualClick)) return;
-    setIsGeneratingPick(true);
-    setError(null);
-    try {
+  const query = useQuery({
+    queryKey: ['pickOfTheDay', books.length],
+    enabled: books.length > 0 && currentTab === 'overview',
+    retry: false,
+    staleTime: 1000 * 60 * 60 * 24, // 24 hours
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
       logger.info(
         `[Curator pick] Starting AI Curator recommendation engine. Library size: ${books.length} books.`,
       );
@@ -36,7 +30,9 @@ export function usePickOfTheDay(books: Book[], currentTab: string) {
       logger.info(
         '[Curator pick] Querying Gemini for 10 tailored, expert librarian recommendations...',
       );
-      const picks = await getPickOfTheDay(sample);
+      const picks = await getPickOfTheDayMutation.mutateAsync({
+        books: sample.map(b => ({title: b.title, author: b.author})),
+      });
 
       let finalPick: {title: string; author: string; reason: string} | null =
         null;
@@ -108,57 +104,25 @@ export function usePickOfTheDay(books: Book[], currentTab: string) {
             `[Curator pick] Non-fatal error looking up cover art: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
-        setPickOfTheDay({
+        logger.info(
+          `[Curator pick] New recommendation set: "${finalPick.title}" by ${finalPick.author}. Enjoy your reading!`,
+        );
+        return {
           title: finalPick.title,
           author: finalPick.author,
           coverUrl,
           reason: finalPick.reason,
-        });
-        logger.info(
-          `[Curator pick] New recommendation set: "${finalPick.title}" by ${finalPick.author}. Enjoy your reading!`,
-        );
-      } else {
-        setError('No recommendation found.');
-        logger.error(
-          '[Curator pick] Gemini returned an empty or invalid pick.',
-        );
+        };
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-      logger.error(`[Curator pick] Call failed with error: ${msg}`);
-      console.warn('Pick of the day generation failed:', msg);
-    } finally {
-      setIsGeneratingPick(false);
-      setHasAttempted(true);
-    }
-  };
 
-  useEffect(() => {
-    if (
-      books.length > 0 &&
-      !pickOfTheDay &&
-      !isGeneratingPick &&
-      !hasAttempted &&
-      currentTab === 'overview'
-    ) {
-      void generateNewPick(false);
-    }
-  }, [books.length, currentTab, pickOfTheDay, isGeneratingPick, hasAttempted]);
-
-  // Reset attempt state if library becomes empty or when user changes tab, or we can just let books trigger it
-  useEffect(() => {
-    if (books.length === 0) {
-      setHasAttempted(false);
-      setError(null);
-      setPickOfTheDay(null);
-    }
-  }, [books.length]);
+      throw new Error('No recommendation found.');
+    },
+  });
 
   return {
-    pickOfTheDay,
-    isGeneratingPick,
-    generateNewPick: () => generateNewPick(true),
-    error,
+    pickOfTheDay: query.data || null,
+    isGeneratingPick: query.isFetching,
+    generateNewPick: () => query.refetch(),
+    error: query.error ? query.error.message : null,
   };
 }

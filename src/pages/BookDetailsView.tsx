@@ -5,7 +5,7 @@ import {Swiper, SwiperSlide} from 'swiper/react';
 import {Virtual} from 'swiper/modules';
 import type {Swiper as SwiperClass} from 'swiper';
 import {useLibraryData} from '../hooks/useLibraryData';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {PrefetchAdjacentBooks} from '../components/PrefetchAdjacentBooks';
 import {getAccessFromLibrary} from '../hooks/useLibraryAccess';
 

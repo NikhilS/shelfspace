@@ -1,10 +1,12 @@
-import React, {useState, useEffect} from 'react';
+import React, {useEffect} from 'react';
 import {Link, useLocation, Outlet} from 'react-router-dom';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
+import {useAppPermissions} from '../hooks/useAppPermissions';
 import {Library, LogOut, Menu, Shield} from 'lucide-react';
 import {motion, AnimatePresence} from 'motion/react';
 import {ConnectivityBanner} from './ConnectivityBanner';
 import {LibrarySidebarNav} from './LibrarySidebarNav';
+import {useAppStore} from '../stores/appStore';
 
 interface AppLayoutProps {
   children?: React.ReactNode;
@@ -12,7 +14,9 @@ interface AppLayoutProps {
 
 export default function AppLayout({children}: AppLayoutProps) {
   const {user, logOut} = useAuth();
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const {isAdmin} = useAppPermissions();
+  const {sidebarOpen: isMobileNavOpen, setSidebarOpen: setIsMobileNavOpen} =
+    useAppStore();
   const location = useLocation();
 
   const isHome = location.pathname === '/';
@@ -23,7 +27,7 @@ export default function AppLayout({children}: AppLayoutProps) {
   // Close mobile nav when location changes
   useEffect(() => {
     setIsMobileNavOpen(false);
-  }, [location]);
+  }, [location, setIsMobileNavOpen]);
 
   return (
     <div className="bg-background text-on-background font-body-md text-body-md antialiased flex min-h-screen relative w-full overflow-x-hidden">
@@ -69,7 +73,7 @@ export default function AppLayout({children}: AppLayoutProps) {
             <span>My Libraries</span>
           </Link>
 
-          {useAuth().isAdmin && (
+          {isAdmin && (
             <Link
               to="/admin"
               onClick={() => setIsMobileNavOpen(false)}

@@ -1,10 +1,11 @@
+import {trpcVanilla} from '../../lib/trpc';
 import {useState} from 'react';
 import {collection, doc, serverTimestamp, increment} from 'firebase/firestore';
 import {db, auth} from '../../firebase';
 import {uploadBase64Image} from '../../services/db/storage';
 import {BookDetails} from '../../services/bookApi';
-import {useAuth} from '../../contexts/AuthContext';
-import {logger} from '../../contexts/DebugContext';
+import {useAuth} from '../../stores/authStore';
+import {logger} from '../../stores/debugStore';
 import {toast} from 'sonner';
 
 enum OperationType {
@@ -91,28 +92,18 @@ export function useAddBooks(libraryId?: string) {
       const enrichedDataMap: Record<string, unknown> = {};
       try {
         logger.info(
-          `[useAddBooks] Requesting server-side enrich-create for ${booksWithIds.length} books...`,
-        );
-        const token = await auth.currentUser?.getIdToken();
-        const res = await fetch(
-          `/api/libraries/${libraryId}/metadata/enrich-create`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? {Authorization: `Bearer ${token}`} : {}),
-            },
-            body: JSON.stringify({books: booksWithIds}),
-          },
+          `[useAddBooks] Requesting TRPC server-side enrich-create for ${booksWithIds.length} books...`,
         );
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'success' && data.results) {
-            data.results.forEach((r: {id: string; [key: string]: unknown}) => {
-              enrichedDataMap[r.id] = r;
-            });
-          }
+        const data = await trpcVanilla.metadata.enrichCreate.mutate({
+          libraryId,
+          books: booksWithIds,
+        });
+
+        if (data.status === 'success' && data.results) {
+          data.results.forEach((r: {id: string; [key: string]: unknown}) => {
+            enrichedDataMap[r.id] = r;
+          });
         }
       } catch (err) {
         logger.error(`[useAddBooks] Failed to fetch enrich-create: ${err}`);
@@ -171,12 +162,15 @@ export function useAddBooks(libraryId?: string) {
           );
         }
 
-        const enrichedForBook = enrichedDataMap[bookId] || {};
+        const enrichedForBook = (enrichedDataMap[bookId] || {}) as Record<
+          string,
+          unknown
+        >;
 
         const {
-          synopsis = enrichedForBook.synopsis || undefined,
-          authorBio = enrichedForBook.authorBio || undefined,
-          embedding = enrichedForBook.embeddings || undefined,
+          synopsis = (enrichedForBook.synopsis as string) || undefined,
+          authorBio = (enrichedForBook.authorBio as string) || undefined,
+          embedding = (enrichedForBook.embeddings as number[]) || undefined,
           clusterCoordinates,
           ...lightweightData
         } = cleanBook;

@@ -62,7 +62,7 @@ export default function BarcodeScanner({
       ) : (
         <>
           <video ref={ref} className="w-full h-full object-cover" />
-          <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-red-500 bg-opacity-70 shadow-[0_0_8px_rgba(239,68,68,0.8)] z-10 animate-pulse" />
+          <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-red-500 bg-opacity-70 shadow-[0_0_8px_var(--color-error)] z-10 animate-pulse" />
           <div className="absolute top-0 bottom-0 left-12 right-12 border-x-2 border-white/20 z-10 pointer-events-none" />
         </>
       )}

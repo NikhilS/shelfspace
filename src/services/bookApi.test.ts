@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import {searchBookByIsbn, searchBookByTitle, clearBookCache} from './bookApi';
+import {searchBookByIsbn, searchBookByTitle} from './bookApi';
 
 // Mock the global fetch
 global.fetch = vi.fn();
@@ -8,7 +8,6 @@ describe('bookApi', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    clearBookCache();
   });
 
   afterEach(() => {

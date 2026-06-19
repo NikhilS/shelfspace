@@ -1,5 +1,5 @@
 import {useState, useEffect, useRef} from 'react';
-import {useAuth} from '../../contexts/AuthContext';
+import {useAuth} from '../../stores/authStore';
 import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {reconcileBookCount} from '../../services/db/books';
 import {uploadBase64Image} from '../../services/db/storage';
@@ -17,13 +17,16 @@ import {
 } from 'firebase/firestore';
 import {Library} from '../../types';
 import {toast} from 'sonner';
-import {generateLibraryHeroImage} from '../../services/gemini';
+import {trpc} from '../../lib/trpc';
 
 export function useLibraries() {
   const {user} = useAuth();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const generateLibraryHeroImageMutation =
+    trpc.gemini.generateLibraryHeroImage.useMutation();
 
   const reconciledLibsRef = useRef<Set<string>>(new Set());
 
@@ -115,7 +118,8 @@ export function useLibraries() {
       toast.success('Library created successfully');
 
       // Generate hero image in background
-      generateLibraryHeroImage(trimmedName)
+      generateLibraryHeroImageMutation
+        .mutateAsync({libraryName: trimmedName})
         .then(async url => {
           if (url) {
             try {

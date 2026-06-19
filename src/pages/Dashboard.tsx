@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {Navigate} from 'react-router-dom';
 import {Plus, Library as LibraryIcon} from 'lucide-react';
 import SidebarActions from '../components/SidebarActions';

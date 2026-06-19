@@ -1,5 +1,10 @@
-import {vi} from 'vitest';
+import {vi, beforeAll, afterEach, afterAll} from 'vitest';
 import '@testing-library/jest-dom';
+import {server} from './mocks/server';
+
+beforeAll(() => server.listen({onUnhandledRequest: 'bypass'}));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 
 window.scrollTo = vi.fn();
 

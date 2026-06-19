@@ -85,7 +85,7 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
 }) => {
   return (
     <>
-      <div className="sticky top-16 z-40 flex flex-col shadow-[0_4px_20px_rgba(26,47,75,0.02)] border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md">
+      <div className="sticky top-16 z-40 flex flex-col shadow-elevation-2 border-b border-outline-variant/30 bg-surface/80 backdrop-blur-md">
         <div className="px-4 sm:px-8 min-h-16 py-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 transition-all">
           <div className="relative w-full lg:w-[320px] lg:flex-shrink-0">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant z-10" />

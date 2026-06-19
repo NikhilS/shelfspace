@@ -1,9 +1,9 @@
 import React, {useRef, useState} from 'react';
 import {UploadCloud, Loader2, FileText} from 'lucide-react';
-import {extractBooksFromCsv} from '../services/gemini';
 import {toast} from 'sonner';
-import {logger} from '../contexts/DebugContext';
+import {logger} from '../stores/debugStore';
 import {Button} from '@/components/ui/button';
+import {trpc} from '../lib/trpc';
 
 import {
   Select,
@@ -39,6 +39,9 @@ export default function BulkImport({
   const [extractionStatus, setExtractionStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const extractBooksFromCsvMutation =
+    trpc.gemini.extractBooksFromCsv.useMutation();
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -63,7 +66,9 @@ export default function BulkImport({
       setExtractionStatus('Extracting books using AI...');
       logger.info('Sending CSV text to Gemini for standard book extraction...');
 
-      const books = await extractBooksFromCsv(text);
+      const books = await extractBooksFromCsvMutation.mutateAsync({
+        csvText: text,
+      });
       onBooksExtracted(books);
 
       if (books.length === 0) {
@@ -88,7 +93,7 @@ export default function BulkImport({
 
   return (
     <div className="bg-surface-container-lowest p-6 sm:p-12 rounded-3xl border-2 border-dashed border-outline-variant/60 flex flex-col items-center justify-center text-center">
-      <div className="w-16 h-16 sm:w-20 sm:h-20 bg-surface-container-low rounded-full flex items-center justify-center text-primary mb-6 shadow-[0_2px_10px_rgb(26,47,75,0.04)] border border-outline-variant/40">
+      <div className="w-16 h-16 sm:w-20 sm:h-20 bg-surface-container-low rounded-full flex items-center justify-center text-primary mb-6 shadow-elevation-1 border border-outline-variant/40">
         <UploadCloud className="w-8 h-8 sm:w-10 sm:h-10" strokeWidth={2} />
       </div>
       <h3 className="font-headline-lg text-headline-lg sm:text-headline-xl text-on-surface mb-3 tracking-tight">
@@ -128,7 +133,7 @@ export default function BulkImport({
       <Button
         onClick={() => fileInputRef.current?.click()}
         disabled={isExtracting}
-        className="rounded-full shadow-[0_4px_16px_rgb(26,47,75,0.15)] hover:shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-3 px-8 py-6"
+        className="rounded-full shadow-elevation-2 hover:shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-3 px-8 py-6"
       >
         {isExtracting ? (
           <>

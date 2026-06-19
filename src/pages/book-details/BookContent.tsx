@@ -1,6 +1,6 @@
 import {AnimatePresence} from 'motion/react';
 import React, {useState, useEffect, useMemo} from 'react';
-import {useAuth} from '../../contexts/AuthContext';
+import {useAuth} from '../../stores/authStore';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {toTitleCase} from '../../lib/utils';
@@ -20,7 +20,7 @@ import {useBook} from './useBook';
 import {BookHeader} from './BookHeader';
 import {ReadingStatusSelect} from './ReadingStatusSelect';
 import {AiInsightsPanel} from './AiInsightsPanel';
-import {useDebug} from '../../contexts/DebugContext';
+import {useDebug} from '../../stores/debugStore';
 
 const formatYear = (year: number) => {
   if (year < 0) return `${Math.abs(year)} BCE`;

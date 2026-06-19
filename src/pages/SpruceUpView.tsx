@@ -4,12 +4,14 @@ import {motion} from 'motion/react';
 import {ErrorBoundary} from '../components/ErrorBoundary';
 import {useSpruceUp} from './spruce-up/useSpruceUp';
 import {DuplicateSection} from './spruce-up/DuplicateSection';
+import {ManualEnrichmentSection} from './spruce-up/ManualEnrichmentSection';
 import {PageLoading} from '../components/PageLoading';
 
 export default function SpruceUpView() {
   const {id: libraryId} = useParams<{id: string}>();
   const {
     loading,
+    books,
     duplicates,
     processingIds,
     handleDelete,
@@ -35,7 +37,7 @@ export default function SpruceUpView() {
             </h2>
             <p className="layout-header-subtitle font-sans text-xs sm:text-sm text-on-surface-variant/80 mt-1 max-w-2xl leading-relaxed">
               Audit your collection's health by identifying and resolving
-              duplicate entries.
+              duplicate entries and backfilling missing record metadata.
             </p>
           </div>
         </div>
@@ -45,25 +47,34 @@ export default function SpruceUpView() {
             initial={{opacity: 0, y: 12}}
             animate={{opacity: 1, y: 0}}
             transition={{duration: 0.4, ease: 'easeOut', delay: 0.15}}
-            className="flex flex-col gap-8"
+            className="flex flex-col gap-12"
           >
-            {duplicates.length > 0 ? (
-              <DuplicateSection
-                duplicates={duplicates}
-                processingIds={processingIds}
-                handleAllowDuplicateGroup={handleAllowDuplicateGroup}
-                handleDelete={handleDelete}
+            <section>
+              {duplicates.length > 0 ? (
+                <DuplicateSection
+                  duplicates={duplicates}
+                  processingIds={processingIds}
+                  handleAllowDuplicateGroup={handleAllowDuplicateGroup}
+                  handleDelete={handleDelete}
+                />
+              ) : (
+                <div className="bg-surface-container-low p-8 rounded-2xl border border-outline-variant/30 text-center">
+                  <h3 className="font-serif text-xl font-bold text-primary mb-2">
+                    No Duplicates Found
+                  </h3>
+                  <p className="font-sans text-sm text-on-surface-variant">
+                    Your library looks clean and free of duplicates!
+                  </p>
+                </div>
+              )}
+            </section>
+
+            <section>
+              <ManualEnrichmentSection
+                books={books || []}
+                libraryId={libraryId!}
               />
-            ) : (
-              <div className="bg-surface-container-low p-8 rounded-2xl border border-outline-variant/30 text-center">
-                <h3 className="font-serif text-xl font-bold text-primary mb-2">
-                  No Duplicates Found
-                </h3>
-                <p className="font-sans text-sm text-on-surface-variant">
-                  Your library looks clean and free of duplicates!
-                </p>
-              </div>
-            )}
+            </section>
           </motion.div>
         </ErrorBoundary>
       </div>

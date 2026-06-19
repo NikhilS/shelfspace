@@ -3,9 +3,19 @@ import {describe, it, expect, vi} from 'vitest';
 import {render} from '@testing-library/react';
 import BookDetailsView from './BookDetailsView';
 import {MemoryRouter, Route, Routes} from 'react-router-dom';
-import {DebugProvider} from '../contexts/DebugContext';
 
-vi.mock('../contexts/AuthContext', () => ({
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+
+vi.mock('../stores/authStore', () => ({
   useAuth: () => ({user: {uid: 'u1'}, logOut: vi.fn()}),
 }));
 
@@ -34,8 +44,9 @@ vi.mock('firebase/firestore', () => ({
 
 describe('BookDetailsView', () => {
   it('renders loading state initially', () => {
+    const testQueryClient = createTestQueryClient();
     const {container} = render(
-      <DebugProvider>
+      <QueryClientProvider client={testQueryClient}>
         <MemoryRouter initialEntries={['/library/123/book/456']}>
           <Routes>
             <Route
@@ -44,7 +55,7 @@ describe('BookDetailsView', () => {
             />
           </Routes>
         </MemoryRouter>
-      </DebugProvider>,
+      </QueryClientProvider>,
     );
     expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
   });

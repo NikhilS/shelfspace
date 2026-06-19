@@ -4,7 +4,7 @@ import {Book} from 'lucide-react';
 import {motion} from 'motion/react';
 import {Library} from '../../types';
 import {toTitleCase} from '../../lib/utils';
-import {useAuth} from '../../contexts/AuthContext';
+import {useAuth} from '../../stores/authStore';
 
 interface LibraryCardProps {
   lib: Library;
@@ -26,7 +26,7 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
       className="h-full"
     >
       <Link to={`/library/${lib.id}`} className="block h-full group">
-        <div className="bg-surface-container-low rounded-lg overflow-hidden border border-transparent shadow-[0_8px_30px_rgba(26,47,75,0.02)] hover:shadow-[0_12px_40px_rgba(26,47,75,0.08)] hover:border-outline-variant/30 transition-all duration-300 flex flex-col h-full cursor-pointer">
+        <div className="bg-surface-container-low rounded-lg overflow-hidden border border-transparent shadow-elevation-3 hover:shadow-elevation-3 hover:border-outline-variant/30 transition-all duration-300 flex flex-col h-full cursor-pointer">
           <div className="h-44 w-full overflow-hidden bg-surface-variant relative">
             {lib.heroImageUrl ? (
               <img

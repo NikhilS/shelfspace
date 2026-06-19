@@ -336,7 +336,7 @@ export function EditBookForm({
 
   return (
     <Dialog open={true} onOpenChange={open => !open && onClose()}>
-      <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-hidden flex flex-col p-0 bg-surface text-ink border border-outline-variant/30 transition-all shadow-[0_12px_45px_-8px_rgba(15,23,42,0.22)]">
+      <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-hidden flex flex-col p-0 bg-surface text-ink border border-outline-variant/30 transition-all shadow-elevation-3">
         {/* INLINE DELETE CONFIRMATION SCREEN */}
         {showDeleteConfirmation ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-surface animate-in fade-in zoom-in duration-200">
@@ -414,7 +414,7 @@ export function EditBookForm({
                         <div className="absolute inset-0 bg-surf-container-high/80 z-10 flex flex-col items-center justify-center p-6 text-center">
                           <div className="relative w-full h-full overflow-hidden flex flex-col items-center justify-center gap-4">
                             {/* Animated Yellow Scanner Laser Bar */}
-                            <div className="absolute top-0 left-0 right-0 h-1.5 bg-yellow-400 opacity-90 shadow-[0_0_15px_rgba(234,179,8,0.7)] rounded-full animate-pulse" />
+                            <div className="absolute top-0 left-0 right-0 h-1.5 bg-yellow-400 opacity-90 shadow-[0_0_15px_#eab308] rounded-full animate-pulse" />
                             <Loader2 className="w-10 h-10 animate-spin text-primary" />
                             <div className="space-y-1">
                               <p className="text-sm font-semibold tracking-tight text-ink">

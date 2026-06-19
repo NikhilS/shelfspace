@@ -1,62 +1,39 @@
-import {useState, useEffect} from 'react';
+import {useQuery} from '@tanstack/react-query';
 import {doc, getDoc} from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../firebase';
+import {useAuth} from '../stores/authStore';
 import {Library} from '../types';
-import {useAuth} from '../contexts/AuthContext';
 
 export function useLibraryPermissions(
   libraryId: string | undefined,
   userId: string | undefined,
 ) {
   const {user, isAuthReady} = useAuth();
-  const [role, setRole] = useState<'owner' | 'editor' | 'viewer' | null>(null);
-  const [loading, setLoading] = useState(true);
-
   const email = user?.email?.toLowerCase();
 
-  useEffect(() => {
-    if (!isAuthReady) {
-      setLoading(true);
-      return;
-    }
-
-    setRole(null);
-    setLoading(true);
-
-    if (!libraryId || !userId || !user) {
-      setLoading(false);
-      return;
-    }
-
-    const checkPerms = async () => {
-      setLoading(true);
+  const {data: role = null, isLoading: loading} = useQuery({
+    queryKey: ['libraryPermissions', libraryId, userId, email],
+    queryFn: async () => {
+      if (!libraryId || !userId || !email) return null;
       try {
         const libDoc = await getDoc(doc(db, 'libraries', libraryId));
         if (libDoc.exists()) {
           const library = libDoc.data() as Library;
-
-          let assignedRole: 'owner' | 'editor' | 'viewer' | null = null;
-
           if (library.ownerId === userId) {
-            assignedRole = 'owner';
-          } else if (email && library.access && library.access[email]) {
-            assignedRole = library.access[email];
+            return 'owner';
+          } else if (library.access && library.access[email]) {
+            return library.access[email];
           }
-
-          setRole(assignedRole);
-        } else {
-          setRole(null);
         }
+        return null;
       } catch (err) {
         handleFirestoreError(err, OperationType.GET, `libraries/${libraryId}`);
-        setRole(null);
-      } finally {
-        setLoading(false);
+        return null;
       }
-    };
-
-    void checkPerms();
-  }, [libraryId, userId, email, isAuthReady]);
+    },
+    enabled: isAuthReady && !!libraryId && !!userId && !!email,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
 
   const isOwner = role === 'owner';
   const canEdit = role === 'owner' || role === 'editor';

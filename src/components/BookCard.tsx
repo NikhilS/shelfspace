@@ -32,7 +32,7 @@ export default function BookCard({
     >
       {/* Book Cover */}
       <div
-        className={`relative aspect-[2/3] mb-4 bg-surface-container rounded-lg shadow-[0_4px_12px_rgba(26,47,75,0.08)] overflow-hidden transform transition-transform duration-300 group-hover:-translate-y-1 ${isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
+        className={`relative aspect-[2/3] mb-4 bg-surface-container rounded-lg shadow-elevation-2 overflow-hidden transform transition-transform duration-300 group-hover:-translate-y-1 ${isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
       >
         {onSelect && (
           <div

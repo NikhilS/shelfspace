@@ -1,6 +1,7 @@
 import React, {useState, useEffect} from 'react';
 import {Navigate} from 'react-router-dom';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
+import {useAppPermissions} from '../hooks/useAppPermissions';
 import {db, handleFirestoreError, OperationType} from '../firebase';
 import {
   collection,
@@ -20,14 +21,18 @@ interface AllowlistUser {
 }
 
 export default function AdminDashboard() {
-  const {user, isAdmin, isAppAllowed} = useAuth();
+  const {user} = useAuth();
+  const {isAdmin, isAppAllowed, isLoadingPermissions} = useAppPermissions();
   const [users, setUsers] = useState<AllowlistUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      if (!isLoadingPermissions) setLoading(false);
+      return;
+    }
 
     const fetchUsers = async () => {
       try {
@@ -54,7 +59,15 @@ export default function AdminDashboard() {
     };
 
     void fetchUsers();
-  }, [isAdmin]);
+  }, [isAdmin, isLoadingPermissions]);
+
+  if (isLoadingPermissions) {
+    return (
+      <div className="flex-grow flex items-center justify-center min-h-[50vh]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   if (!isAdmin || !isAppAllowed) {
     return <Navigate to="/" replace />;

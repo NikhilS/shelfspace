@@ -17,7 +17,9 @@ export class GenreMetadataProvider implements IMetadataProvider<string[]> {
     const synopsisProvider = MetadataRegistry.getInstance().getProvider(
       MetadataKey.SYNOPSIS,
     );
-    return synopsisProvider ? await synopsisProvider.fetch(book) : undefined;
+    return synopsisProvider
+      ? ((await synopsisProvider.fetch(book)) as string | undefined)
+      : undefined;
   }
 
   async fetch(book: CoreBookData): Promise<string[]> {

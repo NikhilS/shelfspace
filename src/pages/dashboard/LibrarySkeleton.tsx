@@ -6,7 +6,7 @@ export function LibrarySkeleton() {
       {[1, 2, 3, 4].map(i => (
         <div
           key={i}
-          className="bg-surface-container-low rounded-lg overflow-hidden border border-transparent shadow-[0_8px_30px_rgba(26,47,75,0.02)] flex flex-col h-full animate-pulse"
+          className="bg-surface-container-low rounded-lg overflow-hidden border border-transparent shadow-elevation-3 flex flex-col h-full animate-pulse"
         >
           <div className="h-44 w-full bg-surface-variant/50"></div>
           <div className="p-6 flex flex-col flex-grow justify-between bg-surface-container-lowest">

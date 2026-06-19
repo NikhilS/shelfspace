@@ -2,12 +2,24 @@ import React from 'react';
 import {render, screen, fireEvent, waitFor, act} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import AddBookView from './AddBookView';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {BrowserRouter} from 'react-router-dom';
-import {extractBooksFromImage} from '../services/gemini';
 import {writeBatch} from 'firebase/firestore';
 
-vi.mock('../contexts/AuthContext', () => ({
+const mockExtractBooksFromImage = vi.fn();
+vi.mock('../lib/trpc', () => ({
+  trpc: {
+    gemini: {
+      extractBooksFromImage: {
+        useMutation: () => ({
+          mutateAsync: mockExtractBooksFromImage,
+        }),
+      },
+    },
+  },
+}));
+
+vi.mock('../stores/authStore', () => ({
   useAuth: vi.fn(),
 }));
 
@@ -19,11 +31,6 @@ vi.mock('react-router-dom', async () => {
     useNavigate: () => vi.fn(),
   };
 });
-
-vi.mock('../services/gemini', () => ({
-  extractBooksFromImage: vi.fn(),
-  enrichBooksMetadata: vi.fn(() => Promise.resolve([])),
-}));
 
 vi.mock('../services/bookApi', () => ({
   searchBookByTitle: vi.fn(() => Promise.resolve([])),
@@ -111,7 +118,7 @@ describe('AddBookView', () => {
   });
 
   it('can add multiple books sequentially from the camera', async () => {
-    (extractBooksFromImage as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+    mockExtractBooksFromImage.mockResolvedValueOnce([
       {title: 'Book One', author: 'Author One'},
     ]);
 
@@ -189,7 +196,7 @@ describe('AddBookView', () => {
 
     const captureButton2 = await screen.findByTestId('capture-shelf-action');
 
-    (extractBooksFromImage as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+    mockExtractBooksFromImage.mockResolvedValueOnce([
       {title: 'Book Two', author: 'Author Two'},
     ]);
     fireEvent.click(captureButton2);

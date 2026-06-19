@@ -15,7 +15,7 @@ vi.mock('../firebase', () => ({
   auth: {},
 }));
 
-vi.mock('../contexts/AuthContext', () => ({
+vi.mock('../stores/authStore', () => ({
   useAuth: () => ({user: null, isAuthReady: true}),
 }));
 

@@ -3,7 +3,7 @@ import {toast} from 'sonner';
 import {StarRating} from '../../components/StarRating';
 import {Review} from './useBook';
 import {Book, FirestoreDate} from '../../types';
-import {useAuth} from '../../contexts/AuthContext';
+import {useAuth} from '../../stores/authStore';
 import {Button} from '@/components/ui/button';
 import {format} from 'date-fns';
 

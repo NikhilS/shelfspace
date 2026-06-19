@@ -1,0 +1,207 @@
+@layer base {
+  :root {
+    /* Primary Colors */
+    --color-primary-base: #021a35;
+    --color-primary-on: #ffffff;
+    --color-primary-container-base: #1a2f4b;
+    --color-primary-container-on: #8397b8;
+    --color-primary-inverse: #b3c8eb;
+    --color-primary-fixed-base: #d4e3ff;
+    --color-primary-fixed-dim-base: #b3c8eb;
+    --color-primary-fixed-on: #041c37;
+    --color-primary-fixed-variant-on: #334865;
+
+    /* Secondary Colors */
+    --color-secondary-base: #7d5633;
+    --color-secondary-on: #ffffff;
+    --color-secondary-container-base: #fcc79c;
+    --color-secondary-container-on: #78512f;
+    --color-secondary-fixed-base: #ffdcc2;
+    --color-secondary-fixed-dim-base: #f0bc92;
+    --color-secondary-fixed-on: #2e1500;
+    --color-secondary-fixed-variant-on: #623f1e;
+
+    /* Tertiary Colors */
+    --color-tertiary-base: #001f14;
+    --color-tertiary-on: #ffffff;
+    --color-tertiary-container-base: #163428;
+    --color-tertiary-container-on: #7d9d8d;
+    --color-tertiary-fixed-base: #c8ead8;
+    --color-tertiary-fixed-dim-base: #adcebd;
+    --color-tertiary-fixed-on: #012116;
+    --color-tertiary-fixed-variant-on: #2f4d40;
+
+    /* Error Colors */
+    --color-error-base: #ba1a1a;
+    --color-error-on: #ffffff;
+    --color-error-container-base: #ffdad6;
+    --color-error-container-on: #93000a;
+
+    /* Surface & Background */
+    --color-background-base: #fcf9f3;
+    --color-background-on: #1c1c18;
+    --color-surface-base: #fcf9f3;
+    --color-surface-dim-base: #dcdad4;
+    --color-surface-bright-base: #fcf9f3;
+    --color-surface-variant-base: #e5e2dc;
+    --color-surface-on: #1c1c18;
+    --color-surface-variant-on: #44474d;
+    --color-surface-inverse: #31312d;
+    --color-surface-inverse-on: #f3f0ea;
+    --color-surface-tint-value: #4b5f7e;
+
+    /* Surface Containers */
+    --color-surface-container-lowest-base: #ffffff;
+    --color-surface-container-low-base: #f6f3ed;
+    --color-surface-container-base: #f0eee8;
+    --color-surface-container-high-base: #ebe8e2;
+    --color-surface-container-highest-base: #e5e2dc;
+
+    /* Outlines */
+    --color-outline-base: #74777e;
+    --color-outline-variant-base: #c4c6ce;
+
+    /* Special Hardcoded Colors from Login */
+    --color-success-base: #2ebd7d;
+    --color-success-on: #001f14;
+    --color-auth-card-bg: #faf7f0;
+    --color-auth-terminal-bg: #121210;
+  }
+
+  .dark {
+    /* Setup placeholders for dark theme */
+    --color-primary-base: #b3c8eb;
+    --color-primary-on: #021a35;
+    --color-primary-container-base: #8397b8;
+    --color-primary-container-on: #1a2f4b;
+    --color-primary-inverse: #021a35;
+    
+    --color-secondary-base: #f0bc92;
+    --color-secondary-on: #7d5633;
+    --color-secondary-container-base: #78512f;
+    --color-secondary-container-on: #fcc79c;
+    
+    --color-tertiary-base: #adcebd;
+    --color-tertiary-on: #001f14;
+    --color-tertiary-container-base: #7d9d8d;
+    --color-tertiary-container-on: #163428;
+    
+    --color-error-base: #ffb4ab;
+    --color-error-on: #690005;
+    --color-error-container-base: #93000a;
+    --color-error-container-on: #ffdad6;
+
+    --color-background-base: #1c1c18;
+    --color-background-on: #e5e2dc;
+    --color-surface-base: #1c1c18;
+    --color-surface-dim-base: #141411;
+    --color-surface-bright-base: #3b3b37;
+    --color-surface-variant-base: #44474d;
+    --color-surface-on: #e5e2dc;
+    --color-surface-variant-on: #c4c6ce;
+    --color-surface-inverse: #f3f0ea;
+    --color-surface-inverse-on: #31312d;
+    --color-surface-tint-value: #b3c8eb;
+
+    --color-surface-container-lowest-base: #0d0d0b;
+    --color-surface-container-low-base: #1c1c18;
+    --color-surface-container-base: #20201c;
+    --color-surface-container-high-base: #2b2b26;
+    --color-surface-container-highest-base: #363631;
+
+    --color-outline-base: #8e9099;
+    --color-outline-variant-base: #44474d;
+
+    --color-success-base: #2ebd7d;
+    --color-success-on: #001f14;
+    --color-auth-card-bg: #20201c;
+    --color-auth-terminal-bg: #0d0d0b;
+  }
+}
+
+@theme {
+  --color-primary: var(--color-primary-base);
+  --color-on-primary: var(--color-primary-on);
+  --color-primary-container: var(--color-primary-container-base);
+  --color-on-primary-container: var(--color-primary-container-on);
+  --color-inverse-primary: var(--color-primary-inverse);
+  --color-primary-fixed: var(--color-primary-fixed-base);
+  --color-primary-fixed-dim: var(--color-primary-fixed-dim-base);
+  --color-on-primary-fixed: var(--color-primary-fixed-on);
+  --color-on-primary-fixed-variant: var(--color-primary-fixed-variant-on);
+
+  --color-secondary: var(--color-secondary-base);
+  --color-on-secondary: var(--color-secondary-on);
+  --color-secondary-container: var(--color-secondary-container-base);
+  --color-on-secondary-container: var(--color-secondary-container-on);
+  --color-secondary-fixed: var(--color-secondary-fixed-base);
+  --color-secondary-fixed-dim: var(--color-secondary-fixed-dim-base);
+  --color-on-secondary-fixed: var(--color-secondary-fixed-on);
+  --color-on-secondary-fixed-variant: var(--color-secondary-fixed-variant-on);
+
+  --color-tertiary: var(--color-tertiary-base);
+  --color-on-tertiary: var(--color-tertiary-on);
+  --color-tertiary-container: var(--color-tertiary-container-base);
+  --color-on-tertiary-container: var(--color-tertiary-container-on);
+  --color-tertiary-fixed: var(--color-tertiary-fixed-base);
+  --color-tertiary-fixed-dim: var(--color-tertiary-fixed-dim-base);
+  --color-on-tertiary-fixed: var(--color-tertiary-fixed-on);
+  --color-on-tertiary-fixed-variant: var(--color-tertiary-fixed-variant-on);
+
+  --color-error: var(--color-error-base);
+  --color-on-error: var(--color-error-on);
+  --color-error-container: var(--color-error-container-base);
+  --color-on-error-container: var(--color-error-container-on);
+
+  --color-background: var(--color-background-base);
+  --color-on-background: var(--color-background-on);
+  --color-surface: var(--color-surface-base);
+  --color-surface-dim: var(--color-surface-dim-base);
+  --color-surface-bright: var(--color-surface-bright-base);
+  --color-surface-variant: var(--color-surface-variant-base);
+  --color-on-surface: var(--color-surface-on);
+  --color-on-surface-variant: var(--color-surface-variant-on);
+  --color-inverse-surface: var(--color-surface-inverse);
+  --color-inverse-on-surface: var(--color-surface-inverse-on);
+  --color-surface-tint: var(--color-surface-tint-value);
+
+  --color-surface-container-lowest: var(--color-surface-container-lowest-base);
+  --color-surface-container-low: var(--color-surface-container-low-base);
+  --color-surface-container: var(--color-surface-container-base);
+  --color-surface-container-high: var(--color-surface-container-high-base);
+  --color-surface-container-highest: var(--color-surface-container-highest-base);
+
+  --color-outline: var(--color-outline-base);
+  --color-outline-variant: var(--color-outline-variant-base);
+
+  --color-success: var(--color-success-base);
+  --color-on-success: var(--color-success-on);
+  --color-auth-card: var(--color-auth-card-bg);
+  --color-auth-terminal: var(--color-auth-terminal-bg);
+
+  --shadow-elevation-1: 0 2px 8px color-mix(in srgb, var(--color-primary-base) 6%, transparent);
+  --shadow-elevation-2: 0 4px 16px color-mix(in srgb, var(--color-primary-base) 10%, transparent);
+  --shadow-elevation-3: 0 8px 30px color-mix(in srgb, var(--color-primary-base) 14%, transparent);
+
+  /* Legacy mappings */
+  --color-paper: var(--color-background-base);
+  --color-ink: var(--color-background-on);
+  --color-accent: var(--color-surface-container-highest-base);
+  --color-muted: var(--color-surface-variant-on);
+  --color-border: var(--color-surface-variant-base);
+
+  /* Shadcn mappings */
+  --color-foreground: var(--color-surface-on);
+  --color-primary-foreground: var(--color-primary-on);
+  --color-secondary-foreground: var(--color-secondary-on);
+  --color-accent-foreground: var(--color-surface-on);
+  --color-muted-foreground: var(--color-surface-variant-on);
+  --color-destructive: var(--color-error-base);
+  --color-destructive-foreground: var(--color-error-on);
+  --color-input: var(--color-outline-variant-base);
+  --color-ring: var(--color-primary-base);
+  --color-popover: var(--color-surface-container-base);
+  --color-popover-foreground: var(--color-surface-on);
+  --color-card: var(--color-surface-container-lowest-base);
+  --color-card-foreground: var(--color-surface-on);
+}

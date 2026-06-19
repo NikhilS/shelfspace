@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import {motion, AnimatePresence} from 'motion/react';
 import {Bug, ChevronDown, List, Database, Trash2} from 'lucide-react';
-import {useDebug} from '../contexts/DebugContext';
+import {useDebug} from '../stores/debugStore';
 import {Button} from '@/components/ui/button';
 
 export const DebugOverlay: React.FC = () => {

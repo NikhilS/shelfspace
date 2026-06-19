@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import SidebarActions from './SidebarActions';
 import HeaderActions from './HeaderActions';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {useLibraryPermissions} from '../hooks/useLibraryPermissions';
 
 interface LibrarySidebarNavProps {

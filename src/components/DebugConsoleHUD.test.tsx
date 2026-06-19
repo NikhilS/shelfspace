@@ -5,7 +5,7 @@ import {DebugTelemetryEngine, interceptConsoleLogs} from '../lib/telemetry';
 import {DebugConsoleHUD} from './DebugConsoleHUD';
 
 // Mock Debug Context
-vi.mock('../contexts/DebugContext', () => ({
+vi.mock('../stores/debugStore', () => ({
   useDebug: () => ({
     isDebugMode: true,
     toggleDebugMode: vi.fn(),

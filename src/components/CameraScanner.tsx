@@ -1,9 +1,9 @@
 import React, {useRef, useState, useEffect} from 'react';
 import {Camera, UploadCloud, Loader2, Sparkles} from 'lucide-react';
-import {extractBooksFromImage} from '../services/gemini';
 import {toast} from 'sonner';
-import {logger} from '../contexts/DebugContext';
+import {logger} from '../stores/debugStore';
 import {Button} from '@/components/ui/button';
+import {trpc} from '../lib/trpc';
 
 interface CameraScannerProps {
   onBooksExtracted: (
@@ -30,6 +30,9 @@ export default function CameraScanner({
   const streamReqId = useRef<number | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const extractBooksFromImageMutation =
+    trpc.gemini.extractBooksFromImage.useMutation();
 
   const startCamera = async () => {
     logger.info('Starting camera access request...');
@@ -151,7 +154,10 @@ export default function CameraScanner({
     setIsExtracting(true);
 
     try {
-      const books = await extractBooksFromImage(base64Image, 'image/jpeg');
+      const books = await extractBooksFromImageMutation.mutateAsync({
+        base64Image,
+        mimeType: 'image/jpeg',
+      });
       setIsExtracting(false);
       onBooksExtracted(books);
       if (books.length === 0) toast.error('No books found in image');
@@ -179,7 +185,10 @@ export default function CameraScanner({
       reader.onloadend = async () => {
         const base64Image = reader.result as string;
         try {
-          const books = await extractBooksFromImage(base64Image, file.type);
+          const books = await extractBooksFromImageMutation.mutateAsync({
+            base64Image,
+            mimeType: file.type,
+          });
           setIsExtracting(false);
           onBooksExtracted(books);
           if (books.length === 0) toast.error('No books found in image');
@@ -221,7 +230,7 @@ export default function CameraScanner({
   }
 
   return (
-    <div className="w-full max-w-md aspect-[3/4] bg-on-surface rounded-3xl overflow-hidden relative shadow-[0_8px_30px_rgb(26,47,75,0.12)] border border-outline-variant/30">
+    <div className="w-full max-w-md aspect-[3/4] bg-on-surface rounded-3xl overflow-hidden relative shadow-elevation-3 border border-outline-variant/30">
       <video
         ref={videoRef}
         autoPlay
@@ -236,7 +245,7 @@ export default function CameraScanner({
             variant="outline"
             onClick={captureAndExtract}
             data-testid="capture-shelf-action"
-            className="bg-surface/95 backdrop-blur-md rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all w-full sm:w-auto justify-center"
+            className="bg-surface/95 backdrop-blur-md rounded-full font-bold shadow-elevation-2 flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all w-full sm:w-auto justify-center"
           >
             <Camera size={18} strokeWidth={2} /> Capture Shelf
           </Button>
@@ -249,7 +258,7 @@ export default function CameraScanner({
           />
           <Button
             onClick={() => imageInputRef.current?.click()}
-            className="rounded-full font-bold shadow-[0_4px_16px_rgb(26,47,75,0.15)] flex items-center gap-2 hover:scale-105 transition-all w-full sm:w-auto justify-center"
+            className="rounded-full font-bold shadow-elevation-2 flex items-center gap-2 hover:scale-105 transition-all w-full sm:w-auto justify-center"
           >
             <UploadCloud size={18} strokeWidth={2} /> Upload Photo
           </Button>

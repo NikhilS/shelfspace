@@ -1,13 +1,14 @@
 import {initializeApp} from 'firebase/app';
-import {getAuth} from 'firebase/auth';
+import {getAuth, connectAuthEmulator} from 'firebase/auth';
 import {
   initializeFirestore,
   getDocFromServer,
   doc,
   persistentLocalCache,
   persistentMultipleTabManager,
+  connectFirestoreEmulator,
 } from 'firebase/firestore';
-import {getStorage} from 'firebase/storage';
+import {getStorage, connectStorageEmulator} from 'firebase/storage';
 import {toast} from 'sonner';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -18,15 +19,7 @@ export const storage = getStorage(app);
 const firestoreCacheConfig = (() => {
   if (typeof window === 'undefined') return {};
   if (process.env.NODE_ENV === 'test') {
-    try {
-      return {
-        localCache: persistentLocalCache({
-          tabManager: persistentMultipleTabManager(),
-        }),
-      };
-    } catch {
-      return {};
-    }
+    return {}; // Memory cache for tests
   }
   try {
     // Dynamic initialization of persistent cache, catching partitioning exceptions gracefully
@@ -49,6 +42,12 @@ export const db = initializeFirestore(
   firestoreCacheConfig,
   firebaseConfig.firestoreDatabaseId,
 );
+
+if (process.env.NODE_ENV === 'test') {
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', {disableWarnings: true});
+  connectStorageEmulator(storage, '127.0.0.1', 9199);
+}
 
 // Validate Connection to Firestore
 async function testConnection() {

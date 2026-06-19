@@ -21,7 +21,7 @@ export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
           initial={{y: 100, opacity: 0}}
           animate={{y: 0, opacity: 1}}
           exit={{y: 100, opacity: 0}}
-          className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-surface border border-outline-variant/30 px-6 py-4 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.1)] flex items-center gap-6 z-[60] architectural-shadow"
+          className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-surface border border-outline-variant/30 px-6 py-4 rounded-full shadow-elevation-3 flex items-center gap-6 z-[60] architectural-shadow"
         >
           <span className="font-headline-md text-sm text-on-surface whitespace-nowrap">
             {selectedCount} selected

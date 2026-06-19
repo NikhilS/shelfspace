@@ -16,8 +16,9 @@ import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {uploadBase64Image} from '../../services/db/storage';
 import {Book, BookDetailsPayload, FirestoreDate} from '../../types';
 export type {Book, BookDetailsPayload, FirestoreDate};
-import {useAuth} from '../../contexts/AuthContext';
+import {useAuth} from '../../stores/authStore';
 import {parseGenres} from '../../lib/utils';
+import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query';
 
 export interface Review {
   id: string;
@@ -34,15 +35,52 @@ export function useBook(
   passedCanEdit?: boolean,
 ) {
   const {user} = useAuth();
-  const [bookBase, setBookBase] = useState<Book | null>(null);
-  const [bookDetails, setBookDetails] = useState<BookDetailsPayload | null>(
-    null,
-  );
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [canEditLocal, setCanEditLocal] = useState(false);
 
   const canEdit = passedCanEdit !== undefined ? passedCanEdit : canEditLocal;
+
+  const qBookBase = useQuery({
+    queryKey: ['bookBase', libraryId, bookId],
+    enabled: !!libraryId && !!bookId,
+    queryFn: () =>
+      (queryClient.getQueryData([
+        'bookBase',
+        libraryId,
+        bookId,
+      ]) as Book | null) || null,
+    staleTime: Infinity,
+  });
+
+  const qBookDetails = useQuery({
+    queryKey: ['bookDetails', libraryId, bookId],
+    enabled: !!libraryId && !!bookId,
+    queryFn: () =>
+      (queryClient.getQueryData([
+        'bookDetails',
+        libraryId,
+        bookId,
+      ]) as BookDetailsPayload | null) || null,
+    staleTime: Infinity,
+  });
+
+  const qReviews = useQuery({
+    queryKey: ['bookReviews', libraryId, bookId],
+    enabled: !!libraryId && !!bookId,
+    queryFn: () =>
+      (queryClient.getQueryData([
+        'bookReviews',
+        libraryId,
+        bookId,
+      ]) as Review[]) || [],
+    staleTime: Infinity,
+  });
+
+  const [isLoading, setIsLoading] = useState(true);
+
+  const bookBase = qBookBase.data || null;
+  const bookDetails = qBookDetails.data || null;
+  const reviews = qReviews.data || [];
 
   const book = useMemo(() => {
     if (!bookBase) return null;
@@ -98,12 +136,15 @@ export function useBook(
             data.tags ||
             data.subjects;
           const parsedGenres = parseGenres(rawGenres);
-          setBookBase({id: docSnap.id, ...data, genres: parsedGenres} as Book);
-          setIsLoading(false);
+          queryClient.setQueryData(['bookBase', libraryId, bookId], {
+            id: docSnap.id,
+            ...data,
+            genres: parsedGenres,
+          } as Book);
         } else {
-          setBookBase(null);
-          setIsLoading(false);
+          queryClient.setQueryData(['bookBase', libraryId, bookId], null);
         }
+        setIsLoading(false);
       },
       error => {
         handleFirestoreError(
@@ -119,9 +160,12 @@ export function useBook(
       doc(db, 'libraries', libraryId, 'bookDetails', bookId),
       docSnap => {
         if (docSnap.exists()) {
-          setBookDetails(docSnap.data() as BookDetailsPayload);
+          queryClient.setQueryData(
+            ['bookDetails', libraryId, bookId],
+            docSnap.data() as BookDetailsPayload,
+          );
         } else {
-          setBookDetails(null);
+          queryClient.setQueryData(['bookDetails', libraryId, bookId], null);
         }
       },
       error => {
@@ -149,7 +193,7 @@ export function useBook(
         snapshot.forEach(doc => {
           revs.push({id: doc.id, ...doc.data()} as Review);
         });
-        setReviews(revs);
+        queryClient.setQueryData(['bookReviews', libraryId, bookId], revs);
       },
       error => {
         handleFirestoreError(
@@ -165,139 +209,246 @@ export function useBook(
       unsubscribeDetails();
       unsubscribeReviews();
     };
-  }, [libraryId, bookId]);
+  }, [libraryId, bookId, queryClient]);
 
-  const deleteBook = async () => {
-    if (!libraryId || !bookId) return;
+  const deleteBookMutation = useMutation({
+    mutationFn: async () => {
+      if (!libraryId || !bookId) return;
 
-    const batch = writeBatch(db);
-    batch.delete(doc(db, 'libraries', libraryId, 'books', bookId));
-    batch.delete(doc(db, 'libraries', libraryId, 'bookDetails', bookId));
-    batch.update(doc(db, 'libraries', libraryId), {
-      bookCount: increment(-1),
-      updatedAt: serverTimestamp(),
-    });
-
-    // Cleanup reviews (small scale deletion)
-    try {
-      const reviewsRef = collection(
-        db,
-        'libraries',
-        libraryId,
-        'books',
-        bookId,
-        'reviews',
-      );
-      const reviewsSnap = await getDocs(reviewsRef);
-      reviewsSnap.forEach(revDoc => {
-        batch.delete(revDoc.ref);
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'libraries', libraryId, 'books', bookId));
+      batch.delete(doc(db, 'libraries', libraryId, 'bookDetails', bookId));
+      batch.update(doc(db, 'libraries', libraryId), {
+        bookCount: increment(-1),
+        updatedAt: serverTimestamp(),
       });
-    } catch (e) {
-      handleFirestoreError(
-        e,
-        OperationType.GET,
-        `libraries/${libraryId}/books/${bookId}/reviews`,
-      );
-    }
 
-    try {
-      await batch.commit();
-    } catch (e) {
-      handleFirestoreError(
-        e,
-        OperationType.DELETE,
-        `libraries/${libraryId}/books/${bookId}`,
-      );
-      throw e;
-    }
-  };
-
-  const updateReadingStatus = async (
-    status: 'unset' | 'reading' | 'finished' | 'abandoned',
-  ) => {
-    if (!libraryId || !bookId || !user || !book) return;
-
-    try {
-      await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), {
-        [`userStatuses.${user.uid}`]: status,
-        addedBy: book.addedBy || user.uid,
-        addedAt: book.addedAt || serverTimestamp(),
-      });
-    } catch (e) {
-      handleFirestoreError(
-        e,
-        OperationType.UPDATE,
-        `libraries/${libraryId}/books/${bookId}`,
-      );
-      throw e;
-    }
-  };
-
-  const addReview = async (rating: number, text: string) => {
-    if (!libraryId || !bookId || !user)
-      throw new Error('Missing review context');
-    try {
-      await addDoc(
-        collection(db, 'libraries', libraryId, 'books', bookId, 'reviews'),
-        {
-          userId: user.uid,
-          userName: user.displayName || user.email || 'Unknown User',
-          rating,
-          text,
-          createdAt: serverTimestamp(),
-        },
-      );
-    } catch (e) {
-      handleFirestoreError(
-        e,
-        OperationType.CREATE,
-        `libraries/${libraryId}/books/${bookId}/reviews`,
-      );
-      throw e;
-    }
-  };
-
-  const updateBook = async (cleanForm: Partial<Book & BookDetailsPayload>) => {
-    if (!libraryId || !bookId || !book) return;
-    try {
-      const cargo = {...cleanForm};
-
-      if (cargo.coverUrl && cargo.coverUrl.startsWith('data:')) {
-        const storagePath = `libraries/${libraryId}/books/${bookId}/cover.png`;
-        cargo.coverUrl = await uploadBase64Image(cargo.coverUrl, storagePath);
-      }
-
-      if (cargo.coverUrlRaw && cargo.coverUrlRaw.startsWith('data:')) {
-        const storagePath = `libraries/${libraryId}/books/${bookId}/cover_raw.png`;
-        cargo.coverUrlRaw = await uploadBase64Image(
-          cargo.coverUrlRaw,
-          storagePath,
+      // Cleanup reviews (small scale deletion)
+      try {
+        const reviewsRef = collection(
+          db,
+          'libraries',
+          libraryId,
+          'books',
+          bookId,
+          'reviews',
+        );
+        const reviewsSnap = await getDocs(reviewsRef);
+        reviewsSnap.forEach(revDoc => {
+          batch.delete(revDoc.ref);
+        });
+      } catch (e) {
+        handleFirestoreError(
+          e,
+          OperationType.GET,
+          `libraries/${libraryId}/books/${bookId}/reviews`,
         );
       }
 
-      await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), cargo);
-    } catch (e) {
-      handleFirestoreError(
-        e,
-        OperationType.UPDATE,
-        `libraries/${libraryId}/books/${bookId}`,
+      try {
+        await batch.commit();
+      } catch (e) {
+        handleFirestoreError(
+          e,
+          OperationType.DELETE,
+          `libraries/${libraryId}/books/${bookId}`,
+        );
+        throw e;
+      }
+    },
+    onMutate: () => {
+      // Optimistic delete: remove it from current hook
+      queryClient.setQueryData(['bookBase', libraryId, bookId], null);
+
+      // Attempt to delete it from the main library view globally
+      const currentBooks = queryClient.getQueryData<Book[]>([
+        'books',
+        libraryId,
+      ]);
+      if (currentBooks) {
+        queryClient.setQueryData(
+          ['books', libraryId],
+          currentBooks.filter(b => b.id !== bookId),
+        );
+      }
+    },
+  });
+
+  const updateReadingStatusMutation = useMutation({
+    mutationFn: async (
+      status: 'unset' | 'reading' | 'finished' | 'abandoned',
+    ) => {
+      if (!libraryId || !bookId || !user || !book) return;
+
+      try {
+        await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), {
+          [`userStatuses.${user.uid}`]: status,
+          addedBy: book.addedBy || user.uid,
+          addedAt: book.addedAt || serverTimestamp(),
+        });
+      } catch (e) {
+        handleFirestoreError(
+          e,
+          OperationType.UPDATE,
+          `libraries/${libraryId}/books/${bookId}`,
+        );
+        throw e;
+      }
+    },
+    onMutate: async status => {
+      if (!user) return;
+      const prevBook = queryClient.getQueryData([
+        'bookBase',
+        libraryId,
+        bookId,
+      ]);
+      queryClient.setQueryData(
+        ['bookBase', libraryId, bookId],
+        (old: Book | null) => ({
+          ...old,
+          userStatuses: {
+            ...(old?.userStatuses || {}),
+            [user.uid]: status,
+          },
+        }),
       );
-      throw e;
-    }
-  };
+      return {prevBook};
+    },
+    onError: (err, newStatus, context) => {
+      const ctx = context as {prevBook?: Book | null};
+      if (ctx?.prevBook) {
+        queryClient.setQueryData(['bookBase', libraryId, bookId], ctx.prevBook);
+      }
+    },
+  });
 
-  const updateBookOptimistically = (
-    partialBook: Partial<Book & BookDetailsPayload>,
-  ) => {
-    setBookBase(prev => (prev ? ({...prev, ...partialBook} as Book) : prev));
-    setBookDetails(prev =>
-      prev ? ({...prev, ...partialBook} as BookDetailsPayload) : prev,
-    );
-  };
+  const addReviewMutation = useMutation({
+    mutationFn: async ({rating, text}: {rating: number; text: string}) => {
+      if (!libraryId || !bookId || !user)
+        throw new Error('Missing review context');
+      try {
+        await addDoc(
+          collection(db, 'libraries', libraryId, 'books', bookId, 'reviews'),
+          {
+            userId: user.uid,
+            userName: user.displayName || user.email || 'Unknown User',
+            rating,
+            text,
+            createdAt: serverTimestamp(),
+          },
+        );
+      } catch (e) {
+        handleFirestoreError(
+          e,
+          OperationType.CREATE,
+          `libraries/${libraryId}/books/${bookId}/reviews`,
+        );
+        throw e;
+      }
+    },
+    onMutate: async newReview => {
+      if (!user) return;
+      const tempId = `temp-${Date.now()}`;
+      const rev = {
+        id: tempId,
+        userId: user.uid,
+        userName: user.displayName || user.email || 'Unknown User',
+        rating: newReview.rating,
+        text: newReview.text,
+        createdAt: new Date() as unknown as FirestoreDate,
+      };
 
-  const setReviewsOptimistically = (newReviews: Review[]) => {
-    setReviews(newReviews);
-  };
+      const prevReviews = queryClient.getQueryData([
+        'bookReviews',
+        libraryId,
+        bookId,
+      ]);
+      queryClient.setQueryData(
+        ['bookReviews', libraryId, bookId],
+        (old: Review[] | undefined) => [rev, ...(old || [])],
+      );
+      return {prevReviews};
+    },
+    onError: (err, newReview, context) => {
+      const ctx = context as {prevReviews?: Review[]};
+      if (ctx?.prevReviews) {
+        queryClient.setQueryData(
+          ['bookReviews', libraryId, bookId],
+          ctx.prevReviews,
+        );
+      }
+    },
+  });
+
+  const updateBookMutation = useMutation({
+    mutationFn: async (cleanForm: Partial<Book & BookDetailsPayload>) => {
+      if (!libraryId || !bookId || !book) return;
+      try {
+        const cargo = {...cleanForm};
+
+        if (cargo.coverUrl && cargo.coverUrl.startsWith('data:')) {
+          const storagePath = `libraries/${libraryId}/books/${bookId}/cover.png`;
+          cargo.coverUrl = await uploadBase64Image(cargo.coverUrl, storagePath);
+        }
+
+        if (cargo.coverUrlRaw && cargo.coverUrlRaw.startsWith('data:')) {
+          const storagePath = `libraries/${libraryId}/books/${bookId}/cover_raw.png`;
+          cargo.coverUrlRaw = await uploadBase64Image(
+            cargo.coverUrlRaw,
+            storagePath,
+          );
+        }
+
+        await updateDoc(
+          doc(db, 'libraries', libraryId, 'books', bookId),
+          cargo,
+        );
+      } catch (e) {
+        handleFirestoreError(
+          e,
+          OperationType.UPDATE,
+          `libraries/${libraryId}/books/${bookId}`,
+        );
+        throw e;
+      }
+    },
+    onMutate: async partialBook => {
+      const prevBase = queryClient.getQueryData([
+        'bookBase',
+        libraryId,
+        bookId,
+      ]);
+      const prevDetails = queryClient.getQueryData([
+        'bookDetails',
+        libraryId,
+        bookId,
+      ]);
+
+      queryClient.setQueryData(
+        ['bookBase', libraryId, bookId],
+        (old: Book | null) => (old ? {...old, ...partialBook} : old),
+      );
+      queryClient.setQueryData(
+        ['bookDetails', libraryId, bookId],
+        (old: BookDetailsPayload | null) =>
+          old ? {...old, ...partialBook} : old,
+      );
+      return {prevBase, prevDetails};
+    },
+    onError: (err, newBook, context: unknown) => {
+      const ctx = context as {
+        prevBase?: Book | null;
+        prevDetails?: BookDetailsPayload | null;
+      };
+      if (ctx?.prevBase)
+        queryClient.setQueryData(['bookBase', libraryId, bookId], ctx.prevBase);
+      if (ctx?.prevDetails)
+        queryClient.setQueryData(
+          ['bookDetails', libraryId, bookId],
+          ctx.prevDetails,
+        );
+    },
+  });
 
   return {
     book,
@@ -306,11 +457,30 @@ export function useBook(
     reviews,
     isLoading,
     canEdit,
-    deleteBook,
-    updateReadingStatus,
-    addReview,
-    updateBook,
-    updateBookOptimistically,
-    setReviewsOptimistically,
+    deleteBook: () => deleteBookMutation.mutateAsync(),
+    updateReadingStatus: (
+      status: 'unset' | 'reading' | 'finished' | 'abandoned',
+    ) => updateReadingStatusMutation.mutateAsync(status),
+    addReview: (rating: number, text: string) =>
+      addReviewMutation.mutateAsync({rating, text}),
+    updateBook: (cleanForm: Partial<Book & BookDetailsPayload>) =>
+      updateBookMutation.mutateAsync(cleanForm),
+    updateBookOptimistically: (
+      partialBook: Partial<Book & BookDetailsPayload>,
+    ) => {
+      // Kept for backward compatibility, but not technically needed if we always use mutation
+      queryClient.setQueryData(
+        ['bookBase', libraryId, bookId],
+        (old: Book | null) => (old ? {...old, ...partialBook} : old),
+      );
+      queryClient.setQueryData(
+        ['bookDetails', libraryId, bookId],
+        (old: BookDetailsPayload | null) =>
+          old ? {...old, ...partialBook} : old,
+      );
+    },
+    setReviewsOptimistically: (newReviews: Review[]) => {
+      queryClient.setQueryData(['bookReviews', libraryId, bookId], newReviews);
+    },
   };
 }

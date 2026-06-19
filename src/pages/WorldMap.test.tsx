@@ -5,7 +5,7 @@ import WorldMap from './WorldMap';
 import {MemoryRouter} from 'react-router-dom';
 
 // Mock Auth
-vi.mock('../contexts/AuthContext', () => ({
+vi.mock('../stores/authStore', () => ({
   useAuth: () => ({user: {uid: 'u1'}, logOut: vi.fn()}),
 }));
 

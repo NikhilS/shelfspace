@@ -1,14 +1,30 @@
 import React from 'react';
 import {EyeOff, Loader2, Trash2, Layers} from 'lucide-react';
-import {Book} from '../../types';
+import {Book, FirestoreDate} from '../../types';
 import {Button} from '@/components/ui/button';
 
 interface DuplicateSectionProps {
   duplicates: Book[][];
-  processingIds: Record<string, boolean>;
+  processingIds: Set<string>;
   handleAllowDuplicateGroup: (group: Book[]) => Promise<void>;
   handleDelete: (id: string) => Promise<void>;
 }
+
+const formatAddedAt = (addedAt?: FirestoreDate | unknown) => {
+  if (!addedAt) return 'Unknown date';
+  const asRecord = addedAt as Record<string, unknown>;
+  if (typeof asRecord.toDate === 'function') {
+    return (asRecord.toDate as () => Date)().toLocaleDateString();
+  }
+  if (typeof asRecord.seconds === 'number') {
+    return new Date(asRecord.seconds * 1000).toLocaleDateString();
+  }
+  const dateObj = new Date(addedAt as string | number);
+  if (!isNaN(dateObj.getTime())) {
+    return dateObj.toLocaleDateString();
+  }
+  return 'Unknown date';
+};
 
 export function DuplicateSection({
   duplicates,
@@ -40,7 +56,7 @@ export function DuplicateSection({
           {duplicates.map((group, idx) => (
             <div
               key={idx}
-              className="bg-[#faf7f0] border border-outline-variant/50 rounded-2xl p-6 shadow-[0_8px_30px_rgba(26,47,75,0.02)] border-l-4 border-l-secondary transition-all"
+              className="bg-auth-card border border-outline-variant/50 rounded-2xl p-6 shadow-elevation-3 border-l-4 border-l-secondary transition-all"
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 pb-3 border-b border-outline-variant/30">
                 <div className="min-w-0">
@@ -63,7 +79,7 @@ export function DuplicateSection({
                 <Button
                   variant="outline"
                   onClick={() => handleAllowDuplicateGroup(group)}
-                  className="flex items-center justify-center gap-1.5 w-full sm:w-auto border-secondary/20 text-secondary hover:bg-[#ebd9bd]/10 hover:text-secondary font-bold text-xs"
+                  className="flex items-center justify-center gap-1.5 w-full sm:w-auto border-secondary/20 text-secondary hover:bg-secondary-fixed-dim/10 hover:text-secondary font-bold text-xs"
                 >
                   <EyeOff className="w-3.5 h-3.5" />
                   Mark as Unique
@@ -75,7 +91,7 @@ export function DuplicateSection({
                 {group.map(b => (
                   <div
                     key={b.id}
-                    className="bg-surface border border-outline-variant/40 hover:border-outline-variant/70 p-5 rounded-xl flex flex-col justify-between hover:shadow-[0_4px_20px_-4px_rgba(2,26,53,0.06)] transition-all duration-300"
+                    className="bg-surface border border-outline-variant/40 hover:border-outline-variant/70 p-5 rounded-xl flex flex-col justify-between hover:shadow-elevation-2 transition-all duration-300"
                   >
                     <div>
                       <h4 className="font-serif font-semi-bold text-primary leading-tight text-base mb-1">
@@ -86,14 +102,20 @@ export function DuplicateSection({
                       </p>
 
                       <div className="flex items-center gap-2 mb-3">
-                        <span className="inline-flex px-2 py-0.5 rounded-sm text-[9px] font-bold bg-[#f3efe4] text-secondary uppercase tracking-widest border border-outline-variant/20">
+                        <span className="inline-flex px-2 py-0.5 rounded-sm text-[9px] font-bold bg-surface-container-high text-secondary uppercase tracking-widest border border-outline-variant/20">
                           {b.format || 'Physical'}
                         </span>
                       </div>
 
                       {b.isbn && (
-                        <p className="text-[11px] font-mono text-on-surface-variant font-medium mt-2 bg-surface-container/50 px-2 py-1 rounded">
+                        <p className="text-[11px] font-mono text-on-surface-variant font-medium mt-1 bg-surface-container/50 px-2 py-1 rounded">
                           ISBN: {b.isbn}
+                        </p>
+                      )}
+
+                      {b.addedAt && (
+                        <p className="text-[11px] font-mono text-on-surface-variant font-medium mt-1 bg-surface-container/50 px-2 py-1 rounded">
+                          Added: {formatAddedAt(b.addedAt)}
                         </p>
                       )}
 
@@ -128,10 +150,10 @@ export function DuplicateSection({
                     <Button
                       variant="ghost"
                       onClick={() => handleDelete(b.id)}
-                      disabled={processingIds[b.id]}
+                      disabled={processingIds.has(b.id)}
                       className="mt-5 flex items-center justify-center gap-2 w-full bg-error/5 text-error hover:bg-error hover:text-white border border-error/10 hover:border-error text-xs font-bold transition-all duration-200"
                     >
-                      {processingIds[b.id] ? (
+                      {processingIds.has(b.id) ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
                         <Trash2 className="w-3.5 h-3.5" />

@@ -10,7 +10,7 @@ import {
 import {toast} from 'sonner';
 import {Checkbox} from './ui/checkbox';
 import {Button} from './ui/button';
-import {logger} from '../contexts/DebugContext';
+import {logger} from '../stores/debugStore';
 import {BookDetails} from '../services/bookApi';
 
 type ExtractedBook = {
@@ -264,7 +264,7 @@ export default function ExtractedBooksTable({
                 'bg-surface-container-low/60 p-3 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all cursor-pointer flex gap-3 sm:gap-4',
                 isSelected
                   ? 'border-primary shadow-md bg-surface ring-1 ring-primary/20'
-                  : 'border-outline-variant/40 shadow-[0_2px_8px_rgb(26,47,75,0.02)] hover:shadow-md hover:border-outline-variant/80',
+                  : 'border-outline-variant/40 shadow-elevation-1 hover:shadow-md hover:border-outline-variant/80',
               )}
             >
               <div className="pt-0.5 sm:pt-1">

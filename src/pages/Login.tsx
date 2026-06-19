@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {Navigate} from 'react-router-dom';
 import {motion, AnimatePresence} from 'motion/react';
 import {
@@ -26,7 +26,7 @@ const CONSTELLATION_BOOKS = [
     x: 25,
     y: 30,
     genre: 'Dark Academia',
-    color: '#7d5633',
+    color: 'var(--color-secondary-base)',
   },
   {
     id: '2',
@@ -35,7 +35,7 @@ const CONSTELLATION_BOOKS = [
     x: 45,
     y: 75,
     genre: 'Stoic Philosophy',
-    color: '#021a35',
+    color: 'var(--color-primary-base)',
   },
   {
     id: '3',
@@ -44,7 +44,7 @@ const CONSTELLATION_BOOKS = [
     x: 75,
     y: 25,
     genre: 'Sci-Fi Classic',
-    color: '#001f14',
+    color: 'var(--color-tertiary-base)',
   },
   {
     id: '4',
@@ -53,7 +53,7 @@ const CONSTELLATION_BOOKS = [
     x: 20,
     y: 80,
     genre: 'Political Philosophy',
-    color: '#ba1a1a',
+    color: 'var(--color-error-base)',
   },
   {
     id: '5',
@@ -62,7 +62,7 @@ const CONSTELLATION_BOOKS = [
     x: 80,
     y: 70,
     genre: 'Tragic Classics',
-    color: '#7d5633',
+    color: 'var(--color-secondary-base)',
   },
 ];
 
@@ -253,7 +253,7 @@ export default function Login() {
           <div className="lg:col-span-6 flex flex-col items-start gap-6 text-left">
             <div className="inline-flex items-center gap-2 bg-secondary/10 border border-secondary/20 px-3 py-1 rounded-sm">
               <span className="w-1.5 h-1.5 bg-secondary rounded-full animate-pulse" />
-              <span className="font-sans text-[10px] font-bold tracking-widest text-[#7d5633] uppercase">
+              <span className="font-sans text-[10px] font-bold tracking-widest text-secondary uppercase">
                 The Tactile Modern Archivist
               </span>
             </div>
@@ -285,19 +285,19 @@ export default function Login() {
                 >
                   <path
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    fill="#4285F4"
+                    fill-blue-500
                   ></path>
                   <path
                     d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    fill="#34A853"
+                    fill-green-500
                   ></path>
                   <path
                     d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                    fill="#FBBC05"
+                    fill-yellow-400
                   ></path>
                   <path
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    fill="#EA4335"
+                    fill-red-500
                   ></path>
                 </svg>
                 Sign In with Google
@@ -341,8 +341,8 @@ export default function Login() {
           </div>
 
           {/* Hero Visual Mockup */}
-          <div className="lg:col-span-6 relative w-full aspect-[4/3] rounded-2xl overflow-hidden border border-outline-variant/40 shadow-[0_12px_40px_rgba(26,47,75,0.06)] bg-[#021a35]">
-            <div className="absolute inset-0 bg-gradient-to-t from-[#021a35]/80 via-transparent to-[#021a35]/40" />
+          <div className="lg:col-span-6 relative w-full aspect-[4/3] rounded-2xl overflow-hidden border border-outline-variant/40 shadow-elevation-3 bg-primary">
+            <div className="absolute inset-0 bg-gradient-to-t from-primary/80 via-transparent to-[#021a35]/40" />
             <div className="absolute inset-0 flex flex-col justify-between p-8 z-10 text-white">
               {/* Mock Header overlay */}
               <div className="flex justify-between items-center w-full">
@@ -418,7 +418,7 @@ export default function Login() {
                 <div className="absolute left-[25%] top-[30%] group">
                   <div className="w-3 h-3 bg-white rounded-full animate-ping absolute -inset-1 opacity-40" />
                   <div className="w-3 h-3 bg-[#e5bc92] rounded-full cursor-pointer relative" />
-                  <span className="absolute left-4 -top-2 scale-90 whitespace-nowrap bg-[#1a2f4b]/90 text-[10px] text-white py-0.5 px-2 rounded border border-white/10 opacity-70">
+                  <span className="absolute left-4 -top-2 scale-90 whitespace-nowrap bg-primary-container/90 text-[10px] text-white py-0.5 px-2 rounded border border-white/10 opacity-70">
                     Donna Tartt
                   </span>
                 </div>
@@ -426,14 +426,14 @@ export default function Login() {
                 <div className="absolute left-[45%] top-[75%]">
                   <div className="w-4 h-4 bg-white rounded-full animate-ping absolute -inset-1.5 opacity-30" />
                   <div className="w-4 h-4 bg-white rounded-full cursor-pointer relative" />
-                  <span className="absolute left-5 -top-2 scale-95 whitespace-nowrap bg-[#1a2f4b]/90 text-[11px] font-bold text-[#e5bc92] py-0.5 px-2 rounded border border-white/10 shadow-lg">
+                  <span className="absolute left-5 -top-2 scale-95 whitespace-nowrap bg-primary-container/90 text-[11px] font-bold text-secondary-fixed-dim py-0.5 px-2 rounded border border-white/10 shadow-lg">
                     The Sacred Solitude Grid
                   </span>
                 </div>
 
                 <div className="absolute left-[75%] top-[25%]">
                   <div className="w-2.5 h-2.5 bg-[#adcebd] rounded-full cursor-pointer" />
-                  <span className="absolute left-4 -top-2 scale-90 whitespace-nowrap bg-[#1a2f4b]/90 text-[10px] text-white py-0.5 px-2 rounded border border-white/10 opacity-70">
+                  <span className="absolute left-4 -top-2 scale-90 whitespace-nowrap bg-primary-container/90 text-[10px] text-white py-0.5 px-2 rounded border border-white/10 opacity-70">
                     Frank Herbert
                   </span>
                 </div>
@@ -448,13 +448,13 @@ export default function Login() {
               </div>
 
               {/* Float box displaying active curation overlay */}
-              <div className="bg-[#1a2f4b]/95 border border-white/10 text-white/90 p-4 rounded shadow-lg max-w-[280px] self-end text-left sm:translate-y-4">
+              <div className="bg-primary-container/95 border border-white/10 text-white/90 p-4 rounded shadow-lg max-w-[280px] self-end text-left sm:translate-y-4">
                 <div className="flex gap-2.5 items-start">
                   <div className="w-8 h-12 bg-white/10 rounded-sm flex items-center justify-center text-secondary shadow-inner">
                     <Compass className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-serif text-[11px] text-[#e5bc92] uppercase font-bold tracking-widest leading-none mb-1">
+                    <h4 className="font-serif text-[11px] text-secondary-fixed-dim uppercase font-bold tracking-widest leading-none mb-1">
                       Celestial Vaults Map
                     </h4>
                     <span className="block font-serif text-sm font-bold text-white mb-0.5 line-clamp-1">
@@ -477,7 +477,7 @@ export default function Login() {
         >
           <div className="max-w-[1200px] mx-auto px-6 sm:px-12">
             <div className="text-center max-w-2xl mx-auto mb-12">
-              <span className="font-sans text-[10px] font-bold tracking-widest text-[#7d5633] uppercase">
+              <span className="font-sans text-[10px] font-bold tracking-widest text-secondary uppercase">
                 Interactive Previews
               </span>
               <h2 className="font-serif text-3xl font-bold text-primary mt-2 mb-4">
@@ -553,11 +553,11 @@ export default function Login() {
                       className="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full h-full"
                     >
                       {/* Left Map */}
-                      <div className="lg:col-span-8 bg-[#021a35] rounded-lg border border-outline-variant/20 p-6 relative h-[380px] overflow-hidden flex flex-col justify-between">
+                      <div className="lg:col-span-8 bg-primary rounded-lg border border-outline-variant/20 p-6 relative h-[380px] overflow-hidden flex flex-col justify-between">
                         <div className="absolute inset-0 bg-radial-gradient from-white/5 to-transparent pointer-events-none" />
 
                         <div className="flex justify-between items-center relative z-10">
-                          <span className="font-sans text-[9px] uppercase font-bold tracking-widest text-[#e5bc92] bg-[#1a2f4b] py-1 px-2 border border-white/5 rounded">
+                          <span className="font-sans text-[9px] uppercase font-bold tracking-widest text-secondary-fixed-dim bg-primary-container py-1 px-2 border border-white/5 rounded">
                             Interactive Star Clusters
                           </span>
                           <span className="font-sans text-[10px] text-white/50">
@@ -628,7 +628,7 @@ export default function Login() {
                                 <div
                                   className={`w-3.5 h-3.5 rounded-full border-2 transition-all duration-300 ${
                                     isFocused
-                                      ? 'bg-[#ffffff] border-[#ffdcc2] scale-125 shadow-[0_0_12px_#ffffff]'
+                                      ? 'bg-white border-secondary-fixed scale-125 shadow-[0_0_12px_var(--color-primary-on)]'
                                       : 'bg-primary-container border-white/40 group-hover:border-white'
                                   }`}
                                 />
@@ -645,7 +645,7 @@ export default function Login() {
                               onMouseEnter={() => setHoveredBook(b)}
                               className={`font-sans text-[10px] px-2 py-0.5 rounded border transition-colors ${
                                 hoveredBook?.id === b.id
-                                  ? 'bg-[#ffdcc2] text-primary font-bold border-transparent'
+                                  ? 'bg-secondary-fixed text-primary font-bold border-transparent'
                                   : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10'
                               }`}
                             >
@@ -728,12 +728,12 @@ export default function Login() {
                       className="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full h-full"
                     >
                       {/* Left Camera Feed mockup */}
-                      <div className="lg:col-span-6 bg-[#121210] rounded-lg border border-outline-variant/20 p-6 relative h-[380px] overflow-hidden flex flex-col justify-between items-center text-center">
+                      <div className="lg:col-span-6 bg-auth-terminal rounded-lg border border-outline-variant/20 p-6 relative h-[380px] overflow-hidden flex flex-col justify-between items-center text-center">
                         {/* Camera viewport bounds */}
                         <div className="absolute inset-4 border border-white/10 rounded flex flex-col justify-between p-4 bg-radial-gradient">
                           <div className="flex justify-between items-center">
-                            <span className="font-sans text-[9px] text-[#2ebd7d] font-bold tracking-widest uppercase flex items-center gap-1.5 animate-pulse">
-                              <span className="w-1.5 h-1.5 bg-[#2ebd7d] rounded-full" />
+                            <span className="font-sans text-[9px] text-success font-bold tracking-widest uppercase flex items-center gap-1.5 animate-pulse">
+                              <span className="w-1.5 h-1.5 bg-success rounded-full" />
                               Camera Active
                             </span>
                             <span className="font-sans text-[9px] text-white/40">
@@ -744,14 +744,14 @@ export default function Login() {
                           {/* Sweeping scan laser line effect */}
                           <div className="relative w-full h-1 text-center flex items-center justify-center z-10">
                             <div
-                              className={`w-full h-[2px] bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] transition-all duration-1000 ${
+                              className={`w-full h-[2px] bg-red-500 shadow-[0_0_10px_var(--color-error)] transition-all duration-1000 ${
                                 lasersOn ? 'translate-y-12' : '-translate-y-12'
                               }`}
                             />
                           </div>
 
                           <div className="text-white/30 text-[10px] space-y-1 py-3 bg-black/40 backdrop-blur-sm border border-white/5 rounded max-w-xs mx-auto w-full mb-1">
-                            <span className="block font-sans uppercase font-bold tracking-widest text-[#ffdcc2] text-[9px]">
+                            <span className="block font-sans uppercase font-bold tracking-widest text-secondary-fixed text-[9px]">
                               Virtual Barcode Target
                             </span>
                             <span className="block font-mono text-white/50">
@@ -764,7 +764,7 @@ export default function Login() {
                           <Button
                             onClick={handleSimulateScan}
                             disabled={isScanning}
-                            className="bg-[#2ebd7d] hover:bg-[#2ebd7d]/90 text-[#001f14] border-none font-sans text-xs uppercase tracking-wider font-bold h-10 w-48 mx-auto"
+                            className="bg-success hover:bg-success/90 text-on-success border-none font-sans text-xs uppercase tracking-wider font-bold h-10 w-48 mx-auto"
                           >
                             {isScanning
                               ? 'Retrieving metadata...'
@@ -809,7 +809,7 @@ export default function Login() {
                                   </div>
                                 </div>
                                 <div className="flex flex-col items-end">
-                                  <span className="font-mono text-[9px] text-[#7d5633] tracking-tight">
+                                  <span className="font-mono text-[9px] text-secondary tracking-tight">
                                     {item.isbn}
                                   </span>
                                   <span className="font-sans text-[8px] font-extrabold uppercase bg-green-500/10 text-emerald-800 px-1.5 py-0.5 rounded border border-green-500/20 mt-0.5">
@@ -848,23 +848,23 @@ export default function Login() {
                       className="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full h-full"
                     >
                       {/* Left: AI Curator Narrative panel */}
-                      <div className="lg:col-span-8 bg-[#faf7f0] border border-outline-variant/60 rounded-lg p-6 sm:p-8 shadow-inner font-serif text-primary flex flex-col justify-between h-[380px] overflow-y-auto relative border-l-4 border-l-secondary">
+                      <div className="lg:col-span-8 bg-auth-card border border-outline-variant/60 rounded-lg p-6 sm:p-8 shadow-inner font-serif text-primary flex flex-col justify-between h-[380px] overflow-y-auto relative border-l-4 border-l-secondary">
                         <div className="space-y-4">
                           <div className="flex justify-between items-center pb-2 border-b border-secondary/20 font-sans">
-                            <span className="text-[10px] uppercase font-bold tracking-widest text-[#7d5633]">
+                            <span className="text-[10px] uppercase font-bold tracking-widest text-secondary">
                               Gemini Daily Digest Curation
                             </span>
-                            <span className="text-[9px] text-[#7d5633]">
+                            <span className="text-[9px] text-secondary">
                               VOLUME IX · MAY 2026
                             </span>
                           </div>
 
                           <div className="space-y-3">
-                            <h3 className="text-2xl font-bold font-serif text-[#021a35] italic leading-tight">
+                            <h3 className="text-2xl font-bold font-serif text-primary italic leading-tight">
                               "The Architecture of Scholarly Solitude"
                             </h3>
 
-                            <p className="font-serif text-sm text-[#021a35]/90 leading-relaxed text-justify first-letter:text-4xl first-letter:float-left first-letter:mr-2 first-letter:font-bold first-letter:text-[#7d5633]">
+                            <p className="font-serif text-sm text-primary/90 leading-relaxed text-justify first-letter:text-4xl first-letter:float-left first-letter:mr-2 first-letter:font-bold first-letter:text-secondary">
                               The titles we preserve in secret cabinets are
                               diaries of isolation. In examining Plato's
                               political system against Aurelius' quiet
@@ -910,7 +910,7 @@ export default function Login() {
                             <div className="flex items-center gap-4 p-2 bg-surface/50 border border-outline-variant/20 rounded">
                               <BookOpen className="w-5 h-5 text-secondary shrink-0" />
                               <div>
-                                <h5 className="font-serif text-sm font-bold text-[#021a35]">
+                                <h5 className="font-serif text-sm font-bold text-primary">
                                   The Republic
                                 </h5>
                                 <span className="block font-sans text-[10px] text-on-surface-variant">
@@ -922,7 +922,7 @@ export default function Login() {
                             <div className="flex items-center gap-4 p-2 bg-surface/50 border border-outline-variant/20 rounded">
                               <BookOpen className="w-5 h-5 text-secondary shrink-0" />
                               <div>
-                                <h5 className="font-serif text-sm font-bold text-[#021a35]">
+                                <h5 className="font-serif text-sm font-bold text-primary">
                                   Meditations
                                 </h5>
                                 <span className="block font-sans text-[10px] text-on-surface-variant">
@@ -942,7 +942,7 @@ export default function Login() {
                         <div className="pt-4 border-t border-outline-variant/30 mt-4">
                           <Button
                             onClick={signIn}
-                            className="w-full bg-[#1a2f4b] hover:bg-[#1a2f4b]/95 text-[#e5bc92] border-none font-sans text-xs uppercase tracking-wider font-bold py-2.5 flex items-center justify-center gap-2"
+                            className="w-full bg-primary-container hover:bg-primary-container/95 text-secondary-fixed-dim border-none font-sans text-xs uppercase tracking-wider font-bold py-2.5 flex items-center justify-center gap-2"
                           >
                             Access Daily Curator
                             <Sparkles className="w-3.5 h-3.5" />
@@ -966,7 +966,7 @@ export default function Login() {
                         <div className="space-y-4">
                           <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
                             <div>
-                              <span className="font-sans text-[10px] font-bold tracking-widest text-[#7d5633] uppercase block">
+                              <span className="font-sans text-[10px] font-bold tracking-widest text-secondary uppercase block">
                                 Spruce-Up Vault Integrity
                               </span>
                               <h4 className="font-serif text-xl font-bold text-primary mt-1">
@@ -996,11 +996,11 @@ export default function Login() {
                                 </span>
                               </div>
                               {integrityState.duplicates > 0 ? (
-                                <span className="text-[10px] font-sans font-bold text-[#ba1a1a] bg-red-100 px-2 py-0.5 rounded border border-red-200">
+                                <span className="text-[10px] font-sans font-bold text-error bg-red-100 px-2 py-0.5 rounded border border-red-200">
                                   {integrityState.duplicates} Detected
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-sans font-bold text-[#2ebd7d] bg-[#2ebd7d]/10 px-2 py-0.5 rounded border border-[#2ebd7d]/20 flex items-center gap-1">
+                                <span className="text-[10px] font-sans font-bold text-success bg-success/10 px-2 py-0.5 rounded border border-success/20 flex items-center gap-1">
                                   <Check className="w-3 h-3" /> Resolved
                                 </span>
                               )}
@@ -1018,7 +1018,7 @@ export default function Login() {
                                   {integrityState.missingCovers} Missing
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-sans font-bold text-[#2ebd7d] bg-[#2ebd7d]/10 px-2 py-0.5 rounded border border-[#2ebd7d]/20 flex items-center gap-1">
+                                <span className="text-[10px] font-sans font-bold text-success bg-success/10 px-2 py-0.5 rounded border border-success/20 flex items-center gap-1">
                                   <Check className="w-3 h-3" /> Healed
                                 </span>
                               )}
@@ -1026,7 +1026,7 @@ export default function Login() {
 
                             <div className="flex items-center justify-between p-2.5 bg-surface-container-low border border-outline-variant/25 rounded">
                               <div className="flex items-center gap-2.5">
-                                <AlertTriangle className="w-4 h-4 text-[#ba1a1a] opacity-80" />
+                                <AlertTriangle className="w-4 h-4 text-error opacity-80" />
                                 <span className="font-sans text-xs font-semibold text-primary">
                                   Uncategorized / Loose categories
                                 </span>
@@ -1036,7 +1036,7 @@ export default function Login() {
                                   {integrityState.uncategorized} Items
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-sans font-bold text-[#2ebd7d] bg-[#2ebd7d]/10 px-2 py-0.5 rounded border border-[#2ebd7d]/20 flex items-center gap-1">
+                                <span className="text-[10px] font-sans font-bold text-success bg-success/10 px-2 py-0.5 rounded border border-success/20 flex items-center gap-1">
                                   <Check className="w-3 h-3" /> Anchored
                                 </span>
                               )}
@@ -1080,7 +1080,7 @@ export default function Login() {
                           </p>
 
                           {integrityState.status === 'Healed' && (
-                            <div className="bg-[#ebd9bd]/25 border border-secondary/20 p-3 rounded text-secondary flex items-start gap-2">
+                            <div className="bg-secondary-fixed-dim/25 border border-secondary/20 p-3 rounded text-secondary flex items-start gap-2">
                               <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                               <span className="text-[11px] font-sans leading-snug">
                                 <strong>System Audit perfect:</strong> All dummy
@@ -1138,7 +1138,7 @@ export default function Login() {
           className="w-full py-24 bg-surface max-w-[1200px] px-6 sm:px-12"
         >
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <span className="font-sans text-[10px] font-bold tracking-widest text-[#7d5633] uppercase">
+            <span className="font-sans text-[10px] font-bold tracking-widest text-secondary uppercase">
               The Architecture of book(ish)
             </span>
             <h2 className="font-serif text-3xl font-bold text-primary mt-2">
@@ -1207,10 +1207,10 @@ export default function Login() {
         </section>
 
         {/* BOTTOM CALL TO ACTION */}
-        <section className="w-full bg-[#021a35] py-20 border-t border-secondary-container/10 text-white relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#001f14]/40 to-transparent pointer-events-none" />
+        <section className="w-full bg-primary py-20 border-t border-secondary-container/10 text-white relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-tertiary/40 to-transparent pointer-events-none" />
           <div className="max-w-[800px] mx-auto px-6 text-center relative z-10 space-y-6">
-            <span className="font-sans text-[10px] font-bold tracking-widest text-[#fcc79c] uppercase bg-white/5 py-1 px-3.5 border border-white/10 rounded">
+            <span className="font-sans text-[10px] font-bold tracking-widest text-secondary-container uppercase bg-white/5 py-1 px-3.5 border border-white/10 rounded">
               Curate Your Sanctuary
             </span>
             <h2 className="font-serif text-3xl sm:text-4xl font-bold text-white max-w-xl mx-auto leading-tight">
@@ -1224,7 +1224,7 @@ export default function Login() {
             <div className="pt-4">
               <Button
                 onClick={signIn}
-                className="bg-[#fcc79c] hover:bg-[#fcc79c]/90 text-[#3a1d00] font-sans text-xs uppercase tracking-wider font-extrabold h-12 px-8 rounded shadow-md mx-auto flex items-center gap-2"
+                className="bg-secondary-container hover:bg-secondary-container/90 text-on-secondary-container font-sans text-xs uppercase tracking-wider font-extrabold h-12 px-8 rounded shadow-md mx-auto flex items-center gap-2"
               >
                 Sign In & Scan Your First Book
                 <ArrowRight className="w-4 h-4" />
@@ -1261,7 +1261,7 @@ export default function Login() {
             </a>
             <a
               href="#simulator"
-              className="font-sans text-xs text-[#7d5633] font-bold hover:underline transition-colors"
+              className="font-sans text-xs text-secondary font-bold hover:underline transition-colors"
             >
               Live Interactive Tour
             </a>

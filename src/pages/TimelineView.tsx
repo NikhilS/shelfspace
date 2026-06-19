@@ -1,6 +1,6 @@
 import React, {useState, useMemo, useCallback, useEffect} from 'react';
 import {useParams, useNavigate, Link} from 'react-router-dom';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {useLibraryData} from '../hooks/useLibraryData';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../components/BulkEnrichmentBanner';
@@ -100,7 +100,7 @@ export default function TimelineView() {
     books,
     isBooksLoading,
     libraryId,
-    apiEndpoint: `/api/libraries/${libraryId}/metadata/temporalMetadata/bulk`,
+    providerKey: 'temporalMetadata',
     metadataField: 'temporalMetadata',
     batchSize: 20, // Exactly 20 books per request as per spec
     concurrencyLimit: 5, // canonical pool concurrency

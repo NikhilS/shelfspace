@@ -1,6 +1,6 @@
 import React, {useState, useMemo, useCallback, useEffect} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {useLibraryData} from '../hooks/useLibraryData';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../components/BulkEnrichmentBanner';
@@ -83,7 +83,7 @@ export default function WorldMap() {
     books,
     isBooksLoading,
     libraryId,
-    apiEndpoint: `/api/libraries/${libraryId}/metadata/geoMetadata/bulk`,
+    providerKey: 'geoMetadata',
     metadataField: 'geoMetadata',
     batchSize: 10,
     concurrencyLimit: 5,
@@ -349,7 +349,7 @@ export default function WorldMap() {
               </div>
             ) : !hasMapsApiKey ? (
               /* Beautiful Interactive Fallback Map with plotted coordinates! */
-              <div className="relative w-full h-full bg-[#fcf9f3] p-6 flex flex-col justify-between overflow-hidden rounded-3xl border border-outline-variant select-none">
+              <div className="relative w-full h-full bg-surface p-6 flex flex-col justify-between overflow-hidden rounded-3xl border border-outline-variant select-none">
                 {/* Vintage map grid background */}
                 <div className="absolute inset-0 pointer-events-none opacity-[0.12]">
                   {/* Grid lines */}
@@ -391,7 +391,7 @@ export default function WorldMap() {
                 </div>
 
                 {/* Top-level Banner overlay informing user they are running in offline/fallback mode */}
-                <div className="absolute top-4 left-4 right-4 z-20 flex justify-between items-center bg-white/95 backdrop-blur-md border border-neutral-200/80 px-4 py-2.5 rounded-2xl shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
+                <div className="absolute top-4 left-4 right-4 z-20 flex justify-between items-center bg-white/95 backdrop-blur-md border border-neutral-200/80 px-4 py-2.5 rounded-2xl shadow-elevation-2">
                   <div className="flex items-center gap-2">
                     <span className="flex h-2 w-2 relative">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -604,15 +604,13 @@ export default function WorldMap() {
                   onCenterChanged={ev => setCenter(ev.detail.center)}
                   onClick={handleMapClick}
                   style={{width: '100%', height: '100%'}}
-                  options={{
-                    disableDefaultUI: false,
-                    zoomControl: true,
-                    mapTypeControl: false,
-                    scaleControl: true,
-                    streetViewControl: false,
-                    rotateControl: false,
-                    fullscreenControl: true,
-                  }}
+                  disableDefaultUI={false}
+                  zoomControl={true}
+                  mapTypeControl={false}
+                  scaleControl={true}
+                  streetViewControl={false}
+                  rotateControl={false}
+                  fullscreenControl={true}
                 >
                   {/* Render Clustered Pins or Heat Dots */}
                   {scaleClusters.map(cluster => {

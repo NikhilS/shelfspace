@@ -53,7 +53,7 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
     };
 
     return (
-      <div className="bg-surface-container-lowest rounded-xl border border-surface-variant overflow-hidden shadow-[0_2px_12px_rgba(2,26,53,0.03)]">
+      <div className="bg-surface-container-lowest rounded-xl border border-surface-variant overflow-hidden shadow-elevation-1">
         <div className="overflow-x-auto min-h-[500px]">
           {books.length === 0 ? (
             <table className="w-full table-fixed text-left border-collapse">

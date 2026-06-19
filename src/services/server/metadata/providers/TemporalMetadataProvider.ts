@@ -20,7 +20,9 @@ export class TemporalMetadataProvider implements IMetadataProvider<unknown> {
     const synopsisProvider = MetadataRegistry.getInstance().getProvider(
       MetadataKey.SYNOPSIS,
     );
-    return synopsisProvider ? await synopsisProvider.fetch(book) : undefined;
+    return synopsisProvider
+      ? ((await synopsisProvider.fetch(book)) as string | undefined)
+      : undefined;
   }
 
   async fetch(book: CoreBookData): Promise<unknown> {
@@ -45,8 +47,8 @@ export class TemporalMetadataProvider implements IMetadataProvider<unknown> {
       temporalResult.enrichment.forEach((item: TemporalBookResult) => {
         if (item.id) {
           // Keep the raw item minus the id
-          const data = {...item};
-          delete data.id;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const {id, ...data} = item;
           results[item.id] = data;
         }
       });

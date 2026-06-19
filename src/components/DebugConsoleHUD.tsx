@@ -17,7 +17,7 @@ import {
   Share2,
 } from 'lucide-react';
 import {DebugTelemetryEngine, TelemetryLog} from '../lib/telemetry';
-import {useDebug} from '../contexts/DebugContext';
+import {useDebug} from '../stores/debugStore';
 import {Button} from '@/components/ui/button';
 
 export const DebugConsoleHUD: React.FC = () => {

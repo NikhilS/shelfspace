@@ -91,7 +91,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
       className="layout-page-content"
     >
       {books.length === 0 ? (
-        <div className="max-w-xl mx-auto py-16 px-8 text-center flex flex-col items-center gap-8 bg-surface-container-lowest border border-outline-variant/30 rounded-lg shadow-[0_8px_32px_rgba(26,47,75,0.03)] mt-8">
+        <div className="max-w-xl mx-auto py-16 px-8 text-center flex flex-col items-center gap-8 bg-surface-container-lowest border border-outline-variant/30 rounded-lg shadow-elevation-3 mt-8">
           <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-secondary-container/10 text-secondary">
             <BookIcon className="w-9 h-9 text-secondary" />
             <motion.div
@@ -139,7 +139,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
           <div className="md:col-span-4 flex flex-col gap-6">
             <div
               onClick={() => setCurrentTab('collection')}
-              className="bg-surface-container-low p-6 shadow-[0_4px_24px_rgba(26,47,75,0.04)] overflow-hidden group cursor-pointer hover:bg-surface-container transition-colors flex flex-col"
+              className="bg-surface-container-low p-6 shadow-elevation-2 overflow-hidden group cursor-pointer hover:bg-surface-container transition-colors flex flex-col"
             >
               <div className="flex items-center justify-between mb-2">
                 <p className="font-label-caps text-label-caps text-secondary">
@@ -245,7 +245,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
               readingBooks.map(book => (
                 <div
                   key={`reading-${book.id}`}
-                  className="bg-surface-container-lowest p-8 shadow-[0_8px_32px_rgba(26,47,75,0.06)] border border-surface-variant flex flex-col md:flex-row gap-8 items-center"
+                  className="bg-surface-container-lowest p-8 shadow-elevation-3 border border-surface-variant flex flex-col md:flex-row gap-8 items-center"
                 >
                   <div
                     className="w-32 md:w-40 flex-shrink-0 relative group cursor-pointer"
@@ -302,7 +302,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                 </div>
               ))
             ) : (
-              <div className="bg-surface-container-lowest p-8 shadow-[0_8px_32px_rgba(26,47,75,0.06)] border border-surface-variant flex flex-col gap-4 justify-center items-center text-center">
+              <div className="bg-surface-container-lowest p-8 shadow-elevation-3 border border-surface-variant flex flex-col gap-4 justify-center items-center text-center">
                 <BookIcon className="w-12 h-12 text-on-surface-variant opacity-70" />
                 <p className="font-body-lg text-on-surface-variant">
                   No active reads in this library. Found something good on your

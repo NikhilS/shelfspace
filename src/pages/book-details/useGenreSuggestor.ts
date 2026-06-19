@@ -1,4 +1,4 @@
-import {useState, useEffect} from 'react';
+import {useQuery} from '@tanstack/react-query';
 import {Book} from '../../types';
 import {normalizeIsbn, toSentenceCase, parseGenres} from '../../lib/utils';
 import {
@@ -20,13 +20,10 @@ export const BASE_GENRES = [
 ];
 
 export function useGenreSuggestor(book: Book) {
-  const [suggestedGenres, setSuggestedGenres] = useState<string[]>(BASE_GENRES);
-  const [isSearchingGenres, setIsSearchingGenres] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    const fetchGenres = async () => {
-      setIsSearchingGenres(true);
+  const query = useQuery({
+    queryKey: ['genreSuggestor', book.id, book.isbn, book.title, book.author],
+    staleTime: 1000 * 60 * 60, // 1 hour
+    queryFn: async () => {
       const harvested = new Set<string>();
 
       const isbnClean = normalizeIsbn(book.isbn);
@@ -63,36 +60,31 @@ export function useGenreSuggestor(book: Book) {
         console.warn('Genre harvest handled gracefully:', err);
       }
 
-      if (active) {
-        const uniqueGenres = new Set<string>();
+      const uniqueGenres = new Set<string>();
 
-        // 1. Add existing book genres to ensure they always appear first as choices
-        if (book?.genres) {
-          book.genres.forEach(g => {
-            if (g) uniqueGenres.add(toSentenceCase(g.trim()));
-          });
-        }
-
-        // 2. Add harvested genres
-        harvested.forEach(g => {
-          if (g) uniqueGenres.add(g);
+      // 1. Add existing book genres to ensure they always appear first as choices
+      if (book?.genres) {
+        book.genres.forEach(g => {
+          if (g) uniqueGenres.add(toSentenceCase(g.trim()));
         });
-
-        // 3. Add base genres
-        BASE_GENRES.forEach(g => {
-          uniqueGenres.add(g);
-        });
-
-        setSuggestedGenres(Array.from(uniqueGenres).slice(0, 24));
-        setIsSearchingGenres(false);
       }
-    };
 
-    void fetchGenres();
-    return () => {
-      active = false;
-    };
-  }, [book.isbn, book.title, book.author, book?.genres]);
+      // 2. Add harvested genres
+      harvested.forEach(g => {
+        if (g) uniqueGenres.add(g);
+      });
 
-  return {suggestedGenres, isSearchingGenres};
+      // 3. Add base genres
+      BASE_GENRES.forEach(g => {
+        uniqueGenres.add(g);
+      });
+
+      return Array.from(uniqueGenres).slice(0, 24);
+    },
+  });
+
+  return {
+    suggestedGenres: query.data || BASE_GENRES,
+    isSearchingGenres: query.isFetching,
+  };
 }

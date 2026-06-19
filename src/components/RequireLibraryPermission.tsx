@@ -1,6 +1,6 @@
 import React from 'react';
 import {useParams} from 'react-router-dom';
-import {useAuth} from '../contexts/AuthContext';
+import {useAuth} from '../stores/authStore';
 import {useLibraryPermissions} from '../hooks/useLibraryPermissions';
 import {AlertCircle} from 'lucide-react';
 import {Button} from '@/components/ui/button';
