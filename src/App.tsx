@@ -2,6 +2,7 @@ import React, {Suspense, lazy} from 'react';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {BrowserRouter, Routes, Route, Navigate, Outlet} from 'react-router-dom';
 import {useAuthStore} from './stores/authStore';
+import {useAppStore} from './stores/appStore';
 import {useAppPermissions} from './hooks/useAppPermissions';
 import {DebugConsoleHUD} from './components/DebugConsoleHUD';
 import {ErrorBoundary} from './components/ErrorBoundary';
@@ -303,18 +304,57 @@ function AuthGuard({children}: {children: React.ReactNode}) {
   return <>{children}</>;
 }
 
+function ThemeProvider({children}: {children: React.ReactNode}) {
+  const {theme} = useAppStore();
+
+  React.useEffect(() => {
+    const root = window.document.documentElement;
+    root.classList.remove('light', 'dark');
+
+    if (theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
+        .matches
+        ? 'dark'
+        : 'light';
+      root.classList.add(systemTheme);
+      return;
+    }
+
+    root.classList.add(theme);
+  }, [theme]);
+
+  // Listen for system theme changes if mode is 'system'
+  React.useEffect(() => {
+    if (theme !== 'system') return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = () => {
+      const root = window.document.documentElement;
+      root.classList.remove('light', 'dark');
+      root.classList.add(mediaQuery.matches ? 'dark' : 'light');
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme]);
+
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
         <ErrorBoundary>
-          <AuthGuard>
-            <BrowserRouter>
-              <AnimatedRoutes />
-            </BrowserRouter>
-            <Toaster position="bottom-right" />
-            <DebugConsoleHUD />
-          </AuthGuard>
+          <ThemeProvider>
+            <AuthGuard>
+              <BrowserRouter>
+                <AnimatedRoutes />
+              </BrowserRouter>
+              <Toaster position="bottom-right" />
+              <DebugConsoleHUD />
+            </AuthGuard>
+          </ThemeProvider>
         </ErrorBoundary>
       </QueryClientProvider>
     </trpc.Provider>

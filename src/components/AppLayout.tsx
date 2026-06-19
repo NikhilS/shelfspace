@@ -7,6 +7,7 @@ import {motion, AnimatePresence} from 'motion/react';
 import {ConnectivityBanner} from './ConnectivityBanner';
 import {LibrarySidebarNav} from './LibrarySidebarNav';
 import {useAppStore} from '../stores/appStore';
+import {ThemeToggle} from './ThemeToggle';
 
 interface AppLayoutProps {
   children?: React.ReactNode;
@@ -99,10 +100,18 @@ export default function AppLayout({children}: AppLayoutProps) {
           />
         </div>
 
-        <div className="mt-auto px-4">
-          <button onClick={logOut} className="sidebar-nav-item">
-            <LogOut className="text-on-surface-variant flex-shrink-0 w-5 h-5" />
-            <span>Logout</span>
+        <div className="mt-auto px-6 pb-5 flex items-center justify-end gap-2">
+          <div
+            id="sidebar-bottom-actions-root"
+            className="flex items-center gap-2"
+          />
+
+          <button
+            onClick={logOut}
+            title="Logout"
+            className="p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all"
+          >
+            <LogOut className="flex-shrink-0 w-5 h-5" />
           </button>
         </div>
       </nav>
@@ -124,11 +133,12 @@ export default function AppLayout({children}: AppLayoutProps) {
             <div className="text-xl font-serif font-semibold text-primary w-1/3 text-center tracking-tight md:hidden italic flex items-center justify-center h-full">
               book(ish)
             </div>
-            <div className="flex items-center justify-end space-x-4 w-1/3 ml-auto text-on-surface-variant h-full">
+            <div className="flex items-center justify-end space-x-1 sm:space-x-4 w-1/3 ml-auto text-on-surface-variant h-full">
               <div
                 id="header-actions-root"
                 className="flex items-center space-x-2"
               />
+              <ThemeToggle />
               <div className="h-9 w-9 border border-outline-variant/30 shadow-sm rounded-full bg-surface-variant overflow-hidden cursor-pointer hover:border-primary/50 transition-colors flex-shrink-0">
                 {user?.photoURL ? (
                   <img

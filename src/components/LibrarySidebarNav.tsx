@@ -17,6 +17,7 @@ import {
   History,
 } from 'lucide-react';
 import SidebarActions from './SidebarActions';
+import SidebarBottomActions from './SidebarBottomActions';
 import HeaderActions from './HeaderActions';
 import {useAuth} from '../stores/authStore';
 import {useLibraryPermissions} from '../hooks/useLibraryPermissions';
@@ -72,16 +73,6 @@ export function LibrarySidebarNav({
   return (
     <>
       <HeaderActions>
-        {canEdit && (
-          <button
-            onClick={handleSettings}
-            title="Library Settings"
-            className={`p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all ${isSettingsActive ? 'text-primary bg-surface-container' : ''}`}
-          >
-            <Settings className="w-5 h-5 flex-shrink-0" />
-          </button>
-        )}
-
         {isOwner && (
           <button
             onClick={handleShare}
@@ -93,13 +84,25 @@ export function LibrarySidebarNav({
         )}
       </HeaderActions>
 
+      <SidebarBottomActions>
+        {canEdit && (
+          <button
+            onClick={handleSettings}
+            title="Library Settings"
+            className={`p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all ${isSettingsActive ? 'text-primary bg-surface-container' : ''}`}
+          >
+            <Settings className="w-5 h-5 flex-shrink-0" />
+          </button>
+        )}
+      </SidebarBottomActions>
+
       <SidebarActions>
         <Link
           to={`/library/${libraryId}`}
           className={`sidebar-nav-item ${isLibraryHomeActive ? 'active' : ''}`}
         >
           <LibraryIcon className="w-5 h-5 flex-shrink-0" />
-          <span>Library Home</span>
+          <span>Home</span>
         </Link>
 
         <Link

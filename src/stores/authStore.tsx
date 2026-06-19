@@ -33,9 +33,23 @@ export const useAuthStore = create<AuthState>(set => ({
     });
     try {
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error.code === 'auth/cancelled-popup-request' ||
+          error.code === 'auth/popup-closed-by-user')
+      ) {
+        console.log('Login popup closed by user or cancelled.');
+        return;
+      }
       console.error('Error signing in with Google', error);
-      throw error;
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'An error occurred during sign in.';
+      set({authError: errorMessage});
     }
   },
 

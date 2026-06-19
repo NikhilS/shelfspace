@@ -1,13 +1,26 @@
 import {create} from 'zustand';
+import {persist} from 'zustand/middleware';
+
+export type ThemeMode = 'light' | 'dark' | 'system';
 
 interface AppUIState {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
-  // Ephemeral selected book IDs could go here or remain in useSelection hook.
-  // I will add some generic UI state here.
+  theme: ThemeMode;
+  setTheme: (theme: ThemeMode) => void;
 }
 
-export const useAppStore = create<AppUIState>(set => ({
-  sidebarOpen: false,
-  setSidebarOpen: open => set({sidebarOpen: open}),
-}));
+export const useAppStore = create<AppUIState>()(
+  persist(
+    set => ({
+      sidebarOpen: false,
+      setSidebarOpen: open => set({sidebarOpen: open}),
+      theme: 'system',
+      setTheme: theme => set({theme}),
+    }),
+    {
+      name: 'app-ui-state',
+      partialize: state => ({theme: state.theme}),
+    },
+  ),
+);
