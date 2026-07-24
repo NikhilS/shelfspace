@@ -7,6 +7,7 @@ export enum MetadataKey {
   EMBEDDING = 'embeddings',
   SERIES = 'series',
   BASIC_INFO = 'basicInfo', // Google Books / Wikipedia fundamental data
+  COVER_IMAGE = 'coverUrl', // High-res cover images
 }
 
 export interface CoreBookData {

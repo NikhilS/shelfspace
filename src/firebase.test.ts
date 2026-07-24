@@ -15,6 +15,12 @@ vi.mock('firebase/auth', () => ({
       return mockCurrentUser;
     },
   })),
+  connectAuthEmulator: vi.fn(),
+}));
+
+vi.mock('firebase/storage', () => ({
+  getStorage: vi.fn(() => ({})),
+  connectStorageEmulator: vi.fn(),
 }));
 
 vi.mock('firebase/firestore', () => ({
@@ -23,6 +29,7 @@ vi.mock('firebase/firestore', () => ({
   persistentMultipleTabManager: vi.fn(() => 'mock-tab-manager'),
   getDocFromServer: vi.fn(),
   doc: vi.fn(),
+  connectFirestoreEmulator: vi.fn(),
 }));
 
 vi.mock('../firebase-applet-config.json', () => ({

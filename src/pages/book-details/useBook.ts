@@ -136,11 +136,35 @@ export function useBook(
             data.tags ||
             data.subjects;
           const parsedGenres = parseGenres(rawGenres);
-          queryClient.setQueryData(['bookBase', libraryId, bookId], {
+
+          const bookData = {
             id: docSnap.id,
             ...data,
             genres: parsedGenres,
-          } as Book);
+          } as Book;
+
+          if (bookData.temporalMetadata) {
+            if (
+              bookData.temporalMetadata.startYear !== undefined &&
+              bookData.temporalMetadata.endYear === undefined
+            ) {
+              bookData.temporalMetadata.endYear =
+                bookData.temporalMetadata.startYear;
+            }
+
+            if (
+              (bookData.temporalMetadata.startYear !== undefined &&
+                (bookData.temporalMetadata.startYear < -10000 ||
+                  bookData.temporalMetadata.startYear > 2100)) ||
+              (bookData.temporalMetadata.endYear !== undefined &&
+                (bookData.temporalMetadata.endYear < -10000 ||
+                  bookData.temporalMetadata.endYear > 2100))
+            ) {
+              delete bookData.temporalMetadata;
+            }
+          }
+
+          queryClient.setQueryData(['bookBase', libraryId, bookId], bookData);
         } else {
           queryClient.setQueryData(['bookBase', libraryId, bookId], null);
         }

@@ -4,6 +4,8 @@ import {
   CoreBookData,
 } from '../../../../types/metadata';
 import {generateBookInsights} from '../../gemini';
+import {fetchAuthorBioFromWikipedia} from '../../../wikipediaApi';
+import {googleBooksLimiter} from '../../limiters';
 
 export class AuthorBioMetadataProvider implements IMetadataProvider<string> {
   getKey(): MetadataKey {
@@ -11,27 +13,41 @@ export class AuthorBioMetadataProvider implements IMetadataProvider<string> {
   }
 
   async fetch(book: CoreBookData): Promise<string> {
-    const bio = await generateBookInsights(
-      book.title,
-      book.author,
-      'author_bio',
-    );
+    if ('authorBio' in book && (book as Record<string, unknown>).authorBio) {
+      return (book as Record<string, unknown>).authorBio as string;
+    }
+
+    let bio: string | null = null;
+
+    try {
+      bio = await fetchAuthorBioFromWikipedia(book.author);
+    } catch (err) {
+      console.error('Failed to fetch from Wikipedia', err);
+    }
+
+    if (!bio || bio.includes('may refer to:')) {
+      bio = await generateBookInsights(book.title, book.author, 'author_bio');
+    }
+
     return bio || '';
   }
 
   async bulkFetch(books: CoreBookData[]): Promise<Record<string, string>> {
     const results: Record<string, string> = {};
-    const {throttledMapWithRetry} = await import('../../../../lib/utils');
-    await throttledMapWithRetry(books, 5, async book => {
-      try {
-        const res = await this.fetch(book);
-        if (res) {
-          results[book.id] = res;
-        }
-      } catch (error) {
-        console.error(`Author bio batch error for ${book.id}:`, error);
-      }
-    });
+    await Promise.all(
+      books.map(book =>
+        googleBooksLimiter.schedule(async () => {
+          try {
+            const res = await this.fetch(book);
+            if (res) {
+              results[book.id] = res;
+            }
+          } catch (error) {
+            console.error(`Author bio batch error for ${book.id}:`, error);
+          }
+        }),
+      ),
+    );
     return results;
   }
 
@@ -40,6 +56,6 @@ export class AuthorBioMetadataProvider implements IMetadataProvider<string> {
   }
 
   isAvailable(): boolean {
-    return !!process.env.GEMINI_API_KEY;
+    return true; // Use Wikipedia API, fallback to Gemini
   }
 }

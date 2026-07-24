@@ -1,6 +1,7 @@
 import {GoogleGenAI, Type} from '@google/genai';
 import Papa from 'papaparse';
 import {toSentenceCase} from '../../lib/utils';
+import {geminiLimiter} from './limiters';
 
 const logger = {
   info: (msg: string) => {
@@ -45,6 +46,18 @@ function getGeminiClient(): GoogleGenAI {
   });
 }
 
+/**
+ * Centrally rate-limited wrapper for generateContent.
+ * All backend code calling Gemini models should use this to ensure we don't
+ * breach global AI quotas.
+ */
+export async function generateContentWithLimiter(
+  options: Parameters<GoogleGenAI['models']['generateContent']>[0],
+) {
+  const ai = getGeminiClient();
+  return geminiLimiter.schedule(() => ai.models.generateContent(options));
+}
+
 export function handleGeminiError(error: unknown): never {
   const errorMessage = error instanceof Error ? error.message : String(error);
   if (isApiKeyError(error)) {
@@ -75,8 +88,6 @@ export async function generateClusterNames(
   clusters: {id: number; books: {title: string; author?: string}[]}[],
 ): Promise<Record<number, string>> {
   try {
-    const ai = getGeminiClient();
-
     const prompt = `I have clustered a library of books into thematic constellations. For each cluster, I will provide a list of books. 
 Your task is to provide a short, captivating, and thematic name for each cluster (1 to 3 words max). 
 
@@ -103,7 +114,7 @@ ${clusters
   .join('\n\n')}
 `;
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithLimiter({
       model: 'gemini-3.5-flash',
       contents: prompt,
       config: {
@@ -147,12 +158,11 @@ export async function generateBookEmbeddings(
 ): Promise<number[][]> {
   try {
     if (!texts || texts.length === 0) return [];
-    const ai = getGeminiClient();
-
     const embeddings: number[][] = new Array(texts.length).fill([]);
 
     const BATCH_SIZE = 10;
     let completedCount = 0;
+    const ai = getGeminiClient();
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
       const batchTexts = texts.slice(i, i + BATCH_SIZE);
       const batchPromises = batchTexts.map(async (text, index) => {
@@ -198,8 +208,6 @@ export async function extractBooksFromImage(
       logger.error('Invalid image data: image is empty');
       throw new Error('Invalid image data provided.');
     }
-    const ai = getGeminiClient();
-
     const extractionSchema = {
       type: Type.ARRAY,
       items: {
@@ -220,7 +228,7 @@ export async function extractBooksFromImage(
       "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects. Each object has a 'title' string, an 'author' string, and an 'isbn' string (if visible on the spine or back cover, otherwise null).";
 
     const generateCall = async (model: string) => {
-      return ai.models.generateContent({
+      return generateContentWithLimiter({
         model,
         contents: {
           parts: [
@@ -350,8 +358,7 @@ export async function extractBooksFromCsv(csvText: string): Promise<
 
     const sampleRows = rows.slice(0, 3);
 
-    const ai = getGeminiClient();
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithLimiter({
       model: 'gemini-3.5-flash',
       contents: `You are a data mapping assistant. I am providing you with the first few rows of a CSV file parsed as JSON arrays.
       
@@ -465,7 +472,6 @@ export async function generateLibraryRecommendations(
   libraryBooks: {title: string; author: string}[],
 ): Promise<string> {
   try {
-    const ai = getGeminiClient();
     const limitedBooks = libraryBooks.slice(0, 100);
     const bookList = limitedBooks
       .map(b => `"${b.title}" by ${b.author}`)
@@ -478,7 +484,7 @@ Based on this reading history, please recommend 5 new books that I might enjoy.
 For each recommendation, provide the Title, Author, and a brief 2-3 sentence explanation of WHY it is a good fit based on my existing library. 
 Format the response with simple markdown (use ## for the book titles).`;
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithLimiter({
       model: 'gemini-3.1-pro-preview',
       contents: prompt,
     });
@@ -521,12 +527,10 @@ export async function generateBookInsights(
       break;
   }
 
-  const ai = getGeminiClient();
-
   let retries = 3;
   while (retries > 0) {
     try {
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithLimiter({
         model:
           type === 'catchup'
             ? 'gemini-3.5-flash'
@@ -565,8 +569,7 @@ export async function generateLibraryHeroImage(
   libraryName: string,
 ): Promise<string | null> {
   try {
-    const ai = getGeminiClient();
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithLimiter({
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
@@ -606,7 +609,6 @@ export async function getPickOfTheDay(
 ): Promise<{title: string; author: string; reason: string}[] | null> {
   try {
     if (!books || books.length === 0) return null;
-    const ai = getGeminiClient();
     const shuffled = [...books];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -639,7 +641,7 @@ Return ONLY a JSON array of 10 objects. Do not include markdown formatting like 
 
     let response;
     try {
-      response = await ai.models.generateContent({
+      response = await generateContentWithLimiter({
         model: 'gemini-3.5-flash',
         contents: prompt,
         config: {
@@ -652,7 +654,7 @@ Return ONLY a JSON array of 10 objects. Do not include markdown formatting like 
       }
       console.warn('Fallback to pro model due to error in pick of the day:', e);
       try {
-        response = await ai.models.generateContent({
+        response = await generateContentWithLimiter({
           model: 'gemini-3.1-pro-preview',
           contents: prompt,
           config: {
@@ -664,7 +666,7 @@ Return ONLY a JSON array of 10 objects. Do not include markdown formatting like 
           throw err;
         }
         console.warn('Fallback to 3.5 flash model:', err);
-        response = await ai.models.generateContent({
+        response = await generateContentWithLimiter({
           model: 'gemini-3.5-flash',
           contents: prompt,
           config: {
@@ -718,8 +720,6 @@ export async function classifyBooks(
 ): Promise<{id: string; genres: string[]}[]> {
   try {
     if (!batch || batch.length === 0) return [];
-    const ai = getGeminiClient();
-
     const booksPromptData = batch.map(b => ({
       id: b.id,
       title: b.title,
@@ -747,7 +747,7 @@ Format:
 Books to classify:
 ${JSON.stringify(booksPromptData, null, 2)}`;
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithLimiter({
       model: 'gemini-3.5-flash',
       contents: prompt,
       config: {
@@ -807,8 +807,6 @@ export async function extractBookGeoMetadata(
   synopsis?: string,
 ): Promise<ExtractedGeoResponse | null> {
   try {
-    const ai = getGeminiClient();
-
     const schema = {
       type: Type.OBJECT,
       properties: {
@@ -861,7 +859,7 @@ Title: ${title}
 Author: ${author}
 Synopsis: ${synopsis || 'No synopsis provided.'}`;
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithLimiter({
       model: 'gemini-3.5-flash',
       contents: prompt,
       config: {
@@ -910,8 +908,6 @@ export async function batchGeminiOperation<T>(
   schema: unknown,
 ): Promise<T | null> {
   try {
-    const ai = getGeminiClient();
-
     const fullPrompt = `${prompt}\n\nBooks to analyze:\n${JSON.stringify(
       books.map(b => ({
         id: b.id,
@@ -923,7 +919,7 @@ export async function batchGeminiOperation<T>(
       2,
     )}`;
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithLimiter({
       model: 'gemini-3.5-flash',
       contents: fullPrompt,
       config: {
@@ -1101,12 +1097,27 @@ System Directives:
 3. For historical/historical-context books, determine the approximate startYear and endYear representing the core plot setting.
 4. Rule 1 (100-Year Spanning Cap): If a book covers a broad span (e.g., a massive biography/history), isolate the single most definitive or dramatic 100-year window (e.g., Pax Romana, Viking expansion) and cap the gap (endYear - startYear) to be NO MORE than 100 years.
 5. Rule 2 (Chronological Grounding): Years must represent real-world calendar parameters. BC/BCE is expressed as a negative integer.
-6. Rule 3 (Fictional/Abstract Exclusion): Science fiction, high fantasy, and abstract textbooks with no real setting must be marked isNonHistorical: true with other fields omitted.
-7. Map each parsed book precisely to the provided unique id in the output JSON.`;
+6. Rule 3 (Year Range Constraints): Years MUST be between -10000 and 2100. Any book set primarily outside this epoch must be marked as isNonHistorical: true.
+7. Rule 4 (Fictional/Abstract Exclusion): Science fiction, high fantasy, and abstract textbooks with no real setting must be marked isNonHistorical: true with other fields omitted.
+8. Map each parsed book precisely to the provided unique id in the output JSON.`;
 
-  return batchGeminiOperation<BatchTemporalResponse>(
+  const result = await batchGeminiOperation<BatchTemporalResponse>(
     books,
     prompt,
     batchSchema,
   );
+
+  if (result?.enrichment) {
+    result.enrichment.forEach(item => {
+      if (
+        !item.isNonHistorical &&
+        item.startYear !== undefined &&
+        item.endYear === undefined
+      ) {
+        item.endYear = item.startYear;
+      }
+    });
+  }
+
+  return result;
 }

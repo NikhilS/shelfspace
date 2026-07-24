@@ -12,6 +12,7 @@ interface BulkEnrichmentBannerProps {
   className?: string;
   id?: string;
   inFlightCount?: number;
+  failed?: number;
 }
 
 export function BulkEnrichmentBanner({
@@ -24,10 +25,13 @@ export function BulkEnrichmentBanner({
   className = '',
   id = 'sync-progress-banner',
   inFlightCount,
+  failed = 0,
 }: BulkEnrichmentBannerProps) {
-  if (!isBackfilling || total === 0) return null;
+  if (!isBackfilling && completed === 0 && failed === 0) return null;
+  if (!isBackfilling && completed + failed >= total) return null;
 
-  const percentage = total > 0 ? (completed / total) * 100 : 0;
+  const percentage =
+    total > 0 ? (Math.min(completed + failed, total) / total) * 100 : 0;
 
   const themeClasses = {
     teal: {
@@ -38,6 +42,7 @@ export function BulkEnrichmentBanner({
       subtitle: 'text-teal-700 dark:text-teal-300',
       progressBg: 'bg-teal-200/50 dark:bg-teal-900/40',
       progressBar: 'bg-teal-600 dark:bg-teal-400',
+      errorText: 'text-red-600 dark:text-red-400',
     },
     indigo: {
       container:
@@ -47,6 +52,7 @@ export function BulkEnrichmentBanner({
       subtitle: 'text-indigo-700 dark:text-indigo-300',
       progressBg: 'bg-indigo-200/50 dark:bg-indigo-900/40',
       progressBar: 'bg-indigo-600 dark:bg-indigo-400',
+      errorText: 'text-red-600 dark:text-red-400',
     },
   };
 
@@ -73,7 +79,12 @@ export function BulkEnrichmentBanner({
           </p>
           <p className={`text-xs font-mono mt-1 ${selectedTheme.subtitle}`}>
             {description} {completed} of {total} completed
-            {inFlightCount !== undefined && inFlightCount > 0
+            {failed > 0 && (
+              <span className={`ml-2 font-semibold ${selectedTheme.errorText}`}>
+                ({failed} failed)
+              </span>
+            )}
+            {inFlightCount !== undefined && inFlightCount > 0 && isBackfilling
               ? ` (${inFlightCount} active)`
               : ''}
           </p>

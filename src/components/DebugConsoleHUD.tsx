@@ -21,10 +21,10 @@ import {useDebug} from '../stores/debugStore';
 import {Button} from '@/components/ui/button';
 
 export const DebugConsoleHUD: React.FC = () => {
-  const {isDebugMode} = useDebug();
+  const {isDebugMode, debugData, debugTitle} = useDebug();
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'logs' | 'network' | 'state' | 'diagnostics'
+    'logs' | 'network' | 'state' | 'entity' | 'diagnostics'
   >('logs');
 
   // Realtime Telemetry State
@@ -340,6 +340,26 @@ export const DebugConsoleHUD: React.FC = () => {
                 <Button
                   size="sm"
                   variant="ghost"
+                  onClick={() => setActiveTab('entity')}
+                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
+                    activeTab === 'entity'
+                      ? 'bg-slate-800/80 text-white border border-slate-700/50'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
+                  }`}
+                  title="Entity Database"
+                >
+                  <Database size={12} className="opacity-75" />
+                  <span className="hidden sm:inline">Entity DB</span>
+                  {!!debugData && (
+                    <span className="ml-[2px] sm:ml-1 text-[9px] bg-purple-900/40 border border-purple-500/20 px-1.5 py-0.25 rounded-full text-purple-400">
+                      1
+                    </span>
+                  )}
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
                   onClick={() => setActiveTab('diagnostics')}
                   className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
                     activeTab === 'diagnostics'
@@ -514,7 +534,7 @@ export const DebugConsoleHUD: React.FC = () => {
                               </span>
                             </div>
 
-                            {log.payload && (
+                            {!!log.payload && (
                               <pre className="mt-1 ml-12 p-1.5 bg-slate-950 border border-slate-900 rounded text-[9px] text-slate-400 max-h-[140px] overflow-auto whitespace-pre-wrap select-all">
                                 {typeof log.payload === 'object'
                                   ? JSON.stringify(log.payload, null, 2)
@@ -581,7 +601,9 @@ export const DebugConsoleHUD: React.FC = () => {
                       </div>
                     ) : (
                       networkLogs.map(log => {
-                        const isCache = log.payload?.fromCache === true;
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const logPayload = log.payload as any;
+                        const isCache = logPayload?.fromCache === true;
 
                         return (
                           <div
@@ -630,9 +652,9 @@ export const DebugConsoleHUD: React.FC = () => {
                                   <span className="text-slate-300 break-all select-all flex-1">
                                     {log.message}
                                   </span>
-                                  {log.payload?.durationMs && (
+                                  {logPayload?.durationMs && (
                                     <span className="text-[10px] text-slate-400 bg-slate-900 px-1.5 py-0.5 border border-slate-800/80 rounded shrink-0">
-                                      Latency: {log.payload.durationMs}ms
+                                      Latency: {logPayload.durationMs}ms
                                     </span>
                                   )}
                                 </div>
@@ -642,11 +664,11 @@ export const DebugConsoleHUD: React.FC = () => {
                                 <div className="flex flex-col gap-1 w-full">
                                   <div className="flex items-center justify-between">
                                     <span className="text-purple-400 font-semibold">
-                                      {log.payload?.model || 'Gemini Flash'}:
+                                      {logPayload?.model || 'Gemini Flash'}:
                                     </span>
-                                    {log.payload?.tokens && (
+                                    {logPayload?.tokens && (
                                       <span className="text-[9px] text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded border border-purple-500/20">
-                                        Tokens: {log.payload.tokens}
+                                        Tokens: {logPayload.tokens}
                                       </span>
                                     )}
                                   </div>
@@ -657,9 +679,11 @@ export const DebugConsoleHUD: React.FC = () => {
                               )}
                             </div>
 
-                            {log.payload && (
+                            {!!log.payload && (
                               <pre className="mt-1.5 p-1 px-2 bg-slate-950 text-[9px] text-slate-500 select-all border border-slate-900 rounded max-h-[80px] overflow-auto">
-                                {JSON.stringify(log.payload, null, 2)}
+                                {typeof log.payload === 'object'
+                                  ? JSON.stringify(log.payload, null, 2)
+                                  : String(log.payload)}
                               </pre>
                             )}
                           </div>
@@ -717,6 +741,43 @@ export const DebugConsoleHUD: React.FC = () => {
                           </div>
                         </div>
                       ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* === TABS CONTENT X: ENTITY DB === */}
+              {activeTab === 'entity' && (
+                <div className="flex flex-col h-full space-y-4">
+                  <div className="flex items-center justify-between bg-slate-900/60 p-2 border border-slate-800/40 rounded-lg">
+                    <span className="text-[10px] text-slate-400">
+                      CURRENT ENTITY CONTEXT
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-3 min-h-[140px]">
+                    {!debugData ? (
+                      <div className="flex flex-col items-center justify-center py-8 text-center text-slate-600 italic">
+                        <Database
+                          size={24}
+                          className="mb-2 opacity-30 text-slate-500"
+                        />
+                        <span>No active entity for this view.</span>
+                      </div>
+                    ) : (
+                      <div className="border border-slate-800 bg-[#0d1016]/80 rounded p-3 font-mono">
+                        <div className="text-[11px] font-bold text-purple-400 uppercase tracking-widest border-b border-slate-800/60 pb-1 flex justify-between items-center">
+                          <span>Document: {debugTitle || 'Entity Data'}</span>
+                          <span className="text-[9px] text-slate-500 font-normal normal-case">
+                            DATABASE SYNC
+                          </span>
+                        </div>
+                        <div className="mt-2 text-slate-300 overflow-x-auto text-[10px] relative select-all scrollbar-thin">
+                          <pre className="bg-black/50 p-2 border border-slate-900 rounded overflow-auto max-h-[350px]">
+                            {JSON.stringify(debugData, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>

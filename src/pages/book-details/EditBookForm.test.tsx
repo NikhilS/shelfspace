@@ -3,6 +3,21 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen, fireEvent, waitFor} from '@testing-library/react';
 import {EditBookForm} from './EditBookForm';
 import {Book, BookDetailsPayload} from '../../types';
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+
+const renderWithQueryClient = (ui: React.ReactElement) => {
+  const queryClient = createTestQueryClient();
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+};
 
 // Mock Lucide icons
 vi.mock('lucide-react', async () => {
@@ -87,7 +102,7 @@ describe('EditBookForm', () => {
   });
 
   it('renders correctly with default book metadata fields', () => {
-    render(
+    renderWithQueryClient(
       <EditBookForm
         libraryId="lib1"
         book={mockBook}
@@ -112,7 +127,7 @@ describe('EditBookForm', () => {
   });
 
   it('renders the delete book action at the end of the form', () => {
-    render(
+    renderWithQueryClient(
       <EditBookForm
         libraryId="lib1"
         book={mockBook}
@@ -131,7 +146,7 @@ describe('EditBookForm', () => {
   });
 
   it('transitions to inline confirmation screen when Delete is clicked', () => {
-    render(
+    renderWithQueryClient(
       <EditBookForm
         libraryId="lib1"
         book={mockBook}
@@ -159,7 +174,7 @@ describe('EditBookForm', () => {
   });
 
   it('restores the editing form if the delete confirm action is canceled', () => {
-    render(
+    renderWithQueryClient(
       <EditBookForm
         libraryId="lib1"
         book={mockBook}
@@ -185,7 +200,7 @@ describe('EditBookForm', () => {
   });
 
   it('submits the deletion request when the delete confirmation is accepted', async () => {
-    render(
+    renderWithQueryClient(
       <EditBookForm
         libraryId="lib1"
         book={mockBook}
@@ -205,7 +220,7 @@ describe('EditBookForm', () => {
   });
 
   it('allows taking a camera photo and updating the cover URL', async () => {
-    render(
+    renderWithQueryClient(
       <EditBookForm
         libraryId="lib1"
         book={mockBook}

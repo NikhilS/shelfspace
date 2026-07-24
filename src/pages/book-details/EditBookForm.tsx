@@ -42,7 +42,6 @@ import {
 } from '../../lib/utils';
 import CoverCamera from '../../components/CoverCamera';
 import {applyNanobananaFlash} from '../../lib/nanobanana';
-import {useCoverHarvester} from './useCoverHarvester';
 import {useGenreSuggestor} from './useGenreSuggestor';
 
 interface EditBookFormProps {
@@ -92,9 +91,6 @@ export function EditBookForm({
     book?.coverUrlRaw || '',
   );
   const [isCameraActive, setIsCameraActive] = useState(false);
-
-  const {coverSources, isSearchingCovers, setCoverSources} =
-    useCoverHarvester(book);
 
   // Nanobanana flash states
   const [useNanobananaFlash, setUseNanobananaFlash] = useState(false);
@@ -188,24 +184,6 @@ export function EditBookForm({
             brightness: 1.05,
           });
           setActiveCoverUrl(cleaned);
-          // Add custom source
-          setCoverSources(prev => [
-            {
-              id: 'captured-cleaned',
-              url: cleaned,
-              label: 'Cleaned Photo',
-              description: 'Curator Lens™ applied',
-            },
-            {
-              id: 'captured-raw',
-              url: base64Data,
-              label: 'Raw Camera Photo',
-              description: 'Original camera snapshot',
-            },
-            ...prev.filter(
-              s => s.id !== 'captured-cleaned' && s.id !== 'captured-raw',
-            ),
-          ]);
         } catch {
           toast.error('Clean up process encountered an error');
           setActiveCoverUrl(base64Data);
@@ -215,15 +193,6 @@ export function EditBookForm({
         }
       } else {
         setActiveCoverUrl(base64Data);
-        setCoverSources(prev => [
-          {
-            id: 'captured-raw',
-            url: base64Data,
-            label: 'Camera Photo',
-            description: 'Unprocessed snapshot',
-          },
-          ...prev.filter(s => s.id !== 'captured-raw'),
-        ]);
       }
     };
 
@@ -250,15 +219,6 @@ export function EditBookForm({
           brightness: 1.05,
         });
         setActiveCoverUrl(cleaned);
-        setCoverSources(prev => [
-          {
-            id: 'captured-cleaned',
-            url: cleaned,
-            label: 'Cleaned Photo',
-            description: 'Curator Lens™ applied',
-          },
-          ...prev.filter(s => s.id !== 'captured-cleaned'),
-        ]);
         toast.success('Cover enhanced with Curator Lens™!');
       } catch (err) {
         console.error(err);
@@ -498,71 +458,6 @@ export function EditBookForm({
                         />
                       </div>
                     )}
-
-                    {/* SOURCE LIST SELECTOR (Cycling Through Covers) */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">
-                          Harvested Cover Sources
-                        </Label>
-                        {isSearchingCovers && (
-                          <div className="flex items-center gap-1.5 text-xs text-on-surface-variant font-medium">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
-                            Querying APIs...
-                          </div>
-                        )}
-                      </div>
-
-                      {coverSources.length === 0 && !isSearchingCovers ? (
-                        <p className="text-xs text-on-surface-variant leading-relaxed py-2 italic border border-dashed border-outline-variant/30 p-3 rounded-lg">
-                          No direct API search thumbnails metadata resolved.
-                          Provide an ISBN above to search candidates
-                          automatically.
-                        </p>
-                      ) : (
-                        <div className="grid grid-cols-3 gap-2 max-h-[140px] overflow-y-auto p-1 border border-outline-variant/20 rounded-lg bg-surface-container-lowest">
-                          {coverSources.map(source => {
-                            const isSelected = activeCoverUrl === source.url;
-                            return (
-                              <button
-                                key={source.id}
-                                type="button"
-                                onClick={() => {
-                                  setActiveCoverUrl(source.url);
-                                  toast.info(
-                                    `Cover switched to: ${source.label}`,
-                                  );
-                                }}
-                                className={`group relative aspect-[3/4] rounded-lg overflow-hidden border bg-surface-container transition-all outline-none text-left p-0.5 ${
-                                  isSelected
-                                    ? 'border-primary ring-2 ring-primary/40'
-                                    : 'border-outline-variant/50 hover:border-outline hover:scale-[1.02]'
-                                }`}
-                                title={`${source.label}: ${source.description}`}
-                              >
-                                <img
-                                  src={source.url}
-                                  alt={source.label}
-                                  className="w-full h-full object-cover rounded-[6px]"
-                                  referrerPolicy="no-referrer"
-                                />
-                                <div className="absolute inset-x-0 bottom-0 bg-black/75 p-1 text-[9px] text-white font-medium line-clamp-1 truncate text-center rounded-b-[6px]">
-                                  {source.label}
-                                </div>
-                                {isSelected && (
-                                  <div className="absolute top-1 right-1 bg-primary text-on-primary w-4 h-4 rounded-full flex items-center justify-center shadow-md">
-                                    <Check
-                                      className="w-2.5 h-2.5"
-                                      strokeWidth={3}
-                                    />
-                                  </div>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
 
                     {/* CUSTOM RECOURSE URL INPUT */}
                     <div className="space-y-1">

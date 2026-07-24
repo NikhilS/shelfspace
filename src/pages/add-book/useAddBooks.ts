@@ -101,7 +101,8 @@ export function useAddBooks(libraryId?: string) {
         });
 
         if (data.status === 'success' && data.results) {
-          data.results.forEach((r: {id: string; [key: string]: unknown}) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          data.results.forEach((r: any) => {
             enrichedDataMap[r.id] = r;
           });
         }
@@ -171,24 +172,31 @@ export function useAddBooks(libraryId?: string) {
           synopsis = (enrichedForBook.synopsis as string) || undefined,
           authorBio = (enrichedForBook.authorBio as string) || undefined,
           embedding = (enrichedForBook.embeddings as number[]) || undefined,
-          clusterCoordinates,
+          clusterCoordinates = undefined,
+          ...otherEnrichedFields
+        } = enrichedForBook;
+
+        const {
+          synopsis: _cleanSynopsis,
+          authorBio: _cleanBio,
+          embedding: _cleanEmbed,
+          clusterCoordinates: _cleanCluster,
           ...lightweightData
         } = cleanBook;
 
         writer.set(newDocRef, {
-          ...lightweightData,
+          ...otherEnrichedFields, // Enriched fields at the base
+          ...lightweightData, // Existing UI fields take precedence so user uploads aren't overwritten
           addedBy: user.uid,
           addedAt: serverTimestamp(),
           format: lightweightData.format || 'physical',
         });
 
-        const finalEmbedding = embedding;
-
         const heavyData = {
-          synopsis,
-          authorBio,
-          embedding: finalEmbedding,
-          clusterCoordinates,
+          synopsis: _cleanSynopsis || synopsis,
+          authorBio: _cleanBio || authorBio,
+          embedding: _cleanEmbed || embedding,
+          clusterCoordinates: _cleanCluster || clusterCoordinates,
         };
         const cleanHeavy = Object.fromEntries(
           Object.entries(heavyData).filter(([, v]) => v !== undefined),

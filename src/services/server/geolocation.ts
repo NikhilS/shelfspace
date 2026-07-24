@@ -1,25 +1,16 @@
-import {getAdminDb} from './firebaseAdmin';
+const cache = new Map<string, {lat: number; lng: number}>();
 
 export async function getCachedGeocode(
   name: string,
 ): Promise<{lat: number; lng: number} | undefined> {
   if (!name || name.trim().length === 0) return undefined;
-  try {
-    const dbAdmin = getAdminDb();
-    const slug = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '-')
-      .slice(0, 100);
-    const snap = await dbAdmin.collection('geolocationCache').doc(slug).get();
-    if (snap.exists) {
-      const data = snap.data();
-      if (data?.coordinates) {
-        console.log(`[Geocoding Cache] Hit for "${name}" ->`, data.coordinates);
-        return data.coordinates as {lat: number; lng: number};
-      }
-    }
-  } catch (error) {
-    console.error('[Geocoding Cache] Read error:', error);
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')
+    .slice(0, 100);
+  if (cache.has(slug)) {
+    console.log(`[Geocoding Cache] Hit for "${name}"`);
+    return cache.get(slug);
   }
   return undefined;
 }
@@ -28,21 +19,12 @@ export async function cacheGeocode(
   name: string,
   coordinates: {lat: number; lng: number},
 ) {
-  try {
-    const dbAdmin = getAdminDb();
-    const slug = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '-')
-      .slice(0, 100);
-    await dbAdmin.collection('geolocationCache').doc(slug).set({
-      originalName: name,
-      coordinates,
-      cachedAt: new Date().toISOString(),
-    });
-    console.log(`[Geocoding Cache] Saved "${name}" to store.`);
-  } catch (error) {
-    console.error('[Geocoding Cache] Write error:', error);
-  }
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')
+    .slice(0, 100);
+  cache.set(slug, coordinates);
+  console.log(`[Geocoding Cache] Saved "${name}" to store.`);
 }
 
 export async function geocodeLocation(

@@ -6,6 +6,7 @@ global.fetch = vi.fn();
 
 describe('bookApi', () => {
   beforeEach(() => {
+    global.fetch = vi.fn();
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });

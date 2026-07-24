@@ -102,8 +102,8 @@ export default function TimelineView() {
     libraryId,
     providerKey: 'temporalMetadata',
     metadataField: 'temporalMetadata',
-    batchSize: 20, // Exactly 20 books per request as per spec
-    concurrencyLimit: 5, // canonical pool concurrency
+    batchSize: 50,
+    concurrencyLimit: 5,
     filterPredicate: filterTemporalPredicate,
     successToastMessage: 'Historical temporal analysis complete!',
     errorToastMessage: 'Analysis backfill failed',
@@ -301,6 +301,7 @@ export default function TimelineView() {
         <BulkEnrichmentBanner
           isBackfilling={isBackfilling}
           completed={backfillProgress.completed}
+          failed={backfillProgress.failed}
           total={backfillProgress.total}
           title="Scanning Literary Chronologies"
           description="Mapping historical eras..."
@@ -549,6 +550,7 @@ export default function TimelineView() {
                               alt={b.title}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                               referrerPolicy="no-referrer"
+                              loading="lazy"
                             />
                           </div>
                         ) : (
@@ -579,8 +581,13 @@ export default function TimelineView() {
                           <Sparkles className="w-3.5 h-3.5" />
                           <span>
                             Analysis (
-                            {formatYear(b.temporalMetadata?.startYear || 0)} -{' '}
-                            {formatYear(b.temporalMetadata?.endYear || 0)})
+                            {b.temporalMetadata?.startYear !== undefined &&
+                            b.temporalMetadata?.endYear !== undefined
+                              ? `${formatYear(b.temporalMetadata.startYear)} - ${formatYear(b.temporalMetadata.endYear)}`
+                              : b.temporalMetadata?.startYear !== undefined
+                                ? `Circa ${formatYear(b.temporalMetadata.startYear)}`
+                                : 'Historical Epoch'}
+                            )
                           </span>
                         </div>
                         <p className="italic line-clamp-3">

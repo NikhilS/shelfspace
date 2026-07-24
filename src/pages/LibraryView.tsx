@@ -1,5 +1,10 @@
 import React, {useState, useEffect} from 'react';
-import {useParams, useNavigate, useSearchParams} from 'react-router-dom';
+import {
+  useParams,
+  useNavigate,
+  useSearchParams,
+  useLocation,
+} from 'react-router-dom';
 import {useAuth} from '../stores/authStore';
 import {auth, db, handleFirestoreError, OperationType} from '../firebase';
 import {uploadBase64Image} from '../services/db/storage';
@@ -336,21 +341,27 @@ export default function LibraryView() {
     }
   };
 
+  const location = useLocation();
+
   useEffect(() => {
     if (library) {
-      setDebugData(
-        {
-          id: library.id,
-          name: library.name,
-          ownerId: library.ownerId,
-          access: library.access,
-          createdAt: library.createdAt,
-          summary: `[Books in collection: ${books?.length || 0}]`,
-        },
-        'Library Document',
-      );
+      const timer = setTimeout(() => {
+        setDebugData(
+          {
+            id: library.id,
+            name: library.name,
+            ownerId: library.ownerId,
+            access: library.access,
+            createdAt: library.createdAt,
+            summary: `[Books in collection: ${books?.length || 0}]`,
+          },
+          'Library Document',
+        );
+      }, 50);
+      return () => clearTimeout(timer);
     }
-  }, [library, books, setDebugData]);
+    return undefined;
+  }, [library, books, setDebugData, location.pathname]);
 
   const isLibraryLoading = isLoading || (isBooksLoading && books.length === 0);
 

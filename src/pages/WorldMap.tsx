@@ -85,7 +85,7 @@ export default function WorldMap() {
     libraryId,
     providerKey: 'geoMetadata',
     metadataField: 'geoMetadata',
-    batchSize: 10,
+    batchSize: 50,
     concurrencyLimit: 5,
     filterPredicate: filterGeoPredicate,
     successToastMessage:
@@ -294,6 +294,7 @@ export default function WorldMap() {
         <BulkEnrichmentBanner
           isBackfilling={isBackfilling}
           completed={backfillProgress.completed}
+          failed={backfillProgress.failed}
           total={backfillProgress.total}
           title="Scanning Literary Geographies"
           description="Resolving coordinates for your library books..."
@@ -753,6 +754,7 @@ export default function WorldMap() {
                               alt={pin.book.title}
                               className="w-12 h-16 object-cover rounded-lg shadow-sm bg-neutral-100 flex-shrink-0"
                               referrerPolicy="no-referrer"
+                              loading="lazy"
                             />
                           ) : (
                             <div className="w-12 h-16 bg-neutral-100 text-neutral-400 rounded-lg flex items-center justify-center text-[10px] uppercase font-bold text-center border p-1 flex-shrink-0">

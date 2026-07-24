@@ -25,6 +25,28 @@ vi.mock('../firebase', () => ({
   OperationType: {},
 }));
 
+vi.mock('../lib/trpc', () => ({
+  trpc: {
+    gemini: {
+      generateLibraryHeroImage: {
+        useMutation: () => ({
+          mutateAsync: vi.fn().mockResolvedValue(''),
+        }),
+      },
+    },
+    libraryApi: {
+      list: {
+        useQuery: () => ({data: null, isLoading: false}),
+      },
+    },
+  },
+  trpcVanilla: {
+    libraryApi: {
+      list: {query: vi.fn()},
+    },
+  },
+}));
+
 vi.mock('firebase/firestore', () => {
   return {
     doc: vi.fn((db, ...pathArgs) => ({path: pathArgs.join('/')})),
@@ -37,6 +59,7 @@ vi.mock('firebase/firestore', () => {
         if (ref && ref.path && ref.path.includes('books')) {
           callback({
             metadata: {hasPendingWrites: false},
+            size: 2,
             docs: [
               {
                 id: 'book1',

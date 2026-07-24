@@ -1,6 +1,13 @@
 import React, {Suspense, lazy} from 'react';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {BrowserRouter, Routes, Route, Navigate, Outlet} from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+  useLocation,
+} from 'react-router-dom';
 import {useAuthStore} from './stores/authStore';
 import {useAppStore} from './stores/appStore';
 import {useAppPermissions} from './hooks/useAppPermissions';
@@ -12,6 +19,7 @@ import ScrollToTop from './components/ScrollToTop';
 import {RequireLibraryPermission} from './components/RequireLibraryPermission';
 import {BookLoader} from './components/BookLoader';
 import {PageLoading} from './components/PageLoading';
+import {useDebug} from './stores/debugStore';
 
 function lazyWithRetry<T extends React.ComponentType>(
   factory: () => Promise<{default: T}>,
@@ -341,6 +349,18 @@ function ThemeProvider({children}: {children: React.ReactNode}) {
   return <>{children}</>;
 }
 
+function DebugDataClearer() {
+  const location = useLocation();
+  const {setDebugData} = useDebug();
+
+  React.useEffect(() => {
+    // Clear debug data on route change
+    setDebugData(null);
+  }, [location.pathname, setDebugData]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
@@ -350,9 +370,10 @@ export default function App() {
             <AuthGuard>
               <BrowserRouter>
                 <AnimatedRoutes />
+                <DebugDataClearer />
+                <DebugConsoleHUD />
               </BrowserRouter>
               <Toaster position="bottom-right" />
-              <DebugConsoleHUD />
             </AuthGuard>
           </ThemeProvider>
         </ErrorBoundary>

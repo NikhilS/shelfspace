@@ -78,10 +78,16 @@ function getHighResCoverUrl(url: string | undefined): string {
 }
 
 const getGoogleBooksUrl = (query: string): string => {
-  const apiKey =
-    typeof process !== 'undefined' && process.env
-      ? process.env.BOOKS_API_KEY || process.env.VITE_BOOKS_API_KEY
-      : import.meta.env.VITE_BOOKS_API_KEY;
+  // Try to use process.env first for server-side
+  let apiKey = '';
+  if (typeof process !== 'undefined' && process.env) {
+    apiKey = process.env.BOOKS_API_KEY || process.env.VITE_BOOKS_API_KEY || '';
+  }
+  // Try import.meta.env if process.env didn't yield a key AND import.meta is available
+  if (!apiKey && typeof import.meta !== 'undefined' && import.meta.env) {
+    apiKey = import.meta.env.VITE_BOOKS_API_KEY as string;
+  }
+
   const baseUrl = `https://www.googleapis.com/books/v1/volumes?q=${query}`;
   return apiKey ? `${baseUrl}&key=${apiKey}` : baseUrl;
 };
@@ -95,19 +101,20 @@ export async function searchBookByIsbn(
 
   try {
     let response = await fetch(getGoogleBooksUrl(`isbn:${isbn}`), {signal});
+
     if (response.status === 429) {
-      console.warn(
-        'Google Books API rate limit (429) on ISBN search. Proceeding to OpenLibrary...',
-      );
-    } else if (response.ok) {
+      throw new Error('Google Books API rate limit (429) on ISBN search.');
+    }
+
+    if (response.ok) {
       let data = (await response.json()) as GoogleBooksResponse;
 
       // Fallback to general search if isbn: prefix fails
       if (!data.items || data.items.length === 0) {
         response = await fetch(getGoogleBooksUrl(isbn), {signal});
         if (response.status === 429) {
-          console.warn(
-            'Google Books API rate limit (429) on general ISBN search. Proceeding to OpenLibrary...',
+          throw new Error(
+            'Google Books API rate limit (429) on ISBN general search.',
           );
         } else if (response.ok) {
           data = (await response.json()) as GoogleBooksResponse;
@@ -137,10 +144,14 @@ export async function searchBookByIsbn(
         googleBooksSucceeded = true;
       }
     }
-  } catch (_error) {
+  } catch (_error: unknown) {
+    const err = _error as Error;
+    if (err?.message?.includes('429')) {
+      throw err;
+    }
     console.warn(
       'Google Books ISBN search failed, proceeding to OpenLibrary fallback:',
-      _error,
+      err,
     );
   }
 
@@ -216,10 +227,12 @@ export async function searchBookByTitleAndAuthor(
       signal,
     });
     if (response.status === 429) {
-      console.warn(
+      throw new Error(
         'Google Books API rate limit (429) on title & author search.',
       );
-    } else if (response.ok) {
+    }
+
+    if (response.ok) {
       const data = (await response.json()) as GoogleBooksResponse;
       if (data.items && data.items.length > 0) {
         results = data.items.map((item: GoogleBooksItem) => {
@@ -243,9 +256,11 @@ export async function searchBookByTitleAndAuthor(
         });
       }
     }
-  } catch (_error) {
-    if ((_error as Error).name === 'AbortError') throw _error;
-    console.warn('Google Books search failed:', _error);
+  } catch (_error: unknown) {
+    const err = _error as Error;
+    if (err?.name === 'AbortError') throw err;
+    if (err?.message?.includes('429')) throw err;
+    console.warn('Google Books search failed:', err);
   }
 
   return results;
@@ -263,8 +278,10 @@ export async function searchBookByTitle(
     const q = `intitle:${encodeURIComponent(query)}&maxResults=10`;
     const response = await fetch(getGoogleBooksUrl(q), {signal});
     if (response.status === 429) {
-      console.warn('Google Books API rate limit (429) on title search.');
-    } else if (response.ok) {
+      throw new Error('Google Books API rate limit (429) on title search.');
+    }
+
+    if (response.ok) {
       const data = (await response.json()) as GoogleBooksResponse;
 
       if (data.items && data.items.length > 0) {
@@ -297,10 +314,12 @@ export async function searchBookByTitle(
         {signal},
       );
       if (fallbackResponse.status === 429) {
-        console.warn(
+        throw new Error(
           'Google Books API rate limit (429) on general fallback title search.',
         );
-      } else if (fallbackResponse.ok) {
+      }
+
+      if (fallbackResponse.ok) {
         const fallbackData =
           (await fallbackResponse.json()) as GoogleBooksResponse;
         if (fallbackData.items && fallbackData.items.length > 0) {
@@ -337,9 +356,11 @@ export async function searchBookByTitle(
         }
       }
     }
-  } catch (_error) {
-    if ((_error as Error).name === 'AbortError') throw _error;
-    console.warn('Google Books title search failed:', _error);
+  } catch (_error: unknown) {
+    const err = _error as Error;
+    if (err?.name === 'AbortError') throw err;
+    if (err?.message?.includes('429')) throw err;
+    console.warn('Google Books title search failed:', err);
   }
 
   if (results.length === 0) {

@@ -7,7 +7,7 @@ import {
   increment,
   serverTimestamp,
 } from 'firebase/firestore';
-import {db, handleFirestoreError, OperationType} from '../../firebase';
+import {db} from '../../firebase';
 
 /**
  * Atomically purges a book and its corresponding sub-records,
@@ -45,10 +45,9 @@ export async function reconcileBookCount(libraryId: string): Promise<number> {
     const snapshot = await getCountFromServer(q);
     return snapshot.data().count;
   } catch (error) {
-    handleFirestoreError(
+    console.error(
+      `Reconcile BookCount failed for libraries/${libraryId}/books`,
       error,
-      OperationType.GET,
-      `libraries/${libraryId}/books`,
     );
     throw error;
   }

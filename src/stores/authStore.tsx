@@ -7,7 +7,7 @@ import {
   signOut,
 } from 'firebase/auth';
 import {doc, setDoc, getDoc, serverTimestamp} from 'firebase/firestore';
-import {auth, db, handleFirestoreError, OperationType} from '../firebase';
+import {auth, db} from '../firebase';
 
 interface AuthState {
   user: User | null;
@@ -64,42 +64,41 @@ export const useAuthStore = create<AuthState>(set => ({
 
   _initialize: () => {
     const unsubscribe = onAuthStateChanged(auth, async currentUser => {
-      set({user: currentUser, authError: null});
+      try {
+        set({user: currentUser, authError: null});
 
-      if (currentUser) {
-        if (!currentUser.emailVerified) {
-          await signOut(auth);
-          set({
-            authError: 'Please verify your email to access this app.',
-            isAuthReady: true,
-          });
-          return;
-        }
-
-        try {
-          // Ensure user document exists
-          const userRef = doc(db, 'users', currentUser.uid);
-          const userSnap = await getDoc(userRef);
-          if (!userSnap.exists()) {
-            await setDoc(userRef, {
-              uid: currentUser.uid,
-              email: currentUser.email,
-              displayName: currentUser.displayName || '',
-              photoURL: currentUser.photoURL || '',
-              createdAt: serverTimestamp(),
+        if (currentUser) {
+          if (!currentUser.emailVerified) {
+            await signOut(auth);
+            set({
+              authError: 'Please verify your email to access this app.',
             });
+            return;
           }
-        } catch (error) {
-          console.error('Error ensuring user document:', error);
-          handleFirestoreError(
-            error,
-            OperationType.GET,
-            `users/${currentUser.uid}`,
-          );
-        }
-      }
 
-      set({isAuthReady: true});
+          try {
+            // Ensure user document exists
+            const userRef = doc(db, 'users', currentUser.uid);
+            const userSnap = await getDoc(userRef);
+            if (!userSnap.exists()) {
+              await setDoc(userRef, {
+                uid: currentUser.uid,
+                email: currentUser.email || '',
+                displayName: currentUser.displayName || '',
+                photoURL: currentUser.photoURL || '',
+                createdAt: serverTimestamp(),
+              });
+            }
+          } catch (error) {
+            console.error('Error ensuring user document:', error);
+            // Catch error silently so app initialization is not blocked
+          }
+        }
+      } catch (err) {
+        console.error('Error during auth state change processing:', err);
+      } finally {
+        set({isAuthReady: true});
+      }
     });
 
     return unsubscribe;

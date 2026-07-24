@@ -14,6 +14,7 @@ import {
 import {Shield, X, PlusCircle, AlertTriangle} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {toast} from 'sonner';
+import {ApiKeyManagement} from '../components/ApiKeyManagement';
 
 interface AllowlistUser {
   email: string;
@@ -220,6 +221,9 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
+
+        {/* API Key Management Section */}
+        <ApiKeyManagement />
       </div>
     </div>
   );

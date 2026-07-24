@@ -34,16 +34,23 @@ service cloud.firestore {
     // ===============================================================
     // Global Access Control
     // ===============================================================
-    function canCheckAllowlist() {
-      return isSignedIn();
+    function isAdmin() {
+      return isSignedIn() && (
+        ('email' in request.auth.token && request.auth.token.email == 'nikhil.singhal@gmail.com') ||
+        (
+          'email' in request.auth.token &&
+          exists(/databases/$(database)/documents/appSettings/allowlist/users/$(request.auth.token.email)) &&
+          get(/databases/$(database)/documents/appSettings/allowlist/users/$(request.auth.token.email)).data.role == 'admin'
+        )
+      );
     }
     
     match /appSettings/allowlist/users/{email} {
-      allow read: if isSignedIn() && (request.auth.token.email == email || request.auth.token.email == 'nikhil.singhal@gmail.com');
-      // allow read list for bootstrapper to check empty
-      allow list: if canCheckAllowlist();
-      // allow create for first bootstrapper
-      allow create: if isSignedIn();
+      allow get: if isSignedIn() && (('email' in request.auth.token && request.auth.token.email == email) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     function isValidUserProfile(data) {
@@ -78,6 +85,7 @@ service cloud.firestore {
              data.addedBy is string && data.addedBy.size() <= 128 &&
              (!( 'author' in data ) || (data.author == null || data.author is string)) &&
              (!( 'isbn' in data ) || (data.isbn == null || data.isbn is string)) &&
+             (!( 'synopsis' in data ) || (data.synopsis == null || data.synopsis is string)) &&
              (!( 'coverUrl' in data ) || (data.coverUrl == null || data.coverUrl is string)) &&
              (!( 'publishedDate' in data ) || (data.publishedDate == null || data.publishedDate is string)) &&
              (!( 'genres' in data ) || (data.genres == null || data.genres is list)) &&
@@ -145,22 +153,34 @@ service cloud.firestore {
 
     match /libraries/{libraryId} {
       // Note: No get() calls here for allow list. Relies on resource.data filter natively.
+      function getUserEmail() {
+        return 'email' in request.auth.token ? request.auth.token.email : '';
+      }
+
+      function getUserEmailLower() {
+        return 'email' in request.auth.token ? request.auth.token.email.lower() : '';
+      }
+
       function getRole(lib) {
-        return lib.get('access', {}).get(request.auth.token.email, null);
+        let accessMap = lib.get('access', {});
+        let email = getUserEmail();
+        let emailLower = getUserEmailLower();
+        return email in accessMap ? accessMap[email] : (emailLower in accessMap ? accessMap[emailLower] : null);
       }
       
       function canReadLibrary() {
         return isSignedIn() && (
           existing().ownerId == request.auth.uid ||
-          getRole(existing()) != null
+          getRole(existing()) != null ||
+          isAdmin()
         );
       }
       function canEditLibrary() {
         let role = getRole(existing());
-        return isSignedIn() && (existing().ownerId == request.auth.uid || role == 'editor' || role == 'owner');
+        return isSignedIn() && (existing().ownerId == request.auth.uid || role == 'editor' || role == 'owner' || isAdmin());
       }
       function isLibraryOwner() {
-        return isSignedIn() && existing().ownerId == request.auth.uid;
+        return isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
       }
       
       // Anti-Cost-Explosion: Cache the get() call for Subcollections 
@@ -171,31 +191,33 @@ service cloud.firestore {
       
       function getParentRole() {
         let library = getLibrary();
-        return library.data.get('access', {}).get(request.auth.token.email, null);
+        return library != null ? getRole(library.data) : null;
       }
 
       function canAccessLibraryResource() {
         let library = getLibrary();
-        let role = library.data.get('access', {}).get(request.auth.token.email, null);
+        let role = library != null ? getRole(library.data) : null;
         return isSignedIn() && library != null && (
           library.data.ownerId == request.auth.uid ||
-          role != null
+          role != null ||
+          isAdmin()
         );
       }
       
       function canWriteLibraryResource() {
         let library = getLibrary();
-        let role = library.data.get('access', {}).get(request.auth.token.email, null);
+        let role = library != null ? getRole(library.data) : null;
         return isSignedIn() && library != null && (
           library.data.ownerId == request.auth.uid ||
           role == 'editor' ||
-          role == 'owner'
+          role == 'owner' ||
+          isAdmin()
         );
       }
 
       function libraryOwnerOnly() {
         let library = getLibrary();
-        return isSignedIn() && library != null && library.data.ownerId == request.auth.uid;
+        return isSignedIn() && library != null && (library.data.ownerId == request.auth.uid || isAdmin());
       }
 
       allow read: if canReadLibrary();
@@ -246,6 +268,13 @@ service cloud.firestore {
     match /geolocationCache/{locationKey} {
       allow read: if isSignedIn() && isValidId(locationKey);
       allow write: if false; // Only server-side admin writes allowed
+    }
+
+    match /apiKeys/{keyHash} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
     }
   }
 }

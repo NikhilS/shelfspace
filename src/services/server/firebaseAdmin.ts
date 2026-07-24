@@ -15,6 +15,7 @@ const firebaseConfig = fs.existsSync(configPath)
 
 if (firebaseConfig && !admin.apps.length) {
   admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
     projectId: firebaseConfig.projectId,
   });
 }

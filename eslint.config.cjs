@@ -13,13 +13,13 @@ if (hasIgnoresFile) {
 }
 
 module.exports = [
-  ...customConfig, 
+  ...customConfig,
   ...require('gts'),
   {
     files: ['**/*.test.ts', '**/*.test.tsx'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': 'off'
-    }
-  }
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
 ];

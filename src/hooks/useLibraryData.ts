@@ -115,7 +115,30 @@ export function useLibraryData(
 
           const parsedGenres = parseGenres(rawGenres);
 
-          bks.push({id: doc.id, ...data, genres: parsedGenres} as Book);
+          const bookData = {id: doc.id, ...data, genres: parsedGenres} as Book;
+
+          if (bookData.temporalMetadata) {
+            if (
+              bookData.temporalMetadata.startYear !== undefined &&
+              bookData.temporalMetadata.endYear === undefined
+            ) {
+              bookData.temporalMetadata.endYear =
+                bookData.temporalMetadata.startYear;
+            }
+
+            if (
+              (bookData.temporalMetadata.startYear !== undefined &&
+                (bookData.temporalMetadata.startYear < -10000 ||
+                  bookData.temporalMetadata.startYear > 2100)) ||
+              (bookData.temporalMetadata.endYear !== undefined &&
+                (bookData.temporalMetadata.endYear < -10000 ||
+                  bookData.temporalMetadata.endYear > 2100))
+            ) {
+              delete bookData.temporalMetadata;
+            }
+          }
+
+          bks.push(bookData);
         });
 
         // Push directly to tanstack cache

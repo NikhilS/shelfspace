@@ -1,11 +1,12 @@
 import {useState, useEffect, useMemo, useCallback} from 'react';
-import {writeBatch, doc} from 'firebase/firestore';
+import {doc, updateDoc} from 'firebase/firestore';
 import {db} from '../firebase';
 import {useAuth} from '../stores/authStore';
 import {Book} from '../types';
 import {toast} from 'sonner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
 import {trpcVanilla} from '../lib/trpc';
+import {bulkEnrichmentClientLimiter} from '../lib/clientLimiters';
 
 export interface UseBulkEnrichmentConfig {
   books: Book[];
@@ -42,6 +43,7 @@ export function useBulkEnrichment({
   const [inFlightCount, setInFlightCount] = useState(0);
   const [backfillProgress, setBackfillProgress] = useState({
     completed: 0,
+    failed: 0,
     total: 0,
   });
 
@@ -63,7 +65,11 @@ export function useBulkEnrichment({
     }
 
     setIsBackfilling(true);
-    setBackfillProgress({completed: 0, total: booksToBackfill.length});
+    setBackfillProgress({
+      completed: 0,
+      failed: 0,
+      total: booksToBackfill.length,
+    });
 
     DebugTelemetryEngine.getInstance().addLog(
       'worker',
@@ -81,33 +87,29 @@ export function useBulkEnrichment({
       const booksToProcess = [...booksToBackfill];
       const total = booksToProcess.length;
 
-      // Split the books into batch arrays
-      const batches: Book[][] = [];
-      for (let i = 0; i < total; i += batchSize) {
-        batches.push(booksToProcess.slice(i, i + batchSize));
+      // Group books into chunks of batchSize
+      const bookChunks: Book[][] = [];
+      for (let i = 0; i < booksToProcess.length; i += batchSize) {
+        bookChunks.push(booksToProcess.slice(i, i + batchSize));
       }
 
-      // Helper to process a single batch with dynamic error isolation
-      const processBatch = async (batch: Book[]) => {
+      // Helper to process a batch of books with dynamic error isolation
+      const processBatch = async (chunk: Book[]) => {
         // Mark as attempted as soon as we start processing to avoid concurrency double-triggering
-        const batchIds = batch.map(b => b.id);
         setAttemptedBookIds(prev => {
           const next = new Set(prev);
-          batchIds.forEach(id => next.add(id));
+          chunk.forEach(b => next.add(b.id));
           return next;
         });
 
-        setInFlightCount(prev => prev + batch.length);
+        setInFlightCount(prev => prev + chunk.length);
 
-        DebugTelemetryEngine.getInstance().addLog(
-          'worker',
-          `[BulkEnrichment Workers] Processing batch of size ${batch.length}...`,
-          {batchSize: batch.length, firstBook: batch[0]?.title},
-        );
+        let batchCompleted = 0;
+        let batchFailed = 0;
 
         try {
-          const payload = batch.map(b => {
-            const bookAny = b as Record<string, unknown>;
+          const payloads = chunk.map(b => {
+            const bookAny = b as unknown as Record<string, unknown>;
             return {
               id: b.id,
               title: b.title,
@@ -119,96 +121,67 @@ export function useBulkEnrichment({
             };
           });
 
-          const data = await trpcVanilla.metadata.bulkFetch.mutate({
-            libraryId: libraryId,
-            providerKey,
-            books: payload,
-          });
+          const data = (await Promise.race([
+            trpcVanilla.metadata.bulkFetch.mutate({
+              libraryId: libraryId,
+              providerKey,
+              books: payloads,
+            }),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error('Batch processing timed out')),
+                timeoutMs,
+              ),
+            ),
+          ])) as {results: Record<string, unknown>[]};
 
           if (data && Array.isArray(data.results)) {
-            DebugTelemetryEngine.getInstance().addLog(
-              'worker',
-              `[BulkEnrichment Workers] Writing results of size ${data.results.length} to Firestore...`,
-              {resultsCount: data.results.length},
+            // Write each successful result to Firestore immediately
+            await Promise.all(
+              data.results.map(async result => {
+                if (result.id) {
+                  const bookRef = doc(
+                    db,
+                    'libraries',
+                    libraryId,
+                    'books',
+                    result.id as string,
+                  );
+                  await updateDoc(bookRef, {
+                    [metadataField]: result[metadataField],
+                  } as Record<string, unknown>);
+                  batchCompleted++;
+                }
+              }),
             );
-
-            const firestoreBatch = writeBatch(db);
-            for (const result of data.results) {
-              const bookRef = doc(
-                db,
-                'libraries',
-                libraryId,
-                'books',
-                result.id,
-              );
-              firestoreBatch.update(bookRef, {
-                [metadataField]: result[metadataField],
-              });
-            }
-            await firestoreBatch.commit();
-
-            DebugTelemetryEngine.getInstance().addLog(
-              'info',
-              `[BulkEnrichment Workers] Batch of ${batch.length} books successfully processed and locked to Firestore.`,
-            );
+            // Any books we asked for that didn't get returned are counted as failed
+            batchFailed = chunk.length - batchCompleted;
           } else {
-            DebugTelemetryEngine.getInstance().addLog(
-              'warn',
-              '[BulkEnrichment Workers] Batch returned no valid enrichment results array.',
-              {data},
-            );
+            batchFailed = chunk.length;
           }
         } catch (batchErr) {
+          batchFailed = chunk.length;
           const errMsg =
             batchErr instanceof Error ? batchErr.message : String(batchErr);
           DebugTelemetryEngine.getInstance().addLog(
             'error',
-            `[BulkEnrichment Workers] Error processing batch of books for ${metadataField}: ${errMsg}`,
-            {error: errMsg, batchSize: batch.length},
-          );
-          console.error(
-            `[BulkEnrichment] Error processing batch of books for ${metadataField}:`,
-            batchErr,
+            `[BulkEnrichment Workers] Error processing batch of ${chunk.length} books for ${metadataField}: ${errMsg}`,
           );
         } finally {
-          setInFlightCount(prev => Math.max(0, prev - batch.length));
+          setInFlightCount(prev => Math.max(0, prev - chunk.length));
           setBackfillProgress(prev => ({
             ...prev,
-            completed: Math.min(prev.total, prev.completed + batch.length),
+            completed: prev.completed + batchCompleted,
+            failed: prev.failed + batchFailed,
           }));
         }
       };
 
-      // Continuous queue worker pool
-      const queue = [...batches];
-      DebugTelemetryEngine.getInstance().addLog(
-        'worker',
-        `[BulkEnrichment Queue] Initialized with ${queue.length} batches of size ${batchSize}`,
-        {batchesCount: queue.length},
+      // Schedule all batches using bottleneck
+      const promises = bookChunks.map(chunk =>
+        bulkEnrichmentClientLimiter.schedule(() => processBatch(chunk)),
       );
-
-      const workers = Array.from(
-        {length: Math.min(concurrencyLimit, queue.length)},
-        async (_, idx) => {
-          DebugTelemetryEngine.getInstance().addLog(
-            'worker',
-            `[BulkEnrichment Workers] Worker slot ${idx + 1} activated.`,
-            {
-              workerIdx: idx + 1,
-              activeCount: Math.min(concurrencyLimit, queue.length),
-            },
-          );
-
-          while (queue.length > 0) {
-            const nextBatch = queue.shift();
-            if (nextBatch) {
-              await processBatch(nextBatch);
-            }
-          }
-        },
-      );
-
-      await Promise.all(workers);
+      await Promise.all(promises);
 
       DebugTelemetryEngine.getInstance().addLog(
         'info',

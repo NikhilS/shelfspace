@@ -48,9 +48,9 @@ export default function AppLayout({children}: AppLayoutProps) {
 
       {/* SideNavBar Component */}
       <nav
-        className={`fixed left-0 top-0 flex flex-col h-screen w-72 py-8 border-r border-outline-variant/30 bg-surface-container-low shadow-xl md:shadow-none z-50 transition-transform duration-300 ease-in-out md:translate-x-0 ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed left-0 top-0 flex flex-col h-[100dvh] w-72 py-8 border-r border-outline-variant/30 bg-surface-container-low shadow-xl md:shadow-none z-50 transition-transform duration-300 ease-in-out md:translate-x-0 ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
-        <div className="px-8 mb-10 flex flex-col gap-1">
+        <div className="px-8 mb-10 flex flex-col gap-1 flex-shrink-0">
           <Link
             to="/"
             className="font-headline-lg text-headline-lg text-primary tracking-tight italic"
@@ -62,7 +62,7 @@ export default function AppLayout({children}: AppLayoutProps) {
           </span>
         </div>
 
-        <div className="flex-grow flex flex-col gap-2 px-4">
+        <div className="flex-1 min-h-0 flex flex-col gap-2 px-4 overflow-y-auto custom-scrollbar mb-4">
           <Link
             to="/"
             onClick={() => setIsMobileNavOpen(false)}
@@ -100,7 +100,7 @@ export default function AppLayout({children}: AppLayoutProps) {
           />
         </div>
 
-        <div className="mt-auto px-6 pb-5 flex items-center justify-end gap-2">
+        <div className="mt-auto flex-shrink-0 px-6 pb-5 flex items-center justify-end gap-2">
           <div
             id="sidebar-bottom-actions-root"
             className="flex items-center gap-2"

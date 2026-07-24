@@ -1,10 +1,9 @@
 import {useState, useEffect} from 'react';
 import {doc, setDoc} from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../../firebase';
-import {fetchAuthorBioFromWikipedia} from '../../services/wikipediaApi';
 import {Book, BookDetailsPayload} from '../../types';
 import {toast} from 'sonner';
-import {trpc} from '../../lib/trpc';
+import {trpc, trpcVanilla} from '../../lib/trpc';
 
 export function useBookInsights(
   libraryId: string | undefined,
@@ -28,41 +27,54 @@ export function useBookInsights(
 
     if (!needsSynopsis && !needsBio) return;
 
-    // TRPC abort signals are handled per request, but we can manage a local unmount flag
     let isMounted = true;
 
     const generateMissingInfo = async () => {
       try {
         const updates: Partial<BookDetailsPayload> = {};
+        const bookData = {
+          id: book.id,
+          title: book.title, // required
+          author: book.author, // required
+          isbn: book.isbn,
+          synopsis: book.synopsis,
+          description: (book as unknown as Record<string, unknown>)
+            .description as string | undefined,
+        };
 
         if (needsSynopsis) {
-          const synopsis = await generateBookInsightsMutation.mutateAsync({
-            title: book.title,
-            author: book.author,
-            type: 'synopsis',
+          const res = await trpcVanilla.metadata.bulkFetch.mutate({
+            libraryId,
+            providerKey: 'synopsis',
+            books: [bookData],
           });
           if (!isMounted) return;
-          if (synopsis) updates.synopsis = synopsis;
+          if (res.status === 'success' && res.results.length > 0) {
+            const resultData = res.results[0] as {
+              id: string;
+              synopsis?: string;
+            };
+            if (resultData.synopsis) {
+              updates.synopsis = resultData.synopsis;
+            }
+          }
         }
 
         if (needsBio && book.author && book.author !== 'Unknown Author') {
-          // Try Wikipedia first
-          let authorBio = await fetchAuthorBioFromWikipedia(book.author);
-
+          const res = await trpcVanilla.metadata.bulkFetch.mutate({
+            libraryId,
+            providerKey: 'authorBio',
+            books: [bookData],
+          });
           if (!isMounted) return;
-
-          // Fallback to Gemini if Wikipedia returns nothing or a disambiguation page hint
-          if (!authorBio || authorBio.includes('may refer to:')) {
-            authorBio = await generateBookInsightsMutation.mutateAsync({
-              title: book.title,
-              author: book.author,
-              type: 'author_bio',
-            });
-          }
-
-          if (!isMounted) return;
-          if (authorBio && !authorBio.includes('may refer to:')) {
-            updates.authorBio = authorBio;
+          if (res.status === 'success' && res.results.length > 0) {
+            const resultData = res.results[0] as {
+              id: string;
+              authorBio?: string;
+            };
+            if (resultData.authorBio) {
+              updates.authorBio = resultData.authorBio;
+            }
           }
         }
 
@@ -73,23 +85,19 @@ export function useBookInsights(
               updates,
               {merge: true},
             );
+            if (updates.synopsis) {
+              await setDoc(
+                doc(db, 'libraries', libraryId, 'books', book.id),
+                {synopsis: updates.synopsis},
+                {merge: true},
+              );
+            }
           } catch (e) {
-            handleFirestoreError(
-              e,
-              OperationType.UPDATE,
-              `libraries/${libraryId}/bookDetails/${book.id}`,
-            );
+            console.warn('Could not persist auto-generated book info to Firestore:', e);
           }
         }
       } catch (error: unknown) {
-        if (
-          !isMounted ||
-          (error instanceof Error &&
-            (error.name === 'AbortError' ||
-              error.message.toLowerCase().includes('abort')))
-        ) {
-          return;
-        }
+        if (!isMounted) return;
         console.error('Failed to auto-generate missing book info:', error);
       }
     };
@@ -104,6 +112,7 @@ export function useBookInsights(
     book?.id,
     book?.title,
     book?.author,
+    book?.isbn,
     book?.synopsis,
     book?.authorBio,
     libraryId,

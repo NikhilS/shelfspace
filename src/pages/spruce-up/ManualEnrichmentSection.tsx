@@ -6,6 +6,7 @@ import {Play, LibraryBig} from 'lucide-react';
 import {MetadataKey} from '../../types/metadata';
 import {useBulkEnrichment} from '../../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../../components/BulkEnrichmentBanner';
+import {TableVirtuoso} from 'react-virtuoso';
 
 interface ManualEnrichmentSectionProps {
   books: Book[];
@@ -19,6 +20,7 @@ const ALL_METADATA_KEYS = [
   {id: MetadataKey.SYNOPSIS, label: 'Synopsis'},
   {id: MetadataKey.AUTHOR_BIO, label: 'Author Bio'},
   {id: MetadataKey.SERIES, label: 'Series'},
+  {id: MetadataKey.COVER_IMAGE, label: 'Cover Image'},
 ];
 
 export function ManualEnrichmentSection({
@@ -199,37 +201,103 @@ export function ManualEnrichmentSection({
       )}
 
       {/* Table view */}
-      <div className="overflow-x-auto max-h-[500px]">
-        <table className="w-full text-left border-collapse text-sm">
-          <thead className="bg-surface-container-low text-on-surface-variant font-medium font-sans sticky top-0 z-10 shadow-sm">
-            <tr>
-              <th className="px-4 py-3 border-b border-outline-variant/30 w-12">
-                <Checkbox
-                  checked={allFilteredSelected}
-                  onCheckedChange={toggleSelectAll}
-                />
-              </th>
-              <th className="px-4 py-3 border-b border-outline-variant/30">
-                Book
-              </th>
-              {ALL_METADATA_KEYS.map(k => (
-                <th
-                  key={k.id}
-                  className="px-4 py-3 border-b border-outline-variant/30 text-center whitespace-nowrap"
-                >
-                  {k.label}
+      <div className="overflow-x-auto min-h-[500px]">
+        {filteredBooks.length === 0 ? (
+          <table className="w-full text-left border-collapse text-sm">
+            <thead className="bg-surface-container-low text-on-surface-variant font-medium font-sans sticky top-0 z-10 shadow-sm">
+              <tr>
+                <th className="px-4 py-3 border-b border-outline-variant/30 w-12">
+                  <Checkbox
+                    checked={allFilteredSelected}
+                    onCheckedChange={toggleSelectAll}
+                  />
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="bg-surface divide-y divide-outline-variant/20">
-            {filteredBooks.map(book => {
+                <th className="px-4 py-3 border-b border-outline-variant/30">
+                  Book
+                </th>
+                {ALL_METADATA_KEYS.map(k => (
+                  <th
+                    key={k.id}
+                    className="px-4 py-3 border-b border-outline-variant/30 text-center whitespace-nowrap"
+                  >
+                    {k.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="bg-surface divide-y divide-outline-variant/20">
+              <tr>
+                <td
+                  colSpan={ALL_METADATA_KEYS.length + 2}
+                  className="px-6 py-12 text-center text-on-surface-variant"
+                >
+                  No books found matching this filter.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        ) : (
+          <TableVirtuoso
+            data={filteredBooks}
+            useWindowScroll
+            className="w-full text-left border-collapse text-sm"
+            components={{
+              Table: ({...props}) => (
+                <table
+                  {...props}
+                  className="w-full text-left border-collapse text-sm"
+                />
+              ),
+              TableHead: React.forwardRef<
+                HTMLTableSectionElement,
+                React.HTMLAttributes<HTMLTableSectionElement>
+              >((props, ref) => <thead {...props} ref={ref} />),
+              TableRow: ({item, ...props}) => {
+                void item;
+                const isSelected = selectedBookIds.has(item.id);
+                return (
+                  <tr
+                    {...props}
+                    className={`hover:bg-surface-container-lowest/50 transition-colors bg-surface ${isSelected ? 'bg-primary/5' : ''}`}
+                  />
+                );
+              },
+              TableBody: React.forwardRef<
+                HTMLTableSectionElement,
+                React.HTMLAttributes<HTMLTableSectionElement>
+              >((props, ref) => (
+                <tbody
+                  {...props}
+                  ref={ref}
+                  className="divide-y divide-outline-variant/20"
+                />
+              )),
+            }}
+            fixedHeaderContent={() => (
+              <tr className="bg-surface-container-low text-on-surface-variant font-medium font-sans shadow-sm">
+                <th className="px-4 py-3 border-b border-outline-variant/30 w-12 bg-surface-container-low">
+                  <Checkbox
+                    checked={allFilteredSelected}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                </th>
+                <th className="px-4 py-3 border-b border-outline-variant/30 bg-surface-container-low">
+                  Book
+                </th>
+                {ALL_METADATA_KEYS.map(k => (
+                  <th
+                    key={k.id}
+                    className="px-4 py-3 border-b border-outline-variant/30 text-center whitespace-nowrap bg-surface-container-low"
+                  >
+                    {k.label}
+                  </th>
+                ))}
+              </tr>
+            )}
+            itemContent={(_index, book) => {
               const isSelected = selectedBookIds.has(book.id);
               return (
-                <tr
-                  key={book.id}
-                  className={`hover:bg-surface-container-lowest/50 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
-                >
+                <>
                   <td className="px-4 py-3">
                     <Checkbox
                       checked={isSelected}
@@ -273,21 +341,11 @@ export function ManualEnrichmentSection({
                       </td>
                     );
                   })}
-                </tr>
+                </>
               );
-            })}
-            {filteredBooks.length === 0 && (
-              <tr>
-                <td
-                  colSpan={ALL_METADATA_KEYS.length + 2}
-                  className="px-6 py-12 text-center text-on-surface-variant"
-                >
-                  No books found matching this filter.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -312,7 +370,7 @@ function EnrichmentRunner({
     libraryId,
     providerKey: targetMetadata,
     metadataField: targetMetadata,
-    batchSize: 10,
+    batchSize: 50,
     filterPredicate: b => {
       if (overwrite) return true;
       const val =
@@ -348,6 +406,7 @@ function EnrichmentRunner({
         <BulkEnrichmentBanner
           isBackfilling={isBackfilling}
           completed={progress.completed}
+          failed={progress.failed}
           total={progress.total}
           title="Curator Enrichment"
           description="Fetching deep metadata..."

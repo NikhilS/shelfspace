@@ -8,6 +8,19 @@ import {addDoc} from 'firebase/firestore';
 
 vi.mock('../stores/authStore');
 
+vi.mock('../lib/trpc', () => ({
+  trpc: {
+    gemini: {
+      generateLibraryHeroImage: {
+        useMutation: () => ({
+          mutateAsync: vi.fn().mockResolvedValue(''),
+        }),
+      },
+    },
+  },
+  trpcVanilla: {},
+}));
+
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');

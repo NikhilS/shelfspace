@@ -24,7 +24,8 @@ export enum MetadataKey {
   AUTHOR_BIO = 'authorBio',
   EMBEDDING = 'embeddings',
   SERIES = 'series',
-  BASIC_INFO = 'basicInfo' // Google Books / Wikipedia fundamental data
+  BASIC_INFO = 'basicInfo', // Google Books / Wikipedia fundamental data
+  COVER_IMAGE = 'coverUrl' // High-res cover images and storage path resolution
 }
 ```
 
@@ -117,6 +118,7 @@ By observing the current database fields and `gemini` service footprint, we will
 - **SynopsisMetadataProvider**: Wraps `generateBookInsights(..., 'synopsis')`.
 - **AuthorBioMetadataProvider**: Wraps `generateBookInsights(..., 'author_bio')`.
 - **EmbeddingMetadataProvider**: Wraps `generateBookEmbeddings`.
+- **CoverImageMetadataProvider**: Encapsulates logic for acquiring book cover URLs (via Google Books, Open Library), potentially downloading/compressing them, persisting them to Firebase Cloud Storage, and returning the durable `gs://` or `https://` storage URL to be saved in the `coverUrl` field.
 
 ## 6. Bulk Fetch Batching, Throttling, and Async Processing Strategy
 

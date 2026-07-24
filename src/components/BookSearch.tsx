@@ -145,6 +145,7 @@ export default function BookSearch({
                   alt={book.title}
                   className="w-16 h-24 sm:w-20 sm:h-32 object-cover rounded-xl shadow-sm border border-outline-variant/20 flex-shrink-0"
                   referrerPolicy="no-referrer"
+                  loading="lazy"
                   onError={e => {
                     (e.target as HTMLImageElement).style.display = 'none';
                     (

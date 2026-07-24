@@ -1,5 +1,6 @@
 import {AnimatePresence} from 'motion/react';
 import React, {useState, useEffect, useMemo} from 'react';
+import {useLocation} from 'react-router-dom';
 import {useAuth} from '../../stores/authStore';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
@@ -80,12 +81,17 @@ export function BookContent({
   }, [isActive, bookBase, bookDetails]);
 
   const {setDebugData} = useDebug();
+  const location = useLocation();
 
   useEffect(() => {
-    if (debugData) {
-      setDebugData(debugData, 'Book Docs');
+    if (isActive && debugData) {
+      const timer = setTimeout(() => {
+        setDebugData(debugData, 'Book Docs');
+      }, 50);
+      return () => clearTimeout(timer);
     }
-  }, [debugData, setDebugData]);
+    return undefined;
+  }, [debugData, setDebugData, isActive, location.pathname]);
 
   const handleDeleteBook = async () => {
     if (!book || !libraryId || !canEdit) return;
