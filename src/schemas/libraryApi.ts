@@ -30,6 +30,7 @@ export const enrichmentTriggerSchema = z.object({
     'genre',
     'synopsis',
     'coverImage',
+    'authorBio',
   ]),
 });
 

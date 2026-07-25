@@ -4,24 +4,17 @@ import {MetadataRegistry} from './metadata';
 import {MetadataKey, CoreBookData} from '../../types/metadata';
 import {EnrichmentTriggerInput} from '../../schemas/libraryApi';
 
-export interface EnrichmentItemResult {
-  bookId: string;
-  status: 'updated' | 'failed';
-  errorCode?: number;
-  errorMessage?: string;
-  data?: unknown;
-}
-
 export interface EnrichmentTriggerResponse {
-  status: 'success' | 'partial_success' | 'failed';
+  status: 'success' | 'failed';
   enrichmentType: string;
   processedCount: number;
-  results: EnrichmentItemResult[];
+  results: Record<string, unknown>[];
 }
 
 export class EnrichmentService {
   /**
    * Executes a batch enrichment pipeline over a set of book IDs within a library.
+   * Delegates directly to provider.bulkFetch for unified batch handling.
    */
   static async triggerBatchEnrichment(
     userId: string,
@@ -45,6 +38,7 @@ export class EnrichmentService {
       genre: MetadataKey.GENRE,
       synopsis: MetadataKey.SYNOPSIS,
       coverImage: MetadataKey.COVER_IMAGE,
+      authorBio: MetadataKey.AUTHOR_BIO,
     };
 
     const targetKey = keyMap[enrichmentType];
@@ -68,155 +62,90 @@ export class EnrichmentService {
     }
 
     const db = getAdminDb();
-    const results: EnrichmentItemResult[] = [];
+    const booksRef = db
+      .collection('libraries')
+      .doc(libraryId)
+      .collection('books');
 
-    let totalUpdated = 0;
-    let totalFailed = 0;
-
-    // Process in parallel chunks of 10 to maintain high throughput while respecting rate limits
-    const CHUNK_SIZE = 10;
-    for (let i = 0; i < bookIds.length; i += CHUNK_SIZE) {
-      const chunkIds = bookIds.slice(i, i + CHUNK_SIZE);
-
-      await Promise.all(
-        chunkIds.map(async bookId => {
-          const bookRef = db
-            .collection('libraries')
-            .doc(libraryId)
-            .collection('books')
-            .doc(bookId);
-
-          let bookSnap;
-          try {
-            bookSnap = await bookRef.get();
-          } catch (err: unknown) {
-            const errorObj = err as {message?: string};
-            results.push({
-              bookId,
-              status: 'failed',
-              errorCode: 500,
-              errorMessage: `Database read error: ${errorObj?.message || 'Unknown error'}`,
-            });
-            totalFailed++;
-            return;
+    // 3. Retrieve target book documents from Firestore
+    const validBooks: CoreBookData[] = [];
+    await Promise.all(
+      bookIds.map(async bookId => {
+        try {
+          const snap = await booksRef.doc(bookId).get();
+          if (snap.exists) {
+            const data = snap.data() || {};
+            if (
+              data.title &&
+              typeof data.title === 'string' &&
+              data.title.trim()
+            ) {
+              validBooks.push({
+                id: bookId,
+                title: data.title.trim(),
+                author: data.author || 'Unknown Author',
+                isbn: data.isbn,
+                synopsis: data.synopsis || data.description,
+              });
+            }
           }
+        } catch (err) {
+          console.error(`Error reading book '${bookId}' for enrichment:`, err);
+        }
+      }),
+    );
 
-          if (!bookSnap.exists) {
-            results.push({
-              bookId,
-              status: 'failed',
-              errorCode: 404,
-              errorMessage: `Book '${bookId}' not found in library '${libraryId}'`,
-            });
-            totalFailed++;
-            return;
-          }
-
-          const bookData = bookSnap.data() || {};
-          const title = bookData.title;
-          const author = bookData.author;
-
-          if (!title || typeof title !== 'string' || !title.trim()) {
-            results.push({
-              bookId,
-              status: 'failed',
-              errorCode: 422,
-              errorMessage: `Book '${bookId}' lacks required 'title' field for enrichment`,
-            });
-            totalFailed++;
-            return;
-          }
-
-          const coreBook: CoreBookData = {
-            id: bookId,
-            title: title.trim(),
-            author: author || 'Unknown Author',
-            isbn: bookData.isbn,
-          };
-
-          let extractedData: unknown;
-          try {
-            extractedData = await provider.fetch(coreBook);
-          } catch (fetchErr: unknown) {
-            const errObj = fetchErr as {message?: string};
-            const errStr = String(errObj?.message || fetchErr);
-            const isTimeout =
-              errStr.toLowerCase().includes('timeout') ||
-              errStr.toLowerCase().includes('etimedout');
-
-            results.push({
-              bookId,
-              status: 'failed',
-              errorCode: isTimeout ? 504 : 502,
-              errorMessage: `Provider fetch failed: ${errStr}`,
-            });
-            totalFailed++;
-            return;
-          }
-
-          if (!extractedData) {
-            results.push({
-              bookId,
-              status: 'failed',
-              errorCode: 422,
-              errorMessage: `Provider returned no metadata for book '${bookId}'`,
-            });
-            totalFailed++;
-            return;
-          }
-
-          // Write updated metadata back to Firestore
-          const updatePayload: Record<string, unknown> = {
-            updatedAt: new Date().toISOString(),
-          };
-
-          if (enrichmentType === 'geo') {
-            updatePayload.geoMetadata = extractedData;
-          } else if (enrichmentType === 'temporal') {
-            updatePayload.temporalMetadata = extractedData;
-          } else if (enrichmentType === 'genre') {
-            updatePayload.genre = extractedData;
-            updatePayload.genres = extractedData;
-          } else if (enrichmentType === 'synopsis') {
-            updatePayload.synopsis = extractedData;
-          } else if (enrichmentType === 'coverImage') {
-            updatePayload.coverUrl = extractedData;
-            updatePayload.coverUrlRaw = extractedData;
-          }
-
-          try {
-            await bookRef.update(updatePayload);
-            results.push({
-              bookId,
-              status: 'updated',
-              data: extractedData,
-            });
-            totalUpdated++;
-          } catch (writeErr: unknown) {
-            const writeErrObj = writeErr as {message?: string};
-            results.push({
-              bookId,
-              status: 'failed',
-              errorCode: 500,
-              errorMessage: `Database write error: ${writeErrObj?.message || 'Unknown error'}`,
-            });
-            totalFailed++;
-          }
-        }),
-      );
+    if (validBooks.length === 0) {
+      return {
+        status: 'success',
+        enrichmentType,
+        processedCount: 0,
+        results: [],
+      };
     }
 
-    const overallStatus =
-      totalFailed === 0
-        ? 'success'
-        : totalUpdated > 0
-          ? 'partial_success'
-          : 'failed';
+    // 4. Delegate to provider.bulkFetch for unified batch handling
+    const extractedBatch = await provider.bulkFetch(validBooks);
+
+    // 5. Write extracted metadata back to Firestore for each book
+    const results: Record<string, unknown>[] = [];
+    await Promise.all(
+      Object.entries(extractedBatch).map(async ([bookId, metadata]) => {
+        if (!metadata) return;
+
+        const updatePayload: Record<string, unknown> = {
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (enrichmentType === 'geo') {
+          updatePayload.geoMetadata = metadata;
+        } else if (enrichmentType === 'temporal') {
+          updatePayload.temporalMetadata = metadata;
+        } else if (enrichmentType === 'genre') {
+          updatePayload.genre = metadata;
+          updatePayload.genres = metadata;
+        } else if (enrichmentType === 'synopsis') {
+          updatePayload.synopsis = metadata;
+        } else if (enrichmentType === 'coverImage') {
+          updatePayload.coverUrl = metadata;
+          updatePayload.coverUrlRaw = metadata;
+        } else if (enrichmentType === 'authorBio') {
+          updatePayload.authorBio = metadata;
+        }
+
+        try {
+          await booksRef.doc(bookId).update(updatePayload);
+          results.push({id: bookId, [targetKey]: metadata});
+        } catch (writeErr) {
+          console.error(`Database write error for book ${bookId}:`, writeErr);
+        }
+      }),
+    );
 
     return {
-      status: overallStatus,
+      status: 'success',
       enrichmentType,
-      processedCount: bookIds.length,
+      processedCount: results.length,
       results,
     };
   }

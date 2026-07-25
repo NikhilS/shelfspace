@@ -119,22 +119,6 @@ export const geminiRouter = router({
       return geminiService.getPickOfTheDay(input.books);
     }),
 
-  extractBookGeoMetadata: protectedProcedure
-    .input(
-      z.object({
-        title: z.string(),
-        author: z.string(),
-        synopsis: z.string().optional(),
-      }),
-    )
-    .mutation(async ({input}) => {
-      return geminiService.extractBookGeoMetadata(
-        input.title,
-        input.author,
-        input.synopsis,
-      );
-    }),
-
   extractBookGeoMetadataBatch: protectedProcedure
     .input(
       z.object({

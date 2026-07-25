@@ -143,8 +143,8 @@ export function BookContent({
     <div className="layout-page-content h-full overflow-y-auto">
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
         {/* Left Column */}
-        <div className="md:col-span-4 flex flex-col gap-6">
-          <div className="aspect-[2/3] w-full bg-surface-container rounded-lg overflow-hidden architectural-shadow relative">
+        <div className="md:col-span-4 flex flex-col gap-6 items-center md:items-stretch">
+          <div className="aspect-[2/3] w-3/4 max-w-[240px] md:w-full md:max-w-none mx-auto bg-surface-container rounded-lg overflow-hidden architectural-shadow relative flex-shrink-0">
             {book.coverUrl ? (
               <img
                 src={book.coverUrl}

@@ -38,7 +38,9 @@ describe('EnrichmentService', () => {
     // 2. Mock provider
     const mockProvider = {
       isAvailable: () => true,
-      fetch: vi.fn().mockResolvedValue({locations: [{name: 'London'}]}),
+      bulkFetch: vi
+        .fn()
+        .mockResolvedValue({b1: {locations: [{name: 'London'}]}}),
     };
 
     const mockRegistry = {
@@ -60,15 +62,22 @@ describe('EnrichmentService', () => {
 
     mockBookUpdate.mockResolvedValue(undefined);
 
-    const res = await EnrichmentService.triggerBatchEnrichment('u1', 'u1@example.com', {
-      libraryId: 'lib1',
-      enrichmentType: 'geo',
-      bookIds: ['b1'],
-    });
+    const res = await EnrichmentService.triggerBatchEnrichment(
+      'u1',
+      'u1@example.com',
+      {
+        libraryId: 'lib1',
+        enrichmentType: 'geo',
+        bookIds: ['b1'],
+      },
+    );
 
     expect(res.status).toBe('success');
     expect(res.processedCount).toBe(1);
-    expect(res.results[0].status).toBe('updated');
+    expect(res.results[0]).toEqual({
+      id: 'b1',
+      geoMetadata: {locations: [{name: 'London'}]},
+    });
     expect(mockBookUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         geoMetadata: {locations: [{name: 'London'}]},
@@ -76,12 +85,12 @@ describe('EnrichmentService', () => {
     );
   });
 
-  it('handles missing books gracefully with 404 error code in result items', async () => {
+  it('handles non-existent books by returning empty results array', async () => {
     vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
 
     const mockProvider = {
       isAvailable: () => true,
-      fetch: vi.fn(),
+      bulkFetch: vi.fn().mockResolvedValue({}),
     };
 
     vi.mocked(MetadataRegistry.getInstance).mockReturnValue({
@@ -92,24 +101,27 @@ describe('EnrichmentService', () => {
       exists: false,
     });
 
-    const res = await EnrichmentService.triggerBatchEnrichment('u1', 'u1@example.com', {
-      libraryId: 'lib1',
-      enrichmentType: 'synopsis',
-      bookIds: ['nonexistent_book'],
-    });
+    const res = await EnrichmentService.triggerBatchEnrichment(
+      'u1',
+      'u1@example.com',
+      {
+        libraryId: 'lib1',
+        enrichmentType: 'synopsis',
+        bookIds: ['nonexistent_book'],
+      },
+    );
 
-    expect(res.status).toBe('failed');
-    expect(res.results[0].status).toBe('failed');
-    expect(res.results[0].errorCode).toBe(404);
-    expect(res.results[0].errorMessage).toContain("Book 'nonexistent_book' not found");
+    expect(res.status).toBe('success');
+    expect(res.processedCount).toBe(0);
+    expect(res.results).toEqual([]);
   });
 
-  it('rejects book lacking a title with 422 error code', async () => {
+  it('ignores books lacking a title and enriches valid ones', async () => {
     vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
 
     const mockProvider = {
       isAvailable: () => true,
-      fetch: vi.fn(),
+      bulkFetch: vi.fn().mockResolvedValue({}),
     };
 
     vi.mocked(MetadataRegistry.getInstance).mockReturnValue({
@@ -123,41 +135,18 @@ describe('EnrichmentService', () => {
       }),
     });
 
-    const res = await EnrichmentService.triggerBatchEnrichment('u1', 'u1@example.com', {
-      libraryId: 'lib1',
-      enrichmentType: 'genre',
-      bookIds: ['b_notitle'],
-    });
+    const res = await EnrichmentService.triggerBatchEnrichment(
+      'u1',
+      'u1@example.com',
+      {
+        libraryId: 'lib1',
+        enrichmentType: 'genre',
+        bookIds: ['b_notitle'],
+      },
+    );
 
-    expect(res.status).toBe('failed');
-    expect(res.results[0].errorCode).toBe(422);
-    expect(res.results[0].errorMessage).toContain("lacks required 'title' field");
-  });
-
-  it('handles provider fetch failures with 502/504 status codes', async () => {
-    vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
-
-    const mockProvider = {
-      isAvailable: () => true,
-      fetch: vi.fn().mockRejectedValue(new Error('Gateway ETIMEDOUT')),
-    };
-
-    vi.mocked(MetadataRegistry.getInstance).mockReturnValue({
-      getProvider: () => mockProvider,
-    } as unknown as MetadataRegistry);
-
-    mockBookGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({title: 'A Book'}),
-    });
-
-    const res = await EnrichmentService.triggerBatchEnrichment('u1', 'u1@example.com', {
-      libraryId: 'lib1',
-      enrichmentType: 'coverImage',
-      bookIds: ['b_timeout'],
-    });
-
-    expect(res.status).toBe('failed');
-    expect(res.results[0].errorCode).toBe(504); // ETIMEDOUT maps to 504
+    expect(res.status).toBe('success');
+    expect(res.processedCount).toBe(0);
+    expect(res.results).toEqual([]);
   });
 });

@@ -26,12 +26,12 @@ export const BookHeader = memo(({book, canEdit, onEdit}: BookHeaderProps) => {
             </span>
           )}
         </div>
-        <div className="flex items-start justify-between gap-4">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="min-w-0 w-full break-words">
             <h1 className="font-headline-xl text-headline-xl text-primary mb-2">
               {toTitleCase(book.title)}
             </h1>
-            <h2 className="font-headline-md text-headline-md text-secondary mb-6">
+            <h2 className="font-headline-md text-headline-md text-secondary mb-6 line-clamp-3">
               by {toTitleCase(book.author)}
             </h2>
           </div>

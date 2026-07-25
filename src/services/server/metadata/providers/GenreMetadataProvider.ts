@@ -37,16 +37,22 @@ export class GenreMetadataProvider implements IMetadataProvider<string[]> {
       })),
     );
 
-    const classificationResult = await classifyBooks(batchedBooks);
-
+    const CHUNK_SIZE = 10;
     const results: Record<string, string[]> = {};
-    if (classificationResult && Array.isArray(classificationResult)) {
-      classificationResult.forEach((item: {id: string; genres: string[]}) => {
-        if (item.id && item.genres) {
-          results[item.id] = item.genres;
-        }
-      });
+
+    for (let i = 0; i < batchedBooks.length; i += CHUNK_SIZE) {
+      const chunk = batchedBooks.slice(i, i + CHUNK_SIZE);
+      const classificationResult = await classifyBooks(chunk);
+
+      if (classificationResult && Array.isArray(classificationResult)) {
+        classificationResult.forEach((item: {id: string; genres: string[]}) => {
+          if (item.id && item.genres) {
+            results[item.id] = item.genres;
+          }
+        });
+      }
     }
+
     return results;
   }
 

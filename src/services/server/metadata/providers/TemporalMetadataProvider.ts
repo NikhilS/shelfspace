@@ -40,19 +40,25 @@ export class TemporalMetadataProvider implements IMetadataProvider<unknown> {
       })),
     );
 
-    const temporalResult = await extractBookTemporalMetadataBatch(batchedBooks);
-
+    const CHUNK_SIZE = 10;
     const results: Record<string, unknown> = {};
-    if (temporalResult && temporalResult.enrichment) {
-      temporalResult.enrichment.forEach((item: TemporalBookResult) => {
-        if (item.id) {
-          // Keep the raw item minus the id
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const {id, ...data} = item;
-          results[item.id] = data;
-        }
-      });
+
+    for (let i = 0; i < batchedBooks.length; i += CHUNK_SIZE) {
+      const chunk = batchedBooks.slice(i, i + CHUNK_SIZE);
+      const temporalResult = await extractBookTemporalMetadataBatch(chunk);
+
+      if (temporalResult && temporalResult.enrichment) {
+        temporalResult.enrichment.forEach((item: TemporalBookResult) => {
+          if (item.id) {
+            // Keep the raw item minus the id
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const {id, ...data} = item;
+            results[item.id] = data;
+          }
+        });
+      }
     }
+
     return results;
   }
 

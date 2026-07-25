@@ -4,7 +4,6 @@ import {
   CoreBookData,
 } from '../../../../types/metadata';
 import {
-  extractBookGeoMetadata,
   extractBookGeoMetadataBatch,
   BatchExtractedGeoBookResult,
   ExtractedGeoLocation,
@@ -88,14 +87,8 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
   }
 
   async fetch(book: CoreBookData): Promise<unknown> {
-    const synopsis = await this.getSynopsis(book);
-    const result = await extractBookGeoMetadata(
-      book.title,
-      book.author,
-      synopsis,
-    );
-    if (!result) return null;
-    return await this.processLocations(result);
+    const batchResult = await this.bulkFetch([book]);
+    return batchResult[book.id] || null;
   }
 
   async bulkFetch(books: CoreBookData[]): Promise<Record<string, unknown>> {
@@ -108,18 +101,26 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
       })),
     );
 
-    const geoResult = await extractBookGeoMetadataBatch(batchedBooks);
-
+    const CHUNK_SIZE = 10;
     const results: Record<string, unknown> = {};
-    if (geoResult && geoResult.enrichment) {
-      await Promise.all(
-        geoResult.enrichment.map(async (item: BatchExtractedGeoBookResult) => {
-          if (item.id) {
-            results[item.id] = await this.processLocations(item);
-          }
-        }),
-      );
+
+    for (let i = 0; i < batchedBooks.length; i += CHUNK_SIZE) {
+      const chunk = batchedBooks.slice(i, i + CHUNK_SIZE);
+      const geoResult = await extractBookGeoMetadataBatch(chunk);
+
+      if (geoResult && geoResult.enrichment) {
+        await Promise.all(
+          geoResult.enrichment.map(
+            async (item: BatchExtractedGeoBookResult) => {
+              if (item.id) {
+                results[item.id] = await this.processLocations(item);
+              }
+            },
+          ),
+        );
+      }
     }
+
     return results;
   }
 

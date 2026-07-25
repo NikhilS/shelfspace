@@ -75,7 +75,7 @@ Retrieves books from a specific library. Supports filtering for books with missi
   * `libraryId` *(string, required)*: The unique ID of the library (e.g. `lib_default_123`).
 * **Query Parameters:**
   * `missingMetadata` *(string, optional)*: Filter for books missing specific fields.
-    * Allowed values: `genres`, `publishedDate`, `isbn`, `coverUrl`, `synopsis`
+    * Allowed values: `geo`, `temporal`, `genre`, `synopsis`, `coverImage`
   * `limit` *(integer, optional)*: Number of books to return (Default: `50`, Max: `100`).
   * `cursor` *(string, optional)*: Opaque pagination cursor from a previous response.
 * **Example Request URL:**
@@ -105,46 +105,50 @@ Retrieves books from a specific library. Supports filtering for books with missi
 
 ### Endpoint 3: Trigger Batch AI Enrichment
 
-Triggers background metadata generation or enrichment (genres, synopsis, historical timelines, author bio, or geolocation data) for a list of book IDs.
+Triggers background metadata generation or enrichment (genres, synopsis, historical timelines, or geolocation data) for a list of book IDs.
+
+> 💡 **Batching Efficiency Recommendation:**
+> For enrichment types that leverage internal Gemini batching (`"geo"`, `"temporal"`, `"genre"`), callers should ideally send `bookIds` in **batches of 10 items per request**. The system processes these requests as a unified bulk call to Gemini in a single prompt for optimal efficiency and performance.
 
 * **HTTP Method:** `POST`
 * **Path:** `/api/v1/libraries/:libraryId/enrichment/trigger`
 * **Path Parameters:**
   * `libraryId` *(string, required)*: The target library ID.
 * **Request Body (`application/json`):**
-  * `bookIds` *(array of strings, required)*: List of book IDs to enrich. Must contain at least 1 item.
+  * `bookIds` *(array of strings, required)*: List of book IDs to enrich (recommended batch size: 10). Must contain at least 1 item.
   * `enrichmentType` *(string, required)*: The type of enrichment to execute.
     * Allowed values:
-      * `"GENRES"` - Auto-detect and suggest book genres
-      * `"HISTORICAL_TIMELINE"` - Generate key historical events referenced in the book
-      * `"GEOLOCATION_MAP"` - Extract geographic locations and coordinates
-      * `"WIKIPEDIA_BIO"` - Fetch author background information
-      * `"COMPLETE_AUTOFILL"` - Full metadata autofill (genres, synopsis, cover, dates)
+      * `"genre"` - Auto-detect and suggest book genres
+      * `"temporal"` - Generate key historical events referenced in the book
+      * `"geo"` - Extract geographic locations and coordinates
+      * `"synopsis"` - Generate a summary of the book
+      * `"coverImage"` - Full metadata autofill for the cover image
 * **Example Payload:**
   ```json
   {
     "bookIds": ["book_abc123", "book_xyz789"],
-    "enrichmentType": "GENRES"
+    "enrichmentType": "genre"
   }
   ```
 * **Success Response (`200 OK`):**
   ```json
   {
-    "success": true,
+    "status": "success",
+    "enrichmentType": "genre",
     "processedCount": 2,
     "results": [
       {
-        "bookId": "book_abc123",
-        "status": "success",
-        "enrichedData": {
-          "genres": ["Science Fiction", "Space Opera", "Classics"]
+        "id": "book_abc123",
+        "genre": {
+          "primaryGenre": "Science Fiction",
+          "subgenres": ["Space Opera", "Classics"]
         }
       },
       {
-        "bookId": "book_xyz789",
-        "status": "success",
-        "enrichedData": {
-          "genres": ["Historical Fiction", "Mystery"]
+        "id": "book_xyz789",
+        "genre": {
+          "primaryGenre": "Historical Fiction",
+          "subgenres": ["Mystery"]
         }
       }
     ]
@@ -185,7 +189,7 @@ curl -X GET "https://bookish.ai.studio/api/v1/libraries" \
   -H "X-API-Key: lib_live_YOUR_API_KEY"
 
 # 2. List Books with Missing Genres
-curl -X GET "https://bookish.ai.studio/api/v1/libraries/YOUR_LIBRARY_ID/books?missingMetadata=genres&limit=50" \
+curl -X GET "https://bookish.ai.studio/api/v1/libraries/YOUR_LIBRARY_ID/books?missingMetadata=genre&limit=50" \
   -H "X-API-Key: lib_live_YOUR_API_KEY"
 
 # 3. Trigger Batch Genre Enrichment
@@ -194,7 +198,7 @@ curl -X POST "https://bookish.ai.studio/api/v1/libraries/YOUR_LIBRARY_ID/enrichm
   -H "Content-Type: application/json" \
   -d '{
     "bookIds": ["book_1", "book_2"],
-    "enrichmentType": "GENRES"
+    "enrichmentType": "genre"
   }'
 ```
 
@@ -216,7 +220,7 @@ headers = {
 def auto_enrich_library(library_id: str):
     with httpx.Client(base_url=BASE_URL, headers=headers) as client:
         # Step 1: Find books missing genres
-        res = client.get(f"/api/v1/libraries/{library_id}/books", params={"missingMetadata": "genres"})
+        res = client.get(f"/api/v1/libraries/{library_id}/books", params={"missingMetadata": "genre"})
         res.raise_for_status()
         books = res.json().get("books", [])
         
@@ -230,7 +234,7 @@ def auto_enrich_library(library_id: str):
         # Step 2: Trigger enrichment
         enrich_res = client.post(
             f"/api/v1/libraries/{library_id}/enrichment/trigger",
-            json={"bookIds": book_ids, "enrichmentType": "GENRES"}
+            json={"bookIds": book_ids, "enrichmentType": "genre"}
         )
         enrich_res.raise_for_status()
         print("Enrichment Result:", enrich_res.json())
@@ -295,7 +299,7 @@ If integrating this API into an LLM Agent system (e.g. OpenAI Function Calling, 
         },
         "missingMetadata": {
           "type": "string",
-          "enum": ["genres", "publishedDate", "isbn", "coverUrl", "synopsis"],
+          "enum": ["geo", "temporal", "genre", "synopsis", "coverImage"],
           "description": "Filter books missing specific metadata fields."
         },
         "limit": {
@@ -328,7 +332,7 @@ If integrating this API into an LLM Agent system (e.g. OpenAI Function Calling, 
         },
         "enrichmentType": {
           "type": "string",
-          "enum": ["GENRES", "HISTORICAL_TIMELINE", "GEOLOCATION_MAP", "WIKIPEDIA_BIO", "COMPLETE_AUTOFILL"],
+          "enum": ["geo", "temporal", "genre", "synopsis", "coverImage"],
           "description": "Type of enrichment operation to perform."
         }
       },

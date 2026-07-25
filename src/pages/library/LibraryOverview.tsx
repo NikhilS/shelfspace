@@ -248,7 +248,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                   className="bg-surface-container-lowest p-8 shadow-elevation-3 border border-surface-variant flex flex-col md:flex-row gap-8 items-center"
                 >
                   <div
-                    className="w-32 md:w-40 flex-shrink-0 relative group cursor-pointer"
+                    className="w-32 md:w-40 mx-auto md:mx-0 flex-shrink-0 relative group cursor-pointer"
                     onClick={() =>
                       navigate(`/library/${library.id}/book/${book.id}`, {
                         state: {
@@ -275,7 +275,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                       </div>
                     )}
                   </div>
-                  <div className="flex-grow w-full">
+                  <div className="flex-grow min-w-0 w-full text-center md:text-left break-words">
                     <span className="font-label-caps text-label-caps text-secondary block">
                       Currently Reading
                     </span>
@@ -336,7 +336,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                 </div>
               ) : pickOfTheDay ? (
                 <div className="flex flex-col md:flex-row gap-8 w-full z-10 relative">
-                  <div className="w-24 md:w-32 flex-shrink-0 mt-10 md:mt-8 z-0">
+                  <div className="w-24 md:w-32 mx-auto md:mx-0 flex-shrink-0 mt-10 md:mt-8 z-0">
                     {pickOfTheDay.coverUrl ? (
                       <img
                         alt="Book Cover"
@@ -351,8 +351,8 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col justify-center flex-1">
-                    <span className="font-label-caps text-label-caps text-secondary flex items-center gap-1.5 mb-2">
+                  <div className="flex flex-col justify-center flex-1 min-w-0 text-center md:text-left break-words">
+                    <span className="font-label-caps text-label-caps text-secondary flex items-center justify-center md:justify-start gap-1.5 mb-2">
                       <Sparkles size={14} className="text-secondary/80" />
                       Curator's Pick
                     </span>
