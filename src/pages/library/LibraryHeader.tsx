@@ -1,8 +1,9 @@
 import React from 'react';
+import {Link} from 'react-router-dom';
 import {motion} from 'motion/react';
 import {Library, Book} from '../../types';
 import {toTitleCase} from '../../lib/utils';
-import {CloudUpload, RefreshCw} from 'lucide-react';
+import {CloudUpload, RefreshCw, ArrowLeft} from 'lucide-react';
 
 interface LibraryHeaderProps {
   library: Library;
@@ -27,7 +28,9 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
 }) => {
   return (
     <div
-      className={`w-full h-[280px] sm:h-[400px] relative overflow-hidden flex items-end ${!library.heroImageUrl ? 'bg-primary' : ''}`}
+      className={`w-full min-h-[110px] sm:min-h-[180px] md:min-h-[220px] relative overflow-hidden flex flex-col justify-between transition-all duration-300 ${
+        !library.heroImageUrl ? 'bg-primary' : ''
+      }`}
     >
       {library.heroImageUrl && (
         <img
@@ -37,41 +40,56 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
           referrerPolicy="no-referrer"
         />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/40 to-transparent opacity-90" />
-      <div className="relative z-10 w-full max-w-[1200px] mx-auto px-6 sm:px-10 pb-10 sm:pb-16 text-white translate-y-4">
-        <motion.div
-          initial={{opacity: 0, y: 10}}
-          animate={{opacity: 1, y: 0}}
-          transition={{delay: 0.1, duration: 0.5}}
+      <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/60 to-primary/30 opacity-95" />
+
+      {/* Top Bar: Back to All Libraries Navigation */}
+      <div className="relative z-10 w-full max-w-[1200px] mx-auto px-4 sm:px-8 pt-2.5 sm:pt-3.5">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-sans font-medium text-white/90 hover:text-white bg-black/35 hover:bg-black/50 backdrop-blur-md px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full transition-all border border-white/15 shadow-xs"
         >
-          <div className="flex flex-wrap items-center gap-3 mb-2 max-w-full">
+          <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+          <span>All Libraries</span>
+        </Link>
+      </div>
+
+      {/* Bottom Title & Metadata */}
+      <div className="relative z-10 w-full max-w-[1200px] mx-auto px-4 sm:px-8 pb-2 sm:pb-4 md:pb-5 text-white mt-auto">
+        <motion.div
+          initial={{opacity: 0, y: 8}}
+          animate={{opacity: 1, y: 0}}
+          transition={{delay: 0.1, duration: 0.3}}
+        >
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-0.5 sm:mb-1.5 max-w-full">
             <h1
-              className="font-headline-xl text-on-primary drop-shadow-md line-clamp-2 break-words"
+              className="font-headline-xl text-on-primary drop-shadow-md line-clamp-1 sm:line-clamp-2 break-words"
               style={{
-                fontSize: 'clamp(1.5rem, 5.5vw, 2.5rem)',
-                lineHeight: '1.15',
+                fontSize: 'clamp(1.2rem, 3.2vw, 2.2rem)',
+                lineHeight: '1.2',
               }}
               title={library.name}
             >
               {toTitleCase(library.name)}
             </h1>
             {role === 'viewer' && (
-              <span className="font-label-caps text-[10px] tracking-wider uppercase bg-surface-container-high/80 text-on-surface-variant px-2 py-1 flex items-center justify-center rounded border border-outline-variant/30 backdrop-blur-sm shadow-sm inline-flex shrink-0">
+              <span className="font-label-caps text-[9px] sm:text-[10px] tracking-wider uppercase bg-surface-container-high/80 text-on-surface-variant px-1.5 sm:px-2 py-0.5 flex items-center justify-center rounded border border-outline-variant/30 backdrop-blur-sm shadow-sm inline-flex shrink-0">
                 Read-Only
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="w-[1px] h-4 bg-white/40 hidden sm:block" />
-            <p className="font-label-caps text-label-caps text-white/80">
-              {books.length} {books.length === 1 ? 'volume' : 'volumes'} •{' '}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <p className="font-label-caps text-[11px] sm:text-xs text-white/80">
+              {books.length > 0 || library.bookCount === undefined
+                ? `${books.length} ${books.length === 1 ? 'volume' : 'volumes'}`
+                : `${library.bookCount} ${library.bookCount === 1 ? 'volume' : 'volumes'}`}
+              {' • '}
               {isOwner
                 ? 'Owned by you'
                 : `Shared by ${toTitleCase(library.ownerName)}`}
             </p>
             {isSyncing && (
-              <span className="flex items-center gap-1.5 font-label-caps text-label-caps text-secondary bg-surface/10 px-2 py-0.5 rounded-full border border-white/10 backdrop-blur-sm">
-                <CloudUpload className="w-3.5 h-3.5" />
+              <span className="flex items-center gap-1.5 font-label-caps text-[11px] sm:text-xs text-secondary bg-surface/10 px-2 py-0.5 rounded-full border border-white/10 backdrop-blur-sm">
+                <CloudUpload className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 Syncing
               </span>
             )}
@@ -79,12 +97,12 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
               <button
                 onClick={onRefreshHero}
                 disabled={isRefreshingHero}
-                className="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 active:bg-white/30 transition-colors p-2 rounded-lg border border-white/15 backdrop-blur-sm disabled:opacity-50 cursor-pointer ml-auto sm:ml-4 shadow-sm"
+                className="flex items-center justify-center text-white bg-white/15 hover:bg-white/25 active:bg-white/30 transition-colors w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-white/20 backdrop-blur-sm disabled:opacity-50 cursor-pointer ml-auto sm:ml-4 shadow-sm"
                 title={isRefreshingHero ? 'Refreshing...' : 'Refresh Banner'}
                 aria-label="Refresh Banner"
               >
                 <RefreshCw
-                  className={`w-3.5 h-3.5 ${
+                  className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${
                     isRefreshingHero ? 'animate-spin' : ''
                   }`}
                 />

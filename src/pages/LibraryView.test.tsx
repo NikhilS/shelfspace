@@ -33,6 +33,11 @@ vi.mock('../lib/trpc', () => ({
           mutateAsync: vi.fn().mockResolvedValue(''),
         }),
       },
+      getPickOfTheDay: {
+        useMutation: () => ({
+          mutateAsync: vi.fn().mockResolvedValue({}),
+        }),
+      },
     },
     libraryApi: {
       list: {

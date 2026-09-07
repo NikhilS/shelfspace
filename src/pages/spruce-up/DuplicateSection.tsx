@@ -1,7 +1,8 @@
 import React from 'react';
 import {EyeOff, Loader2, Trash2, Layers} from 'lucide-react';
-import {Book, FirestoreDate} from '../../types';
+import {Book} from '../../types';
 import {Button} from '@/components/ui/button';
+import {formatFirestoreDate} from '../../lib/date';
 
 interface DuplicateSectionProps {
   duplicates: Book[][];
@@ -10,21 +11,7 @@ interface DuplicateSectionProps {
   handleDelete: (id: string) => Promise<void>;
 }
 
-const formatAddedAt = (addedAt?: FirestoreDate | unknown) => {
-  if (!addedAt) return 'Unknown date';
-  const asRecord = addedAt as Record<string, unknown>;
-  if (typeof asRecord.toDate === 'function') {
-    return (asRecord.toDate as () => Date)().toLocaleDateString();
-  }
-  if (typeof asRecord.seconds === 'number') {
-    return new Date(asRecord.seconds * 1000).toLocaleDateString();
-  }
-  const dateObj = new Date(addedAt as string | number);
-  if (!isNaN(dateObj.getTime())) {
-    return dateObj.toLocaleDateString();
-  }
-  return 'Unknown date';
-};
+const formatAddedAt = (addedAt?: unknown) => formatFirestoreDate(addedAt);
 
 export function DuplicateSection({
   duplicates,

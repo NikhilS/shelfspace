@@ -3,6 +3,7 @@ import {useAuth} from '../../stores/authStore';
 import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {reconcileBookCount} from '../../services/db/books';
 import {uploadBase64Image} from '../../services/db/storage';
+import {useQueryClient} from '@tanstack/react-query';
 import {
   collection,
   query,
@@ -21,6 +22,7 @@ import {trpc} from '../../lib/trpc';
 
 export function useLibraries() {
   const {user} = useAuth();
+  const queryClient = useQueryClient();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,11 +66,29 @@ export function useLibraries() {
         setLibraries(libs);
         setIsLoading(false);
 
-        // Auto-reconcile bookCount if out of sync or legacy
+        // Pre-seed TanStack Query cache so navigation to any library is immediate (0ms delay)
+        libs.forEach(lib => {
+          queryClient.setQueryData(['library', lib.id], lib);
+          if (user) {
+            const email = user.email?.toLowerCase();
+            const role =
+              lib.ownerId === user.uid
+                ? 'owner'
+                : (email && lib.access?.[email]) ||
+                  (email && lib.access?.[user.email || '']) ||
+                  'viewer';
+            queryClient.setQueryData(
+              ['libraryPermissions', lib.id, user.uid, email],
+              role,
+            );
+          }
+        });
+
+        // Reconcile legacy libraries that lack a bookCount field
         libs.forEach(async lib => {
           if (
-            !reconciledLibsRef.current.has(lib.id) ||
-            lib.bookCount === undefined
+            lib.bookCount === undefined &&
+            !reconciledLibsRef.current.has(lib.id)
           ) {
             reconciledLibsRef.current.add(lib.id);
             try {
@@ -80,7 +100,7 @@ export function useLibraries() {
               }
             } catch (e) {
               console.error(
-                `Failed to reconcile bookCount for lib ${lib.id}`,
+                `Failed to reconcile legacy bookCount for lib ${lib.id}`,
                 e,
               );
             }

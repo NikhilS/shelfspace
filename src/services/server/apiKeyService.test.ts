@@ -35,11 +35,17 @@ describe('ApiKeyService', () => {
       const ownerEmail = 'user@example.com';
       const name = 'Production API Key';
 
-      const result = await ApiKeyService.generateApiKey(ownerId, ownerEmail, name);
+      const result = await ApiKeyService.generateApiKey(
+        ownerId,
+        ownerEmail,
+        name,
+      );
 
       expect(result.key).toMatch(/^lib_live_[a-f0-9]{64}$/);
       expect(result.keyPrefix).toBe(result.key.substring(0, 16));
-      expect(result.keySuffix).toBe(result.key.substring(result.key.length - 4));
+      expect(result.keySuffix).toBe(
+        result.key.substring(result.key.length - 4),
+      );
       expect(result.name).toBe(name);
 
       expect(mockCollection).toHaveBeenCalledWith('apiKeys');
@@ -61,7 +67,11 @@ describe('ApiKeyService', () => {
       const ownerEmail = 'user@example.com';
       const keyName = 'Test Key';
 
-      const created = await ApiKeyService.generateApiKey(ownerId, ownerEmail, keyName);
+      const created = await ApiKeyService.generateApiKey(
+        ownerId,
+        ownerEmail,
+        keyName,
+      );
       const rawKey = created.key;
 
       mockDocGet.mockResolvedValueOnce({
@@ -98,8 +108,12 @@ describe('ApiKeyService', () => {
 
     it('returns null for empty or non-lib_live_ key strings', async () => {
       expect(await ApiKeyService.validateApiKey('')).toBeNull();
-      expect(await ApiKeyService.validateApiKey('invalid_key_prefix')).toBeNull();
-      expect(await ApiKeyService.validateApiKey(123 as unknown as string)).toBeNull();
+      expect(
+        await ApiKeyService.validateApiKey('invalid_key_prefix'),
+      ).toBeNull();
+      expect(
+        await ApiKeyService.validateApiKey(123 as unknown as string),
+      ).toBeNull();
     });
 
     it('returns null if key hash does not exist in Firestore', async () => {
@@ -107,7 +121,8 @@ describe('ApiKeyService', () => {
         exists: false,
       });
 
-      const rawKey = 'lib_live_0000000000000000000000000000000000000000000000000000000000000000';
+      const rawKey =
+        'lib_live_0000000000000000000000000000000000000000000000000000000000000000';
       const result = await ApiKeyService.validateApiKey(rawKey);
       expect(result).toBeNull();
     });
@@ -122,13 +137,16 @@ describe('ApiKeyService', () => {
         }),
       });
 
-      const rawKey = 'lib_live_1111111111111111111111111111111111111111111111111111111111111111';
+      const rawKey =
+        'lib_live_1111111111111111111111111111111111111111111111111111111111111111';
       const result = await ApiKeyService.validateApiKey(rawKey);
       expect(result).toBeNull();
     });
 
     it('catches and logs errors during lastUsedAt timestamp update without breaking validation', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
       mockDocUpdate.mockRejectedValueOnce(new Error('Firestore write timeout'));
 
       mockDocGet.mockResolvedValueOnce({
@@ -144,7 +162,8 @@ describe('ApiKeyService', () => {
         },
       });
 
-      const rawKey = 'lib_live_2222222222222222222222222222222222222222222222222222222222222222';
+      const rawKey =
+        'lib_live_2222222222222222222222222222222222222222222222222222222222222222';
       const validated = await ApiKeyService.validateApiKey(rawKey);
 
       expect(validated?.uid).toBe('user_123');
@@ -227,9 +246,9 @@ describe('ApiKeyService', () => {
         exists: false,
       });
 
-      await expect(ApiKeyService.revokeApiKey('user_123', 'nonexistent')).rejects.toThrow(
-        'API key not found',
-      );
+      await expect(
+        ApiKeyService.revokeApiKey('user_123', 'nonexistent'),
+      ).rejects.toThrow('API key not found');
     });
 
     it('throws unauthorized error if caller does not match owner', async () => {
@@ -241,9 +260,9 @@ describe('ApiKeyService', () => {
         }),
       });
 
-      await expect(ApiKeyService.revokeApiKey('user_123', 'hash123')).rejects.toThrow(
-        'Unauthorized: You do not own this API key',
-      );
+      await expect(
+        ApiKeyService.revokeApiKey('user_123', 'hash123'),
+      ).rejects.toThrow('Unauthorized: You do not own this API key');
     });
   });
 });

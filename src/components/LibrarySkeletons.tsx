@@ -1,19 +1,22 @@
 import React from 'react';
 
-// SKELETON HEADER: Simulates the large hero banner area with corresponding dark-contrast background
+// SKELETON HEADER: Matches LibraryHeader proportions and dark contrast gradient
 export function LibraryHeaderSkeleton() {
   return (
-    <div className="w-full h-[280px] sm:h-[400px] relative overflow-hidden flex items-end bg-primary animate-pulse">
-      <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/40 to-transparent opacity-90" />
-      <div className="relative z-10 w-full max-w-[1200px] mx-auto px-6 sm:px-10 pb-10 sm:pb-16 text-white translate-y-4">
-        <div className="space-y-4">
-          {/* Header Title Mask */}
-          <div className="h-8 sm:h-12 bg-white/20 rounded-md w-1/3" />
-          {/* Header Subtitle Mask */}
-          <div className="flex items-center gap-3">
-            <div className="h-4 bg-white/10 rounded w-24" />
-            <div className="w-[1px] h-4 bg-white/20" />
-            <div className="h-4 bg-white/10 rounded w-36" />
+    <div className="w-full min-h-[110px] sm:min-h-[180px] md:min-h-[220px] relative overflow-hidden flex flex-col justify-between bg-primary animate-pulse transition-all">
+      <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/60 to-primary/30 opacity-95" />
+
+      {/* Top Back-button placeholder */}
+      <div className="relative z-10 w-full max-w-[1200px] mx-auto px-4 sm:px-8 pt-2.5 sm:pt-3.5">
+        <div className="h-6 sm:h-7 w-28 bg-white/20 rounded-full backdrop-blur-md" />
+      </div>
+
+      {/* Bottom Title & Subtitle */}
+      <div className="relative z-10 w-full max-w-[1200px] mx-auto px-4 sm:px-8 pb-2 sm:pb-4 md:pb-5 text-white mt-auto">
+        <div className="space-y-2 sm:space-y-3">
+          <div className="h-6 sm:h-9 bg-white/30 rounded-lg w-1/3 max-w-[320px]" />
+          <div className="flex items-center gap-2">
+            <div className="h-3.5 bg-white/20 rounded-md w-36" />
           </div>
         </div>
       </div>
@@ -21,113 +24,142 @@ export function LibraryHeaderSkeleton() {
   );
 }
 
-// SKELETON TABS: Simulates the Overview / Collection tab navigation buttons
+// SKELETON TABS: Simulates the sticky Sub-Navigation Bar
 export function LibraryTabsSkeleton() {
   return (
-    <div className="w-full px-4 sm:px-8 pt-4 border-b border-outline-variant/30 flex gap-6 bg-surface-container-lowest animate-pulse">
-      <div className="h-8 bg-surface-variant/40 rounded-t w-20 mb-3" />
-      <div className="h-8 bg-surface-variant/40 rounded-t w-24 mb-3" />
+    <div className="sticky top-16 z-20 bg-background/95 backdrop-blur-md border-b border-outline-variant/20 shadow-xs animate-pulse">
+      <div className="w-full max-w-[1200px] mx-auto px-4 sm:px-8 py-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 p-1 bg-surface-container-low rounded-xl border border-outline-variant/30">
+          <div className="h-7 w-20 bg-surface rounded-lg" />
+          <div className="h-7 w-24 bg-surface-container rounded-lg" />
+          <div className="hidden sm:block h-7 w-20 bg-surface-container rounded-lg" />
+        </div>
+        <div className="h-8 w-24 bg-surface-variant/40 rounded-xl" />
+      </div>
     </div>
   );
 }
 
-// SKELETON OVERVIEW CONTENT: Simulates metrics boxes, the categories bar chart vertical list, currently reading, and recruiter picks
+// SKELETON OVERVIEW CONTENT: Simulates the Digest ribbon, Reading Pulse/Spotlight, and Perspectives
 export function LibraryOverviewSkeleton() {
   return (
-    <div className="layout-page-content animate-pulse">
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        {/* Left Column Skeletons */}
-        <div className="md:col-span-4 flex flex-col gap-6">
-          {/* Total volumes card */}
-          <div className="bg-surface-container-low p-6 shadow-sm border border-outline-variant/20 flex flex-col justify-between h-44">
-            <div>
-              <div className="h-4 bg-surface-variant/30 rounded w-1/2 mb-3" />
-              <div className="h-8 bg-surface-variant/40 rounded w-1/3" />
-            </div>
-            <div className="h-4 bg-surface-variant/30 rounded w-full pt-4 border-t border-outline-variant/30" />
-          </div>
+    <div className="layout-page-content space-y-10 animate-pulse">
+      {/* Digest Ribbon Skeleton */}
+      <div className="h-10 w-full rounded-xl bg-surface-container-low/70 border border-outline-variant/30 flex items-center px-4 gap-4">
+        <div className="h-4 w-36 bg-surface-variant/40 rounded" />
+        <div className="hidden sm:block h-4 w-28 bg-surface-variant/30 rounded" />
+        <div className="hidden md:block h-4 w-32 bg-surface-variant/20 rounded ml-auto" />
+      </div>
 
-          {/* Top categories chart box */}
-          <div className="bg-surface p-6 border border-surface-variant relative shadow-sm flex flex-col min-h-[400px]">
-            <div className="h-4 bg-surface-variant/40 rounded w-2/5 mb-8" />
-            <div className="space-y-6 flex-grow flex flex-col justify-center">
-              {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} className="space-y-2">
+      {/* Tier 1: Personal & Active Cards Grid */}
+      <div className="space-y-4">
+        <div className="space-y-1">
+          <div className="h-6 w-40 bg-surface-variant/40 rounded" />
+          <div className="h-4 w-64 bg-surface-variant/25 rounded" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6">
+          {/* Categories Chart Card */}
+          <div className="md:col-span-4 bg-surface p-5 sm:p-6 rounded-2xl border border-outline-variant/30 flex flex-col min-h-[220px]">
+            <div className="flex justify-between items-center mb-5">
+              <div className="h-4 w-24 bg-surface-variant/40 rounded" />
+              <div className="h-3 w-16 bg-surface-variant/25 rounded" />
+            </div>
+            <div className="space-y-3.5 flex-grow flex flex-col justify-center">
+              {[85, 65, 45, 30].map(width => (
+                <div key={width} className="space-y-1.5">
                   <div className="flex justify-between">
-                    <div className="h-4 bg-surface-variant/30 rounded w-1/3" />
-                    <div className="h-4 bg-surface-variant/30 rounded w-10" />
+                    <div className="h-3 bg-surface-variant/30 rounded w-20" />
+                    <div className="h-3 bg-surface-variant/30 rounded w-6" />
                   </div>
-                  <div className="w-full h-1.5 bg-outline-variant/10 rounded-full">
+                  <div className="w-full h-1.5 bg-outline-variant/15 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-surface-variant/30 rounded-full"
-                      style={{width: `${100 - i * 15}%`}}
+                      className="h-full bg-surface-variant/40 rounded-full"
+                      style={{width: `${width}%`}}
                     />
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
 
-        {/* Right Column Skeletons */}
-        <div className="md:col-span-8 flex flex-col gap-6">
-          {/* Currently Reading block */}
-          <div className="bg-surface-container-lowest p-8 shadow-sm border border-surface-variant flex flex-col sm:flex-row gap-8 items-center min-h-[220px]">
-            <div className="w-32 h-44 bg-surface-variant/30 rounded-sm shadow-md flex-shrink-0" />
-            <div className="flex-grow w-full space-y-4">
-              <div className="h-5 bg-surface-variant/40 rounded-sm w-28" />
-              <div className="h-8 bg-surface-variant/40 rounded w-3/4" />
-              <div className="h-4 bg-surface-variant/30 rounded w-1/2" />
-              <div className="h-10 bg-surface-variant/30 rounded w-28 ml-auto" />
-            </div>
-          </div>
-
-          {/* Curator's Pick block */}
-          <div className="bg-gradient-to-br from-surface-container-low to-surface border border-outline-variant/30 p-8 min-h-[220px] flex flex-col sm:flex-row gap-8 items-center relative overflow-hidden">
-            <div className="w-24 h-36 bg-surface-variant/30 rounded-sm shadow-md flex-shrink-0 mt-2 sm:mt-0" />
-            <div className="flex-grow w-full space-y-4">
-              <div className="h-5 bg-surface-variant/40 rounded-sm w-32" />
-              <div className="h-6 bg-surface-variant/40 rounded w-2/3" />
-              <div className="h-4 bg-surface-variant/30 rounded w-1/3" />
-              <div className="space-y-2 pl-4 border-l-2 border-outline-variant/20 py-1">
-                <div className="h-4 bg-surface-variant/30 rounded w-full" />
-                <div className="h-4 bg-surface-variant/30 rounded-sm w-5/6" />
+          {/* Spotlight Card */}
+          <div className="md:col-span-8 bg-surface p-5 sm:p-6 rounded-2xl border border-outline-variant/30 flex flex-col sm:flex-row gap-5 min-h-[220px]">
+            <div className="w-24 sm:w-28 h-36 sm:h-40 bg-surface-container-high rounded-lg shadow-sm shrink-0" />
+            <div className="flex-1 space-y-3 pt-1">
+              <div className="h-3 w-20 bg-secondary/20 rounded" />
+              <div className="h-6 w-3/4 bg-surface-variant/40 rounded" />
+              <div className="h-4 w-1/3 bg-surface-variant/30 rounded" />
+              <div className="space-y-1.5 pt-2">
+                <div className="h-3 w-full bg-surface-variant/20 rounded" />
+                <div className="h-3 w-4/5 bg-surface-variant/20 rounded" />
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Perspectives / Explore Section Skeleton */}
+      <div className="space-y-4">
+        <div className="space-y-1">
+          <div className="h-6 w-48 bg-surface-variant/40 rounded" />
+          <div className="h-4 w-72 bg-surface-variant/25 rounded" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => (
+            <div
+              key={i}
+              className="bg-surface p-5 rounded-2xl border border-outline-variant/30 space-y-4 min-h-[140px]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-surface-container-high shrink-0" />
+                <div className="space-y-1.5 flex-1">
+                  <div className="h-4 w-24 bg-surface-variant/40 rounded" />
+                  <div className="h-3 w-32 bg-surface-variant/20 rounded" />
+                </div>
+              </div>
+              <div className="h-3 w-full bg-surface-variant/20 rounded" />
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
-// SKELETON COLLECTION CONTENT: Simulates search filters and a beautiful grid of 2:3 ratio book covers
+// SKELETON COLLECTION CONTENT: Search bar + Filter chips + Book covers grid
 export function LibraryCollectionSkeleton() {
   return (
-    <div className="layout-page-content animate-pulse">
-      {/* Filtering Row Skeleton */}
-      <div className="bg-surface flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-8 p-4 border border-outline-variant/30 rounded-lg">
-        {/* Search Input Box Skeleton */}
-        <div className="h-10 bg-surface-variant/30 rounded w-full md:w-80" />
-        {/* Actions Skeletal Blocks */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="h-10 bg-surface-variant/30 rounded w-28" />
-          <div className="h-10 bg-surface-variant/30 rounded w-28" />
-          <div className="h-10 bg-surface-variant/30 rounded w-20" />
-          <div className="h-10 bg-surface-variant/30 rounded w-10" />
+    <div className="layout-page-content space-y-6 pt-4 animate-pulse">
+      {/* Search & Filter Bar Skeleton */}
+      <div className="bg-surface flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 p-4 border border-outline-variant/30 rounded-2xl shadow-xs">
+        <div className="h-10 bg-surface-container rounded-xl w-full md:w-80" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="h-9 bg-surface-container rounded-xl w-24" />
+          <div className="h-9 bg-surface-container rounded-xl w-24" />
+          <div className="h-9 bg-surface-container rounded-xl w-16" />
         </div>
       </div>
 
-      {/* Grid skeleton */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 sm:gap-8">
+      {/* Genre Pills Skeleton */}
+      <div className="flex items-center gap-2 overflow-x-hidden py-1">
+        {[20, 24, 18, 28, 22, 26].map((w, i) => (
+          <div
+            key={i}
+            className="h-7 bg-surface-container-low border border-outline-variant/20 rounded-full shrink-0"
+            style={{width: `${w * 4}px`}}
+          />
+        ))}
+      </div>
+
+      {/* Books Grid Skeleton */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 sm:gap-6">
         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(i => (
-          <div key={i} className="flex flex-col h-full space-y-3">
-            {/* Aspect 2/3 Book Cover skeleton */}
-            <div className="aspect-[2/3] bg-surface-container rounded-lg shadow-sm border border-outline-variant/10 w-full" />
-            {/* Metadata Text lines */}
-            <div className="space-y-1.5 pl-1">
-              <div className="h-4 bg-surface-variant/40 rounded w-5/6" />
-              <div className="h-3 bg-surface-variant/30 rounded w-1/2" />
+          <div key={i} className="flex flex-col space-y-2.5">
+            <div className="aspect-[2/3] bg-surface-container rounded-xl shadow-xs border border-outline-variant/20 w-full" />
+            <div className="space-y-1.5 px-0.5">
+              <div className="h-3.5 bg-surface-variant/40 rounded w-4/5" />
+              <div className="h-3 bg-surface-variant/25 rounded w-1/2" />
             </div>
           </div>
         ))}
@@ -140,7 +172,7 @@ interface LibraryMainSkeletonProps {
   tab?: 'overview' | 'collection';
 }
 
-// MAIN skeleton page that pieces together Header and Tab Content
+// MAIN skeleton page that seamlessly pieces together Header, Tabs, and Content
 export function LibraryMainSkeleton({
   tab = 'overview',
 }: LibraryMainSkeletonProps) {
@@ -148,7 +180,8 @@ export function LibraryMainSkeleton({
     <div className="flex-grow flex flex-col min-h-screen w-full">
       <div className="flex-1 flex flex-col min-w-0">
         <LibraryHeaderSkeleton />
-        <div className="pt-6">
+        <LibraryTabsSkeleton />
+        <div className="pt-4">
           {tab === 'overview' ? (
             <LibraryOverviewSkeleton />
           ) : (

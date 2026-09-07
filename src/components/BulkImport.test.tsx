@@ -3,6 +3,19 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import React from 'react';
 import BulkImport from './BulkImport';
 
+vi.mock('../lib/trpc', () => ({
+  trpc: {
+    gemini: {
+      extractBooksFromCsv: {
+        useMutation: () => ({
+          mutateAsync: vi.fn().mockResolvedValue({books: []}),
+          isPending: false,
+        }),
+      },
+    },
+  },
+}));
+
 describe('BulkImport', () => {
   const mockOnBooksExtracted = vi.fn();
   const mockSetIsExtracting = vi.fn();

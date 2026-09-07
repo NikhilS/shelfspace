@@ -4,7 +4,9 @@ import {
   useNavigate,
   useSearchParams,
   useLocation,
+  Link,
 } from 'react-router-dom';
+import {Sparkles, BookOpen, Wand2, Plus} from 'lucide-react';
 import {useAuth} from '../stores/authStore';
 import {auth, db, handleFirestoreError, OperationType} from '../firebase';
 import {uploadBase64Image} from '../services/db/storage';
@@ -41,7 +43,11 @@ import {LibrarySettingsModals} from './library/LibrarySettingsModals';
 import {BulkActionsBar} from './library/BulkActionsBar';
 import {ErrorBoundary} from '../components/ErrorBoundary';
 import {useDebug} from '../stores/debugStore';
-import {PageLoading} from '../components/PageLoading';
+import {
+  LibraryMainSkeleton,
+  LibraryOverviewSkeleton,
+  LibraryCollectionSkeleton,
+} from '../components/LibrarySkeletons';
 
 export default function LibraryView() {
   const {id} = useParams<{id: string}>();
@@ -300,7 +306,7 @@ export default function LibraryView() {
   const handleRefreshHero = async () => {
     if (!id || !library || isRefreshingHero) return;
     setIsRefreshingHero(true);
-    const toastId = toast.loading('Generating a fun & playful hero banner...');
+    const toastId = toast.loading('Generating library banner...');
     try {
       const url = await generateLibraryHeroImageMutation.mutateAsync({
         libraryName: library.name,
@@ -311,7 +317,7 @@ export default function LibraryView() {
         await updateDoc(doc(db, 'libraries', id), {
           heroImageUrl: storageUrl,
         });
-        toast.success('Hero image refreshed!', {id: toastId});
+        toast.success('Library banner updated!', {id: toastId});
       } else {
         toast.error('Failed to generate a new hero image.', {id: toastId});
       }
@@ -363,15 +369,8 @@ export default function LibraryView() {
     return undefined;
   }, [library, books, setDebugData, location.pathname]);
 
-  const isLibraryLoading = isLoading || (isBooksLoading && books.length === 0);
-
-  if (isLibraryLoading || !library) {
-    return (
-      <PageLoading
-        title="Opening the archives..."
-        subtitle="Verifying credentials, consulting the catalog, and preparing your collection."
-      />
-    );
+  if (!library || isLoading) {
+    return <LibraryMainSkeleton tab={filters.currentTab} />;
   }
 
   return (
@@ -391,6 +390,67 @@ export default function LibraryView() {
             />
           </ErrorBoundary>
 
+          {/* Sticky Library Sub-Navigation Bar */}
+          <div className="sticky top-16 z-20 bg-background/95 backdrop-blur-md border-b border-outline-variant/20 shadow-xs">
+            <div className="w-full max-w-[1200px] mx-auto px-4 sm:px-8 py-2 flex items-center justify-between gap-2">
+              {/* Tabs Switcher */}
+              <div className="flex items-center gap-1 sm:gap-1.5 p-1 bg-surface-container-low rounded-xl border border-outline-variant/30 text-xs font-sans font-medium shrink-0">
+                <button
+                  type="button"
+                  onClick={() => filters.setCurrentTab('overview')}
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    filters.currentTab === 'overview'
+                      ? 'bg-surface text-primary font-semibold shadow-xs'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Overview</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => filters.setCurrentTab('collection')}
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    filters.currentTab === 'collection'
+                      ? 'bg-surface text-primary font-semibold shadow-xs'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>All Books</span>
+                  <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-surface-container text-on-surface-variant">
+                    {isBooksLoading && books.length === 0
+                      ? library.bookCount !== undefined
+                        ? library.bookCount
+                        : '...'
+                      : books.length}
+                  </span>
+                </button>
+
+                <Link
+                  to={`/library/${id}/spruce-up`}
+                  className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface/50 transition-all"
+                  title="Shelf Care & Health"
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Shelf Care</span>
+                </Link>
+              </div>
+
+              {/* Add Books Action */}
+              {canEdit && (
+                <Link
+                  to={`/library/${id}/add`}
+                  className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl bg-primary text-on-primary hover:bg-primary/90 text-xs font-sans font-semibold transition-all shadow-xs shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Add Books</span>
+                </Link>
+              )}
+            </div>
+          </div>
+
           <div className="relative flex-grow flex flex-col pt-6">
             <AnimatePresence mode="wait">
               {filters.currentTab === 'overview' ? (
@@ -403,21 +463,25 @@ export default function LibraryView() {
                   className="flex-grow flex flex-col"
                 >
                   <ErrorBoundary name="Library Overview">
-                    <LibraryOverview
-                      books={books}
-                      library={library}
-                      user={user}
-                      pickOfTheDay={picker.pickOfTheDay}
-                      isGeneratingPick={picker.isGeneratingPick}
-                      generateNewPick={picker.generateNewPick}
-                      setCurrentTab={filters.setCurrentTab}
-                      setFilterGenre={filters.setFilterGenre}
-                      setIsFiltersOpen={filters.setIsFiltersOpen}
-                      selectGenreAndGoToCollection={
-                        filters.selectGenreAndGoToCollection
-                      }
-                      pickError={picker.error}
-                    />
+                    {isBooksLoading && books.length === 0 ? (
+                      <LibraryOverviewSkeleton />
+                    ) : (
+                      <LibraryOverview
+                        books={books}
+                        library={library}
+                        user={user}
+                        pickOfTheDay={picker.pickOfTheDay}
+                        isGeneratingPick={picker.isGeneratingPick}
+                        generateNewPick={picker.generateNewPick}
+                        setCurrentTab={filters.setCurrentTab}
+                        setFilterGenre={filters.setFilterGenre}
+                        setIsFiltersOpen={filters.setIsFiltersOpen}
+                        selectGenreAndGoToCollection={
+                          filters.selectGenreAndGoToCollection
+                        }
+                        pickError={picker.error}
+                      />
+                    )}
                   </ErrorBoundary>
                 </motion.div>
               ) : (
@@ -430,39 +494,43 @@ export default function LibraryView() {
                   className="flex-grow flex flex-col"
                 >
                   <ErrorBoundary name="Library Collection Shelf">
-                    <LibraryCollection
-                      libraryId={id!}
-                      books={books}
-                      sortedBooks={filters.sortedBooks}
-                      searchQuery={filters.searchQuery}
-                      setSearchQuery={filters.setSearchQuery}
-                      sortBy={filters.sortBy}
-                      setSortBy={filters.setSortBy}
-                      sortOrder={filters.sortOrder}
-                      setSortOrder={filters.setSortOrder}
-                      viewMode={filters.viewMode}
-                      setViewMode={filters.setViewMode}
-                      isFiltersOpen={filters.isFiltersOpen}
-                      setIsFiltersOpen={filters.setIsFiltersOpen}
-                      filterGenre={filters.filterGenre}
-                      setFilterGenre={filters.setFilterGenre}
-                      filterAuthor={filters.filterAuthor}
-                      setFilterAuthor={filters.setFilterAuthor}
-                      filterYearMin={filters.filterYearMin}
-                      setFilterYearMin={filters.setFilterYearMin}
-                      filterYearMax={filters.filterYearMax}
-                      setFilterYearMax={filters.setFilterYearMax}
-                      availableGenres={filters.availableGenres}
-                      availableAuthors={filters.availableAuthors}
-                      clearFilters={filters.clearFilters}
-                      canEdit={canEdit}
-                      selectedBooks={selection.selectedBooks}
-                      toggleBookSelection={selection.toggleBookSelection}
-                      toggleAllBooks={selection.toggleAllBooks}
-                      handleSort={filters.setSortBy}
-                      user={user}
-                      navigate={navigate}
-                    />
+                    {isBooksLoading && books.length === 0 ? (
+                      <LibraryCollectionSkeleton />
+                    ) : (
+                      <LibraryCollection
+                        libraryId={id!}
+                        books={books}
+                        sortedBooks={filters.sortedBooks}
+                        searchQuery={filters.searchQuery}
+                        setSearchQuery={filters.setSearchQuery}
+                        sortBy={filters.sortBy}
+                        setSortBy={filters.setSortBy}
+                        sortOrder={filters.sortOrder}
+                        setSortOrder={filters.setSortOrder}
+                        viewMode={filters.viewMode}
+                        setViewMode={filters.setViewMode}
+                        isFiltersOpen={filters.isFiltersOpen}
+                        setIsFiltersOpen={filters.setIsFiltersOpen}
+                        filterGenre={filters.filterGenre}
+                        setFilterGenre={filters.setFilterGenre}
+                        filterAuthor={filters.filterAuthor}
+                        setFilterAuthor={filters.setFilterAuthor}
+                        filterYearMin={filters.filterYearMin}
+                        setFilterYearMin={filters.setFilterYearMin}
+                        filterYearMax={filters.filterYearMax}
+                        setFilterYearMax={filters.setFilterYearMax}
+                        availableGenres={filters.availableGenres}
+                        availableAuthors={filters.availableAuthors}
+                        clearFilters={filters.clearFilters}
+                        canEdit={canEdit}
+                        selectedBooks={selection.selectedBooks}
+                        toggleBookSelection={selection.toggleBookSelection}
+                        toggleAllBooks={selection.toggleAllBooks}
+                        handleSort={filters.setSortBy}
+                        user={user}
+                        navigate={navigate}
+                      />
+                    )}
                   </ErrorBoundary>
                 </motion.div>
               )}

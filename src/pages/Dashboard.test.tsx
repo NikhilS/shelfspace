@@ -1,6 +1,7 @@
 import React from 'react';
 import {render, screen, fireEvent, waitFor} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import Dashboard from './Dashboard';
 import {useAuth} from '../stores/authStore';
@@ -74,7 +75,7 @@ vi.mock('firebase/firestore', async () => {
       });
       return () => {};
     }),
-    addDoc: vi.fn(),
+    addDoc: vi.fn().mockResolvedValue({id: 'newLibId'}),
     updateDoc: vi.fn(),
     doc: vi.fn(),
     getCountFromServer: vi.fn().mockResolvedValue({data: () => ({count: 0})}),
@@ -82,10 +83,28 @@ vi.mock('firebase/firestore', async () => {
 });
 
 describe('Dashboard', () => {
+  let queryClient: QueryClient;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    });
     document.body.innerHTML = '<div id="sidebar-actions-root"></div>';
   });
+
+  const renderDashboard = () =>
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
 
   it('renders loading state initially', () => {
     (
@@ -93,11 +112,7 @@ describe('Dashboard', () => {
     ).mockReturnValue({
       user: null,
     });
-    render(
-      <MemoryRouter>
-        <Dashboard />
-      </MemoryRouter>,
-    );
+    renderDashboard();
   });
 
   it('renders libraries when user is logged in', async () => {
@@ -106,11 +121,7 @@ describe('Dashboard', () => {
     ).mockReturnValue({
       user: {uid: 'user1', email: 'user@example.com'},
     });
-    render(
-      <MemoryRouter>
-        <Dashboard />
-      </MemoryRouter>,
-    );
+    renderDashboard();
     expect(await screen.findByText('Test Library')).toBeInTheDocument();
     expect(await screen.findByText('5 Volumes')).toBeInTheDocument();
   });
@@ -123,16 +134,12 @@ describe('Dashboard', () => {
     });
     (addDoc as import('vitest').Mock).mockResolvedValue({id: 'newLibId'});
 
-    render(
-      <MemoryRouter>
-        <Dashboard />
-      </MemoryRouter>,
-    );
+    renderDashboard();
 
     const createBtnInitial = await screen.findByText('Create Library');
     fireEvent.click(createBtnInitial);
     const input = await screen.findByPlaceholderText(
-      'Library Name (e.g. Private Study)',
+      /Give your library a name/i,
     );
     const createBtn = screen.getByText('Create Collection');
 
@@ -140,7 +147,7 @@ describe('Dashboard', () => {
     fireEvent.click(createBtn);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalled();
+      expect(addDoc).toHaveBeenCalled();
     });
   });
 });

@@ -1,10 +1,11 @@
-import React from 'react';
+import React, {useCallback} from 'react';
 import {Link} from 'react-router-dom';
 import {Book} from 'lucide-react';
 import {motion} from 'motion/react';
 import {Library} from '../../types';
 import {toTitleCase} from '../../lib/utils';
 import {useAuth} from '../../stores/authStore';
+import {useQueryClient} from '@tanstack/react-query';
 
 interface LibraryCardProps {
   lib: Library;
@@ -13,6 +14,28 @@ interface LibraryCardProps {
 
 export function LibraryCard({lib, index}: LibraryCardProps) {
   const {user} = useAuth();
+  const queryClient = useQueryClient();
+
+  const handleWarmup = useCallback(() => {
+    // 1. Preload JS chunk for LibraryView so Suspense never triggers
+    void import('../LibraryView');
+
+    // 2. Pre-seed TanStack Query cache for instant access check and header rendering
+    queryClient.setQueryData(['library', lib.id], lib);
+    if (user) {
+      const email = user.email?.toLowerCase();
+      const role =
+        lib.ownerId === user.uid
+          ? 'owner'
+          : (email && lib.access?.[email]) ||
+            (email && lib.access?.[user.email || '']) ||
+            'viewer';
+      queryClient.setQueryData(
+        ['libraryPermissions', lib.id, user.uid, email],
+        role,
+      );
+    }
+  }, [lib, user, queryClient]);
 
   return (
     <motion.div
@@ -25,7 +48,13 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
       }}
       className="h-full"
     >
-      <Link to={`/library/${lib.id}`} className="block h-full group">
+      <Link
+        to={`/library/${lib.id}`}
+        className="block h-full group"
+        onMouseEnter={handleWarmup}
+        onTouchStart={handleWarmup}
+        onFocus={handleWarmup}
+      >
         <div className="bg-surface-container-low rounded-lg overflow-hidden border border-transparent shadow-elevation-3 hover:shadow-elevation-3 hover:border-outline-variant/30 transition-all duration-300 flex flex-col h-full cursor-pointer">
           <div className="h-44 w-full overflow-hidden bg-surface-variant relative">
             {lib.heroImageUrl ? (

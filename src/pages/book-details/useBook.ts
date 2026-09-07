@@ -5,9 +5,6 @@ import {
   query,
   onSnapshot,
   orderBy,
-  writeBatch,
-  increment,
-  getDocs,
   updateDoc,
   serverTimestamp,
   addDoc,
@@ -19,6 +16,8 @@ export type {Book, BookDetailsPayload, FirestoreDate};
 import {useAuth} from '../../stores/authStore';
 import {parseGenres} from '../../lib/utils';
 import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query';
+
+import {deleteBookAtomic} from '../../services/db/books';
 
 export interface Review {
   id: string;
@@ -239,38 +238,8 @@ export function useBook(
     mutationFn: async () => {
       if (!libraryId || !bookId) return;
 
-      const batch = writeBatch(db);
-      batch.delete(doc(db, 'libraries', libraryId, 'books', bookId));
-      batch.delete(doc(db, 'libraries', libraryId, 'bookDetails', bookId));
-      batch.update(doc(db, 'libraries', libraryId), {
-        bookCount: increment(-1),
-        updatedAt: serverTimestamp(),
-      });
-
-      // Cleanup reviews (small scale deletion)
       try {
-        const reviewsRef = collection(
-          db,
-          'libraries',
-          libraryId,
-          'books',
-          bookId,
-          'reviews',
-        );
-        const reviewsSnap = await getDocs(reviewsRef);
-        reviewsSnap.forEach(revDoc => {
-          batch.delete(revDoc.ref);
-        });
-      } catch (e) {
-        handleFirestoreError(
-          e,
-          OperationType.GET,
-          `libraries/${libraryId}/books/${bookId}/reviews`,
-        );
-      }
-
-      try {
-        await batch.commit();
+        await deleteBookAtomic(libraryId, bookId);
       } catch (e) {
         handleFirestoreError(
           e,

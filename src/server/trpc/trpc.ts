@@ -3,12 +3,78 @@ import * as trpcExpress from '@trpc/server/adapters/express';
 import admin from 'firebase-admin';
 import {ApiKeyService} from '../../services/server/apiKeyService';
 import {LibraryService} from '../../services/server/libraryService';
+import {getAdminDb} from '../../services/server/firebaseAdmin';
+import {SUPERADMIN_EMAIL} from '../../constants/auth';
 
 export interface ContextUser {
   uid: string;
   email: string;
   authType: 'jwt' | 'api_key';
   apiKeyId?: string;
+}
+
+export {SUPERADMIN_EMAIL};
+
+interface CachedUserPerms {
+  perms: {isAppAllowed: boolean; isAdmin: boolean};
+  expiresAt: number;
+}
+const userPermsCache = new Map<string, CachedUserPerms>();
+const PERMS_CACHE_TTL_MS = 1000 * 60 * 3; // 3 minutes
+
+export async function checkUserPermissions(
+  email: string,
+): Promise<{isAppAllowed: boolean; isAdmin: boolean}> {
+  const normalizedEmail = email.toLowerCase().trim();
+  if (normalizedEmail === SUPERADMIN_EMAIL) {
+    return {isAppAllowed: true, isAdmin: true};
+  }
+
+  const now = Date.now();
+  const cached = userPermsCache.get(normalizedEmail);
+  if (cached && cached.expiresAt > now) {
+    return cached.perms;
+  }
+
+  try {
+    let db:
+      | FirebaseFirestore.Firestore
+      | {doc: (path: string) => {get: () => Promise<unknown>}};
+    try {
+      db = getAdminDb();
+    } catch {
+      db = admin.firestore();
+    }
+    const adminDoc = await (
+      db.doc(`appSettings/allowlist/users/${normalizedEmail}`) as unknown as {
+        get: () => Promise<FirebaseFirestore.DocumentSnapshot>;
+      }
+    ).get();
+
+    let result = {isAppAllowed: false, isAdmin: false};
+    if (adminDoc.exists) {
+      const data = adminDoc.data();
+      result = {
+        isAppAllowed: true,
+        isAdmin: data?.role === 'admin',
+      };
+    }
+
+    // Cache the result
+    userPermsCache.set(normalizedEmail, {
+      perms: result,
+      expiresAt: now + PERMS_CACHE_TTL_MS,
+    });
+    return result;
+  } catch (err) {
+    console.error(
+      'Error verifying allowlist in TRPC context for email:',
+      normalizedEmail,
+      err,
+    );
+  }
+
+  return {isAppAllowed: false, isAdmin: false};
 }
 
 export const createContext = async ({
@@ -37,8 +103,9 @@ export const createContext = async ({
         authType: 'api_key',
         apiKeyId: validatedKey.apiKeyId,
       };
-      isAppAllowed = true;
-      isAdmin = true;
+      const perms = await checkUserPermissions(validatedKey.email);
+      isAppAllowed = perms.isAppAllowed;
+      isAdmin = perms.isAdmin;
     }
   } else if (authHeader?.startsWith('Bearer ')) {
     try {
@@ -50,8 +117,9 @@ export const createContext = async ({
           email: decoded.email,
           authType: 'jwt',
         };
-        isAppAllowed = true;
-        isAdmin = true;
+        const perms = await checkUserPermissions(decoded.email);
+        isAppAllowed = perms.isAppAllowed;
+        isAdmin = perms.isAdmin;
       }
     } catch (e) {
       console.error('Error verifying JWT token in TRPC context', e);

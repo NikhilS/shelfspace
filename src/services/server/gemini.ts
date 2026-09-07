@@ -88,16 +88,10 @@ export async function generateClusterNames(
   clusters: {id: number; books: {title: string; author?: string}[]}[],
 ): Promise<Record<number, string>> {
   try {
-    const prompt = `I have clustered a library of books into thematic constellations. For each cluster, I will provide a list of books. 
-Your task is to provide a short, captivating, and thematic name for each cluster (1 to 3 words max). 
-
-Respond ONLY with a valid JSON object.
-Use the exact integer ID as the string key. 
-Example Output:
-{
-  "0": "Sci-Fi Epics",
-  "1": "High Fantasy"
-}
+    const prompt = `I have clustered a reader's library into thematic constellations based on semantic embeddings.
+For each cluster below, analyze the titles and authors to identify the shared literary genre, aesthetic, or philosophical theme.
+Provide a captivating, evocative, and concise name for each cluster (1 to 3 words max).
+Avoid generic names like "Books" or "Novels". Favor distinctive descriptors (e.g., "Cosmic Dread", "Golden Age Sleuths", "Magical Realism", "Stoic Philosophy", "Cyberpunk Dystopia").
 
 Clusters:
 ${clusters
@@ -115,11 +109,31 @@ ${clusters
 `;
 
     const response = await generateContentWithLimiter({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.8-flash',
       contents: prompt,
       config: {
+        systemInstruction:
+          'You are an expert literary curator and bibliographer specializing in thematic classification and curated reading collections.',
         responseMimeType: 'application/json',
-        temperature: 0.7,
+        responseSchema: {
+          type: Type.ARRAY,
+          description: 'List of named clusters',
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: {
+                type: Type.INTEGER,
+                description: 'The exact cluster ID provided in the input',
+              },
+              name: {
+                type: Type.STRING,
+                description: 'Concise thematic name (1 to 3 words max)',
+              },
+            },
+            required: ['id', 'name'],
+          },
+        },
+        temperature: 0.4,
       },
     });
 
@@ -128,14 +142,22 @@ ${clusters
           .replace(/```json/gi, '')
           .replace(/```/g, '')
           .trim()
-      : '{}';
-    const rawResult = JSON.parse(text);
+      : '[]';
+    const parsed = JSON.parse(text);
 
     const result: Record<number, string> = {};
-    for (const key of Object.keys(rawResult)) {
-      const numericMatch = key.match(/\d+/);
-      if (numericMatch) {
-        result[parseInt(numericMatch[0], 10)] = rawResult[key];
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (typeof item.id === 'number' && typeof item.name === 'string') {
+          result[item.id] = item.name.trim();
+        }
+      }
+    } else if (parsed && typeof parsed === 'object') {
+      for (const key of Object.keys(parsed)) {
+        const numericMatch = key.match(/\d+/);
+        if (numericMatch) {
+          result[parseInt(numericMatch[0], 10)] = String(parsed[key]).trim();
+        }
       }
     }
 
@@ -210,22 +232,32 @@ export async function extractBooksFromImage(
     }
     const extractionSchema = {
       type: Type.ARRAY,
+      description: 'Array of detected books on the shelf or cover',
       items: {
         type: Type.OBJECT,
         properties: {
-          title: {type: Type.STRING},
-          author: {type: Type.STRING},
+          title: {type: Type.STRING, description: 'Book title'},
+          author: {type: Type.STRING, description: 'Author or editor name'},
           isbn: {
             type: Type.STRING,
-            description: 'ISBN if visible, otherwise null',
+            description: 'ISBN-10 or ISBN-13 if legible, otherwise null',
           },
         },
         required: ['title', 'author'],
       },
     };
 
-    const prompt =
-      "Extract a list of all the books visible on this bookshelf. Return ONLY a JSON array of objects. Each object has a 'title' string, an 'author' string, and an 'isbn' string (if visible on the spine or back cover, otherwise null).";
+    const prompt = `Analyze this image of physical books (such as a bookshelf, book stack, or book covers) with high optical precision.
+Detect and transcribe every distinct book clearly visible in the image (both vertically shelved and horizontally stacked books).
+
+For each book detected:
+1. "title": The complete, clean title of the book. Use standard capitalization. Exclude extraneous promotional quotes, publisher logos, or price stickers.
+2. "author": The primary author, co-author, or editor. Do NOT include publisher imprints (such as Penguin, Vintage, Harper, Tor, Oxford).
+3. "isbn": If an ISBN-10 or ISBN-13 is legibly printed or visible as a barcode on the spine or cover, extract it as clean digits; otherwise return null.
+
+Important Directives:
+- Transcribe in natural reading order (left to right, top to bottom where possible).
+- Do not invent or hallucinate titles that cannot be deciphered with confidence.`;
 
     const generateCall = async (model: string) => {
       return generateContentWithLimiter({
@@ -242,6 +274,8 @@ export async function extractBooksFromImage(
           ],
         },
         config: {
+          systemInstruction:
+            'You are a specialized computer vision and optical recognition system for books and library collections. Your goal is to accurately transcribe book titles, author names, and visible ISBNs from shelf or cover photographs.',
           responseMimeType: 'application/json',
           responseSchema: extractionSchema,
         },
@@ -255,39 +289,39 @@ export async function extractBooksFromImage(
 
     let response;
     try {
-      logger.info('Calling Gemini 3.1 Pro for book extraction...');
+      logger.info('Calling Gemini 3.8 Flash for book extraction...');
       response = await Promise.race([
-        generateCall('gemini-3.1-pro-preview'),
-        timeoutPromise(30000),
+        generateCall('gemini-3.8-flash'),
+        timeoutPromise(25000),
       ]);
-      logger.info('Gemini 3.1 Pro response received.');
+      logger.info('Gemini 3.8 Flash response received.');
     } catch (e: unknown) {
       if (isApiKeyError(e)) {
         throw e;
       }
       const isTimeout = e instanceof Error && e.message === 'API_TIMEOUT';
       logger.warn(
-        `Gemini 3.1 Pro ${isTimeout ? 'timed out' : 'failed'}, retrying with flash: ${e instanceof Error ? e.message : String(e)}`,
+        `Gemini 3.8 Flash ${isTimeout ? 'timed out' : 'failed'}, retrying with Gemini 3.1 Pro: ${e instanceof Error ? e.message : String(e)}`,
       );
       try {
         response = await Promise.race([
-          generateCall('gemini-3.5-flash'),
-          timeoutPromise(20000),
+          generateCall('gemini-3.1-pro-preview'),
+          timeoutPromise(30000),
         ]);
-        logger.info('Gemini 3.5 Flash response received.');
+        logger.info('Gemini 3.1 Pro response received.');
       } catch (err: unknown) {
         if (isApiKeyError(err)) {
           throw err;
         }
         logger.warn(
-          'Gemini 3.5 Flash failed, falling back to Gemini 3.5 Flash backup: ' +
+          'Gemini 3.1 Pro failed, retrying with Gemini 3.8 Flash backup: ' +
             (err instanceof Error ? err.message : String(err)),
         );
         response = await Promise.race([
-          generateCall('gemini-3.5-flash'),
-          timeoutPromise(20000),
+          generateCall('gemini-3.8-flash'),
+          timeoutPromise(25000),
         ]);
-        logger.info('Gemini 3.5 Flash backup response received.');
+        logger.info('Gemini 3.8 Flash backup response received.');
       }
     }
 
@@ -356,37 +390,64 @@ export async function extractBooksFromCsv(csvText: string): Promise<
     const rows = parsed.data as string[][];
     if (rows.length === 0) return [];
 
-    const sampleRows = rows.slice(0, 3);
+    const sampleRows = rows.slice(0, 5);
 
     const response = await generateContentWithLimiter({
-      model: 'gemini-3.5-flash',
-      contents: `You are a data mapping assistant. I am providing you with the first few rows of a CSV file parsed as JSON arrays.
+      model: 'gemini-3.8-flash',
+      contents: `Analyze these sample rows from an uploaded book collection CSV file (parsed as an array of rows):
       
-      CSV Sample Rows:
-      ${JSON.stringify(sampleRows, null, 2)}
-      
-      Your task is to analyze these rows and determine the structure of the CSV:
-      1. Does the first row appear to be a header row?
-      2. What are the 0-based column indices for the following book attributes?
-         - title (required. name of the book, usually the most prominent text)
-         - author (required. author or creator of the book)
-         - isbn (optional. prefer ISBN13 if multiple exist)
-         - format (optional. binding, format - e.g.. 'physical', 'digital', 'paperback', 'kindle')
+CSV Sample Rows:
+${JSON.stringify(sampleRows, null, 2)}
 
-      If an optional attribute is not present in any column, set its index to null.
-      
-      Return ONLY a JSON object exactly matching this schema, without markdown formatting:
-      {
-        "hasHeaderRow": boolean,
-        "columnMap": {
-          "title": number | null,
-          "author": number | null,
-          "isbn": number | null,
-          "format": number | null
-        }
-      }`,
+Your task is to inspect the spreadsheet layout and map the columns:
+1. Determine if row 0 is a header row (containing labels like 'Title', 'Author', 'ISBN', 'Binding', 'Format', 'Year', etc.).
+2. Identify the 0-based column index for:
+   - title: (required) Main title of the book. Common column names: 'Title', 'Book Title', 'Work', 'Name'.
+   - author: (required) Creator or writer name. Common column names: 'Author', 'Authors', 'Creator', 'Writer', 'Author l-f'.
+   - isbn: (optional) Numeric identifier. Common column names: 'ISBN', 'ISBN13', 'ISBN10', 'Barcode'. Look for 10 or 13-digit numbers.
+   - format: (optional) Book binding or digital type. Common column names: 'Format', 'Binding', 'Type', 'Media'. Look for values like 'Paperback', 'Hardcover', 'Kindle', 'Ebook'.
+
+If an optional attribute (isbn, format) is not found in any column, set its column index to null.`,
       config: {
+        systemInstruction:
+          'You are an intelligent data ingestion assistant specializing in book spreadsheets and library exports (such as Goodreads, StoryGraph, Calibre, LibraryThing, and custom CSV catalogs).',
         responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          description: 'CSV column mapping configuration',
+          properties: {
+            hasHeaderRow: {
+              type: Type.BOOLEAN,
+              description: 'Whether the first row contains column headers',
+            },
+            columnMap: {
+              type: Type.OBJECT,
+              properties: {
+                title: {
+                  type: Type.INTEGER,
+                  description: '0-based column index of the book title',
+                },
+                author: {
+                  type: Type.INTEGER,
+                  description: '0-based column index of the author',
+                },
+                isbn: {
+                  type: Type.INTEGER,
+                  description:
+                    '0-based column index of ISBN if present, otherwise null',
+                },
+                format: {
+                  type: Type.INTEGER,
+                  description:
+                    '0-based column index of binding/format if present, otherwise null',
+                },
+              },
+              required: ['title', 'author'],
+            },
+          },
+          required: ['hasHeaderRow', 'columnMap'],
+        },
+        temperature: 0.1,
       },
     });
 
@@ -476,17 +537,28 @@ export async function generateLibraryRecommendations(
     const bookList = limitedBooks
       .map(b => `"${b.title}" by ${b.author}`)
       .join('\n');
-    const prompt = `Act as an expert librarian. Here is a list of books in my library:
-    
+    const prompt = `Here is a catalog of books from a reader's personal library:
+
 ${bookList}
 
-Based on this reading history, please recommend 5 new books that I might enjoy. 
-For each recommendation, provide the Title, Author, and a brief 2-3 sentence explanation of WHY it is a good fit based on my existing library. 
-Format the response with simple markdown (use ## for the book titles).`;
+Based on this reader's interests, recurring genres, narrative styles, pacing, and philosophical themes, recommend 5 captivating new books to expand their horizons.
+
+CRITICAL DIRECTIVES:
+1. STRICTLY DO NOT recommend any book that is already listed in the reader's library above.
+2. Recommend exceptional, distinctive titles (a thoughtful blend of acclaimed literary works, modern masterworks, and hidden gems).
+3. For each book, use this clear markdown format:
+   ## [Book Title] by [Author]
+   **Why It Fits Your Library**: 2-3 sentences explaining the exact thematic, stylistic, or intellectual resonance with specific books in their collection.
+   **Key Themes**: 3-4 comma-separated tags (e.g., *Speculative Fiction, Found Family, Moral Ambiguity*).`;
 
     const response = await generateContentWithLimiter({
-      model: 'gemini-3.1-pro-preview',
+      model: 'gemini-3.8-flash',
       contents: prompt,
+      config: {
+        systemInstruction:
+          'You are an erudite, insightful literary curator and librarian who recommends books with nuance, depth, and precision.',
+        temperature: 0.6,
+      },
     });
 
     return (
@@ -508,22 +580,28 @@ export async function generateBookInsights(
   switch (type) {
     case 'summary':
     case 'synopsis':
-      prompt = `Act as an expert librarian and literary critic. Provide a compelling, spoiler-free summary of the book "${title}" by ${author}. 
-        Focus on the premise, the main themes, the setting, and the general tone of the book. 
-        Why might someone want to read this? Keep it concise (around 2-3 paragraphs) and engaging. Format with simple markdown (use ## for headings if needed).`;
+      prompt = `Provide a compelling, spoiler-free literary summary of "${title}" by ${author}.
+Focus on the core premise, central conflict, primary themes, setting, and narrative tone.
+Conclude with what kind of reader would find this work most rewarding. Keep it to 2-3 engaging, well-crafted paragraphs. Format with clean markdown (use ## for subheadings if appropriate).`;
       break;
     case 'author_bio':
-      prompt = `Act as an expert librarian. Provide a concise biographical summary of the author ${author}, who wrote "${title}". 
-        Focus on their career, notable works, writing style, and any major awards. Keep it to 1-2 paragraphs. Format with simple markdown if needed, but do not use headings.`;
+      prompt = `Provide an authoritative biographical profile of ${author}, focusing on their literary career, artistic philosophy, major themes across their bibliography, and critical recognition or awards.
+Highlight the context surrounding "${title}". Keep it to 1-2 focused, elegant paragraphs without introductory or conversational filler.`;
       break;
     case 'catchup':
-      prompt = `I am currently reading or have previously read "${title}" by ${author} but I need a refresher. 
-        Provide a comprehensive plot summary INCLUDING ALL MAJOR SPOILERS, twists, and the ending. 
-        Break it down by major plot points or acts. This is for someone who wants to know exactly what happens without reading it, or needs to remember the details before reading a sequel. Format with simple markdown (use ## for headings, bullet points for key events).`;
+      prompt = `Provide a comprehensive, spoiler-inclusive narrative refresher of "${title}" by ${author} for a reader preparing for a sequel or reread.
+Structure chronologically into:
+- **Setup & Inciting Incident**
+- **Key Plot Developments & Character Arcs**
+- **Major Plot Twists & Revelations**
+- **Climax & Ending Resolution**
+Detail all major twists, deaths, alliances, and the exact ending. Use concise markdown with bullet points for readability.`;
       break;
     case 'similar':
-      prompt = `I enjoyed reading "${title}" by ${author}. As an expert librarian, recommend 3-5 other books that I might like. 
-        For each recommendation, provide the Title, Author, and a brief 1-2 sentence explanation of WHY it is similar to "${title}" (e.g., similar themes, writing style, setting, or character dynamics). Format with simple markdown (use ## for the book titles).`;
+      prompt = `Recommend 3 to 5 books with strong thematic, stylistic, or emotional kinship to "${title}" by ${author}.
+For each recommendation, format with:
+## [Book Title] by [Author]
+**Why It Resonates**: 2-3 sentences detailing the specific points of connection (e.g., world-building, psychological depth, narrative voice, or moral dilemmas).`;
       break;
   }
 
@@ -531,15 +609,12 @@ export async function generateBookInsights(
   while (retries > 0) {
     try {
       const response = await generateContentWithLimiter({
-        model:
-          type === 'catchup'
-            ? 'gemini-3.5-flash'
-            : retries > 1
-              ? 'gemini-3.1-pro-preview'
-              : 'gemini-3.5-flash',
+        model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
-          systemInstruction: 'You are an expert librarian.',
+          systemInstruction:
+            'You are an insightful literary scholar, critic, and expert librarian who provides rich, accurate, and compelling book analyses.',
+          temperature: type === 'catchup' ? 0.3 : 0.5,
         },
       });
 
@@ -570,17 +645,18 @@ export async function generateLibraryHeroImage(
 ): Promise<string | null> {
   try {
     const response = await generateContentWithLimiter({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-3.1-flash-image',
       contents: {
         parts: [
           {
-            text: `Beautiful and stunning watercolor anime-style library-themed hero banner for a book collection named '${libraryName}'. Cozy Ghibli-inspired aesthetic, warm glowing sunbeams filtering through giant wooden windows, towering bookshelves filled with colorful adventure and fantasy books, soft whimsical light dust motes, magical and comforting atmosphere, masterpiece scene art style, strictly no text or characters of alphabet on the image.`,
+            text: `Breathtaking cozy watercolor and gouache storybook illustration of an enchanting personal library sanctuary named '${libraryName}'. Sunlit reading nook with arched wooden mullioned windows, warm golden sunbeams streaming across towering shelves overflowing with beautifully bound books, potted houseplants, a comfortable leather armchair, soft atmospheric lighting and floating dust motes. Peaceful Studio Ghibli inspired aesthetic. Masterpiece digital art, vibrant warm palette. Strictly no text, no letters, no words, no alphabet characters anywhere in the artwork.`,
           },
         ],
       },
       config: {
         imageConfig: {
           aspectRatio: '16:9',
+          imageSize: '1K',
         },
       },
     });
@@ -621,56 +697,76 @@ export async function getPickOfTheDay(
           `${i + 1}. "${b.title || 'Unknown Title'}" by ${b.author || 'Unknown Author'}`,
       )
       .join('\n');
-    const prompt = `Act as an expert librarian. Here is a sample of books from my library:
+    const prompt = `Here is a sample of books from a reader's personal library:
 
 ${bookList}
 
-Based on the themes, genres, and styles of these books, please recommend 10 non-obvious, deeply engaging new books that I would enjoy reading. 
-Think like an expert librarian who suggests gems that are highly relevant but not necessarily mainstream or obvious.
+Based on the underlying themes, literary voices, and conceptual styles across these titles, recommend 10 non-obvious, deeply rewarding books that this reader would love.
+Think like an expert library curator discovering unexpected gems and profound thematic bridges.
 
 CRITICAL RULES:
-1. The books you recommend MUST NOT be in the list above.
+1. The recommended books MUST NOT be in the reader's current list above.
 2. Provide exactly 10 distinct recommendations.
+3. For each book, explain in 1-2 insightful sentences WHY it is a superb recommendation, highlighting the surprising or complementary connection to their taste.`;
 
-Explain in 1-2 sentences WHY each specific book is a great recommendation based on my current library and interests, highlighting the unexpected or complementary connections.
-
-Return ONLY a JSON array of 10 objects. Do not include markdown formatting like \`\`\`json. Each object in the array MUST have:
-- title (the book title)
-- author (the book author)
-- reason (your 1-2 sentence explanation)`;
+    const pickOfTheDaySchema = {
+      type: Type.ARRAY,
+      description: 'List of 10 curated book recommendations',
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: {type: Type.STRING, description: 'Book title'},
+          author: {type: Type.STRING, description: 'Book author'},
+          reason: {
+            type: Type.STRING,
+            description: '1-2 sentence curated rationale',
+          },
+        },
+        required: ['title', 'author', 'reason'],
+      },
+    };
 
     let response;
     try {
       response = await generateContentWithLimiter({
-        model: 'gemini-3.5-flash',
+        model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
+          systemInstruction:
+            'You are a distinguished literary curator and reader advisory expert who recommends surprising, high-resonance literature.',
           responseMimeType: 'application/json',
+          responseSchema: pickOfTheDaySchema,
+          temperature: 0.7,
         },
       });
     } catch (e: unknown) {
       if (isApiKeyError(e)) {
         throw e;
       }
-      console.warn('Fallback to pro model due to error in pick of the day:', e);
+      console.warn('Fallback to Gemini 3.1 Pro for pick of the day:', e);
       try {
         response = await generateContentWithLimiter({
           model: 'gemini-3.1-pro-preview',
           contents: prompt,
           config: {
+            systemInstruction:
+              'You are a distinguished literary curator and reader advisory expert who recommends surprising, high-resonance literature.',
             responseMimeType: 'application/json',
+            responseSchema: pickOfTheDaySchema,
+            temperature: 0.7,
           },
         });
       } catch (err: unknown) {
         if (isApiKeyError(err)) {
           throw err;
         }
-        console.warn('Fallback to 3.5 flash model:', err);
+        console.warn('Fallback retry with Gemini 3.8 Flash model:', err);
         response = await generateContentWithLimiter({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-3.8-flash',
           contents: prompt,
           config: {
             responseMimeType: 'application/json',
+            responseSchema: pickOfTheDaySchema,
           },
         });
       }
@@ -727,31 +823,44 @@ export async function classifyBooks(
       context: b.synopsis ? b.synopsis.substring(0, 300) : '',
     }));
 
-    const prompt = `You are an expert librarian specializing in book classification.
-Classify the following batch of ${batch.length} books into the most appropriate BISAC Subject Headings.
-Use only established BISAC categories (e.g., FICTION / Mystery & Detective / General, BIOGRAPHY & AUTOBIOGRAPHY / Historical).
+    const prompt = `Classify the following batch of ${batch.length} books into the most appropriate official BISAC (Book Industry Standards and Communications) Subject Headings.
+Use only established, standard BISAC categories (e.g., "FICTION / Mystery & Detective / General", "BIOGRAPHY & AUTOBIOGRAPHY / Historical", "SCIENCE FICTION / Hard Science Fiction").
 
-Rules:
-1. Provide 1 to 3 relevant BISAC categories per book.
-2. Ensure categories are formatted correctly according to standard BISAC naming (Levels separated by ' / ').
-3. Respond ONLY with a valid JSON array of objects.
-
-Format:
-[
-  {
-    "id": "original_id",
-    "genres": ["BISAC Category 1", "BISAC Category 2"]
-  }
-]
+Directives:
+1. Provide 1 to 3 relevant BISAC categories for each book.
+2. Format hierarchical levels cleanly separated by ' / '.
+3. Preserve the exact provided unique book "id" for each classification.
 
 Books to classify:
 ${JSON.stringify(booksPromptData, null, 2)}`;
 
     const response = await generateContentWithLimiter({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.8-flash',
       contents: prompt,
       config: {
+        systemInstruction:
+          'You are an expert library cataloger and bibliographer specializing in official BISAC Subject Headings.',
         responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          description: 'Classified books with BISAC genres',
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: {
+                type: Type.STRING,
+                description: 'The exact input ID of the book',
+              },
+              genres: {
+                type: Type.ARRAY,
+                items: {type: Type.STRING},
+                description: '1 to 3 official BISAC categories',
+              },
+            },
+            required: ['id', 'genres'],
+          },
+        },
+        temperature: 0.1,
       },
     });
 
@@ -815,6 +924,7 @@ export async function batchGeminiOperation<T>(
   books: {id: string; title: string; author: string; synopsis?: string}[],
   prompt: string,
   schema: unknown,
+  systemInstruction?: string,
 ): Promise<T | null> {
   try {
     const fullPrompt = `${prompt}\n\nBooks to analyze:\n${JSON.stringify(
@@ -829,9 +939,10 @@ export async function batchGeminiOperation<T>(
     )}`;
 
     const response = await generateContentWithLimiter({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.8-flash',
       contents: fullPrompt,
       config: {
+        systemInstruction,
         responseMimeType: 'application/json',
         responseSchema: schema,
         temperature: 0.2,
@@ -917,20 +1028,21 @@ export async function extractBookGeoMetadataBatch(
     required: ['enrichment'],
   };
 
-  const prompt = `You are a peerless, academic literary geographer with deep encyclopedic knowledge of world literature, non-fiction contexts, and global histories.
-Your task is to analyze details of the provided list of books and determine exactly where the setting takes place on planet Earth for each book.
+  const prompt = `Analyze details of the provided list of books and determine the exact real-world geographical settings on Earth for each book.
 
-System Directives:
-1. For each book, identify the primary locations (cities, regions, countries) where the actions, histories, or settings of the book take place.
-2. STRICTLY CAP extraction to NO MORE than 5 locations per book. Select only the most critical settings.
-3. Every location NAME must be globally unambiguous (e.g., 'Paris, France' instead of 'Paris', 'Springfield, IL, USA' instead of 'Springfield').
-4. If a book is set in a fictional realm (Middle-earth, Westeros, Narnia), outer space / sci-fi galaxies (e.g. 'Project Hail Mary'), or is an abstract academic, scientific or mathematical textbook, set 'isNonEarth' to true and return an empty locations list for that book.
-5. Map each parsed book specifically to the provided unique id in the output JSON.`;
+Directives:
+1. For each book, identify up to 5 critical locations (cities, states/provinces, regions, or countries) where the primary narrative or historical actions occur.
+2. Every location "name" must be fully-qualified and globally unambiguous (e.g., "Kyoto, Japan", "Oxford, Oxfordshire, United Kingdom", "Concord, MA, USA").
+3. Set "adminLevel" to "city", "state", "country", or "region".
+4. For each location, provide a concise rationale (15 words max) explaining its narrative or historical significance.
+5. If a book is set entirely in a fictional realm (e.g., Middle-earth, Westeros, Narnia), outer space / sci-fi alien worlds, or is an abstract academic/mathematical work without an earthly setting, set "isNonEarth" to true and return an empty locations array.
+6. Map each parsed book specifically to the exact "id" provided in the input.`;
 
   return batchGeminiOperation<BatchExtractedGeoResponse>(
     books,
     prompt,
     batchSchema,
+    'You are an authoritative literary geographer with deep knowledge of world literature, non-fiction contexts, and global historical geography.',
   );
 }
 
@@ -997,23 +1109,24 @@ export async function extractBookTemporalMetadataBatch(
     required: ['enrichment'],
   };
 
-  const prompt = `You are an academic bibliophile historian with encyclopedic knowledge of literature, historical timelines, and world histories.
-Your task is to analyze the provided list of books and determine the exact historical setting/era representing the plot or context of each book on earth.
+  const prompt = `Analyze the provided list of books and determine the chronological historical setting and era for each book on Earth.
 
-System Directives:
-1. For each book, identify if it possesses a real-world Earth historical setting.
-2. If a book is abstract academic, mathematics, modern theory, sci-fi (set in future epochs or space), or high fantasy (set in Middle-earth, Westeros, Narnia, or custom-lore realms), set isNonHistorical to true.
-3. For historical/historical-context books, determine the approximate startYear and endYear representing the core plot setting.
-4. Rule 1 (100-Year Spanning Cap): If a book covers a broad span (e.g., a massive biography/history), isolate the single most definitive or dramatic 100-year window (e.g., Pax Romana, Viking expansion) and cap the gap (endYear - startYear) to be NO MORE than 100 years.
-5. Rule 2 (Chronological Grounding): Years must represent real-world calendar parameters. BC/BCE is expressed as a negative integer.
-6. Rule 3 (Year Range Constraints): Years MUST be between -10000 and 2100. Any book set primarily outside this epoch must be marked as isNonHistorical: true.
-7. Rule 4 (Fictional/Abstract Exclusion): Science fiction, high fantasy, and abstract textbooks with no real setting must be marked isNonHistorical: true with other fields omitted.
-8. Map each parsed book precisely to the provided unique id in the output JSON.`;
+Directives:
+1. Identify if the book possesses a real-world Earth timeline or historical backdrop.
+2. If the book is set in an entirely fictional realm (fantasy), far-future or deep-space setting (sci-fi), or is an abstract technical manual with no real-world time setting, mark "isNonHistorical: true" and omit startYear, endYear, eraName, and rationale.
+3. For books with real Earth timelines:
+   - "startYear": Integer representing the approximate starting year of the core events (use negative values for BCE/BC, e.g. -44).
+   - "endYear": Integer representing the approximate ending year. The span between startYear and endYear must NOT exceed 100 years. For sweeping histories, isolate the definitive period.
+   - "eraName": Concise historical era name (e.g., "Late Antiquity", "Italian Renaissance", "Victorian Era", "Cold War Era", "Jazz Age").
+   - "rationale": Concise explanation (15 words max) of the temporal context.
+4. Years MUST be between -10000 and 2100.
+5. Map each book specifically to its unique input "id".`;
 
   const result = await batchGeminiOperation<BatchTemporalResponse>(
     books,
     prompt,
     batchSchema,
+    'You are an academic bibliophile historian with encyclopedic knowledge of world history, literary chronology, and historical eras.',
   );
 
   if (result?.enrichment) {

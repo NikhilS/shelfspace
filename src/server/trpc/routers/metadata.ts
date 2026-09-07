@@ -1,11 +1,10 @@
 import {z} from 'zod';
-import {
-  router,
-  protectedProcedure,
-  verifyLibraryWriteAccess,
-} from '../trpc';
+import {router, protectedProcedure, verifyLibraryWriteAccess} from '../trpc';
 import {MetadataRegistry} from '../../../services/server/metadata';
 import {MetadataKey} from '../../../types/metadata';
+import {ENRICHMENT_CONSTANTS} from '../../../constants/enrichment';
+import {EnrichmentService} from '../../../services/server/enrichmentService';
+import {EnrichmentTriggerInput} from '../../../schemas/libraryApi';
 
 export const metadataRouter = router({
   enrichCreate: protectedProcedure
@@ -48,35 +47,39 @@ export const metadataRouter = router({
         : activeProviders;
 
       const results: Record<string, unknown>[] = [];
-      const CHUNK_SIZE = 10;
+      const CHUNK_SIZE = ENRICHMENT_CONSTANTS.GEMINI_CHUNK_SIZE;
 
       for (let i = 0; i < books.length; i += CHUNK_SIZE) {
         const bookChunk = books.slice(i, i + CHUNK_SIZE);
+        const chunkResults: Record<string, Record<string, unknown>> = {};
+        for (const book of bookChunk) {
+          chunkResults[book.id] = {id: book.id};
+        }
 
-        await Promise.all(
-          bookChunk.map(async book => {
-            const enrichedMetadata: Record<string, unknown> = {};
-
-            await Promise.allSettled(
-              providersToRun.map(async provider => {
-                try {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const res = await provider.fetch(book as any);
-                  if (res) {
-                    enrichedMetadata[provider.getKey()] = res;
+        await Promise.allSettled(
+          providersToRun.map(async provider => {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const batchRes = await provider.bulkFetch(bookChunk as any);
+              if (batchRes) {
+                for (const [bookId, val] of Object.entries(batchRes)) {
+                  if (val && chunkResults[bookId]) {
+                    chunkResults[bookId][provider.getKey()] = val;
                   }
-                } catch (err) {
-                  console.error(
-                    `Provider ${provider.getKey()} failed on create for book ${book.id}:`,
-                    err,
-                  );
                 }
-              }),
-            );
-
-            results.push({id: book.id, ...enrichedMetadata});
+              }
+            } catch (err) {
+              console.error(
+                `Provider ${provider.getKey()} failed in bulkFetch on create for chunk:`,
+                err,
+              );
+            }
           }),
         );
+
+        for (const book of bookChunk) {
+          results.push(chunkResults[book.id]);
+        }
       }
 
       return {status: 'success', results};
@@ -104,34 +107,15 @@ export const metadataRouter = router({
       const {providerKey, books, libraryId} = input;
       await verifyLibraryWriteAccess(libraryId, ctx.user);
 
-      console.log(
-        `[TRPC Metadata] Bulk fetch requested for ${providerKey} over ${books.length} books`,
+      return EnrichmentService.triggerBatchEnrichment(
+        ctx.user.uid,
+        ctx.user.email,
+        {
+          libraryId,
+          bookIds: books.map(b => b.id),
+          enrichmentType:
+            providerKey as EnrichmentTriggerInput['enrichmentType'],
+        },
       );
-
-      const provider = MetadataRegistry.getInstance().getProvider(
-        providerKey as MetadataKey,
-      );
-
-      if (!provider) {
-        throw new Error(`Unknown metadata provider: ${providerKey}`);
-      }
-
-      if (!provider.isAvailable()) {
-        throw new Error(
-          `Provider ${providerKey} is not properly configured (e.g. missing API keys).`,
-        );
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const extractedBatch = await provider.bulkFetch(books as any);
-
-      const results: Record<string, unknown>[] = [];
-      for (const [id, metadata] of Object.entries(extractedBatch)) {
-        if (metadata) {
-          results.push({id, [provider.getKey()]: metadata});
-        }
-      }
-
-      return {status: 'success', results};
     }),
 });

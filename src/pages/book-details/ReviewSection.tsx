@@ -85,7 +85,7 @@ export function ReviewSection({
       {isReviewing &&
         (book.userStatuses?.[user?.uid || ''] === 'finished' ||
           book.userStatuses?.[user?.uid || ''] === 'abandoned') && (
-          <div className="bg-surface-container rounded-lg p-6 mb-8 border border-surface-variant">
+          <div className="bg-surface-container rounded-lg p-6 mb-8 border border-surface-variant swiper-no-swiping">
             <div className="mb-4">
               <StarRating
                 interactive
@@ -98,7 +98,7 @@ export function ReviewSection({
               value={reviewText}
               onChange={e => setReviewText(e.target.value)}
               placeholder="What did you think of this book?"
-              className="w-full bg-surface-container-lowest border border-outline-variant/60 rounded-md p-4 text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all min-h-[120px] mb-6 resize-y"
+              className="w-full bg-surface-container-lowest border border-outline-variant/60 rounded-md p-4 text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all min-h-[120px] mb-6 resize-y swiper-no-swiping"
             />
             <div className="flex justify-end gap-2">
               <Button

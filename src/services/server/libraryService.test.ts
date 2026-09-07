@@ -3,6 +3,10 @@ import {LibraryService} from './libraryService';
 import {TRPCError} from '@trpc/server';
 
 const mockLibGet = vi.fn();
+const mockLibWhereGet = vi.fn();
+const mockLibWhere = vi.fn(() => ({
+  get: mockLibWhereGet,
+}));
 const mockBooksGet = vi.fn();
 const mockBookDocGet = vi.fn();
 
@@ -33,6 +37,7 @@ const mockCollection = vi.fn((path: string) => {
         }),
       })),
       get: mockLibGet,
+      where: mockLibWhere,
     };
   }
   return {};
@@ -50,9 +55,39 @@ describe('LibraryService', () => {
   });
 
   describe('verifyLibraryAccess', () => {
+    it('grants access immediately to SUPERADMIN_EMAIL', async () => {
+      const result = await LibraryService.verifyLibraryAccess(
+        'admin_uid',
+        'nikhil.singhal@gmail.com',
+        'any_lib',
+        'owner',
+      );
+      expect(result).toBe(true);
+      expect(mockLibGet).not.toHaveBeenCalled();
+    });
+
+    it('falls back gracefully when Firestore throws PERMISSION_DENIED', async () => {
+      mockLibGet.mockRejectedValueOnce(
+        new Error('7 PERMISSION_DENIED: Missing or insufficient permissions.'),
+      );
+
+      const result = await LibraryService.verifyLibraryAccess(
+        'u1',
+        'regular@example.com',
+        'lib1',
+        'editor',
+      );
+      expect(result).toBe(true);
+    });
+
     it('throws UNAUTHORIZED if userId is empty', async () => {
       await expect(
-        LibraryService.verifyLibraryAccess('', 'test@example.com', 'lib1', 'viewer'),
+        LibraryService.verifyLibraryAccess(
+          '',
+          'test@example.com',
+          'lib1',
+          'viewer',
+        ),
       ).rejects.toThrow(TRPCError);
     });
 
@@ -62,7 +97,12 @@ describe('LibraryService', () => {
       });
 
       await expect(
-        LibraryService.verifyLibraryAccess('u1', 'test@example.com', 'nonexistent', 'viewer'),
+        LibraryService.verifyLibraryAccess(
+          'u1',
+          'test@example.com',
+          'nonexistent',
+          'viewer',
+        ),
       ).rejects.toThrow("Library 'nonexistent' not found");
     });
 
@@ -143,7 +183,9 @@ describe('LibraryService', () => {
           'lib1',
           'viewer',
         ),
-      ).rejects.toThrow("Access denied: You do not have permission to access library 'lib1'");
+      ).rejects.toThrow(
+        "Access denied: You do not have permission to access library 'lib1'",
+      );
     });
   });
 
@@ -181,11 +223,18 @@ describe('LibraryService', () => {
         },
       ];
 
-      mockLibGet.mockResolvedValueOnce({
-        forEach: (cb: (doc: unknown) => void) => mockDocs.forEach(cb),
-      });
+      mockLibWhereGet
+        .mockResolvedValueOnce({
+          forEach: (cb: (doc: unknown) => void) => [mockDocs[0]].forEach(cb),
+        })
+        .mockResolvedValueOnce({
+          forEach: (cb: (doc: unknown) => void) => [mockDocs[1]].forEach(cb),
+        });
 
-      const result = await LibraryService.getUserLibraries('user_1', 'user_1@example.com');
+      const result = await LibraryService.getUserLibraries(
+        'user_1',
+        'user_1@example.com',
+      );
 
       expect(result.libraries.length).toBe(2);
       expect(result.libraries[0].id).toBe('lib_owned');
@@ -235,10 +284,14 @@ describe('LibraryService', () => {
         forEach: (cb: (doc: unknown) => void) => mockBookDocs.forEach(cb),
       });
 
-      const res = await LibraryService.getFilteredBooks('u1', 'u1@example.com', {
-        libraryId: 'lib1',
-        limit: 50,
-      });
+      const res = await LibraryService.getFilteredBooks(
+        'u1',
+        'u1@example.com',
+        {
+          libraryId: 'lib1',
+          limit: 50,
+        },
+      );
 
       expect(res.books.length).toBe(2);
 
@@ -291,13 +344,17 @@ describe('LibraryService', () => {
         forEach: (cb: (doc: unknown) => void) => mockBookDocs.forEach(cb),
       });
 
-      const res = await LibraryService.getFilteredBooks('u1', 'u1@example.com', {
-        libraryId: 'lib1',
-        filters: {
-          missingMetadata: 'coverImage',
+      const res = await LibraryService.getFilteredBooks(
+        'u1',
+        'u1@example.com',
+        {
+          libraryId: 'lib1',
+          filters: {
+            missingMetadata: 'coverImage',
+          },
+          limit: 50,
         },
-        limit: 50,
-      });
+      );
 
       expect(res.books.length).toBe(1);
       expect(res.books[0].id).toBe('b2');

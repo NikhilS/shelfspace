@@ -7,22 +7,11 @@ import {
   extractBookTemporalMetadataBatch,
   TemporalBookResult,
 } from '../../gemini';
-import {MetadataRegistry} from '../registry';
+import {resolveBookSynopses} from '../utils';
 
 export class TemporalMetadataProvider implements IMetadataProvider<unknown> {
   getKey(): MetadataKey {
     return MetadataKey.TEMPORAL;
-  }
-
-  private async getSynopsis(book: CoreBookData): Promise<string | undefined> {
-    if ('synopsis' in book)
-      return (book as Record<string, unknown>).synopsis as string | undefined;
-    const synopsisProvider = MetadataRegistry.getInstance().getProvider(
-      MetadataKey.SYNOPSIS,
-    );
-    return synopsisProvider
-      ? ((await synopsisProvider.fetch(book)) as string | undefined)
-      : undefined;
   }
 
   async fetch(book: CoreBookData): Promise<unknown> {
@@ -31,14 +20,13 @@ export class TemporalMetadataProvider implements IMetadataProvider<unknown> {
   }
 
   async bulkFetch(books: CoreBookData[]): Promise<Record<string, unknown>> {
-    const batchedBooks = await Promise.all(
-      books.map(async b => ({
-        id: b.id,
-        title: b.title,
-        author: b.author,
-        synopsis: await this.getSynopsis(b),
-      })),
-    );
+    const synopsisMap = await resolveBookSynopses(books);
+    const batchedBooks = books.map(b => ({
+      id: b.id,
+      title: b.title,
+      author: b.author,
+      synopsis: synopsisMap.get(b.id),
+    }));
 
     const CHUNK_SIZE = 10;
     const results: Record<string, unknown> = {};

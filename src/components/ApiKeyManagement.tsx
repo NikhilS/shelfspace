@@ -14,12 +14,16 @@ import {
 import {Button} from '@/components/ui/button';
 import {Dialog, DialogContent, DialogTitle} from '@/components/ui/dialog';
 import {toast} from 'sonner';
+import {formatDateTime} from '../lib/date';
 
 export const ApiKeyManagement: React.FC = () => {
   const [newKeyName, setNewKeyName] = useState('');
   const [createdRawKey, setCreatedRawKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [keyToRevoke, setKeyToRevoke] = useState<{id: string; name: string} | null>(null);
+  const [keyToRevoke, setKeyToRevoke] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -56,20 +60,13 @@ export const ApiKeyManagement: React.FC = () => {
 
   const handleCopyKey = () => {
     if (!createdRawKey) return;
-    navigator.clipboard.writeText(createdRawKey);
+    void navigator.clipboard.writeText(createdRawKey);
     setCopied(true);
     toast.success('API Key copied to clipboard');
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const formatDate = (isoString: string | null) => {
-    if (!isoString) return 'Never';
-    try {
-      return new Date(isoString).toLocaleString();
-    } catch {
-      return isoString;
-    }
-  };
+  const formatDate = (isoString: string | null) => formatDateTime(isoString);
 
   return (
     <div className="bg-surface-container-lowest rounded-2xl p-8 border border-outline-variant/30 architectural-shadow relative overflow-hidden mt-8">
@@ -80,9 +77,12 @@ export const ApiKeyManagement: React.FC = () => {
             <Key size={20} />
           </div>
           <div>
-            <h2 className="text-xl font-medium text-on-surface">API Keys & External Access</h2>
+            <h2 className="text-xl font-medium text-on-surface">
+              API Keys & External Access
+            </h2>
             <p className="text-sm text-on-surface-variant">
-              Generate secret keys for programmatic REST / tRPC access to library enrichment APIs.
+              Generate secret keys for programmatic REST / tRPC access to
+              library enrichment APIs.
             </p>
           </div>
         </div>
@@ -98,7 +98,10 @@ export const ApiKeyManagement: React.FC = () => {
       </div>
 
       {/* Create Key Form */}
-      <form onSubmit={handleCreate} className="flex flex-col sm:flex-row gap-4 mb-8">
+      <form
+        onSubmit={handleCreate}
+        className="flex flex-col sm:flex-row gap-4 mb-8"
+      >
         <div className="flex-1">
           <input
             type="text"
@@ -131,7 +134,8 @@ export const ApiKeyManagement: React.FC = () => {
           <Key className="w-8 h-8 mx-auto mb-2 opacity-40 text-primary" />
           <p className="text-sm font-medium">No API keys generated yet.</p>
           <p className="text-xs text-on-surface-variant/80 mt-1">
-            Create an API key above to allow external integrations or scripts to query books and trigger enrichment.
+            Create an API key above to allow external integrations or scripts to
+            query books and trigger enrichment.
           </p>
         </div>
       ) : (
@@ -140,7 +144,9 @@ export const ApiKeyManagement: React.FC = () => {
             <div
               key={k.id}
               className={`flex flex-col sm:flex-row sm:items-center justify-between bg-surface border ${
-                k.revoked ? 'border-error/20 bg-error/5 opacity-70' : 'border-outline-variant/50 hover:border-outline-variant/80'
+                k.revoked
+                  ? 'border-error/20 bg-error/5 opacity-70'
+                  : 'border-outline-variant/50 hover:border-outline-variant/80'
               } rounded-xl p-4 gap-4 transition-colors`}
             >
               <div className="flex flex-col gap-1">
@@ -158,12 +164,17 @@ export const ApiKeyManagement: React.FC = () => {
                 </div>
                 <div className="flex flex-wrap items-center gap-4 text-xs text-on-surface-variant font-mono">
                   <span>
-                    Prefix: <code className="bg-surface-variant px-1.5 py-0.5 rounded">{k.keyPrefix}...{k.keySuffix}</code>
+                    Prefix:{' '}
+                    <code className="bg-surface-variant px-1.5 py-0.5 rounded">
+                      {k.keyPrefix}...{k.keySuffix}
+                    </code>
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock size={12} /> Last used: {formatDate(k.lastUsedAt)}
                   </span>
-                  <span>Created: {new Date(k.createdAt).toLocaleDateString()}</span>
+                  <span>
+                    Created: {new Date(k.createdAt).toLocaleDateString()}
+                  </span>
                 </div>
               </div>
 
@@ -184,7 +195,10 @@ export const ApiKeyManagement: React.FC = () => {
       )}
 
       {/* Secret Key Raw Value Display Modal */}
-      <Dialog open={!!createdRawKey} onOpenChange={() => setCreatedRawKey(null)}>
+      <Dialog
+        open={!!createdRawKey}
+        onOpenChange={() => setCreatedRawKey(null)}
+      >
         <DialogContent className="max-w-lg bg-surface-container-lowest border border-outline-variant">
           <DialogTitle className="text-xl font-serif text-primary flex items-center gap-2">
             <Key className="w-5 h-5 text-primary" />
@@ -196,20 +210,28 @@ export const ApiKeyManagement: React.FC = () => {
               <div>
                 <p className="font-semibold">Copy your secret API key now!</p>
                 <p className="mt-0.5 opacity-90">
-                  For security reasons, this key will <strong>never be shown again</strong>. Store it safely in your client environment or secret manager.
+                  For security reasons, this key will{' '}
+                  <strong>never be shown again</strong>. Store it safely in your
+                  client environment or secret manager.
                 </p>
               </div>
             </div>
 
             <div className="bg-surface border border-outline-variant/60 rounded-xl p-3 flex items-center justify-between gap-2 font-mono text-xs break-all select-all">
-              <span className="text-primary font-semibold">{createdRawKey}</span>
+              <span className="text-primary font-semibold">
+                {createdRawKey}
+              </span>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={handleCopyKey}
                 className="flex-shrink-0 flex items-center gap-1.5"
               >
-                {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                {copied ? (
+                  <Check size={14} className="text-emerald-600" />
+                ) : (
+                  <Copy size={14} />
+                )}
                 {copied ? 'Copied' : 'Copy'}
               </Button>
             </div>
@@ -228,7 +250,10 @@ export const ApiKeyManagement: React.FC = () => {
             Revoke API Key?
           </DialogTitle>
           <p className="text-sm text-on-surface-variant">
-            Are you sure you want to revoke key <strong>"{keyToRevoke?.name}"</strong>? Any external application or script using this secret key will immediately lose access. This action cannot be undone.
+            Are you sure you want to revoke key{' '}
+            <strong>"{keyToRevoke?.name}"</strong>? Any external application or
+            script using this secret key will immediately lose access. This
+            action cannot be undone.
           </p>
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="outline" onClick={() => setKeyToRevoke(null)}>
@@ -237,7 +262,9 @@ export const ApiKeyManagement: React.FC = () => {
             <Button
               variant="destructive"
               disabled={revokeMutation.isPending}
-              onClick={() => keyToRevoke && revokeMutation.mutate({keyId: keyToRevoke.id})}
+              onClick={() =>
+                keyToRevoke && revokeMutation.mutate({keyId: keyToRevoke.id})
+              }
             >
               {revokeMutation.isPending ? 'Revoking...' : 'Revoke Key'}
             </Button>

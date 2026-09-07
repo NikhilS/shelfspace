@@ -1,6 +1,4 @@
 import {useState, useEffect} from 'react';
-import {doc, setDoc} from 'firebase/firestore';
-import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {Book, BookDetailsPayload} from '../../types';
 import {toast} from 'sonner';
 import {trpc, trpcVanilla} from '../../lib/trpc';
@@ -31,70 +29,20 @@ export function useBookInsights(
 
     const generateMissingInfo = async () => {
       try {
-        const updates: Partial<BookDetailsPayload> = {};
-        const bookData = {
-          id: book.id,
-          title: book.title, // required
-          author: book.author, // required
-          isbn: book.isbn,
-          synopsis: book.synopsis,
-          description: (book as unknown as Record<string, unknown>)
-            .description as string | undefined,
-        };
-
         if (needsSynopsis) {
-          const res = await trpcVanilla.metadata.bulkFetch.mutate({
+          await trpcVanilla.enrichment.trigger.mutate({
             libraryId,
-            providerKey: 'synopsis',
-            books: [bookData],
+            enrichmentType: 'synopsis',
+            bookIds: [book.id],
           });
-          if (!isMounted) return;
-          if (res.status === 'success' && res.results.length > 0) {
-            const resultData = res.results[0] as {
-              id: string;
-              synopsis?: string;
-            };
-            if (resultData.synopsis) {
-              updates.synopsis = resultData.synopsis;
-            }
-          }
         }
 
         if (needsBio && book.author && book.author !== 'Unknown Author') {
-          const res = await trpcVanilla.metadata.bulkFetch.mutate({
+          await trpcVanilla.enrichment.trigger.mutate({
             libraryId,
-            providerKey: 'authorBio',
-            books: [bookData],
+            enrichmentType: 'authorBio',
+            bookIds: [book.id],
           });
-          if (!isMounted) return;
-          if (res.status === 'success' && res.results.length > 0) {
-            const resultData = res.results[0] as {
-              id: string;
-              authorBio?: string;
-            };
-            if (resultData.authorBio) {
-              updates.authorBio = resultData.authorBio;
-            }
-          }
-        }
-
-        if (Object.keys(updates).length > 0 && isMounted) {
-          try {
-            await setDoc(
-              doc(db, 'libraries', libraryId, 'bookDetails', book.id),
-              updates,
-              {merge: true},
-            );
-            if (updates.synopsis) {
-              await setDoc(
-                doc(db, 'libraries', libraryId, 'books', book.id),
-                {synopsis: updates.synopsis},
-                {merge: true},
-              );
-            }
-          } catch (e) {
-            console.warn('Could not persist auto-generated book info to Firestore:', e);
-          }
         }
       } catch (error: unknown) {
         if (!isMounted) return;

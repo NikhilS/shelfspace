@@ -2,6 +2,7 @@ import {
   collection,
   query,
   getCountFromServer,
+  getDocs,
   doc,
   writeBatch,
   increment,
@@ -11,7 +12,7 @@ import {db} from '../../firebase';
 
 /**
  * Atomically purges a book and its corresponding sub-records,
- * decrementing the associated library's volume counter.
+ * including any nested reviews, decrementing the associated library's volume counter.
  */
 export async function deleteBookAtomic(libraryId: string, bookId: string) {
   const batch = writeBatch(db);
@@ -23,6 +24,27 @@ export async function deleteBookAtomic(libraryId: string, bookId: string) {
   // Associated heavy details reference
   const detailRef = doc(db, 'libraries', libraryId, 'bookDetails', bookId);
   batch.delete(detailRef);
+
+  // Cascade delete reviews subcollection
+  try {
+    const reviewsRef = collection(
+      db,
+      'libraries',
+      libraryId,
+      'books',
+      bookId,
+      'reviews',
+    );
+    const reviewsSnap = await getDocs(reviewsRef);
+    reviewsSnap.forEach(revDoc => {
+      batch.delete(revDoc.ref);
+    });
+  } catch (e) {
+    console.warn(
+      `Could not load reviews for cascading delete on book ${bookId}`,
+      e,
+    );
+  }
 
   // Decrement aggregate count
   const libraryRef = doc(db, 'libraries', libraryId);

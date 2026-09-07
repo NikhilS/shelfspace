@@ -1,12 +1,14 @@
 import {useState, useEffect, useMemo, useCallback} from 'react';
-import {doc, updateDoc} from 'firebase/firestore';
+import {doc} from 'firebase/firestore';
 import {db} from '../firebase';
 import {useAuth} from '../stores/authStore';
-import {Book} from '../types';
+import {Book, BookEnrichmentStatus} from '../types';
 import {toast} from 'sonner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
 import {trpcVanilla} from '../lib/trpc';
 import {bulkEnrichmentClientLimiter} from '../lib/clientLimiters';
+import {ENRICHMENT_CONSTANTS} from '../constants/enrichment';
+import {ENRICHMENT_TYPE_LIST} from '../schemas/libraryApi';
 
 export interface UseBulkEnrichmentConfig {
   books: Book[];
@@ -21,6 +23,7 @@ export interface UseBulkEnrichmentConfig {
   errorToastMessage?: string;
   autoTrigger?: boolean;
   timeoutMs?: number;
+  overwrite?: boolean;
 }
 
 export function useBulkEnrichment({
@@ -29,13 +32,14 @@ export function useBulkEnrichment({
   libraryId,
   providerKey,
   metadataField,
-  batchSize = 10,
-  concurrencyLimit = 5,
+  batchSize = ENRICHMENT_CONSTANTS.CLIENT_BATCH_SIZE,
+  concurrencyLimit = ENRICHMENT_CONSTANTS.CLIENT_LIMITER.maxConcurrent,
   filterPredicate,
   successToastMessage = 'Successfully enriched library books!',
   errorToastMessage = 'Some books could not be analyzed.',
   autoTrigger = true,
-  timeoutMs = 180000,
+  timeoutMs = ENRICHMENT_CONSTANTS.CLIENT_TIMEOUT_MS,
+  overwrite = false,
 }: UseBulkEnrichmentConfig) {
   const {user} = useAuth();
 
@@ -47,15 +51,40 @@ export function useBulkEnrichment({
     total: 0,
   });
 
-  // Track book IDs that have been attempted to prevent infinite refresh retry loops on failure
+  // Track book IDs that have been attempted in this session to prevent infinite retry loops
   const [attemptedBookIds, setAttemptedBookIds] = useState<Set<string>>(
     () => new Set(),
   );
 
-  // Compute books that need enrichment
+  const statusKey = useMemo(() => {
+    return providerKey === 'geoMetadata' || providerKey === 'geo'
+      ? 'geo'
+      : providerKey === 'temporalMetadata' || providerKey === 'temporal'
+        ? 'temporal'
+        : providerKey === 'genres' || providerKey === 'genre'
+          ? 'genre'
+          : providerKey === 'coverUrl' || providerKey === 'coverImage'
+            ? 'coverImage'
+            : providerKey === 'embeddings' || providerKey === 'embedding'
+              ? 'embedding'
+              : providerKey;
+  }, [providerKey]);
+
+  // Compute books that need enrichment, factoring in persistent tombstoning
   const booksToBackfill = useMemo(() => {
-    return books.filter(b => filterPredicate(b) && !attemptedBookIds.has(b.id));
-  }, [books, filterPredicate, attemptedBookIds]);
+    return books.filter(b => {
+      if (!filterPredicate(b)) return false;
+      if (attemptedBookIds.has(b.id)) return false;
+      if (!overwrite) {
+        const status =
+          b.enrichmentStatus?.[statusKey as keyof BookEnrichmentStatus];
+        if (status === 'unsupported' || status === 'failed') {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [books, filterPredicate, attemptedBookIds, overwrite, statusKey]);
 
   const backfillQuotaCount = booksToBackfill.length;
 
@@ -73,13 +102,14 @@ export function useBulkEnrichment({
 
     DebugTelemetryEngine.getInstance().addLog(
       'worker',
-      `[BulkEnrichment] Starting backfill scan for ${metadataField}`,
+      `[BulkEnrichment] Starting server-authoritative backfill scan for ${metadataField}`,
       {
         libraryId,
         totalToProcess: booksToBackfill.length,
         batchSize,
         concurrencyLimit,
         providerKey,
+        overwrite,
       },
     );
 
@@ -93,9 +123,9 @@ export function useBulkEnrichment({
         bookChunks.push(booksToProcess.slice(i, i + batchSize));
       }
 
-      // Helper to process a batch of books with dynamic error isolation
+      // Helper to process a batch using the unified server-authoritative pipeline
       const processBatch = async (chunk: Book[]) => {
-        // Mark as attempted as soon as we start processing to avoid concurrency double-triggering
+        // Mark as attempted in-memory immediately to avoid double execution
         setAttemptedBookIds(prev => {
           const next = new Set(prev);
           chunk.forEach(b => next.add(b.id));
@@ -108,24 +138,22 @@ export function useBulkEnrichment({
         let batchFailed = 0;
 
         try {
-          const payloads = chunk.map(b => {
-            const bookAny = b as unknown as Record<string, unknown>;
-            return {
-              id: b.id,
-              title: b.title,
-              author: b.author || 'Unknown',
-              synopsis:
-                (bookAny.synopsis as string) ||
-                (bookAny.description as string) ||
-                '',
-            };
-          });
+          const bookIds = chunk.map(b => b.id);
 
           const data = (await Promise.race([
-            trpcVanilla.metadata.bulkFetch.mutate({
-              libraryId: libraryId,
-              providerKey,
-              books: payloads,
+            trpcVanilla.enrichment.trigger.mutate({
+              libraryId,
+              bookIds,
+              books: chunk.map(b => ({
+                id: b.id,
+                title: b.title,
+                author: b.author || 'Unknown Author',
+                isbn: b.isbn,
+                synopsis: b.synopsis || b.description,
+              })),
+              enrichmentType:
+                providerKey as (typeof ENRICHMENT_TYPE_LIST)[number],
+              overwrite,
             }),
             new Promise((_, reject) =>
               setTimeout(
@@ -133,28 +161,70 @@ export function useBulkEnrichment({
                 timeoutMs,
               ),
             ),
-          ])) as {results: Record<string, unknown>[]};
+          ])) as {
+            status: string;
+            processedCount?: number;
+            results?: Record<string, unknown>[];
+            updates?: Array<{bookId: string; payload: Record<string, unknown>}>;
+          };
 
-          if (data && Array.isArray(data.results)) {
-            // Write each successful result to Firestore immediately
-            await Promise.all(
-              data.results.map(async result => {
-                if (result.id) {
-                  const bookRef = doc(
+          if (data && data.status === 'success') {
+            if (Array.isArray(data.updates) && data.updates.length > 0) {
+              try {
+                const {ClientBulkWriter} =
+                  await import('../lib/clientBulkWriter');
+                const writer = new ClientBulkWriter(db, 50);
+                for (const {bookId, payload} of data.updates) {
+                  if (!bookId || !payload) continue;
+                  const bookDocRef = doc(
                     db,
                     'libraries',
                     libraryId,
                     'books',
-                    result.id as string,
+                    bookId,
                   );
-                  await updateDoc(bookRef, {
-                    [metadataField]: result[metadataField],
-                  } as Record<string, unknown>);
-                  batchCompleted++;
+                  writer.set(bookDocRef, payload, {merge: true});
+
+                  if (
+                    payload.synopsis ||
+                    payload.authorBio ||
+                    payload.embedding
+                  ) {
+                    const detailRef = doc(
+                      db,
+                      'libraries',
+                      libraryId,
+                      'bookDetails',
+                      bookId,
+                    );
+                    const detailPayload: Record<string, unknown> = {
+                      updatedAt: new Date().toISOString(),
+                    };
+                    if (payload.synopsis)
+                      detailPayload.synopsis = payload.synopsis;
+                    if (payload.authorBio)
+                      detailPayload.authorBio = payload.authorBio;
+                    if (payload.embedding)
+                      detailPayload.embedding = payload.embedding;
+                    writer.set(detailRef, detailPayload, {merge: true});
+                  }
                 }
-              }),
-            );
-            // Any books we asked for that didn't get returned are counted as failed
+                await writer.close();
+              } catch (clientWriteErr) {
+                console.warn(
+                  '[BulkEnrichment] Client write warning:',
+                  clientWriteErr,
+                );
+              }
+            }
+
+            const count =
+              typeof data.processedCount === 'number'
+                ? data.processedCount
+                : Array.isArray(data.results)
+                  ? data.results.length
+                  : 0;
+            batchCompleted = count;
             batchFailed = chunk.length - batchCompleted;
           } else {
             batchFailed = chunk.length;
@@ -217,6 +287,7 @@ export function useBulkEnrichment({
     successToastMessage,
     errorToastMessage,
     timeoutMs,
+    overwrite,
   ]);
 
   // Handle auto-triggering

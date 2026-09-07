@@ -77,27 +77,34 @@ service cloud.firestore {
     }
 
     function isValidBook(data) {
-      let required = ['title', 'addedAt', 'addedBy'];
+      let required = ['title', 'addedAt'];
       return data.keys().hasAll(required) &&
-             data.keys().size() <= 20 &&
+             data.keys().size() <= 25 &&
              data.title is string && data.title.size() > 0 && data.title.size() <= 2000 &&
              data.addedAt is timestamp &&
-             data.addedBy is string && data.addedBy.size() <= 128 &&
+             (!( 'addedBy' in data ) || data.addedBy == null || (data.addedBy is string && data.addedBy.size() <= 128)) &&
              (!( 'author' in data ) || (data.author == null || data.author is string)) &&
              (!( 'isbn' in data ) || (data.isbn == null || data.isbn is string)) &&
              (!( 'synopsis' in data ) || (data.synopsis == null || data.synopsis is string)) &&
              (!( 'coverUrl' in data ) || (data.coverUrl == null || data.coverUrl is string)) &&
+             (!( 'coverUrlRaw' in data ) || (data.coverUrlRaw == null || data.coverUrlRaw is string)) &&
+             (!( 'authorBio' in data ) || (data.authorBio == null || data.authorBio is string)) &&
              (!( 'publishedDate' in data ) || (data.publishedDate == null || data.publishedDate is string)) &&
              (!( 'genres' in data ) || (data.genres == null || data.genres is list)) &&
+             (!( 'genre' in data ) || (data.genre == null || data.genre is string || data.genre is list)) &&
              (!( 'series' in data ) || (data.series == null || data.series is string)) &&
              (!( 'format' in data ) || (data.format == null || data.format is string)) &&
              (!( 'geoMetadata' in data ) || (data.geoMetadata == null || data.geoMetadata is map)) &&
              (!( 'temporalMetadata' in data ) || (data.temporalMetadata == null || data.temporalMetadata is map)) &&
-             (!( 'userStatuses' in data ) || (data.userStatuses == null || data.userStatuses is map));
+             (!( 'userStatuses' in data ) || (data.userStatuses == null || data.userStatuses is map)) &&
+             (!( 'embedding' in data ) || (data.embedding == null || data.embedding is list)) &&
+             (!( 'clusterCoordinates' in data ) || (data.clusterCoordinates == null || data.clusterCoordinates is map)) &&
+             (!( '_inBooks' in data ) || (data._inBooks == null || data._inBooks is map)) &&
+             (!( 'description' in data ) || (data.description == null || data.description is string));
     }
 
     function isValidBookDetails(data) {
-      return data.keys().size() <= 10 &&
+      return data.keys().size() <= 15 &&
              (!( 'synopsis' in data ) || (data.synopsis == null || data.synopsis is string)) &&
              (!( 'authorBio' in data ) || (data.authorBio == null || data.authorBio is string)) &&
              (!( 'clusterCoordinates' in data ) || (data.clusterCoordinates == null || data.clusterCoordinates is map)) &&
@@ -229,7 +236,7 @@ service cloud.firestore {
 
       match /books/{bookId} {
         allow read: if canAccessLibraryResource();
-        allow create: if canWriteLibraryResource() && isValidBook(incoming()) && incoming().addedBy == request.auth.uid;
+        allow create: if canWriteLibraryResource() && isValidBook(incoming()) && (incoming().get('addedBy', null) == request.auth.uid || incoming().get('addedBy', null) == null);
         allow update: if canWriteLibraryResource() && isValidBook(incoming()) &&
                       incoming().get('addedAt', null) == existing().get('addedAt', null) &&
                       incoming().get('addedBy', null) == existing().get('addedBy', null);
@@ -272,9 +279,7 @@ service cloud.firestore {
 
     match /apiKeys/{keyHash} {
       allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isSignedIn() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == resource.data.ownerId;
-      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow write: if false; // Only server-side admin writes allowed via ApiKeyService
     }
   }
 }

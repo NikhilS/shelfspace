@@ -41,10 +41,8 @@ export function normalizeTitle(title?: string): string {
   return title.trim();
 }
 
-export function normalizeIsbn(isbn?: string): string {
-  if (!isbn) return '';
-  return isbn.replace(/[^0-9X]/gi, '').toUpperCase();
-}
+import {normalizeIsbn, isValidIsbn} from './isbn';
+export {normalizeIsbn, isValidIsbn};
 
 export function normalizeText(text?: string): string {
   if (!text) return '';

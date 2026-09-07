@@ -4,7 +4,7 @@ import {useAuth} from '../stores/authStore';
 import {useLibraryPermissions} from '../hooks/useLibraryPermissions';
 import {AlertCircle} from 'lucide-react';
 import {Button} from '@/components/ui/button';
-import {PageLoading} from './PageLoading';
+import {LibraryMainSkeleton} from './LibrarySkeletons';
 
 interface RequireLibraryPermissionProps {
   children?: React.ReactNode;
@@ -24,12 +24,7 @@ export function RequireLibraryPermission({
   );
 
   if (loading) {
-    return (
-      <PageLoading
-        title="Opening the archives..."
-        subtitle="Verifying credentials, consulting the catalog, and preparing your collection."
-      />
-    );
+    return <LibraryMainSkeleton />;
   }
 
   let hasAccess = false;

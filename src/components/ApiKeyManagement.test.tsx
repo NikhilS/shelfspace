@@ -49,10 +49,15 @@ vi.mock('../lib/trpc', () => ({
         }),
       },
       create: {
-        useMutation: (opts: {onSuccess?: (data: {key: string; name: string}) => void}) => ({
+        useMutation: (opts: {
+          onSuccess?: (data: {key: string; name: string}) => void;
+        }) => ({
           mutate: (input: {name: string}) => {
             mockMutateCreate(input);
-            opts?.onSuccess?.({key: 'lib_live_secret1234567890abcdef', name: input.name});
+            opts?.onSuccess?.({
+              key: 'lib_live_secret1234567890abcdef',
+              name: input.name,
+            });
           },
           isPending: false,
         }),
@@ -92,7 +97,9 @@ describe('ApiKeyManagement', () => {
 
     expect(screen.getByText('API Keys & External Access')).toBeInTheDocument();
     expect(
-      screen.getByText(/Generate secret keys for programmatic REST \/ tRPC access/i),
+      screen.getByText(
+        /Generate secret keys for programmatic REST \/ tRPC access/i,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -113,11 +120,17 @@ describe('ApiKeyManagement', () => {
     fireEvent.change(input, {target: {value: 'My New Backend Service'}});
     fireEvent.click(createBtn);
 
-    expect(mockMutateCreate).toHaveBeenCalledWith({name: 'My New Backend Service'});
+    expect(mockMutateCreate).toHaveBeenCalledWith({
+      name: 'My New Backend Service',
+    });
 
     // Secret Key Modal should appear
-    expect(await screen.findByText('API Key Created Successfully')).toBeInTheDocument();
-    expect(screen.getByText('lib_live_secret1234567890abcdef')).toBeInTheDocument();
+    expect(
+      await screen.findByText('API Key Created Successfully'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('lib_live_secret1234567890abcdef'),
+    ).toBeInTheDocument();
   });
 
   it('allows user to revoke an existing key with confirmation dialog', async () => {

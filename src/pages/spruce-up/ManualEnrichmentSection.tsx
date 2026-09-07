@@ -14,13 +14,13 @@ interface ManualEnrichmentSectionProps {
 }
 
 const ALL_METADATA_KEYS = [
-  {id: MetadataKey.GEO, label: 'Geographic'},
-  {id: MetadataKey.TEMPORAL, label: 'Temporal'},
-  {id: MetadataKey.GENRE, label: 'Genre'},
-  {id: MetadataKey.SYNOPSIS, label: 'Synopsis'},
-  {id: MetadataKey.AUTHOR_BIO, label: 'Author Bio'},
+  {id: MetadataKey.GEO, label: 'Settings & Places'},
+  {id: MetadataKey.TEMPORAL, label: 'Historical Eras'},
+  {id: MetadataKey.GENRE, label: 'Genres'},
+  {id: MetadataKey.SYNOPSIS, label: 'Summaries'},
+  {id: MetadataKey.AUTHOR_BIO, label: 'Author Bios'},
   {id: MetadataKey.SERIES, label: 'Series'},
-  {id: MetadataKey.COVER_IMAGE, label: 'Cover Image'},
+  {id: MetadataKey.COVER_IMAGE, label: 'Cover Art'},
 ];
 
 export function ManualEnrichmentSection({
@@ -96,10 +96,11 @@ export function ManualEnrichmentSection({
             </div>
             <div>
               <h3 className="font-serif text-xl font-bold text-on-surface">
-                Targeted Bulk Enrichment
+                Complete Book Details
               </h3>
               <p className="text-sm text-on-surface-variant font-sans">
-                Filter missing metadata and enrich specific records.
+                Review missing metadata and enrich specific volumes in your
+                collection.
               </p>
             </div>
           </div>
@@ -370,7 +371,7 @@ function EnrichmentRunner({
     libraryId,
     providerKey: targetMetadata,
     metadataField: targetMetadata,
-    batchSize: 50,
+    overwrite,
     filterPredicate: b => {
       if (overwrite) return true;
       const val =

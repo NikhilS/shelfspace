@@ -1,5 +1,6 @@
 import React from 'react';
-import {useParams} from 'react-router-dom';
+import {useParams, Link} from 'react-router-dom';
+import {ArrowLeft} from 'lucide-react';
 import {motion} from 'motion/react';
 import {ErrorBoundary} from '../components/ErrorBoundary';
 import {useSpruceUp} from './spruce-up/useSpruceUp';
@@ -32,6 +33,13 @@ export default function SpruceUpView() {
       <div className="layout-page-content pb-24 lg:pb-8">
         <div className="layout-header mb-6">
           <div>
+            <Link
+              to={`/library/${libraryId}`}
+              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-on-surface-variant hover:text-primary transition-colors mb-2.5 group"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+              <span>Back to Library Overview</span>
+            </Link>
             <h2 className="layout-header-title text-3xl font-serif tracking-tight pr-4">
               Shelf Care
             </h2>

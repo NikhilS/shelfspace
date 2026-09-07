@@ -86,34 +86,38 @@ export class ApiKeyService {
       return null;
     }
 
-    const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
-    const db = getAdminDb();
-    const docSnap = await db.collection('apiKeys').doc(keyHash).get();
+    try {
+      const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+      const db = getAdminDb();
+      const docSnap = await db.collection('apiKeys').doc(keyHash).get();
 
-    if (!docSnap.exists) {
+      if (!docSnap.exists) {
+        return null;
+      }
+
+      const data = docSnap.data() as ApiKeyRecord;
+
+      if (data.revoked) {
+        return null;
+      }
+
+      // Touch lastUsedAt timestamp asynchronously
+      const now = new Date().toISOString();
+      docSnap.ref.update({lastUsedAt: now}).catch((err: unknown) => {
+        console.error(
+          '[ApiKeyService] Failed to update lastUsedAt timestamp:',
+          err,
+        );
+      });
+
+      return {
+        uid: data.ownerId,
+        email: data.ownerEmail,
+        apiKeyId: keyHash,
+      };
+    } catch {
       return null;
     }
-
-    const data = docSnap.data() as ApiKeyRecord;
-
-    if (data.revoked) {
-      return null;
-    }
-
-    // Touch lastUsedAt timestamp asynchronously
-    const now = new Date().toISOString();
-    docSnap.ref.update({lastUsedAt: now}).catch((err: unknown) => {
-      console.error(
-        '[ApiKeyService] Failed to update lastUsedAt timestamp:',
-        err,
-      );
-    });
-
-    return {
-      uid: data.ownerId,
-      email: data.ownerEmail,
-      apiKeyId: keyHash,
-    };
   }
 
   /**

@@ -47,10 +47,7 @@ export const ReadingStatusSelect = memo(
           onChange={async e => {
             if (!libraryId || !bookId || !user) return;
             const newStatus = e.target.value as
-              | 'unset'
-              | 'reading'
-              | 'finished'
-              | 'abandoned';
+              'unset' | 'reading' | 'finished' | 'abandoned';
             const originalBookBase = bookBase ? {...bookBase} : null;
             const originalBookDetails = bookDetails ? {...bookDetails} : null;
 

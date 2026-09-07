@@ -1,145 +1,57 @@
-import React, {useEffect} from 'react';
+import React, {useState} from 'react';
 import {Link, useLocation, Outlet} from 'react-router-dom';
 import {useAuth} from '../stores/authStore';
-import {useAppPermissions} from '../hooks/useAppPermissions';
-import {Library, LogOut, Menu, Shield} from 'lucide-react';
-import {motion, AnimatePresence} from 'motion/react';
 import {ConnectivityBanner} from './ConnectivityBanner';
-import {LibrarySidebarNav} from './LibrarySidebarNav';
-import {useAppStore} from '../stores/appStore';
-import {ThemeToggle} from './ThemeToggle';
+import {UserProfileDialog} from './UserProfileDialog';
 
 interface AppLayoutProps {
   children?: React.ReactNode;
 }
 
 export default function AppLayout({children}: AppLayoutProps) {
-  const {user, logOut} = useAuth();
-  const {isAdmin} = useAppPermissions();
-  const {sidebarOpen: isMobileNavOpen, setSidebarOpen: setIsMobileNavOpen} =
-    useAppStore();
+  const {user} = useAuth();
   const location = useLocation();
-
-  const isHome = location.pathname === '/';
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const libraryIdMatch = location.pathname.match(/^\/library\/([^/]+)/);
   const currentLibraryId = libraryIdMatch ? libraryIdMatch[1] : undefined;
 
-  // Close mobile nav when location changes
-  useEffect(() => {
-    setIsMobileNavOpen(false);
-  }, [location, setIsMobileNavOpen]);
-
   return (
-    <div className="bg-background text-on-background font-body-md text-body-md antialiased flex min-h-screen relative w-full overflow-x-hidden">
-      {/* Mobile Nav Overlay */}
-      <AnimatePresence>
-        {isMobileNavOpen && (
-          <motion.div
-            initial={{opacity: 0}}
-            animate={{opacity: 1}}
-            exit={{opacity: 0}}
-            transition={{duration: 0.2}}
-            className="fixed inset-0 bg-black/40 z-40 md:hidden backdrop-blur-sm"
-            onClick={() => setIsMobileNavOpen(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* SideNavBar Component */}
-      <nav
-        className={`fixed left-0 top-0 flex flex-col h-[100dvh] w-72 py-8 border-r border-outline-variant/30 bg-surface-container-low shadow-xl md:shadow-none z-50 transition-transform duration-300 ease-in-out md:translate-x-0 ${isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
-      >
-        <div className="px-8 mb-10 flex flex-col gap-1 flex-shrink-0">
-          <Link
-            to="/"
-            className="font-headline-lg text-headline-lg text-primary tracking-tight italic"
-          >
-            book(ish)
-          </Link>
-          <span className="text-on-surface-variant font-label-caps text-label-caps opacity-80 uppercase tracking-widest mt-1 pl-1">
-            Modern Archivist
-          </span>
-        </div>
-
-        <div className="flex-1 min-h-0 flex flex-col gap-2 px-4 overflow-y-auto custom-scrollbar mb-4">
-          <Link
-            to="/"
-            onClick={() => setIsMobileNavOpen(false)}
-            className={`sidebar-nav-item ${isHome ? 'active' : ''}`}
-          >
-            <Library
-              className={`w-5 h-5 flex-shrink-0 ${isHome ? 'text-primary' : 'text-on-surface-variant'}`}
-            />
-            <span>My Libraries</span>
-          </Link>
-
-          {isAdmin && (
+    <div className="bg-background text-on-background font-body-md text-body-md antialiased flex flex-col min-h-screen relative w-full overflow-x-hidden">
+      {/* TopNavBar */}
+      <header className="sticky top-0 w-full z-30 bg-background/90 backdrop-blur-xl border-b border-outline-variant/20 shadow-xs font-body-md text-on-background transition-all">
+        <div className="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto">
+          {/* Brand / Logo */}
+          <div className="flex items-center gap-3">
             <Link
-              to="/admin"
-              onClick={() => setIsMobileNavOpen(false)}
-              className={`sidebar-nav-item ${location.pathname === '/admin' ? 'active' : ''}`}
+              to="/"
+              className="flex items-center gap-2.5 group transition-opacity hover:opacity-90"
+              aria-label="book(ish) Home"
             >
-              <div
-                className={`w-5 h-5 flex-shrink-0 flex items-center justify-center ${location.pathname === '/admin' ? 'text-primary' : 'text-on-surface-variant'}`}
-              >
-                <Shield className="w-5 h-5" />
-              </div>
-              <span>Admin</span>
+              <span className="font-headline-lg text-headline-lg text-primary tracking-tight italic font-serif">
+                book(ish)
+              </span>
+              <span className="hidden sm:inline-block text-[11px] font-sans font-medium uppercase tracking-widest text-on-surface-variant opacity-80 pl-2 border-l border-outline-variant/40">
+                Modern Archivist
+              </span>
             </Link>
-          )}
+          </div>
 
-          {currentLibraryId && (
-            <LibrarySidebarNav libraryId={currentLibraryId} />
-          )}
-
-          <div
-            id="sidebar-actions-root"
-            className="contents"
-            onClick={() => setIsMobileNavOpen(false)}
-          />
-        </div>
-
-        <div className="mt-auto flex-shrink-0 px-6 pb-5 flex items-center justify-end gap-2">
-          <div
-            id="sidebar-bottom-actions-root"
-            className="flex items-center gap-2"
-          />
-
-          <button
-            onClick={logOut}
-            title="Logout"
-            className="p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-all"
-          >
-            <LogOut className="flex-shrink-0 w-5 h-5" />
-          </button>
-        </div>
-      </nav>
-
-      {/* Main Content Wrapper */}
-      <main className="flex-1 min-w-0 flex flex-col md:ml-72 pt-16 md:pt-0 min-h-screen relative">
-        <ConnectivityBanner />
-        {/* TopNavBar */}
-        <header className="flex flex-col fixed md:sticky top-0 w-full z-30 bg-background/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-sm font-body-md text-on-background transition-all">
-          <div className="flex justify-between items-center h-16 px-4 md:px-8 w-full">
-            <div className="flex items-center space-x-6 w-1/3 h-full">
-              <button
-                className="md:hidden p-2 -ml-2 text-on-surface hover:text-primary rounded-full hover:bg-surface-container transition-colors flex items-center justify-center"
-                onClick={() => setIsMobileNavOpen(true)}
-              >
-                <Menu className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="text-xl font-serif font-semibold text-primary w-1/3 text-center tracking-tight md:hidden italic flex items-center justify-center h-full">
-              book(ish)
-            </div>
-            <div className="flex items-center justify-end space-x-1 sm:space-x-4 w-1/3 ml-auto text-on-surface-variant h-full">
-              <div
-                id="header-actions-root"
-                className="flex items-center space-x-2"
-              />
-              <ThemeToggle />
-              <div className="h-9 w-9 border border-outline-variant/30 shadow-sm rounded-full bg-surface-variant overflow-hidden cursor-pointer hover:border-primary/50 transition-colors flex-shrink-0">
+          {/* Right Header: User Profile Action */}
+          <div className="flex items-center gap-2 sm:gap-4">
+            <button
+              type="button"
+              onClick={() => setIsProfileOpen(true)}
+              className="group flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-full hover:bg-surface-container-low border border-transparent hover:border-outline-variant/30 transition-all cursor-pointer"
+              title="Account & Settings"
+              aria-label="Open profile and settings"
+            >
+              <span className="hidden md:inline-block text-xs font-sans font-medium text-on-surface-variant group-hover:text-primary transition-colors max-w-[140px] truncate">
+                {user?.displayName ||
+                  user?.email?.split('@')[0] ||
+                  'My Account'}
+              </span>
+              <div className="h-9 w-9 border border-outline-variant/40 shadow-xs rounded-full bg-surface-container flex items-center justify-center overflow-hidden group-hover:ring-2 group-hover:ring-primary/40 transition-all shrink-0">
                 {user?.photoURL ? (
                   <img
                     src={user.photoURL}
@@ -148,17 +60,28 @@ export default function AppLayout({children}: AppLayoutProps) {
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-primary font-bold text-sm">
+                  <div className="text-primary font-serif font-bold text-sm">
                     {user?.email?.[0]?.toUpperCase() || 'U'}
                   </div>
                 )}
               </div>
-            </div>
+            </button>
           </div>
-        </header>
+        </div>
+      </header>
 
+      {/* Main Content Area */}
+      <main className="flex-1 min-w-0 flex flex-col min-h-screen relative w-full">
+        <ConnectivityBanner />
         {children || <Outlet />}
       </main>
+
+      {/* User Profile Dialog */}
+      <UserProfileDialog
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        currentLibraryId={currentLibraryId}
+      />
     </div>
   );
 }

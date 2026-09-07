@@ -1,14 +1,8 @@
 import {useQuery} from '@tanstack/react-query';
-import {
-  doc,
-  getDoc,
-  collection,
-  getDocs,
-  setDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
+import {doc, getDoc} from 'firebase/firestore';
 import {db} from '../firebase';
 import {useAuth} from '../stores/authStore';
+import {SUPERADMIN_EMAIL} from '../constants/auth';
 
 export function useAppPermissions() {
   const {user, isAuthReady} = useAuth();
@@ -19,7 +13,7 @@ export function useAppPermissions() {
     queryFn: async () => {
       if (!email) return {isAppAllowed: false, isAdmin: false};
 
-      if (email === 'nikhil.singhal@gmail.com') {
+      if (email === SUPERADMIN_EMAIL) {
         return {isAppAllowed: true, isAdmin: true};
       }
 
@@ -33,26 +27,10 @@ export function useAppPermissions() {
             isAdmin: allowSnap.data()?.role === 'admin',
           };
         } else {
-          // Bootstrapper: If allowlist is totally empty, make this user the first admin.
-          const allUsersSnap = await getDocs(
-            collection(db, 'appSettings/allowlist/users'),
-          );
-          if (allUsersSnap.empty) {
-            await setDoc(allowRef, {
-              email: email,
-              role: 'admin',
-              addedAt: serverTimestamp(),
-            });
-            return {
-              isAppAllowed: true,
-              isAdmin: true,
-            };
-          } else {
-            return {
-              isAppAllowed: false,
-              isAdmin: false,
-            };
-          }
+          return {
+            isAppAllowed: false,
+            isAdmin: false,
+          };
         }
       } catch (error) {
         console.error('Error fetching admin allowlist', error);

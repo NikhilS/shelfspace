@@ -19,6 +19,7 @@ import ScrollToTop from './components/ScrollToTop';
 import {RequireLibraryPermission} from './components/RequireLibraryPermission';
 import {BookLoader} from './components/BookLoader';
 import {PageLoading} from './components/PageLoading';
+import {LibraryMainSkeleton} from './components/LibrarySkeletons';
 import {useDebug} from './stores/debugStore';
 
 function lazyWithRetry<T extends React.ComponentType>(
@@ -26,19 +27,33 @@ function lazyWithRetry<T extends React.ComponentType>(
 ): React.LazyExoticComponent<T> {
   return lazy(async () => {
     try {
-      return await factory();
+      const module = await factory();
+      sessionStorage.removeItem('chunk_retry_reloaded');
+      return module;
     } catch (error) {
       console.warn('Dynamic import failed, retrying in 1 second...', error);
       try {
         await new Promise(resolve => setTimeout(resolve, 1000));
-        return await factory();
+        const retryModule = await factory();
+        sessionStorage.removeItem('chunk_retry_reloaded');
+        return retryModule;
       } catch (retryError) {
+        const hasReloaded = sessionStorage.getItem('chunk_retry_reloaded');
+        if (!hasReloaded) {
+          sessionStorage.setItem('chunk_retry_reloaded', 'true');
+          console.warn(
+            'Dynamic import failed after retry, reloading page once...',
+            retryError,
+          );
+          window.location.reload();
+          return new Promise(() => {});
+        }
+        sessionStorage.removeItem('chunk_retry_reloaded');
         console.error(
-          'Dynamic import failed after retry, reloading page...',
+          'Dynamic import failed after reload attempt:',
           retryError,
         );
-        window.location.reload();
-        return new Promise(() => {});
+        throw retryError;
       }
     }
   });
@@ -66,17 +81,24 @@ function LoadingScreen() {
 }
 
 function PageWrapper({children}: {children?: React.ReactNode}) {
+  const location = useLocation();
+  const isLibraryRoute = location.pathname.startsWith('/library/');
+
   return (
     <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out flex-1">
       <ErrorBoundary>
         <Suspense
           fallback={
-            <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh]">
-              <PageLoading
-                title="Loading module..."
-                subtitle="Downloading application assets and views."
-              />
-            </div>
+            isLibraryRoute ? (
+              <LibraryMainSkeleton />
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh]">
+                <PageLoading
+                  title="Loading module..."
+                  subtitle="Downloading application assets and views."
+                />
+              </div>
+            )
           }
         >
           {children || <Outlet />}
@@ -320,10 +342,11 @@ function ThemeProvider({children}: {children: React.ReactNode}) {
     root.classList.remove('light', 'dark');
 
     if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
-        .matches
-        ? 'dark'
-        : 'light';
+      const isDark =
+        typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+          ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          : false;
+      const systemTheme = isDark ? 'dark' : 'light';
       root.classList.add(systemTheme);
       return;
     }
@@ -333,7 +356,12 @@ function ThemeProvider({children}: {children: React.ReactNode}) {
 
   // Listen for system theme changes if mode is 'system'
   React.useEffect(() => {
-    if (theme !== 'system') return;
+    if (
+      theme !== 'system' ||
+      typeof window === 'undefined' ||
+      typeof window.matchMedia !== 'function'
+    )
+      return;
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => {

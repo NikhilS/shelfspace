@@ -24,11 +24,6 @@ vi.mock('@vis.gl/react-google-maps', () => ({
   ),
 }));
 
-// Mock Library Sidebar Nav
-vi.mock('../components/LibrarySidebarNav', () => ({
-  LibrarySidebarNav: () => <div data-testid="sidebar-nav">Sidebar Nav</div>,
-}));
-
 // Mock library data response
 const mockBooks = [
   {

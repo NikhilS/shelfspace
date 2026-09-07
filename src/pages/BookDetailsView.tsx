@@ -8,6 +8,7 @@ import {useLibraryData} from '../hooks/useLibraryData';
 import {useAuth} from '../stores/authStore';
 import {PrefetchAdjacentBooks} from '../components/PrefetchAdjacentBooks';
 import {getAccessFromLibrary} from '../hooks/useLibraryAccess';
+import {ChevronLeft, ChevronRight} from 'lucide-react';
 
 import 'swiper/css';
 import 'swiper/css/virtual';
@@ -75,6 +76,28 @@ export default function BookDetailsView() {
     void navigate(backUrl, {replace: true});
   };
 
+  // Keyboard navigation support for desktop
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        swiperInstance?.slidePrev();
+      } else if (e.key === 'ArrowRight') {
+        swiperInstance?.slideNext();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [swiperInstance]);
+
   if (!libraryId || bookList.length === 0) {
     return <div className="h-full w-full bg-surface" />;
   }
@@ -88,7 +111,31 @@ export default function BookDetailsView() {
         radius={3}
       />
 
-      <div className="h-full w-full bg-surface overflow-hidden">
+      <div className="h-full w-full bg-surface overflow-hidden relative">
+        {/* Desktop Previous Book Chevron */}
+        {activeIndex > 0 && (
+          <button
+            onClick={() => swiperInstance?.slidePrev()}
+            className="hidden md:flex fixed left-76 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100 cursor-pointer"
+            title="Previous Book (Left Arrow)"
+            aria-label="Previous Book"
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+        )}
+
+        {/* Desktop Next Book Chevron */}
+        {activeIndex < bookList.length - 1 && (
+          <button
+            onClick={() => swiperInstance?.slideNext()}
+            className="hidden md:flex fixed right-6 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100 cursor-pointer"
+            title="Next Book (Right Arrow)"
+            aria-label="Next Book"
+          >
+            <ChevronRight className="w-6 h-6" />
+          </button>
+        )}
+
         <Swiper
           modules={[Virtual]}
           virtual={{
@@ -103,6 +150,10 @@ export default function BookDetailsView() {
           onSlideChange={handleSlideChange}
           className="h-full w-full"
           resistanceRatio={0.85} // Make 'bouncing' at edges feel nice
+          threshold={12} // Require deliberate gesture before initiating swipe
+          touchAngle={40} // Only swipe if gesture is predominantly horizontal
+          noSwiping={true}
+          noSwipingClass="swiper-no-swiping"
         >
           {bookList.map((id, index) => (
             <SwiperSlide key={id} virtualIndex={index}>

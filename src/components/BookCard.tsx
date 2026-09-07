@@ -35,21 +35,33 @@ export default function BookCard({
         className={`relative aspect-[2/3] mb-4 bg-surface-container rounded-lg shadow-elevation-2 overflow-hidden transform transition-transform duration-300 group-hover:-translate-y-1 ${isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
       >
         {onSelect && (
-          <div
-            className={`absolute top-2 left-2 z-20 flex items-center justify-center transition-opacity ${isSelected || isSelectMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+          <button
+            type="button"
+            aria-label={isSelected ? 'Deselect book' : 'Select book'}
+            className={`absolute top-1 left-1 z-20 w-11 h-11 flex items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary transition-opacity ${
+              isSelected || isSelectMode
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100'
+            }`}
             onClick={e => {
               e.stopPropagation();
               onSelect(e);
             }}
           >
             <div
-              className={`w-5 h-5 rounded-sm border ${isSelected ? 'bg-primary border-primary' : 'bg-surface/80 border-outline backdrop-blur-sm'} flex items-center justify-center shadow-sm`}
+              className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shadow-sm transition-all duration-150 active:scale-90 ${
+                isSelected
+                  ? 'bg-primary border-primary text-on-primary'
+                  : 'bg-surface/90 border-outline/70 backdrop-blur-md hover:border-primary/80'
+              }`}
             >
               {isSelected && (
-                <span className="text-on-primary text-xs leading-none">✓</span>
+                <span className="text-on-primary text-xs font-bold leading-none select-none">
+                  ✓
+                </span>
               )}
             </div>
-          </div>
+          </button>
         )}
         {book.coverUrl ? (
           <img

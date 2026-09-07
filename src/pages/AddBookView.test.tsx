@@ -17,6 +17,13 @@ vi.mock('../lib/trpc', () => ({
       },
     },
   },
+  trpcVanilla: {
+    metadata: {
+      enrichCreate: {
+        mutate: vi.fn(() => Promise.resolve({status: 'success', results: []})),
+      },
+    },
+  },
 }));
 
 vi.mock('../stores/authStore', () => ({

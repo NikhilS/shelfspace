@@ -136,16 +136,57 @@ export function useConstellationData(libraryId: string | undefined) {
         setProgress('Projecting semantic space with UMAP...');
         await new Promise(r => setTimeout(r, 60));
 
-        const fittings = await (async () => {
-          const {UMAP} = await import('umap-js');
-          const umap = new UMAP({
-            nNeighbors,
-            minDist: 0.1,
-            nComponents: 2,
-            nEpochs: 400,
-          });
-          return umap.fit(embeddingData);
-        })();
+        const fittings = await new Promise<number[][]>((resolve, reject) => {
+          try {
+            if (typeof Worker !== 'undefined') {
+              const worker = new Worker(
+                new URL('../workers/umapWorker.ts', import.meta.url),
+                {type: 'module'},
+              );
+              worker.onmessage = e => {
+                worker.terminate();
+                if (e.data.error) {
+                  reject(new Error(e.data.error));
+                } else if (e.data.reduced) {
+                  resolve(e.data.reduced);
+                } else {
+                  reject(new Error('Invalid response from UMAP worker'));
+                }
+              };
+              worker.onerror = err => {
+                worker.terminate();
+                reject(err);
+              };
+              worker.postMessage({embeddings: embeddingData, nNeighbors});
+            } else {
+              // Fallback if Worker is not available (e.g. in test environments)
+              import('umap-js')
+                .then(({UMAP}) => {
+                  const umap = new UMAP({
+                    nNeighbors,
+                    minDist: 0.1,
+                    nComponents: 2,
+                    nEpochs: 400,
+                  });
+                  resolve(umap.fit(embeddingData));
+                })
+                .catch(reject);
+            }
+          } catch {
+            // Fallback if worker instantiation fails
+            import('umap-js')
+              .then(({UMAP}) => {
+                const umap = new UMAP({
+                  nNeighbors,
+                  minDist: 0.1,
+                  nComponents: 2,
+                  nEpochs: 400,
+                });
+                resolve(umap.fit(embeddingData));
+              })
+              .catch(reject);
+          }
+        });
 
         setProgress('Clustering to find relationships...');
         await new Promise(r => setTimeout(r, 100));

@@ -26,6 +26,7 @@ describe('Login', () => {
         <Login />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/Sign in with Google/i)).toBeInTheDocument();
+    expect(screen.getByText('Sign-In')).toBeInTheDocument();
+    expect(screen.getByText('Open Your Vault')).toBeInTheDocument();
   });
 });

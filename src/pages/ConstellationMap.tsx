@@ -1,6 +1,6 @@
 import React, {Suspense, lazy} from 'react';
-import {useParams} from 'react-router-dom';
-import {RefreshCw} from 'lucide-react';
+import {useParams, Link} from 'react-router-dom';
+import {RefreshCw, ArrowLeft} from 'lucide-react';
 import {useConstellationData} from '../hooks/useConstellationData';
 import {Button} from '@/components/ui/button';
 import {BookLoader} from '../components/BookLoader';
@@ -19,6 +19,13 @@ export default function ConstellationMap() {
       <div className="layout-page-content">
         <div className="layout-header border-none sm:flex-row sm:justify-between sm:items-start">
           <div>
+            <Link
+              to={`/library/${libraryId}`}
+              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-on-surface-variant hover:text-primary transition-colors mb-2.5 group"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+              <span>Back to Library Overview</span>
+            </Link>
             <h1 className="layout-header-title">Constellation Map</h1>
             <p className="layout-header-subtitle">
               An AI-generated semantic map of your books. Books with similar

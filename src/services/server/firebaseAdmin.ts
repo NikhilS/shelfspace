@@ -14,15 +14,25 @@ const firebaseConfig = fs.existsSync(configPath)
   : null;
 
 if (firebaseConfig && !admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    projectId: firebaseConfig.projectId,
-  });
+  try {
+    admin.initializeApp({
+      projectId: firebaseConfig.projectId,
+    });
+  } catch (err) {
+    console.error('Failed to initialize Firebase Admin app:', err);
+  }
 }
+
+export {SUPERADMIN_EMAIL} from '../../constants/auth';
 
 export const getAdminDb = () => {
   if (!firebaseConfig) {
     throw new Error('Firebase config not found');
+  }
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      projectId: firebaseConfig.projectId,
+    });
   }
   return getFirestore(
     admin.app(),

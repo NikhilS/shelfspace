@@ -43,13 +43,29 @@ export interface BookTemporalMetadata {
   lastProcessedAt: string;
 }
 
+export type EnrichmentTypeStatus =
+  'completed' | 'unsupported' | 'failed' | 'pending';
+
+export interface BookEnrichmentStatus {
+  geo?: EnrichmentTypeStatus;
+  temporal?: EnrichmentTypeStatus;
+  genre?: EnrichmentTypeStatus;
+  synopsis?: EnrichmentTypeStatus;
+  authorBio?: EnrichmentTypeStatus;
+  coverImage?: EnrichmentTypeStatus;
+  embedding?: EnrichmentTypeStatus;
+  lastAttemptedAt?: string;
+}
+
 export interface Book extends Omit<BookDetails, 'synopsis'> {
   id: string;
   addedBy: string | null;
   addedAt: FirestoreDate;
+  updatedAt?: string;
   userStatuses?: UserStatuses;
   geoMetadata?: BookGeoMetadata;
   temporalMetadata?: BookTemporalMetadata;
+  enrichmentStatus?: BookEnrichmentStatus;
   // Metadata fields that might still be in the books collection (legacy)
   synopsis?: string;
   authorBio?: string;

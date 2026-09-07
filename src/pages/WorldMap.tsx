@@ -1,5 +1,5 @@
 import React, {useState, useMemo, useCallback, useEffect} from 'react';
-import {useParams, useNavigate} from 'react-router-dom';
+import {useParams, useNavigate, Link} from 'react-router-dom';
 import {useAuth} from '../stores/authStore';
 import {useLibraryData} from '../hooks/useLibraryData';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
@@ -14,6 +14,7 @@ import {
   Globe,
   BookOpen,
   X,
+  ArrowLeft,
 } from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {BookLoader} from '../components/BookLoader';
@@ -85,8 +86,6 @@ export default function WorldMap() {
     libraryId,
     providerKey: 'geoMetadata',
     metadataField: 'geoMetadata',
-    batchSize: 50,
-    concurrencyLimit: 5,
     filterPredicate: filterGeoPredicate,
     successToastMessage:
       'Successfully backfilled literary settings map references!',
@@ -253,6 +252,13 @@ export default function WorldMap() {
         {/* Dynamic header information block */}
         <div className="layout-header border-none flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
+            <Link
+              to={`/library/${libraryId}`}
+              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-on-surface-variant hover:text-primary transition-colors mb-2.5 group"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+              <span>Back to Library Overview</span>
+            </Link>
             <h1 className="layout-header-title">Literary World Map</h1>
             <p className="layout-header-subtitle max-w-3xl">
               Visualize the settings, narrative regions, and historical
@@ -599,6 +605,7 @@ export default function WorldMap() {
                   internalUsageAttributionIds={[
                     'gmp_mcp_codeassist_v1_aistudio',
                   ]}
+                  gestureHandling={'cooperative'}
                   zoom={zoom}
                   center={center}
                   onZoomChanged={ev => setZoom(ev.detail.zoom)}

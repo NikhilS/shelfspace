@@ -65,38 +65,47 @@ export const useAuthStore = create<AuthState>(set => ({
   _initialize: () => {
     const unsubscribe = onAuthStateChanged(auth, async currentUser => {
       try {
-        set({user: currentUser, authError: null});
-
         if (currentUser) {
           if (!currentUser.emailVerified) {
             await signOut(auth);
             set({
+              user: null,
               authError: 'Please verify your email to access this app.',
+              isAuthReady: true,
             });
             return;
           }
 
-          try {
-            // Ensure user document exists
-            const userRef = doc(db, 'users', currentUser.uid);
-            const userSnap = await getDoc(userRef);
-            if (!userSnap.exists()) {
-              await setDoc(userRef, {
-                uid: currentUser.uid,
-                email: currentUser.email || '',
-                displayName: currentUser.displayName || '',
-                photoURL: currentUser.photoURL || '',
-                createdAt: serverTimestamp(),
-              });
-            }
-          } catch (error) {
-            console.error('Error ensuring user document:', error);
-            // Catch error silently so app initialization is not blocked
+          // Unblock app render immediately with the authenticated user
+          set({user: currentUser, authError: null, isAuthReady: true});
+
+          // Ensure user document exists in the background without blocking the critical load path
+          const sessionSyncKey = `user_doc_synced_${currentUser.uid}`;
+          if (!sessionStorage.getItem(sessionSyncKey)) {
+            void (async () => {
+              try {
+                const userRef = doc(db, 'users', currentUser.uid);
+                const userSnap = await getDoc(userRef);
+                if (!userSnap.exists()) {
+                  await setDoc(userRef, {
+                    uid: currentUser.uid,
+                    email: currentUser.email || '',
+                    displayName: currentUser.displayName || '',
+                    photoURL: currentUser.photoURL || '',
+                    createdAt: serverTimestamp(),
+                  });
+                }
+                sessionStorage.setItem(sessionSyncKey, '1');
+              } catch (error) {
+                console.warn('Background user document sync failed:', error);
+              }
+            })();
           }
+        } else {
+          set({user: null, authError: null, isAuthReady: true});
         }
       } catch (err) {
         console.error('Error during auth state change processing:', err);
-      } finally {
         set({isAuthReady: true});
       }
     });

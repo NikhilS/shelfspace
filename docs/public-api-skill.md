@@ -157,6 +157,65 @@ Triggers background metadata generation or enrichment (genres, synopsis, histori
 
 ---
 
+### Endpoint 4: Update Book Metadata
+
+Updates metadata properties for a specific book within a library. Employs **partial update (`PATCH`) semantics** where only fields explicitly provided in the request payload are updated, leaving omitted fields untouched.
+
+> 🎨 **Cover Image Update & Removal Capabilities:**
+> * **Set Cover:** Supply a non-empty image URL string (e.g. `"coverImage": "https://example.com/cover.jpg"`).
+> * **Clear Cover:** Supply `null` or `""` (e.g. `"coverImage": null` or `"coverImage": ""`). This clears stored cover URLs and sets `metadataStatus.hasCoverImage` to `false`.
+> * **Leave Unchanged:** Omit `coverImage` from the request.
+> * **Extensibility:** The schema structure is designed to support all book metadata fields in future phases (`title`, `author`, `synopsis`, `genre`, etc.), but **is restricted to `coverImage` in Phase 1**.
+
+* **HTTP Method:** `PATCH`
+* **Path:** `/api/v1/libraries/:libraryId/books/:bookId`
+* **Path Parameters:**
+  * `libraryId` *(string, required)*: Target library ID.
+  * `bookId` *(string, required)*: Target book ID.
+* **Request Body (`application/json`):**
+  * `metadata` *(object, required)*: Object containing fields to update.
+    * `coverImage` *(string or null, optional)*: Image URL to set, or `null`/`""` to clear.
+* **Example Payload (Set Cover Image):**
+  ```json
+  {
+    "metadata": {
+      "coverImage": "https://example.com/covers/dune.jpg"
+    }
+  }
+  ```
+* **Example Payload (Clear Cover Image):**
+  ```json
+  {
+    "metadata": {
+      "coverImage": null
+    }
+  }
+  ```
+* **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "bookId": "book_abc123",
+    "updatedFields": ["coverImage"],
+    "book": {
+      "id": "book_abc123",
+      "title": "Dune",
+      "author": "Frank Herbert",
+      "coverImage": "https://example.com/covers/dune.jpg",
+      "metadataStatus": {
+        "hasGeo": true,
+        "hasTemporal": true,
+        "hasGenre": true,
+        "hasSynopsis": true,
+        "hasCoverImage": true
+      },
+      "updatedAt": "2026-07-26T10:25:00.000Z"
+    }
+  }
+  ```
+
+---
+
 ## 4. Operational Playbook for LLM / AI Agents
 
 When an AI Agent is tasked with managing or querying a library, it should follow this sequential execution plan:

@@ -8,6 +8,23 @@ vi.mock('../stores/authStore', () => ({
   useAuth: () => ({user: {uid: 'u1'}, logOut: vi.fn()}),
 }));
 
+vi.mock('../lib/trpc', () => ({
+  trpc: {
+    gemini: {
+      generateBookEmbeddings: {
+        useMutation: () => ({
+          mutateAsync: vi.fn().mockResolvedValue([]),
+        }),
+      },
+      generateClusterNames: {
+        useMutation: () => ({
+          mutateAsync: vi.fn().mockResolvedValue({}),
+        }),
+      },
+    },
+  },
+}));
+
 vi.mock('../firebase', () => ({
   db: {},
   handleFirestoreError: vi.fn(),

@@ -185,7 +185,7 @@ An "API & Integrations" management panel will be added to the Admin Settings int
 
 ### 4.4 External API Signatures & Filter Architecture
 
-The external API exposes three core procedures for library discovery, filtered book querying, and targeted batch metadata enrichment.
+The external API exposes four core procedures for library discovery, filtered book querying, targeted batch metadata enrichment, and extensible book metadata updates.
 
 #### Filter Representation in OpenAPI & tRPC
 To ensure a clean developer experience across both REST (OpenAPI) and tRPC:
@@ -319,6 +319,73 @@ To ensure a clean developer experience across both REST (OpenAPI) and tRPC:
   * `500` (**Internal Write Error**): Database write failure while saving enriched properties to Firestore.
     * *Example:* `errorMessage: "Firestore document write failed for book 'book_12'"`
 * **Access Control:** Requires authenticated user context (JWT or API Key) and write permission on `libraryId`.
+
+#### 4. `book.update`
+* **Transport / Path:** `PATCH /api/v1/libraries/:libraryId/books/:bookId` (REST) / `trpc.book.update` (tRPC)
+* **Description:** Updates metadata fields for a single book within a library. Designed with partial update (`PATCH`) semantics where **only fields explicitly provided in the request payload are modified**, leaving all other fields untouched. Built on an extensible schema designed to eventually support all book metadata fields, but **strictly constrained to cover image updates (`coverImage`) in Phase 1**.
+* **Partial Update & Nullability Rules:**
+  * **Set Value:** Passing a non-empty string URL sets or updates the cover image URL (`{"coverImage": "https://example.com/cover.jpg"}`).
+  * **Clear Value:** Passing `null` or an empty string `""` explicitly clears/deletes the cover image (`{"coverImage": null}` or `{"coverImage": ""}`), clearing `coverUrl`, `coverUrlRaw`, and resetting `metadataStatus.hasCoverImage` to `false`.
+  * **Leave Untouched:** Omitting the field entirely (or passing `undefined`) preserves the current cover image without modification.
+* **Input Schema (Zod):**
+  ```typescript
+  z.object({
+    libraryId: z.string().min(1).describe('Target library ID (exactly one)'),
+    bookId: z.string().min(1).describe('Target book ID'),
+    // Partial metadata update payload
+    metadata: z.object({
+      // Phase 1 Supported Field:
+      // - string (valid URL) => sets/replaces cover image
+      // - null or "" => clears existing cover image
+      // - undefined / omitted => leaves cover image unchanged
+      coverImage: z.string().url().nullable().or(z.literal('')).optional(),
+
+      // Extensible Schema Reservation (Phase 2+ Future Expansion):
+      /*
+      title: z.string().min(1).optional(),
+      author: z.string().min(1).optional(),
+      isbn: z.string().nullable().optional(),
+      synopsis: z.string().nullable().optional(),
+      genre: z.string().nullable().optional(),
+      genres: z.array(z.string()).optional(),
+      geoData: z.record(z.unknown()).optional(),
+      temporalData: z.record(z.unknown()).optional(),
+      */
+    }).refine(
+      (data) => Object.keys(data).length > 0,
+      { message: "At least one metadata field must be specified for update" }
+    ),
+  })
+  ```
+* **Output Schema (Zod):**
+  ```typescript
+  z.object({
+    success: z.literal(true),
+    bookId: z.string(),
+    updatedFields: z.array(z.string()).describe('List of metadata keys modified in this request'),
+    book: z.object({
+      id: z.string(),
+      title: z.string(),
+      author: z.string(),
+      coverImage: z.string().nullable().optional(),
+      metadataStatus: z.object({
+        hasGeo: z.boolean(),
+        hasTemporal: z.boolean(),
+        hasGenre: z.boolean(),
+        hasSynopsis: z.boolean(),
+        hasCoverImage: z.boolean(),
+      }),
+      updatedAt: z.string(),
+    }),
+  })
+  ```
+* **Access Control:** Requires authenticated user context (`JWT` or `API Key`) with write permissions (`owner` or `editor` role) on `libraryId`. Viewers receive a `403 Forbidden` response.
+* **HTTP Error Codes & Error Scenarios:**
+  * `400 Bad Request`: Payload validation failed (e.g. malformed URL for `coverImage` or empty metadata object).
+  * `401 Unauthorized`: Missing or invalid API key / authentication token.
+  * `403 Forbidden`: Authenticated user/API key lacks write permission for the specified `libraryId`.
+  * `404 Not Found`: Target `libraryId` or `bookId` does not exist.
+  * `422 Unprocessable Entity`: Payload contains unpermitted metadata fields not yet enabled in Phase 1 (e.g., attempting to update `title` or `synopsis`).
 
 ---
 

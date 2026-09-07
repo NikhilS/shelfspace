@@ -10,6 +10,7 @@ import {
   Bounds,
 } from '@react-three/drei';
 import * as THREE from 'three';
+import {Move, Hand} from 'lucide-react';
 
 const CLUSTER_COLORS = [
   '#FF5A5F', // Nebula Rose / Deep Pink-Red
@@ -155,9 +156,45 @@ export default function ConstellationChart({
     data: ScatterPoint;
     pos: [number, number, number];
   } | null>(null);
+  const [gesturesActive, setGesturesActive] = useState(true);
 
   return (
-    <div className="relative w-full h-[600px] md:h-[700px] bg-primary rounded-lg border border-outline-variant shadow-sm overflow-hidden">
+    <div className="relative w-full h-[480px] sm:h-[560px] md:h-[650px] bg-primary rounded-2xl border border-outline-variant shadow-sm overflow-hidden touch-pan-y">
+      {/* Mobile Gesture Helper & Safety Toggle */}
+      <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex items-center gap-2">
+        <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface/90 backdrop-blur-md border border-outline-variant/30 text-[11px] font-sans font-medium text-on-surface-variant shadow-xs">
+          2 fingers to pan & zoom • 1 finger scrolls
+        </span>
+        <button
+          type="button"
+          onClick={() => setGesturesActive(!gesturesActive)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md border transition-all shadow-xs ${
+            gesturesActive
+              ? 'bg-surface/95 text-primary border-outline-variant/40 hover:bg-surface'
+              : 'bg-primary-container text-on-primary-container border-primary/30'
+          }`}
+          title={
+            gesturesActive
+              ? 'Tap to lock 3D navigation and freely scroll page'
+              : 'Tap to enable 3D navigation'
+          }
+        >
+          {gesturesActive ? (
+            <>
+              <Move className="w-3.5 h-3.5 text-secondary" />
+              <span className="hidden xs:inline">3D Pan Active</span>
+              <span className="xs:hidden">Pan On</span>
+            </>
+          ) : (
+            <>
+              <Hand className="w-3.5 h-3.5 text-secondary" />
+              <span className="hidden xs:inline">Page Scroll Mode</span>
+              <span className="xs:hidden">Scroll Mode</span>
+            </>
+          )}
+        </button>
+      </div>
+
       <Canvas camera={{position: [0, 0, 35], fov: 60}}>
         <color attach="background" args={['var(--color-primary-base)']} />
         <ambientLight intensity={0.5} />
@@ -176,6 +213,7 @@ export default function ConstellationChart({
 
         <OrbitControls
           makeDefault
+          enabled={gesturesActive}
           enablePan={true}
           enableZoom={true}
           enableRotate={false}
@@ -185,7 +223,6 @@ export default function ConstellationChart({
             RIGHT: THREE.MOUSE.ROTATE,
           }}
           touches={{
-            ONE: THREE.TOUCH.PAN,
             TWO: THREE.TOUCH.DOLLY_PAN,
           }}
         />
@@ -220,17 +257,17 @@ export default function ConstellationChart({
               <div className="flex flex-wrap gap-1 items-center mt-1">
                 {hoveredNode.data.book.genres &&
                   hoveredNode.data.book.genres.length > 0 && (
-                    <span className="inline-block px-1.5 py-0.5 rounded-sm font-label-caps text-[9px] tracking-wider bg-secondary/10 text-secondary">
+                    <span className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-sans font-medium bg-secondary/10 text-secondary">
                       {hoveredNode.data.book.genres[0]}
                     </span>
                   )}
                 {hoveredNode.data.clusterId >= 0 ? (
-                  <span className="inline-block px-1.5 py-0.5 rounded-sm font-label-caps text-[9px] tracking-wider bg-tertiary-container/10 text-on-tertiary-container border border-on-tertiary-container/10">
+                  <span className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-sans font-medium bg-tertiary-container/10 text-on-tertiary-container border border-on-tertiary-container/10">
                     {clusterNames[hoveredNode.data.clusterId] ||
                       `Constellation ${hoveredNode.data.clusterId + 1}`}
                   </span>
                 ) : (
-                  <span className="inline-block px-1.5 py-0.5 rounded-sm font-label-caps text-[9px] tracking-wider bg-surface-variant text-on-surface-variant">
+                  <span className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-sans font-medium bg-surface-variant text-on-surface-variant">
                     Uncategorized
                   </span>
                 )}
@@ -241,8 +278,8 @@ export default function ConstellationChart({
       </Canvas>
 
       {/* Map Legend */}
-      <div className="absolute bottom-4 left-4 bg-surface-container/95 backdrop-blur border border-outline-variant/30 p-4 rounded-lg shadow-lg pointer-events-auto max-w-[240px]">
-        <h4 className="font-label-caps text-label-caps text-primary mb-2.5">
+      <div className="absolute bottom-4 left-4 bg-surface-container/95 backdrop-blur border border-outline-variant/30 p-3.5 sm:p-4 rounded-2xl shadow-lg pointer-events-auto max-w-[220px] sm:max-w-[240px]">
+        <h4 className="text-xs font-sans font-semibold tracking-wider uppercase text-primary mb-2">
           Constellations
         </h4>
         <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-2 custom-scrollbar">

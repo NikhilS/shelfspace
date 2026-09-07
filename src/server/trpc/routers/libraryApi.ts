@@ -15,11 +15,7 @@ export const libraryApiRouter = router({
 
 export const bookApiRouter = router({
   list: protectedProcedure.input(bookListSchema).query(async ({input, ctx}) => {
-    return LibraryService.getFilteredBooks(
-      ctx.user.uid,
-      ctx.user.email,
-      input,
-    );
+    return LibraryService.getFilteredBooks(ctx.user.uid, ctx.user.email, input);
   }),
 });
 

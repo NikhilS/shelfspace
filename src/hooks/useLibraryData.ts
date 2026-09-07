@@ -14,6 +14,7 @@ import {toast} from 'sonner';
 import {parseGenres} from '../lib/utils';
 import {DebugTelemetryEngine} from '../lib/telemetry';
 import {useQuery, useQueryClient} from '@tanstack/react-query';
+import {useAuth} from '../stores/authStore';
 
 export function useLibraryData(
   libraryId: string | undefined,
@@ -21,35 +22,44 @@ export function useLibraryData(
   navigate: (path: string) => void,
 ) {
   const queryClient = useQueryClient();
+  const {user} = useAuth();
   const [isSyncing, setIsSyncing] = useState(false);
 
   const libraryQuery = useQuery({
     queryKey: ['library', libraryId],
     enabled: !!libraryId && !!userId,
+    initialData: () =>
+      queryClient.getQueryData<Library>(['library', libraryId]) || undefined,
     queryFn: () =>
-      new Promise<Library | null>(resolve => {
-        // the initial value is populated by the snapshot listener below, but this fn is needed so useQuery doesn't complain.
-        // Alternatively, we can just use the initial snapshot if the listener takes more time
-        resolve(queryClient.getQueryData(['library', libraryId]) || null);
-      }),
+      queryClient.getQueryData<Library>(['library', libraryId]) || null,
     staleTime: Infinity,
   });
 
   const booksQuery = useQuery({
     queryKey: ['books', libraryId],
     enabled: !!libraryId && !!userId,
-    queryFn: () =>
-      new Promise<Book[]>(resolve => {
-        resolve(queryClient.getQueryData(['books', libraryId]) || []);
-      }),
+    initialData: () =>
+      queryClient.getQueryData<Book[]>(['books', libraryId]) || undefined,
+    queryFn: () => queryClient.getQueryData<Book[]>(['books', libraryId]) || [],
     staleTime: Infinity,
   });
+
+  const [isLoading, setIsLoading] = useState(
+    () => !queryClient.getQueryData(['library', libraryId]),
+  );
+  const [isBooksLoading, setIsBooksLoading] = useState(
+    () => !queryClient.getQueryData(['books', libraryId]),
+  );
 
   useEffect(() => {
     if (!libraryId || !userId) return;
 
-    setIsLoading(true);
-    setIsBooksLoading(true);
+    if (!queryClient.getQueryData(['library', libraryId])) {
+      setIsLoading(true);
+    }
+    if (!queryClient.getQueryData(['books', libraryId])) {
+      setIsBooksLoading(true);
+    }
 
     const libRef = doc(db, 'libraries', libraryId);
     const unsubscribeLib = onSnapshot(
@@ -158,27 +168,33 @@ export function useLibraryData(
     return () => {
       unsubscribeLib();
       unsubscribeBooks();
-      // Optional: clear cache on unmount? Better let react-query manage it.
     };
   }, [libraryId, userId, navigate, queryClient]);
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [isBooksLoading, setIsBooksLoading] = useState(true);
 
   const library = libraryQuery.data || null;
   const books = booksQuery.data || [];
 
   // Auto-reconcile parent library's bookCount when actual books are loaded in memory
-
   useEffect(() => {
     if (!library || isBooksLoading || isLoading) return;
+
+    // Only owners or editors have write permission to update the library document
+    const userEmail = user?.email?.toLowerCase();
+    const isOwner = library.ownerId === userId;
+    const isEditor =
+      userEmail &&
+      (library.access?.[userEmail] === 'editor' ||
+        library.access?.[userEmail] === 'owner');
+
+    if (!isOwner && !isEditor) return;
+
     if (library.bookCount !== books.length) {
       const libRef = doc(db, 'libraries', library.id);
       updateDoc(libRef, {
         bookCount: books.length,
         updatedAt: serverTimestamp(),
       }).catch(err => {
-        console.error(
+        console.warn(
           '[useLibraryData] Failed to auto-reconcile bookCount:',
           err,
         );
@@ -190,6 +206,8 @@ export function useLibraryData(
     books.length,
     isBooksLoading,
     isLoading,
+    userId,
+    user?.email,
   ]);
 
   return {library, books, isLoading, isBooksLoading, isSyncing};

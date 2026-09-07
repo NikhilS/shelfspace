@@ -43,12 +43,16 @@ describe('AppLayout', () => {
     // book(ish) header/brand
     expect(screen.getAllByText('book(ish)').length).toBeGreaterThan(0);
     // User placeholder icon "T" since email is "test@example.com"
-    expect(screen.getByText('T')).toBeInTheDocument();
+    expect(screen.getAllByText('T').length).toBeGreaterThan(0);
   });
 
-  it('calls logout when Logout is clicked', () => {
+  it('calls logout when Sign Out is clicked', () => {
     renderAppLayout();
-    const logoutBtn = screen.getByText('Logout');
+    const profileBtn = screen.getByRole('button', {
+      name: /open profile and settings/i,
+    });
+    fireEvent.click(profileBtn);
+    const logoutBtn = screen.getByRole('button', {name: /sign out/i});
     fireEvent.click(logoutBtn);
     expect(mockLogOut).toHaveBeenCalledTimes(1);
   });

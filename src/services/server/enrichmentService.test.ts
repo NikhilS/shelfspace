@@ -149,4 +149,101 @@ describe('EnrichmentService', () => {
     expect(res.processedCount).toBe(0);
     expect(res.results).toEqual([]);
   });
+
+  it('persists tombstone status "unsupported" when provider yields no metadata', async () => {
+    vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
+
+    const mockProvider = {
+      isAvailable: () => true,
+      bulkFetch: vi.fn().mockResolvedValue({}),
+    };
+
+    const mockRegistry = {
+      getProvider: vi.fn().mockReturnValue(mockProvider),
+    };
+
+    vi.mocked(MetadataRegistry.getInstance).mockReturnValue(
+      mockRegistry as unknown as MetadataRegistry,
+    );
+
+    mockBookGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        title: 'Abstract Math Treatise',
+        author: 'Unknown Author',
+      }),
+    });
+
+    mockBookUpdate.mockResolvedValue(undefined);
+
+    const res = await EnrichmentService.triggerBatchEnrichment(
+      'u1',
+      'u1@example.com',
+      {
+        libraryId: 'lib1',
+        enrichmentType: 'geo',
+        bookIds: ['b_abstract'],
+      },
+    );
+
+    expect(res.status).toBe('success');
+    expect(res.processedCount).toBe(0);
+    expect(mockBookUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enrichmentStatus: expect.objectContaining({
+          geo: 'unsupported',
+        }),
+      }),
+    );
+  });
+
+  it('supports alias keys like temporalMetadata and updates status to completed', async () => {
+    vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
+
+    const mockProvider = {
+      isAvailable: () => true,
+      bulkFetch: vi
+        .fn()
+        .mockResolvedValue({b2: {startYear: 1812, endYear: 1812}}),
+    };
+
+    const mockRegistry = {
+      getProvider: vi.fn().mockReturnValue(mockProvider),
+    };
+
+    vi.mocked(MetadataRegistry.getInstance).mockReturnValue(
+      mockRegistry as unknown as MetadataRegistry,
+    );
+
+    mockBookGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        title: 'War and Peace',
+        author: 'Leo Tolstoy',
+      }),
+    });
+
+    mockBookUpdate.mockResolvedValue(undefined);
+
+    const res = await EnrichmentService.triggerBatchEnrichment(
+      'u1',
+      'u1@example.com',
+      {
+        libraryId: 'lib1',
+        enrichmentType: 'temporalMetadata',
+        bookIds: ['b2'],
+      },
+    );
+
+    expect(res.status).toBe('success');
+    expect(res.processedCount).toBe(1);
+    expect(mockBookUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        temporalMetadata: {startYear: 1812, endYear: 1812},
+        enrichmentStatus: expect.objectContaining({
+          temporal: 'completed',
+        }),
+      }),
+    );
+  });
 });
