@@ -21,7 +21,9 @@ export function CaptureShelfTab({
       title: string;
       author: string;
       isbn?: string;
-      genres?: string[];
+      primaryGenre?: string;
+      subgenres?: string[];
+      isCustomPrimary?: boolean;
       format?: 'physical' | 'digital';
       coverUrl?: string;
       publishedDate?: string;

@@ -84,7 +84,8 @@ describe('EditBookForm', () => {
     coverUrl: 'https://images.example/original-cover.jpg',
     publishedDate: '1937',
     series: 'Middle-earth',
-    genres: ['Fantasy', 'Adventure'],
+    primaryGenre: 'Fantasy',
+    subgenres: ['Epic & High Fantasy'],
     addedBy: 'u1',
     addedAt: {seconds: 1600000000, nanoseconds: 0} as any,
   };
@@ -123,9 +124,7 @@ describe('EditBookForm', () => {
     expect(screen.getByLabelText('ISBN Code')).toHaveValue('9780261102217');
     expect(screen.getByLabelText('Published Year / Date')).toHaveValue('1937');
     expect(screen.getByLabelText('Series Name')).toHaveValue('Middle-earth');
-    expect(screen.getByLabelText('Genres (Comma separated list)')).toHaveValue(
-      'Fantasy, Adventure',
-    );
+    expect(screen.getByLabelText('Primary Genre')).toHaveValue('Fantasy');
   });
 
   it('renders the delete book action at the end of the form', () => {

@@ -1,15 +1,9 @@
 import React, {useState} from 'react';
-import {
-  Camera,
-  FileText,
-  Plus,
-  ScanBarcode,
-  Search,
-  ArrowLeft,
-} from 'lucide-react';
+import {Camera, FileText, Plus, ScanBarcode, Search} from 'lucide-react';
 import {BookDetails} from '../services/bookApi';
 import {toast} from 'sonner';
-import {useParams, Link} from 'react-router-dom';
+import {useParams} from 'react-router-dom';
+import {BackToLibrary} from '../components/BackToLibrary';
 import {useAddBooks} from './add-book/useAddBooks';
 import {useExistingBooks} from './add-book/useExistingBooks';
 import {Checkbox} from '../components/ui/checkbox';
@@ -59,13 +53,7 @@ export default function AddBookView() {
       <div className="layout-page-content">
         <div className="layout-header">
           <div>
-            <Link
-              to={`/library/${libraryId}`}
-              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-on-surface-variant hover:text-primary transition-colors mb-2.5 group"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-              <span>Back to Library Overview</span>
-            </Link>
+            <BackToLibrary libraryId={libraryId} className="mb-2" />
             <h2 className="layout-header-title">Expand Your Shelves</h2>
             <p className="layout-header-subtitle">
               Grow your library! Dust off your books and add them via

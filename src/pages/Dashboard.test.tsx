@@ -59,20 +59,26 @@ vi.mock('firebase/firestore', async () => {
     query: vi.fn(),
     where: vi.fn(),
     or: vi.fn(),
-    onSnapshot: vi.fn((query, callback) => {
-      callback({
-        forEach: (cb: (doc: unknown) => void) =>
-          cb({
-            id: 'lib1',
-            data: () => ({
-              name: 'Test Library',
-              ownerId: 'user1',
-              ownerName: 'User One',
-              bookCount: 5,
+    onSnapshot: vi.fn((...args: unknown[]) => {
+      const callback = (typeof args[1] === 'function' ? args[1] : args[2]) as (
+        snap: unknown,
+      ) => void;
+      if (callback) {
+        callback({
+          forEach: (cb: (doc: unknown) => void) =>
+            cb({
+              id: 'lib1',
+              data: () => ({
+                name: 'Test Library',
+                ownerId: 'user1',
+                ownerName: 'User One',
+                bookCount: 5,
+              }),
             }),
-          }),
-        empty: false,
-      });
+          metadata: {fromCache: false},
+          empty: false,
+        });
+      }
       return () => {};
     }),
     addDoc: vi.fn().mockResolvedValue({id: 'newLibId'}),

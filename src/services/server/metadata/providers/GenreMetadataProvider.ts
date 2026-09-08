@@ -2,21 +2,30 @@ import {
   IMetadataProvider,
   MetadataKey,
   CoreBookData,
+  BookGenreData,
 } from '../../../../types/metadata';
 import {classifyBooks} from '../../gemini';
 import {resolveBookSynopses} from '../utils';
 
-export class GenreMetadataProvider implements IMetadataProvider<string[]> {
+export class GenreMetadataProvider implements IMetadataProvider<BookGenreData> {
   getKey(): MetadataKey {
     return MetadataKey.GENRE;
   }
 
-  async fetch(book: CoreBookData): Promise<string[]> {
+  async fetch(book: CoreBookData): Promise<BookGenreData> {
     const batchResult = await this.bulkFetch([book]);
-    return batchResult[book.id] || [];
+    return (
+      batchResult[book.id] || {
+        primaryGenre: 'Other',
+        subgenres: [],
+        isCustomPrimary: true,
+      }
+    );
   }
 
-  async bulkFetch(books: CoreBookData[]): Promise<Record<string, string[]>> {
+  async bulkFetch(
+    books: CoreBookData[],
+  ): Promise<Record<string, BookGenreData>> {
     const synopsisMap = await resolveBookSynopses(books);
     const batchedBooks = books.map(b => ({
       id: b.id,
@@ -26,16 +35,20 @@ export class GenreMetadataProvider implements IMetadataProvider<string[]> {
     }));
 
     const CHUNK_SIZE = 10;
-    const results: Record<string, string[]> = {};
+    const results: Record<string, BookGenreData> = {};
 
     for (let i = 0; i < batchedBooks.length; i += CHUNK_SIZE) {
       const chunk = batchedBooks.slice(i, i + CHUNK_SIZE);
       const classificationResult = await classifyBooks(chunk);
 
       if (classificationResult && Array.isArray(classificationResult)) {
-        classificationResult.forEach((item: {id: string; genres: string[]}) => {
-          if (item.id && item.genres) {
-            results[item.id] = item.genres;
+        classificationResult.forEach(item => {
+          if (item.id && item.primaryGenre) {
+            results[item.id] = {
+              primaryGenre: item.primaryGenre,
+              subgenres: item.subgenres || [],
+              isCustomPrimary: item.isCustomPrimary,
+            };
           }
         });
       }

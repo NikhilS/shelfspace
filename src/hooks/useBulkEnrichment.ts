@@ -56,12 +56,12 @@ export function useBulkEnrichment({
     () => new Set(),
   );
 
-  const statusKey = useMemo(() => {
+  const canonicalEnrichmentType = useMemo(() => {
     return providerKey === 'geoMetadata' || providerKey === 'geo'
       ? 'geo'
       : providerKey === 'temporalMetadata' || providerKey === 'temporal'
         ? 'temporal'
-        : providerKey === 'genres' || providerKey === 'genre'
+        : providerKey === 'genre' || providerKey === 'primaryGenre'
           ? 'genre'
           : providerKey === 'coverUrl' || providerKey === 'coverImage'
             ? 'coverImage'
@@ -69,6 +69,8 @@ export function useBulkEnrichment({
               ? 'embedding'
               : providerKey;
   }, [providerKey]);
+
+  const statusKey = canonicalEnrichmentType;
 
   // Compute books that need enrichment, factoring in persistent tombstoning
   const booksToBackfill = useMemo(() => {
@@ -149,10 +151,9 @@ export function useBulkEnrichment({
                 title: b.title,
                 author: b.author || 'Unknown Author',
                 isbn: b.isbn,
-                synopsis: b.synopsis || b.description,
               })),
               enrichmentType:
-                providerKey as (typeof ENRICHMENT_TYPE_LIST)[number],
+                canonicalEnrichmentType as (typeof ENRICHMENT_TYPE_LIST)[number],
               overwrite,
             }),
             new Promise((_, reject) =>
@@ -165,7 +166,11 @@ export function useBulkEnrichment({
             status: string;
             processedCount?: number;
             results?: Record<string, unknown>[];
-            updates?: Array<{bookId: string; payload: Record<string, unknown>}>;
+            updates?: Array<{
+              bookId: string;
+              payload: Record<string, unknown>;
+              heavyPayload?: Record<string, unknown>;
+            }>;
           };
 
           if (data && data.status === 'success') {
@@ -174,8 +179,41 @@ export function useBulkEnrichment({
                 const {ClientBulkWriter} =
                   await import('../lib/clientBulkWriter');
                 const writer = new ClientBulkWriter(db, 50);
-                for (const {bookId, payload} of data.updates) {
+                for (const updateItem of data.updates) {
+                  const {bookId, payload, heavyPayload} = updateItem;
                   if (!bookId || !payload) continue;
+
+                  // Partition heavy fields away from core book payload
+                  const heavyData: Record<string, unknown> = {
+                    ...(heavyPayload || {}),
+                  };
+                  if (payload.synopsis) heavyData.synopsis = payload.synopsis;
+                  if (payload.authorBio)
+                    heavyData.authorBio = payload.authorBio;
+                  if (payload.embedding)
+                    heavyData.embedding = payload.embedding;
+                  if (payload.clusterCoordinates)
+                    heavyData.clusterCoordinates = payload.clusterCoordinates;
+
+                  const cleanBookPayload = {...payload};
+                  delete cleanBookPayload.synopsis;
+                  delete cleanBookPayload.authorBio;
+                  delete cleanBookPayload.embedding;
+                  delete cleanBookPayload.clusterCoordinates;
+
+                  // Ensure bookDetailsMetadata is maintained on core book doc
+                  if (Object.keys(heavyData).length > 0) {
+                    const existingMeta =
+                      (cleanBookPayload.bookDetailsMetadata as
+                        Record<string, boolean> | undefined) || {};
+                    cleanBookPayload.bookDetailsMetadata = {
+                      ...existingMeta,
+                      ...(heavyData.synopsis ? {hasSynopsis: true} : {}),
+                      ...(heavyData.authorBio ? {hasAuthorBio: true} : {}),
+                      ...(heavyData.embedding ? {hasEmbedding: true} : {}),
+                    };
+                  }
+
                   const bookDocRef = doc(
                     db,
                     'libraries',
@@ -183,13 +221,9 @@ export function useBulkEnrichment({
                     'books',
                     bookId,
                   );
-                  writer.set(bookDocRef, payload, {merge: true});
+                  writer.set(bookDocRef, cleanBookPayload, {merge: true});
 
-                  if (
-                    payload.synopsis ||
-                    payload.authorBio ||
-                    payload.embedding
-                  ) {
+                  if (Object.keys(heavyData).length > 0) {
                     const detailRef = doc(
                       db,
                       'libraries',
@@ -198,14 +232,11 @@ export function useBulkEnrichment({
                       bookId,
                     );
                     const detailPayload: Record<string, unknown> = {
-                      updatedAt: new Date().toISOString(),
+                      ...heavyData,
+                      updatedAt:
+                        (cleanBookPayload.updatedAt as string) ||
+                        new Date().toISOString(),
                     };
-                    if (payload.synopsis)
-                      detailPayload.synopsis = payload.synopsis;
-                    if (payload.authorBio)
-                      detailPayload.authorBio = payload.authorBio;
-                    if (payload.embedding)
-                      detailPayload.embedding = payload.embedding;
                     writer.set(detailRef, detailPayload, {merge: true});
                   }
                 }

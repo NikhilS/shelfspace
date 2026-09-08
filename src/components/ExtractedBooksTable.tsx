@@ -17,7 +17,9 @@ type ExtractedBook = {
   title: string;
   author: string;
   isbn?: string;
-  genres?: string[];
+  primaryGenre?: string;
+  subgenres?: string[];
+  isCustomPrimary?: boolean;
   format?: 'physical' | 'digital';
 };
 
@@ -295,9 +297,9 @@ export default function ExtractedBooksTable({
                     ISBN: {book.isbn}
                   </p>
                 )}
-                {book.genres && book.genres.length > 0 && (
+                {book.primaryGenre && (
                   <p className="text-on-surface-variant text-xs mt-2 font-bold bg-surface-variant inline-block px-2.5 py-1 rounded-full border border-outline-variant/30">
-                    {book.genres[0]}
+                    {book.primaryGenre}
                   </p>
                 )}
               </div>

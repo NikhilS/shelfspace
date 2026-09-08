@@ -147,4 +147,46 @@ describe('useBulkEnrichment', () => {
       }),
     );
   });
+
+  it('correctly maps primaryGenre to genre and calls trpc enrichment mutation', async () => {
+    const books: Book[] = [
+      {
+        ...baseBook,
+        id: 'b20',
+        title: 'Sci-Fi Novel',
+      },
+    ];
+
+    vi.mocked(trpcVanilla.enrichment.trigger.mutate).mockResolvedValueOnce({
+      status: 'success',
+      enrichmentType: 'genre',
+      processedCount: 1,
+      results: [{id: 'b20', primaryGenre: 'Science Fiction'}],
+    });
+
+    const {result} = renderHook(() =>
+      useBulkEnrichment({
+        books,
+        isBooksLoading: false,
+        libraryId: 'lib1',
+        providerKey: 'primaryGenre',
+        metadataField: 'primaryGenre',
+        filterPredicate: b => !b.primaryGenre,
+        autoTrigger: false,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.triggerBackfill();
+    });
+
+    expect(trpcVanilla.enrichment.trigger.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        libraryId: 'lib1',
+        bookIds: ['b20'],
+        enrichmentType: 'genre',
+        overwrite: false,
+      }),
+    );
+  });
 });

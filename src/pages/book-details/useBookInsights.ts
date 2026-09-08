@@ -20,8 +20,9 @@ export function useBookInsights(
   useEffect(() => {
     if (!book || !libraryId || !canEdit) return;
 
-    const needsSynopsis = !book.synopsis;
-    const needsBio = !book.authorBio;
+    const needsSynopsis =
+      !book.bookDetailsMetadata?.hasSynopsis && !book.synopsis;
+    const needsBio = !book.bookDetailsMetadata?.hasAuthorBio && !book.authorBio;
 
     if (!needsSynopsis && !needsBio) return;
 
@@ -63,6 +64,8 @@ export function useBookInsights(
     book?.isbn,
     book?.synopsis,
     book?.authorBio,
+    book?.bookDetailsMetadata?.hasSynopsis,
+    book?.bookDetailsMetadata?.hasAuthorBio,
     libraryId,
     canEdit,
   ]);

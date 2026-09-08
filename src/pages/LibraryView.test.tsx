@@ -70,7 +70,8 @@ vi.mock('firebase/firestore', () => {
                 id: 'book1',
                 data: () => ({
                   title: 'Dune',
-                  genres: ['Sci-Fi', 'Fantasy'],
+                  primaryGenre: 'Science Fiction',
+                  subgenres: ['Space Opera'],
                   author: 'Frank Herbert',
                   addedAt: '2023-01-01',
                 }),
@@ -79,7 +80,8 @@ vi.mock('firebase/firestore', () => {
                 id: 'book2',
                 data: () => ({
                   title: 'Foundation',
-                  genres: ['Sci-Fi', 'Classic'],
+                  primaryGenre: 'Science Fiction',
+                  subgenres: ['Hard Sci-Fi'],
                   author: 'Isaac Asimov',
                   addedAt: '2023-01-01',
                 }),
@@ -114,6 +116,8 @@ vi.mock('firebase/firestore', () => {
     getDoc: vi.fn(),
     updateDoc: vi.fn(() => Promise.resolve()),
     orderBy: vi.fn(),
+    getDocFromCache: vi.fn().mockRejectedValue(new Error('no cache')),
+    getDocsFromCache: vi.fn().mockRejectedValue(new Error('no cache')),
     Timestamp: {
       fromDate: vi.fn(),
     },

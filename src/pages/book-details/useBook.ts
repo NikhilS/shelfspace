@@ -6,18 +6,26 @@ import {
   onSnapshot,
   orderBy,
   updateDoc,
+  setDoc,
   serverTimestamp,
   addDoc,
+  getDocFromCache,
 } from 'firebase/firestore';
 import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {uploadBase64Image} from '../../services/db/storage';
 import {Book, BookDetailsPayload, FirestoreDate} from '../../types';
 export type {Book, BookDetailsPayload, FirestoreDate};
 import {useAuth} from '../../stores/authStore';
-import {parseGenres} from '../../lib/utils';
-import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  skipToken,
+} from '@tanstack/react-query';
 
 import {deleteBookAtomic} from '../../services/db/books';
+import {DebugTelemetryEngine, calculatePayloadBytes} from '../../lib/telemetry';
+import {mapDocToBook} from '../../hooks/useLibraryData';
 
 export interface Review {
   id: string;
@@ -39,43 +47,46 @@ export function useBook(
 
   const canEdit = passedCanEdit !== undefined ? passedCanEdit : canEditLocal;
 
-  const qBookBase = useQuery({
+  const qBookBase = useQuery<Book | null>({
     queryKey: ['bookBase', libraryId, bookId],
-    enabled: !!libraryId && !!bookId,
-    queryFn: () =>
-      (queryClient.getQueryData([
+    queryFn: skipToken,
+    initialData: () => {
+      const direct = queryClient.getQueryData<Book>([
         'bookBase',
         libraryId,
         bookId,
-      ]) as Book | null) || null,
-    staleTime: Infinity,
+      ]);
+      if (direct) return direct;
+      const cachedBooks = libraryId
+        ? queryClient.getQueryData<Book[]>(['books', libraryId])
+        : undefined;
+      return cachedBooks?.find(b => b.id === bookId) || null;
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    gcTime: 1000 * 60 * 60, // 1 hour
   });
 
-  const qBookDetails = useQuery({
+  const qBookDetails = useQuery<BookDetailsPayload | null>({
     queryKey: ['bookDetails', libraryId, bookId],
-    enabled: !!libraryId && !!bookId,
-    queryFn: () =>
-      (queryClient.getQueryData([
-        'bookDetails',
-        libraryId,
-        bookId,
-      ]) as BookDetailsPayload | null) || null,
-    staleTime: Infinity,
+    queryFn: skipToken,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    gcTime: 1000 * 60 * 60, // 1 hour
   });
 
-  const qReviews = useQuery({
+  const qReviews = useQuery<Review[]>({
     queryKey: ['bookReviews', libraryId, bookId],
-    enabled: !!libraryId && !!bookId,
-    queryFn: () =>
-      (queryClient.getQueryData([
-        'bookReviews',
-        libraryId,
-        bookId,
-      ]) as Review[]) || [],
-    staleTime: Infinity,
+    queryFn: skipToken,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    gcTime: 1000 * 60 * 60, // 1 hour
   });
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    if (queryClient.getQueryData(['bookBase', libraryId, bookId])) return false;
+    const cachedBooks = libraryId
+      ? queryClient.getQueryData<Book[]>(['books', libraryId])
+      : undefined;
+    return !cachedBooks?.some(b => b.id === bookId);
+  });
 
   const bookBase = qBookBase.data || null;
   const bookDetails = qBookDetails.data || null;
@@ -90,9 +101,30 @@ export function useBook(
     if (passedCanEdit !== undefined) return;
     if (!libraryId || !user) return;
 
+    const unregisterLib = DebugTelemetryEngine.getInstance().registerListener(
+      'useBook:lib',
+      `libraries/${libraryId}`,
+    );
     const unsubscribe = onSnapshot(
       doc(db, 'libraries', libraryId),
+      {includeMetadataChanges: true},
       libDoc => {
+        const fromCache = libDoc.metadata.fromCache;
+        const libData = libDoc.exists() ? libDoc.data() : null;
+        const libBytes = libData ? calculatePayloadBytes(libData) : 0;
+
+        DebugTelemetryEngine.getInstance().addLog(
+          'db_read',
+          `Read library permissions: "libraries/${libraryId}" (${(libBytes / 1024).toFixed(1)} KB)`,
+          {
+            path: `libraries/${libraryId}`,
+            fromCache,
+            exists: libDoc.exists(),
+            bytes: libBytes,
+            docCount: 1,
+          },
+        );
+
         if (libDoc.exists()) {
           const data = libDoc.data();
           setCanEditLocal(
@@ -114,32 +146,64 @@ export function useBook(
       },
     );
 
-    return () => unsubscribe();
+    return () => {
+      unregisterLib();
+      unsubscribe();
+    };
   }, [libraryId, user, passedCanEdit]);
 
   useEffect(() => {
     if (!libraryId || !bookId) return;
 
-    setIsLoading(true);
+    let isMounted = true;
+    let hasNetworkUpdate = false;
 
+    if (!queryClient.getQueryData(['bookBase', libraryId, bookId])) {
+      const cachedBooks = queryClient.getQueryData<Book[]>([
+        'books',
+        libraryId,
+      ]);
+      if (!cachedBooks?.some(b => b.id === bookId)) {
+        setIsLoading(true);
+        const bookRef = doc(db, 'libraries', libraryId, 'books', bookId);
+        getDocFromCache(bookRef)
+          .then(cachedSnap => {
+            if (isMounted && !hasNetworkUpdate && cachedSnap.exists()) {
+              const bookData = mapDocToBook(cachedSnap);
+              queryClient.setQueryData(
+                ['bookBase', libraryId, bookId],
+                bookData,
+              );
+              setIsLoading(false);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+
+    const unregisterBook = DebugTelemetryEngine.getInstance().registerListener(
+      'useBook:book',
+      `libraries/${libraryId}/books/${bookId}`,
+    );
     const unsubscribeBook = onSnapshot(
       doc(db, 'libraries', libraryId, 'books', bookId),
+      {includeMetadataChanges: true},
       docSnap => {
+        if (!isMounted) return;
+        const parseStartTime = performance.now();
+        const fromCache = docSnap.metadata.fromCache;
+        if (!fromCache) {
+          hasNetworkUpdate = true;
+        }
+
         if (docSnap.exists()) {
           const data = docSnap.data();
-          const rawGenres =
-            data.genres ||
-            data.genre ||
-            data.categories ||
-            data.category ||
-            data.tags ||
-            data.subjects;
-          const parsedGenres = parseGenres(rawGenres);
-
           const bookData = {
             id: docSnap.id,
             ...data,
-            genres: parsedGenres,
+            primaryGenre: data.primaryGenre || undefined,
+            subgenres: data.subgenres || [],
+            isCustomPrimary: Boolean(data.isCustomPrimary),
           } as Book;
 
           if (bookData.temporalMetadata) {
@@ -163,6 +227,24 @@ export function useBook(
             }
           }
 
+          const parseDurationMs = Math.round(
+            performance.now() - parseStartTime,
+          );
+          const payloadBytes = calculatePayloadBytes(bookData);
+
+          DebugTelemetryEngine.getInstance().addLog(
+            'db_read',
+            `Read single book: "${bookData.title}" (${(payloadBytes / 1024).toFixed(1)} KB, ${parseDurationMs}ms)`,
+            {
+              path: `libraries/${libraryId}/books/${bookId}`,
+              fromCache,
+              exists: true,
+              bytes: payloadBytes,
+              docCount: 1,
+              parseDurationMs,
+            },
+          );
+
           queryClient.setQueryData(['bookBase', libraryId, bookId], bookData);
         } else {
           queryClient.setQueryData(['bookBase', libraryId, bookId], null);
@@ -179,9 +261,33 @@ export function useBook(
       },
     );
 
+    const unregisterDetails =
+      DebugTelemetryEngine.getInstance().registerListener(
+        'useBook:bookDetails',
+        `libraries/${libraryId}/bookDetails/${bookId}`,
+      );
     const unsubscribeDetails = onSnapshot(
       doc(db, 'libraries', libraryId, 'bookDetails', bookId),
+      {includeMetadataChanges: true},
       docSnap => {
+        const fromCache = docSnap.metadata.fromCache;
+        const detailsData = docSnap.exists() ? docSnap.data() : null;
+        const detailsBytes = detailsData
+          ? calculatePayloadBytes(detailsData)
+          : 0;
+
+        DebugTelemetryEngine.getInstance().addLog(
+          'db_read',
+          `Read book details: "libraries/${libraryId}/bookDetails/${bookId}" (${(detailsBytes / 1024).toFixed(1)} KB)`,
+          {
+            path: `libraries/${libraryId}/bookDetails/${bookId}`,
+            fromCache,
+            exists: docSnap.exists(),
+            bytes: detailsBytes,
+            docCount: 1,
+          },
+        );
+
         if (docSnap.exists()) {
           queryClient.setQueryData(
             ['bookDetails', libraryId, bookId],
@@ -209,13 +315,34 @@ export function useBook(
       'reviews',
     );
     const q = query(reviewsRef, orderBy('createdAt', 'desc'));
+    const unregisterReviews =
+      DebugTelemetryEngine.getInstance().registerListener(
+        'useBook:reviews',
+        `libraries/${libraryId}/books/${bookId}/reviews`,
+      );
     const unsubscribeReviews = onSnapshot(
       q,
+      {includeMetadataChanges: true},
       snapshot => {
+        const fromCache = snapshot.metadata.fromCache;
         const revs: Review[] = [];
         snapshot.forEach(doc => {
           revs.push({id: doc.id, ...doc.data()} as Review);
         });
+        const revBytes = calculatePayloadBytes(revs);
+
+        DebugTelemetryEngine.getInstance().addLog(
+          'db_read',
+          `Read book reviews (${snapshot.size} reviews, ${(revBytes / 1024).toFixed(1)} KB)`,
+          {
+            path: `libraries/${libraryId}/books/${bookId}/reviews`,
+            fromCache,
+            size: snapshot.size,
+            bytes: revBytes,
+            docCount: snapshot.size,
+          },
+        );
+
         queryClient.setQueryData(['bookReviews', libraryId, bookId], revs);
       },
       error => {
@@ -228,8 +355,12 @@ export function useBook(
     );
 
     return () => {
+      isMounted = false;
+      unregisterBook();
       unsubscribeBook();
+      unregisterDetails();
       unsubscribeDetails();
+      unregisterReviews();
       unsubscribeReviews();
     };
   }, [libraryId, bookId, queryClient]);
@@ -390,6 +521,50 @@ export function useBook(
             cargo.coverUrlRaw,
             storagePath,
           );
+        }
+
+        // Separate heavy fields from core book update
+        const heavyUpdate: Record<string, unknown> = {};
+        if (cargo.synopsis !== undefined) heavyUpdate.synopsis = cargo.synopsis;
+        if (cargo.authorBio !== undefined)
+          heavyUpdate.authorBio = cargo.authorBio;
+        if (cargo.embedding !== undefined)
+          heavyUpdate.embedding = cargo.embedding;
+        if (cargo.clusterCoordinates !== undefined)
+          heavyUpdate.clusterCoordinates = cargo.clusterCoordinates;
+
+        delete cargo.synopsis;
+        delete cargo.authorBio;
+        delete cargo.embedding;
+        delete cargo.clusterCoordinates;
+
+        if (Object.keys(heavyUpdate).length > 0) {
+          heavyUpdate.updatedAt = new Date().toISOString();
+          await setDoc(
+            doc(db, 'libraries', libraryId, 'bookDetails', bookId),
+            heavyUpdate,
+            {merge: true},
+          );
+
+          cargo.bookDetailsMetadata = {
+            ...(book.bookDetailsMetadata || {}),
+            ...(heavyUpdate.synopsis !== undefined
+              ? {hasSynopsis: Boolean(heavyUpdate.synopsis)}
+              : {}),
+            ...(heavyUpdate.authorBio !== undefined
+              ? {hasAuthorBio: Boolean(heavyUpdate.authorBio)}
+              : {}),
+            ...(heavyUpdate.embedding !== undefined
+              ? {
+                  hasEmbedding: Boolean(
+                    (heavyUpdate.embedding as number[])?.length,
+                  ),
+                }
+              : {}),
+            ...(heavyUpdate.clusterCoordinates !== undefined
+              ? {hasClusterCoordinates: Boolean(heavyUpdate.clusterCoordinates)}
+              : {}),
+          };
         }
 
         await updateDoc(

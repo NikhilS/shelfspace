@@ -10,7 +10,14 @@ export const bookListSchema = z.object({
   filters: z
     .object({
       missingMetadata: z
-        .enum(['geo', 'temporal', 'genre', 'synopsis', 'coverImage'])
+        .enum([
+          'geo',
+          'temporal',
+          'genre',
+          'primaryGenre',
+          'synopsis',
+          'coverImage',
+        ])
         .optional(),
     })
     .optional(),
@@ -22,12 +29,12 @@ export const ENRICHMENT_TYPE_LIST = [
   'geo',
   'temporal',
   'genre',
+  'primaryGenre',
   'synopsis',
   'coverImage',
   'authorBio',
   'geoMetadata',
   'temporalMetadata',
-  'genres',
   'coverUrl',
   'embedding',
   'embeddings',
@@ -71,12 +78,12 @@ export const enrichmentTriggerSchema = z
         ? 'geo'
         : rawType === 'temporalMetadata'
           ? 'temporal'
-          : rawType === 'genres'
-            ? 'genre'
-            : rawType === 'coverUrl'
-              ? 'coverImage'
-              : rawType === 'embeddings'
-                ? 'embedding'
+          : rawType === 'coverUrl'
+            ? 'coverImage'
+            : rawType === 'embeddings'
+              ? 'embedding'
+              : rawType === 'primaryGenre'
+                ? 'genre'
                 : rawType;
 
     const derivedBookIds =

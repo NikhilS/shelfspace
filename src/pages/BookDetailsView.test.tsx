@@ -40,6 +40,8 @@ vi.mock('firebase/firestore', () => ({
   addDoc: vi.fn(),
   serverTimestamp: vi.fn(),
   deleteDoc: vi.fn(),
+  getDocFromCache: vi.fn().mockRejectedValue(new Error('no cache')),
+  getDocsFromCache: vi.fn().mockRejectedValue(new Error('no cache')),
 }));
 
 describe('BookDetailsView', () => {

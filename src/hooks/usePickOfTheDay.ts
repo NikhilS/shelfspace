@@ -31,7 +31,12 @@ export function usePickOfTheDay(books: Book[], currentTab: string) {
         '[Curator pick] Querying Gemini for 10 tailored, expert librarian recommendations...',
       );
       const picks = await getPickOfTheDayMutation.mutateAsync({
-        books: sample.map(b => ({title: b.title, author: b.author})),
+        books: sample.map(b => ({
+          title: b.title,
+          author: b.author,
+          primaryGenre: b.primaryGenre,
+          subgenres: b.subgenres,
+        })),
       });
 
       let finalPick: {title: string; author: string; reason: string} | null =

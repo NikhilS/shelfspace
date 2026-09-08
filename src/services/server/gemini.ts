@@ -1,6 +1,6 @@
 import {GoogleGenAI, Type} from '@google/genai';
 import Papa from 'papaparse';
-import {toSentenceCase} from '../../lib/utils';
+import {BOOK_TAXONOMY, sanitizeGenrePayload} from '../../constants/taxonomy';
 import {geminiLimiter} from './limiters';
 
 const logger = {
@@ -530,12 +530,27 @@ If an optional attribute (isbn, format) is not found in any column, set its colu
 }
 
 export async function generateLibraryRecommendations(
-  libraryBooks: {title: string; author: string}[],
+  libraryBooks: {
+    title: string;
+    author: string;
+    primaryGenre?: string;
+    subgenres?: string[];
+  }[],
 ): Promise<string> {
   try {
     const limitedBooks = libraryBooks.slice(0, 100);
     const bookList = limitedBooks
-      .map(b => `"${b.title}" by ${b.author}`)
+      .map(b => {
+        let line = `"${b.title}" by ${b.author}`;
+        if (b.primaryGenre) {
+          const subText =
+            b.subgenres && b.subgenres.length > 0
+              ? ` (${b.subgenres.join(', ')})`
+              : '';
+          line += ` [Genre: ${b.primaryGenre}${subText}]`;
+        }
+        return line;
+      })
       .join('\n');
     const prompt = `Here is a catalog of books from a reader's personal library:
 
@@ -681,7 +696,12 @@ export async function generateLibraryHeroImage(
 }
 
 export async function getPickOfTheDay(
-  books: {title: string; author: string}[],
+  books: {
+    title: string;
+    author: string;
+    primaryGenre?: string;
+    subgenres?: string[];
+  }[],
 ): Promise<{title: string; author: string; reason: string}[] | null> {
   try {
     if (!books || books.length === 0) return null;
@@ -692,10 +712,17 @@ export async function getPickOfTheDay(
     }
     const sampleBooks = shuffled.slice(0, 100);
     const bookList = sampleBooks
-      .map(
-        (b, i) =>
-          `${i + 1}. "${b.title || 'Unknown Title'}" by ${b.author || 'Unknown Author'}`,
-      )
+      .map((b, i) => {
+        let line = `${i + 1}. "${b.title || 'Unknown Title'}" by ${b.author || 'Unknown Author'}`;
+        if (b.primaryGenre) {
+          const subText =
+            b.subgenres && b.subgenres.length > 0
+              ? ` (${b.subgenres.join(', ')})`
+              : '';
+          line += ` [Genre: ${b.primaryGenre}${subText}]`;
+        }
+        return line;
+      })
       .join('\n');
     const prompt = `Here is a sample of books from a reader's personal library:
 
@@ -811,9 +838,16 @@ CRITICAL RULES:
   }
 }
 
+export interface ClassifiedBookGenre {
+  id: string;
+  primaryGenre: string;
+  subgenres?: string[];
+  isCustomPrimary?: boolean;
+}
+
 export async function classifyBooks(
   batch: {id: string; title: string; author: string; synopsis?: string}[],
-): Promise<{id: string; genres: string[]}[]> {
+): Promise<ClassifiedBookGenre[]> {
   try {
     if (!batch || batch.length === 0) return [];
     const booksPromptData = batch.map(b => ({
@@ -823,13 +857,24 @@ export async function classifyBooks(
       context: b.synopsis ? b.synopsis.substring(0, 300) : '',
     }));
 
-    const prompt = `Classify the following batch of ${batch.length} books into the most appropriate official BISAC (Book Industry Standards and Communications) Subject Headings.
-Use only established, standard BISAC categories (e.g., "FICTION / Mystery & Detective / General", "BIOGRAPHY & AUTOBIOGRAPHY / Historical", "SCIENCE FICTION / Hard Science Fiction").
+    const canonicalTaxonomySummary = Object.entries(BOOK_TAXONOMY)
+      .filter(([k]) => k !== 'Other')
+      .map(
+        ([genre, subs]) =>
+          `- "${genre}": [${subs.map(s => `"${s}"`).join(', ')}]`,
+      )
+      .join('\n');
+
+    const prompt = `Classify the following batch of ${batch.length} books into the application's standardized taxonomy.
+
+Canonical Primary Genres & Their Available Subgenres:
+${canonicalTaxonomySummary}
+- "Other": Use only if the book completely defies the 18 canonical genres.
 
 Directives:
-1. Provide 1 to 3 relevant BISAC categories for each book.
-2. Format hierarchical levels cleanly separated by ' / '.
-3. Preserve the exact provided unique book "id" for each classification.
+1. "primaryGenre" (REQUIRED): Select the single best-fitting canonical Primary Genre.
+2. "subgenres" (OPTIONAL): Choose 0 to 3 relevant subgenres strictly from the selected Primary Genre's allowed list. Subgenres are optional—only include ones that clearly match.
+3. Preserve the exact provided unique book "id".
 
 Books to classify:
 ${JSON.stringify(booksPromptData, null, 2)}`;
@@ -839,11 +884,11 @@ ${JSON.stringify(booksPromptData, null, 2)}`;
       contents: prompt,
       config: {
         systemInstruction:
-          'You are an expert library cataloger and bibliographer specializing in official BISAC Subject Headings.',
+          'You are an expert library cataloger and bibliographer specializing in literary taxonomy and genre classification.',
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.ARRAY,
-          description: 'Classified books with BISAC genres',
+          description: 'Classified books with standardized taxonomy',
           items: {
             type: Type.OBJECT,
             properties: {
@@ -851,13 +896,18 @@ ${JSON.stringify(booksPromptData, null, 2)}`;
                 type: Type.STRING,
                 description: 'The exact input ID of the book',
               },
-              genres: {
+              primaryGenre: {
+                type: Type.STRING,
+                description: 'The chosen canonical primary genre or Other',
+              },
+              subgenres: {
                 type: Type.ARRAY,
                 items: {type: Type.STRING},
-                description: '1 to 3 official BISAC categories',
+                description:
+                  '0 to 3 valid subgenres from the chosen primary genre',
               },
             },
-            required: ['id', 'genres'],
+            required: ['id', 'primaryGenre'],
           },
         },
         temperature: 0.1,
@@ -870,12 +920,20 @@ ${JSON.stringify(booksPromptData, null, 2)}`;
     try {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) {
-        return parsed.map((item: {id: string; genres?: string[]}) => ({
-          id: item.id,
-          genres: Array.isArray(item.genres)
-            ? item.genres.map((g: string) => toSentenceCase(g))
-            : [],
-        })) as {id: string; genres: string[]}[];
+        return parsed.map(
+          (item: {id: string; primaryGenre?: string; subgenres?: string[]}) => {
+            const sanitized = sanitizeGenrePayload({
+              primaryGenre: item.primaryGenre,
+              subgenres: item.subgenres,
+            });
+            return {
+              id: item.id,
+              primaryGenre: sanitized.primaryGenre,
+              subgenres: sanitized.subgenres,
+              isCustomPrimary: sanitized.isCustomPrimary,
+            };
+          },
+        );
       }
       return [];
     } catch (e) {

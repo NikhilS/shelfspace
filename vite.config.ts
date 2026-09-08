@@ -15,6 +15,7 @@ export default defineConfig(({mode}) => {
         registerType: 'autoUpdate',
         includeAssets: ['icon.png'],
         workbox: {
+          maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
           runtimeCaching: [
             {
@@ -108,6 +109,37 @@ export default defineConfig(({mode}) => {
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
       allowedHosts: true,
+    },
+    build: {
+      chunkSizeWarningLimit: 2500,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('firebase')) {
+                return 'vendor-firebase';
+              }
+              if (id.includes('@react-three') || id.includes('three')) {
+                return 'vendor-three';
+              }
+              if (
+                id.includes('@vis.gl') ||
+                id.includes('@googlemaps') ||
+                id.includes('leaflet')
+              ) {
+                return 'vendor-maps';
+              }
+              if (id.includes('@tanstack') || id.includes('@trpc')) {
+                return 'vendor-data';
+              }
+              if (id.includes('lucide-react') || id.includes('motion')) {
+                return 'vendor-ui';
+              }
+              return 'vendor-core';
+            }
+          },
+        },
+      },
     },
   };
 });

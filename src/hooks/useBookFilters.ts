@@ -6,7 +6,8 @@ import {
   useParams,
 } from 'react-router-dom';
 import {Book} from '../types';
-import {getFirestoreTime, toTitleCase} from '../lib/utils';
+import {getFirestoreTime} from '../lib/utils';
+import {CANONICAL_PRIMARY_GENRES} from '../constants/taxonomy';
 
 export type SortOption = 'added' | 'title' | 'author';
 
@@ -16,7 +17,9 @@ export function useBookFilters(books: Book[]) {
   const navigate = useNavigate();
   const {id} = useParams<{id: string}>();
 
-  const currentTab = location.pathname.endsWith('/collection')
+  const currentTab: 'overview' | 'collection' = location.pathname.endsWith(
+    '/collection',
+  )
     ? 'collection'
     : 'overview';
   const sortBy = (searchParams.get('sort') as SortOption) || 'added';
@@ -25,6 +28,7 @@ export function useBookFilters(books: Book[]) {
     (searchParams.get('view') as 'standard' | 'table') || 'standard';
   const searchQuery = searchParams.get('q') || '';
   const filterGenre = searchParams.get('genre') || '';
+  const filterSubgenre = searchParams.get('subgenre') || '';
   const filterAuthor = searchParams.get('author') || '';
   const filterYearMin = searchParams.get('yearMin') || '';
   const filterYearMax = searchParams.get('yearMax') || '';
@@ -44,20 +48,50 @@ export function useBookFilters(books: Book[]) {
   };
 
   const availableGenres = useMemo(() => {
-    const genres = new Set<string>();
+    const counts: Record<string, number> = {};
+    let customCount = 0;
     books.forEach(b => {
-      if (b.genres) {
-        b.genres.forEach(g => {
-          if (!g) return;
-          g.split('/').forEach(seg => {
-            const clean = toTitleCase(seg.trim());
-            if (clean) genres.add(clean);
-          });
+      if (b.primaryGenre) {
+        if (
+          CANONICAL_PRIMARY_GENRES.includes(
+            b.primaryGenre as (typeof CANONICAL_PRIMARY_GENRES)[number],
+          )
+        ) {
+          counts[b.primaryGenre] = (counts[b.primaryGenre] || 0) + 1;
+        } else {
+          customCount++;
+        }
+      }
+    });
+
+    const activeCanonical = CANONICAL_PRIMARY_GENRES.filter(
+      g => (counts[g] || 0) > 0,
+    ).sort((a, b) => (counts[b] || 0) - (counts[a] || 0));
+
+    if (customCount > 0) {
+      activeCanonical.push('Other');
+    }
+    return activeCanonical;
+  }, [books]);
+
+  const activeSubgenres = useMemo(() => {
+    if (!filterGenre) return [];
+    const counts: Record<string, number> = {};
+    books.forEach(b => {
+      const matchesPrimary =
+        filterGenre.toLowerCase() === 'other'
+          ? Boolean(b.isCustomPrimary)
+          : b.primaryGenre?.toLowerCase() === filterGenre.toLowerCase();
+      if (matchesPrimary && b.subgenres) {
+        b.subgenres.forEach(sg => {
+          if (sg) counts[sg] = (counts[sg] || 0) + 1;
         });
       }
     });
-    return Array.from(genres).sort();
-  }, [books]);
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({name, count}));
+  }, [books, filterGenre]);
 
   const availableAuthors = useMemo(() => {
     const authors = new Set<string>();
@@ -69,23 +103,38 @@ export function useBookFilters(books: Book[]) {
 
   const filteredBooks = useMemo(() => {
     return books.filter(book => {
-      if (deferredSearchQuery) {
-        const query = deferredSearchQuery.toLowerCase();
-        const titleMatch = book.title?.toLowerCase().includes(query);
-        const authorMatch = book.author?.toLowerCase().includes(query);
-        if (!titleMatch && !authorMatch) return false;
+      const effectiveQuery = (deferredSearchQuery || searchQuery)
+        .trim()
+        .toLowerCase();
+      if (effectiveQuery) {
+        const titleMatch = book.title?.toLowerCase().includes(effectiveQuery);
+        const authorMatch = book.author?.toLowerCase().includes(effectiveQuery);
+        const genreMatch =
+          book.primaryGenre?.toLowerCase().includes(effectiveQuery) ||
+          book.subgenres?.some(sg => sg.toLowerCase().includes(effectiveQuery));
+        if (!titleMatch && !authorMatch && !genreMatch) return false;
       }
 
       if (filterGenre) {
         const normalizedFilter = filterGenre.trim().toLowerCase();
-        const hasMatch = book.genres?.some(g => {
-          if (!g) return false;
-          if (g.trim().toLowerCase() === normalizedFilter) return true;
-          const segments = g.split('/').map(seg => seg.trim().toLowerCase());
-          return segments.includes(normalizedFilter);
-        });
-        if (!hasMatch) return false;
+        const matchesPrimary =
+          normalizedFilter === 'other'
+            ? Boolean(book.isCustomPrimary)
+            : book.primaryGenre?.trim().toLowerCase() === normalizedFilter;
+        const matchesSubgenre = book.subgenres?.some(
+          sg => sg.trim().toLowerCase() === normalizedFilter,
+        );
+        if (!matchesPrimary && !matchesSubgenre) return false;
       }
+
+      if (filterSubgenre) {
+        const normalizedSub = filterSubgenre.trim().toLowerCase();
+        const matchesSub = book.subgenres?.some(
+          sg => sg.trim().toLowerCase() === normalizedSub,
+        );
+        if (!matchesSub) return false;
+      }
+
       if (filterAuthor && book.author !== filterAuthor) return false;
 
       if (filterYearMin || filterYearMax) {
@@ -108,7 +157,9 @@ export function useBookFilters(books: Book[]) {
   }, [
     books,
     deferredSearchQuery,
+    searchQuery,
     filterGenre,
+    filterSubgenre,
     filterAuthor,
     filterYearMin,
     filterYearMax,
@@ -158,15 +209,6 @@ export function useBookFilters(books: Book[]) {
     }
   };
 
-  const selectGenreAndGoToCollection = (genre: string) => {
-    const params = new URLSearchParams(searchParams);
-    if (genre) params.set('genre', genre);
-    else params.delete('genre');
-    params.set('filters', 'true');
-    params.delete('tab');
-    void navigate(`/library/${id}/collection?${params.toString()}`);
-  };
-
   return {
     currentTab,
     setCurrentTab: (tab: 'overview' | 'collection') => {
@@ -186,8 +228,35 @@ export function useBookFilters(books: Book[]) {
     searchQuery,
     setSearchQuery: (q: string) => setSearchParamsValue('q', q),
     filterGenre,
-    setFilterGenre: (genre: string) => setSearchParamsValue('genre', genre),
-    selectGenreAndGoToCollection,
+    setFilterGenre: (genre: string) => {
+      setSearchParams(
+        prev => {
+          if (!genre) {
+            prev.delete('genre');
+            prev.delete('subgenre');
+          } else {
+            prev.set('genre', genre);
+            prev.delete('subgenre');
+          }
+          return prev;
+        },
+        {replace: true},
+      );
+    },
+    filterSubgenre,
+    setFilterSubgenre: (subgenre: string) =>
+      setSearchParamsValue('subgenre', subgenre),
+    activeSubgenres,
+    selectGenreAndGoToCollection: (genre: string, subgenre?: string) => {
+      const params = new URLSearchParams(searchParams);
+      if (genre) params.set('genre', genre);
+      else params.delete('genre');
+      if (subgenre) params.set('subgenre', subgenre);
+      else params.delete('subgenre');
+      params.set('filters', 'true');
+      params.delete('tab');
+      void navigate(`/library/${id}/collection?${params.toString()}`);
+    },
     filterAuthor,
     setFilterAuthor: (author: string) => setSearchParamsValue('author', author),
     filterYearMin,
@@ -205,6 +274,7 @@ export function useBookFilters(books: Book[]) {
         prev => {
           prev.delete('q');
           prev.delete('genre');
+          prev.delete('subgenre');
           prev.delete('author');
           prev.delete('yearMin');
           prev.delete('yearMax');

@@ -17,10 +17,7 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
   const queryClient = useQueryClient();
 
   const handleWarmup = useCallback(() => {
-    // 1. Preload JS chunk for LibraryView so Suspense never triggers
-    void import('../LibraryView');
-
-    // 2. Pre-seed TanStack Query cache for instant access check and header rendering
+    // Pre-seed TanStack Query cache for instant access check and header rendering
     queryClient.setQueryData(['library', lib.id], lib);
     if (user) {
       const email = user.email?.toLowerCase();

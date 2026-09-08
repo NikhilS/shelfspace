@@ -253,7 +253,8 @@ export default function LibraryView() {
       'Title',
       'Author',
       'ISBN',
-      'Genre',
+      'Primary Genre',
+      'Subgenres',
       'Published Date',
       'Added Date',
     ];
@@ -272,7 +273,8 @@ export default function LibraryView() {
         escapeCSV(book.title),
         escapeCSV(book.author),
         escapeCSV(book.isbn),
-        escapeCSV(book.genres?.join(', ') || ''),
+        escapeCSV(book.primaryGenre || ''),
+        escapeCSV(book.subgenres?.join(', ') || ''),
         escapeCSV(book.publishedDate),
         escapeCSV(addedDateStr),
       ].join(',');
@@ -513,6 +515,9 @@ export default function LibraryView() {
                         setIsFiltersOpen={filters.setIsFiltersOpen}
                         filterGenre={filters.filterGenre}
                         setFilterGenre={filters.setFilterGenre}
+                        filterSubgenre={filters.filterSubgenre}
+                        setFilterSubgenre={filters.setFilterSubgenre}
+                        activeSubgenres={filters.activeSubgenres}
                         filterAuthor={filters.filterAuthor}
                         setFilterAuthor={filters.setFilterAuthor}
                         filterYearMin={filters.filterYearMin}

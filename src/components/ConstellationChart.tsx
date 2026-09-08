@@ -255,12 +255,11 @@ export default function ConstellationChart({
                 {hoveredNode.data.book.author}
               </p>
               <div className="flex flex-wrap gap-1 items-center mt-1">
-                {hoveredNode.data.book.genres &&
-                  hoveredNode.data.book.genres.length > 0 && (
-                    <span className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-sans font-medium bg-secondary/10 text-secondary">
-                      {hoveredNode.data.book.genres[0]}
-                    </span>
-                  )}
+                {hoveredNode.data.book.primaryGenre && (
+                  <span className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-sans font-medium bg-secondary/10 text-secondary">
+                    {hoveredNode.data.book.primaryGenre}
+                  </span>
+                )}
                 {hoveredNode.data.clusterId >= 0 ? (
                   <span className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-sans font-medium bg-tertiary-container/10 text-on-tertiary-container border border-on-tertiary-container/10">
                     {clusterNames[hoveredNode.data.clusterId] ||

@@ -6,23 +6,45 @@ import {
   WithFieldValue,
   UpdateData,
   PartialWithFieldValue,
+  doc,
+  increment,
+  serverTimestamp,
 } from 'firebase/firestore';
+
+export interface ClientBulkWriterOptions {
+  batchSize?: number;
+  autoReconcileBookCount?: boolean;
+}
 
 /**
  * A client-side helper that mimics Firestore's native BulkWriter API.
  * It manages automatically chunking operations into WriteBatches,
- * and paces commits with delays to prevent stream exhaustion errors.
+ * paces commits with delays to prevent stream exhaustion errors,
+ * and atomically maintains library bookCount metrics upon book additions/deletions.
  */
 export class ClientBulkWriter {
   private db: Firestore;
   private batchSize: number;
+  private autoReconcileBookCount: boolean;
   private currentBatch: ReturnType<typeof writeBatch> | null = null;
   private currentCount = 0;
   private pendingPromises: Promise<void>[] = [];
+  private bookCountDeltas = new Map<string, number>();
+  private processedBookOperations = new Set<string>();
 
-  constructor(db: Firestore, batchSize = 400) {
+  constructor(
+    db: Firestore,
+    optionsOrBatchSize: number | ClientBulkWriterOptions = 400,
+  ) {
     this.db = db;
-    this.batchSize = batchSize;
+    if (typeof optionsOrBatchSize === 'number') {
+      this.batchSize = optionsOrBatchSize;
+      this.autoReconcileBookCount = true;
+    } else {
+      this.batchSize = optionsOrBatchSize.batchSize ?? 400;
+      this.autoReconcileBookCount =
+        optionsOrBatchSize.autoReconcileBookCount ?? true;
+    }
   }
 
   private getBatch(): ReturnType<typeof writeBatch> {
@@ -30,6 +52,75 @@ export class ClientBulkWriter {
       this.currentBatch = writeBatch(this.db);
     }
     return this.currentBatch;
+  }
+
+  private recordBookCountDelta(libraryId: string, delta: number): void {
+    if (!this.autoReconcileBookCount) return;
+    const current = this.bookCountDeltas.get(libraryId) || 0;
+    this.bookCountDeltas.set(libraryId, current + delta);
+  }
+
+  public getPendingCount(): number {
+    return this.currentCount;
+  }
+
+  public getBookCountDelta(libraryId: string): number {
+    return this.bookCountDeltas.get(libraryId) || 0;
+  }
+
+  /**
+   * Schedules addition of a new book and optional heavy details, automatically queuing an
+   * atomic increment(1) on the parent library document's bookCount.
+   */
+  addBook<T extends DocumentData = DocumentData>(
+    libraryId: string,
+    bookId: string,
+    bookData: WithFieldValue<T>,
+    detailsData?: WithFieldValue<DocumentData>,
+  ): void {
+    const bookRef = doc(this.db, 'libraries', libraryId, 'books', bookId);
+    this.set(bookRef, bookData);
+
+    if (detailsData && Object.keys(detailsData).length > 0) {
+      const detailRef = doc(
+        this.db,
+        'libraries',
+        libraryId,
+        'bookDetails',
+        bookId,
+      );
+      this.set(detailRef, detailsData);
+    }
+
+    const key = `add:${libraryId}/${bookId}`;
+    if (!this.processedBookOperations.has(key)) {
+      this.processedBookOperations.add(key);
+      this.recordBookCountDelta(libraryId, 1);
+    }
+  }
+
+  /**
+   * Schedules deletion of a book and its corresponding heavy details, automatically queuing an
+   * atomic increment(-1) on the parent library document's bookCount.
+   */
+  deleteBook(libraryId: string, bookId: string): void {
+    const bookRef = doc(this.db, 'libraries', libraryId, 'books', bookId);
+    const detailRef = doc(
+      this.db,
+      'libraries',
+      libraryId,
+      'bookDetails',
+      bookId,
+    );
+
+    this.delete(bookRef);
+    this.delete(detailRef);
+
+    const key = `del:${libraryId}/${bookId}`;
+    if (!this.processedBookOperations.has(key)) {
+      this.processedBookOperations.add(key);
+      this.recordBookCountDelta(libraryId, -1);
+    }
   }
 
   set<T = DocumentData>(
@@ -61,6 +152,19 @@ export class ClientBulkWriter {
     const batch = this.getBatch();
     batch.delete(docRef);
     this.currentCount++;
+
+    if (this.autoReconcileBookCount && docRef.path) {
+      const match = docRef.path.match(/^libraries\/([^/]+)\/books\/([^/]+)$/);
+      if (match) {
+        const [, libraryId, bookId] = match;
+        const key = `del:${libraryId}/${bookId}`;
+        if (!this.processedBookOperations.has(key)) {
+          this.processedBookOperations.add(key);
+          this.recordBookCountDelta(libraryId, -1);
+        }
+      }
+    }
+
     this.checkCommit();
   }
 
@@ -79,6 +183,21 @@ export class ClientBulkWriter {
   }
 
   async close(): Promise<void> {
+    if (this.autoReconcileBookCount && this.bookCountDeltas.size > 0) {
+      for (const [libraryId, delta] of this.bookCountDeltas.entries()) {
+        if (delta !== 0) {
+          const libRef = doc(this.db, 'libraries', libraryId);
+          const batch = this.getBatch();
+          batch.update(libRef, {
+            bookCount: increment(delta),
+            updatedAt: serverTimestamp(),
+          });
+          this.currentCount++;
+        }
+      }
+      this.bookCountDeltas.clear();
+    }
+
     if (this.currentBatch && this.currentCount > 0) {
       const batchToCommit = this.currentBatch!;
       this.currentBatch = null;

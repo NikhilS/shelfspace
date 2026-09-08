@@ -57,7 +57,15 @@ export interface BookEnrichmentStatus {
   lastAttemptedAt?: string;
 }
 
-export interface Book extends Omit<BookDetails, 'synopsis'> {
+export interface BookDetailsMetadata {
+  hasSynopsis?: boolean;
+  hasAuthorBio?: boolean;
+  hasEmbedding?: boolean;
+  hasDescription?: boolean;
+  hasClusterCoordinates?: boolean;
+}
+
+export interface Book extends Omit<BookDetails, 'synopsis' | 'authorBio'> {
   id: string;
   addedBy: string | null;
   addedAt: FirestoreDate;
@@ -66,19 +74,7 @@ export interface Book extends Omit<BookDetails, 'synopsis'> {
   geoMetadata?: BookGeoMetadata;
   temporalMetadata?: BookTemporalMetadata;
   enrichmentStatus?: BookEnrichmentStatus;
-  // Metadata fields that might still be in the books collection (legacy)
-  synopsis?: string;
-  authorBio?: string;
-  embedding?: number[];
-  clusterCoordinates?: {x: number; y: number};
-
-  // Field used during Spruce Up migrations to track what's still in the main document
-  _inBooks?: {
-    synopsis: boolean;
-    authorBio: boolean;
-    embedding: boolean;
-    clusterCoordinates: boolean;
-  };
+  bookDetailsMetadata?: BookDetailsMetadata;
   coverUrlRaw?: string;
 }
 
@@ -87,4 +83,6 @@ export interface BookDetailsPayload {
   authorBio?: string;
   embedding?: number[];
   clusterCoordinates?: {x: number; y: number};
+  description?: string;
+  updatedAt?: string;
 }

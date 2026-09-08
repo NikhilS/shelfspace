@@ -8,9 +8,14 @@ import {
   serverTimestamp,
   addDoc,
 } from 'firebase/firestore';
+import {useNavigate} from 'react-router-dom';
+import {useQueryClient} from '@tanstack/react-query';
 import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {Book} from '../../types';
 import {toast} from 'sonner';
+import {useAuth} from '../../stores/authStore';
+import {useLibraryData} from '../../hooks/useLibraryData';
+import {DebugTelemetryEngine, calculatePayloadBytes} from '../../lib/telemetry';
 
 const getFingerprints = (b: Book) => {
   const cleanIsbn = (b.isbn || '').trim().replace(/[^0-9X]/gi, '');
@@ -94,8 +99,17 @@ function findDuplicates(books: Book[]): Book[][] {
 }
 
 export function useSpruceUp(libraryId: string | undefined) {
-  const [books, setBooks] = useState<Book[]>([]);
-  const [booksLoading, setBooksLoading] = useState(true);
+  const {user} = useAuth();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // Consume the canonical ['books', libraryId] query provided by useLibraryData
+  const {books, isBooksLoading: booksLoading} = useLibraryData(
+    libraryId,
+    user?.uid,
+    navigate,
+  );
+
   const [allowedDuplicateGroups, setAllowedDuplicateGroups] = useState<
     string[][]
   >([]);
@@ -105,38 +119,39 @@ export function useSpruceUp(libraryId: string | undefined) {
   useEffect(() => {
     if (!libraryId) return;
 
-    const booksRef = collection(db, 'libraries', libraryId, 'books');
-    const unsubscribeBooks = onSnapshot(
-      booksRef,
-      booksSnap => {
-        const loaded = booksSnap.docs.map(
-          docSnap => ({...docSnap.data(), id: docSnap.id}) as Book,
-        );
-        setBooks(loaded);
-        setBooksLoading(false);
-      },
-      error => {
-        handleFirestoreError(
-          error,
-          OperationType.GET,
-          `libraries/${libraryId}/books`,
-        );
-        setBooksLoading(false);
-      },
-    );
-
     const allowedRef = collection(
       db,
       'libraries',
       libraryId,
       'allowedDuplicates',
     );
+    const unregisterAllowed =
+      DebugTelemetryEngine.getInstance().registerListener(
+        'useSpruceUp:allowedDuplicates',
+        `libraries/${libraryId}/allowedDuplicates`,
+      );
     const unsubscribeAllowed = onSnapshot(
       allowedRef,
+      {includeMetadataChanges: true},
       allowedSnap => {
+        const fromCache = allowedSnap.metadata.fromCache;
         const allowed = allowedSnap.docs.map(
           docSnap => (docSnap.data().bookIds || []) as string[],
         );
+        const payloadBytes = calculatePayloadBytes(allowed);
+
+        DebugTelemetryEngine.getInstance().addLog(
+          'db_read',
+          `Queried allowedDuplicates (${allowedSnap.size} docs, ${(payloadBytes / 1024).toFixed(1)} KB)`,
+          {
+            path: `libraries/${libraryId}/allowedDuplicates`,
+            fromCache,
+            size: allowedSnap.size,
+            bytes: payloadBytes,
+            docCount: allowedSnap.size,
+          },
+        );
+
         setAllowedDuplicateGroups(allowed);
         setAllowedLoading(false);
       },
@@ -151,7 +166,7 @@ export function useSpruceUp(libraryId: string | undefined) {
     );
 
     return () => {
-      unsubscribeBooks();
+      unregisterAllowed();
       unsubscribeAllowed();
     };
   }, [libraryId]);
@@ -173,7 +188,11 @@ export function useSpruceUp(libraryId: string | undefined) {
     const originalBooks = [...books];
     setProcessingIds(prev => new Set(prev).add(id));
     try {
-      setBooks(prev => prev.filter(b => b.id !== id));
+      queryClient.setQueryData(
+        ['books', libraryId],
+        (prev: Book[] | undefined) =>
+          prev ? prev.filter(b => b.id !== id) : [],
+      );
 
       const batch = writeBatch(db);
       batch.delete(doc(db, 'libraries', libraryId, 'books', id));
@@ -208,7 +227,7 @@ export function useSpruceUp(libraryId: string | undefined) {
       await batch.commit();
       toast.success('Book deleted');
     } catch (error) {
-      setBooks(originalBooks);
+      queryClient.setQueryData(['books', libraryId], originalBooks);
       toast.error('Failed to delete book');
       handleFirestoreError(
         error,

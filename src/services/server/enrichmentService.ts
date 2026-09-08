@@ -2,6 +2,7 @@ import {getAdminDb} from './firebaseAdmin';
 import {LibraryService} from './libraryService';
 import {MetadataRegistry} from './metadata';
 import {MetadataKey, CoreBookData} from '../../types/metadata';
+import {BookDetailsMetadata} from '../../types';
 import {EnrichmentTriggerInput} from '../../schemas/libraryApi';
 import {ENRICHMENT_CONSTANTS} from '../../constants/enrichment';
 
@@ -10,6 +11,11 @@ export interface EnrichmentTriggerResponse {
   enrichmentType: string;
   processedCount: number;
   results: Record<string, unknown>[];
+  updates?: Array<{
+    bookId: string;
+    payload: Record<string, unknown>;
+    heavyPayload?: Record<string, unknown>;
+  }>;
 }
 
 export class EnrichmentService {
@@ -42,6 +48,7 @@ export class EnrichmentService {
       temporalMetadata: MetadataKey.TEMPORAL,
       genre: MetadataKey.GENRE,
       genres: MetadataKey.GENRE,
+      primaryGenre: MetadataKey.GENRE,
       synopsis: MetadataKey.SYNOPSIS,
       coverImage: MetadataKey.COVER_IMAGE,
       coverUrl: MetadataKey.COVER_IMAGE,
@@ -224,6 +231,7 @@ export class EnrichmentService {
     const updateTasks: Array<{
       bookId: string;
       payload: Record<string, unknown>;
+      heavyPayload?: Record<string, unknown>;
     }> = [];
 
     for (const book of validBooks) {
@@ -236,6 +244,7 @@ export class EnrichmentService {
       const updatePayload: Record<string, unknown> = {
         updatedAt: new Date().toISOString(),
       };
+      const heavyPayload: Record<string, unknown> = {};
 
       const hasMetadata =
         metadata !== undefined &&
@@ -251,17 +260,49 @@ export class EnrichmentService {
         } else if (targetKey === MetadataKey.TEMPORAL) {
           updatePayload.temporalMetadata = metadata;
         } else if (targetKey === MetadataKey.GENRE) {
-          updatePayload.genre = metadata;
-          updatePayload.genres = metadata;
+          const genreData = metadata as {
+            primaryGenre?: string;
+            subgenres?: string[];
+            isCustomPrimary?: boolean;
+          };
+          updatePayload.primaryGenre = genreData.primaryGenre;
+          updatePayload.subgenres = genreData.subgenres || [];
+          if (genreData.isCustomPrimary !== undefined) {
+            updatePayload.isCustomPrimary = genreData.isCustomPrimary;
+          }
         } else if (targetKey === MetadataKey.SYNOPSIS) {
-          updatePayload.synopsis = metadata;
+          // PROHIBIT writing heavy synopsis to core book payload
+          heavyPayload.synopsis = metadata;
+          const existingMeta =
+            (existingData.bookDetailsMetadata as
+              BookDetailsMetadata | undefined) || {};
+          updatePayload.bookDetailsMetadata = {
+            ...existingMeta,
+            hasSynopsis: Boolean(metadata),
+          };
         } else if (targetKey === MetadataKey.COVER_IMAGE) {
           updatePayload.coverUrl = metadata;
           updatePayload.coverUrlRaw = metadata;
         } else if (targetKey === MetadataKey.AUTHOR_BIO) {
-          updatePayload.authorBio = metadata;
+          // PROHIBIT writing heavy authorBio to core book payload
+          heavyPayload.authorBio = metadata;
+          const existingMeta =
+            (existingData.bookDetailsMetadata as
+              BookDetailsMetadata | undefined) || {};
+          updatePayload.bookDetailsMetadata = {
+            ...existingMeta,
+            hasAuthorBio: Boolean(metadata),
+          };
         } else if (targetKey === MetadataKey.EMBEDDING) {
-          updatePayload.embedding = metadata;
+          // PROHIBIT writing heavy embedding vectors to core book payload
+          heavyPayload.embedding = metadata;
+          const existingMeta =
+            (existingData.bookDetailsMetadata as
+              BookDetailsMetadata | undefined) || {};
+          updatePayload.bookDetailsMetadata = {
+            ...existingMeta,
+            hasEmbedding: Boolean((metadata as number[])?.length),
+          };
         }
 
         updatePayload.enrichmentStatus = {
@@ -271,7 +312,12 @@ export class EnrichmentService {
         };
 
         results.push({id: bookId, [targetKey]: metadata});
-        updateTasks.push({bookId, payload: updatePayload});
+        updateTasks.push({
+          bookId,
+          payload: updatePayload,
+          heavyPayload:
+            Object.keys(heavyPayload).length > 0 ? heavyPayload : undefined,
+        });
       } else {
         // Tombstone as unsupported so subsequent auto-scans do not loop indefinitely
         updatePayload.enrichmentStatus = {
@@ -293,18 +339,14 @@ export class EnrichmentService {
         i + ENRICHMENT_CONSTANTS.SERVER_CHUNK_SIZE,
       );
       await Promise.all(
-        chunk.map(async ({bookId, payload}) => {
+        chunk.map(async ({bookId, payload, heavyPayload}) => {
           try {
             await booksRef.doc(bookId).update(payload);
-            if (payload.synopsis || payload.authorBio || payload.embedding) {
+            if (heavyPayload && Object.keys(heavyPayload).length > 0) {
               const detailPayload: Record<string, unknown> = {
+                ...heavyPayload,
                 updatedAt: payload.updatedAt,
               };
-              if (payload.synopsis) detailPayload.synopsis = payload.synopsis;
-              if (payload.authorBio)
-                detailPayload.authorBio = payload.authorBio;
-              if (payload.embedding)
-                detailPayload.embedding = payload.embedding;
               try {
                 if (typeof bookDetailsRef.doc(bookId)?.set === 'function') {
                   await bookDetailsRef

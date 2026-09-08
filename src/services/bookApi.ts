@@ -1,10 +1,10 @@
 import {
-  toSentenceCase,
   normalizeTitle,
   normalizeName,
   normalizeIsbn,
   normalizeText,
 } from '../lib/utils';
+import {mapLegacyGenreToTaxonomy} from '../constants/taxonomy';
 
 export interface BookDetails {
   title: string;
@@ -12,7 +12,9 @@ export interface BookDetails {
   isbn: string;
   coverUrl: string;
   publishedDate: string;
-  genres?: string[];
+  primaryGenre?: string;
+  subgenres?: string[];
+  isCustomPrimary?: boolean;
   series?: string;
   synopsis?: string;
   authorBio?: string;
@@ -77,6 +79,38 @@ function getHighResCoverUrl(url: string | undefined): string {
   return hiResUrl;
 }
 
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 8000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let combinedSignal = controller.signal;
+  if (options.signal) {
+    if (
+      typeof AbortSignal !== 'undefined' &&
+      'any' in AbortSignal &&
+      typeof AbortSignal.any === 'function'
+    ) {
+      combinedSignal = AbortSignal.any([options.signal, controller.signal]);
+    } else {
+      options.signal.addEventListener('abort', () => controller.abort());
+    }
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: combinedSignal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const getGoogleBooksUrl = (query: string): string => {
   // Try to use process.env first for server-side
   let apiKey = '';
@@ -136,9 +170,9 @@ export async function searchBookByIsbn(
               bookData.imageLinks?.smallThumbnail,
           ),
           publishedDate: bookData.publishedDate || '',
-          genres: bookData.categories
-            ? bookData.categories.map(toSentenceCase)
-            : undefined,
+          ...(bookData.categories?.[0]
+            ? mapLegacyGenreToTaxonomy(bookData.categories[0])
+            : {}),
           synopsis: normalizeText(bookData.description || undefined),
         };
         googleBooksSucceeded = true;
@@ -162,9 +196,10 @@ export async function searchBookByIsbn(
   // Fallback to OpenLibrary
   try {
     // Use isbn= parameter for exact ISBN matching
-    let response = await fetch(
+    let response = await fetchWithTimeout(
       `https://openlibrary.org/search.json?isbn=${isbn}&limit=1`,
       {signal},
+      6000,
     );
     if (response.status === 429) {
       console.warn('OpenLibrary API rate limit (429) on ISBN search.');
@@ -173,9 +208,10 @@ export async function searchBookByIsbn(
 
       // Fallback to general search if isbn= prefix fails
       if (!data.docs || data.docs.length === 0) {
-        response = await fetch(
+        response = await fetchWithTimeout(
           `https://openlibrary.org/search.json?q=${isbn}&limit=1`,
           {signal},
+          6000,
         );
         if (response.status === 429) {
           console.warn(
@@ -205,7 +241,11 @@ export async function searchBookByIsbn(
       }
     }
   } catch (_error) {
-    console.warn('OpenLibrary ISBN search failed:', _error);
+    if ((_error as Error)?.name === 'AbortError' && signal?.aborted) {
+      throw _error;
+    }
+    const msg = _error instanceof Error ? _error.message : String(_error);
+    console.info(`OpenLibrary ISBN search unavailable (${msg})`);
   }
 
   return null;
@@ -248,9 +288,9 @@ export async function searchBookByTitleAndAuthor(
                 bookData.imageLinks?.smallThumbnail,
             ),
             publishedDate: bookData.publishedDate || '',
-            genres: bookData.categories
-              ? bookData.categories.map(toSentenceCase)
-              : undefined,
+            ...(bookData.categories?.[0]
+              ? mapLegacyGenreToTaxonomy(bookData.categories[0])
+              : {}),
             synopsis: normalizeText(bookData.description || undefined),
           };
         });
@@ -298,9 +338,9 @@ export async function searchBookByTitle(
                 bookData.imageLinks?.smallThumbnail,
             ),
             publishedDate: bookData.publishedDate || '',
-            genres: bookData.categories
-              ? bookData.categories.map(toSentenceCase)
-              : undefined,
+            ...(bookData.categories?.[0]
+              ? mapLegacyGenreToTaxonomy(bookData.categories[0])
+              : {}),
             synopsis: normalizeText(bookData.description || undefined),
           };
         });
@@ -337,9 +377,9 @@ export async function searchBookByTitle(
                     bookData.imageLinks?.smallThumbnail,
                 ),
                 publishedDate: bookData.publishedDate || '',
-                genres: bookData.categories
-                  ? bookData.categories.map(toSentenceCase)
-                  : undefined,
+                ...(bookData.categories?.[0]
+                  ? mapLegacyGenreToTaxonomy(bookData.categories[0])
+                  : {}),
                 synopsis: normalizeText(bookData.description || undefined),
               };
             },
@@ -365,9 +405,10 @@ export async function searchBookByTitle(
 
   if (results.length === 0) {
     try {
-      let response = await fetch(
+      let response = await fetchWithTimeout(
         `https://openlibrary.org/search.json?title=${encodeURIComponent(query)}&limit=10`,
         {signal},
+        6000,
       );
       if (response.status === 429) {
         console.warn('OpenLibrary API rate limit (429) on title search.');
@@ -375,9 +416,10 @@ export async function searchBookByTitle(
         let data = (await response.json()) as OpenLibraryResponse;
 
         if (!data.docs || data.docs.length === 0) {
-          response = await fetch(
+          response = await fetchWithTimeout(
             `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=10`,
             {signal},
+            6000,
           );
           if (response.status === 429) {
             console.warn(
@@ -405,8 +447,11 @@ export async function searchBookByTitle(
         }
       }
     } catch (_error) {
-      if ((_error as Error).name === 'AbortError') throw _error;
-      console.warn('OpenLibrary title search failed:', _error);
+      if ((_error as Error)?.name === 'AbortError' && signal?.aborted) {
+        throw _error;
+      }
+      const msg = _error instanceof Error ? _error.message : String(_error);
+      console.info(`OpenLibrary title search fallback skipped (${msg})`);
     }
   }
 

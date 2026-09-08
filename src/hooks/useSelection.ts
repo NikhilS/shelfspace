@@ -51,11 +51,35 @@ export function useSelection(
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedBooks.size === 0 || !libraryId) return;
+    try {
+      const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
+      const writer = new ClientBulkWriter(db);
+
+      const count = selectedBooks.size;
+      selectedBooks.forEach(bookId => {
+        writer.deleteBook(libraryId, bookId);
+      });
+
+      await writer.close();
+      toast.success(`Deleted ${count} books`);
+      clearSelection();
+    } catch (error) {
+      handleFirestoreError(
+        error,
+        OperationType.DELETE,
+        `libraries/${libraryId}/books`,
+      );
+    }
+  };
+
   return {
     selectedBooks,
     toggleBookSelection,
     toggleAllBooks,
     clearSelection,
     handleBulkStatusChange,
+    handleBulkDelete,
   };
 }

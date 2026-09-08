@@ -7,7 +7,6 @@ import {
   Sparkles,
   Link,
   AlertTriangle,
-  Check,
   BookOpen,
 } from 'lucide-react';
 import {toast} from 'sonner';
@@ -42,7 +41,7 @@ import {
 } from '../../lib/utils';
 import CoverCamera from '../../components/CoverCamera';
 import {applyNanobananaFlash} from '../../lib/nanobanana';
-import {useGenreSuggestor} from './useGenreSuggestor';
+import {GenreSelect} from '../../components/GenreSelect';
 
 interface EditBookFormProps {
   libraryId: string;
@@ -62,7 +61,9 @@ const editBookSchema = z.object({
   author: z.string().min(1, 'Author is required').max(500),
   format: z.enum(['physical', 'digital']),
   isbn: z.string().optional(),
-  genresInput: z.string().optional(),
+  primaryGenre: z.string().optional(),
+  subgenres: z.array(z.string()).optional(),
+  isCustomPrimary: z.boolean().optional(),
   publishedDate: z.string().optional(),
   series: z.string().max(100).optional(),
   coverUrl: z.string().optional(),
@@ -113,10 +114,21 @@ export function EditBookForm({
       publishedDate: book?.publishedDate || '',
       coverUrl: book?.coverUrl || '',
       coverUrlRaw: book?.coverUrlRaw || '',
-      genresInput:
-        book?.genres && book?.genres.length > 0 ? book.genres.join(', ') : '',
+      primaryGenre: book?.primaryGenre || '',
+      subgenres: book?.subgenres || [],
+      isCustomPrimary: book?.isCustomPrimary || false,
       series: book?.series || '',
     },
+  });
+
+  const [genreData, setGenreData] = useState<{
+    primaryGenre: string;
+    subgenres: string[];
+    isCustomPrimary: boolean;
+  }>({
+    primaryGenre: book?.primaryGenre || '',
+    subgenres: book?.subgenres || [],
+    isCustomPrimary: book?.isCustomPrimary || false,
   });
 
   const formatValue = watch('format');
@@ -126,43 +138,6 @@ export function EditBookForm({
   useEffect(() => {
     setValue('coverUrl', activeCoverUrl);
   }, [activeCoverUrl, setValue]);
-
-  const {suggestedGenres, isSearchingGenres} = useGenreSuggestor(book);
-
-  // Watch genres input to determine current selection state
-  const genresInputValue = watch('genresInput') || '';
-
-  const isGenreSelected = (genre: string) => {
-    const selected = genresInputValue
-      .split(',')
-      .map(g => g.trim().toLowerCase())
-      .filter(Boolean);
-    return selected.includes(genre.trim().toLowerCase());
-  };
-
-  const toggleGenre = (genre: string) => {
-    const currentGenres = genresInputValue
-      .split(',')
-      .map(g => g.trim())
-      .filter(Boolean);
-
-    const normalizedGenre = toSentenceCase(genre.trim());
-    const index = currentGenres.findIndex(
-      g => g.toLowerCase() === normalizedGenre.toLowerCase(),
-    );
-
-    let newGenres: string[];
-    if (index >= 0) {
-      newGenres = currentGenres.filter((_, idx) => idx !== index);
-    } else {
-      newGenres = [...currentGenres, normalizedGenre];
-    }
-
-    setValue('genresInput', newGenres.join(', '), {
-      shouldValidate: true,
-      shouldDirty: true,
-    });
-  };
 
   // Handle camera capture callback
   const handleCaptureImage = (base64Data: string) => {
@@ -251,15 +226,10 @@ export function EditBookForm({
         series: normalizeText(data.series),
         coverUrl: activeCoverUrl || data.coverUrl,
         coverUrlRaw: registeredRawCover || data.coverUrlRaw,
+        primaryGenre: genreData.primaryGenre || undefined,
+        subgenres: genreData.subgenres || [],
+        isCustomPrimary: genreData.isCustomPrimary || false,
       };
-
-      if (data.genresInput) {
-        cleanForm.genres = data.genresInput
-          .split(',')
-          .map(g => toSentenceCase(g.trim()))
-          .filter(Boolean)
-          .slice(0, 20);
-      }
 
       // Remove undefined values
       Object.keys(cleanForm).forEach(key => {
@@ -564,58 +534,17 @@ export function EditBookForm({
                         </div>
                       </div>
 
-                      <div className="space-y-1">
-                        <Label
-                          htmlFor="genresInput"
-                          className="text-xs font-semibold text-ink"
-                        >
-                          Genres (Comma separated list)
-                        </Label>
-                        <Input
-                          id="genresInput"
-                          placeholder="Fantasy, Fiction, Classic"
-                          className="bg-surface-container text-sm h-11 rounded-lg"
-                          {...register('genresInput')}
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">
-                            Suggested Genres
-                          </Label>
-                          {isSearchingGenres && (
-                            <div className="flex items-center gap-1 text-[11px] text-on-surface-variant/70">
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              <span>Searching...</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto pr-1">
-                          {suggestedGenres.map(genre => {
-                            const isSelected = isGenreSelected(genre);
-                            return (
-                              <Button
-                                key={genre}
-                                type="button"
-                                variant={isSelected ? 'secondary' : 'outline'}
-                                className={`h-7 px-2.5 py-1 text-xs font-medium rounded-md select-none transition-all flex items-center gap-1 ${
-                                  isSelected
-                                    ? 'bg-primary/10 text-primary hover:bg-primary/15 border-transparent'
-                                    : 'bg-surface-container hover:bg-surface-container-high border-outline-variant/30 text-on-surface'
-                                }`}
-                                onClick={() => toggleGenre(genre)}
-                                id={`genre-tag-${genre.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
-                              >
-                                {isSelected && (
-                                  <Check className="w-3 h-3 stroke-[2.5]" />
-                                )}
-                                {genre}
-                              </Button>
-                            );
-                          })}
-                        </div>
-                      </div>
+                      <GenreSelect
+                        primaryGenre={genreData.primaryGenre}
+                        subgenres={genreData.subgenres}
+                        isCustomPrimary={genreData.isCustomPrimary}
+                        onChange={val => {
+                          setGenreData(val);
+                          setValue('primaryGenre', val.primaryGenre);
+                          setValue('subgenres', val.subgenres);
+                          setValue('isCustomPrimary', val.isCustomPrimary);
+                        }}
+                      />
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">

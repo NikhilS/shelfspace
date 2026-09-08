@@ -1,10 +1,11 @@
 import React, {useState, useMemo, useCallback, useEffect} from 'react';
-import {useParams, useNavigate, Link} from 'react-router-dom';
+import {useParams, useNavigate} from 'react-router-dom';
 import {useAuth} from '../stores/authStore';
 import {useLibraryData} from '../hooks/useLibraryData';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../components/BulkEnrichmentBanner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
+import {BackToLibrary} from '../components/BackToLibrary';
 import {
   Clock,
   Search,
@@ -14,7 +15,6 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
-  ArrowLeft,
 } from 'lucide-react';
 import {BookLoader} from '../components/BookLoader';
 import {Book} from '../types';
@@ -242,13 +242,7 @@ export default function TimelineView() {
         {/* Dynamic header information block */}
         <div className="layout-header border-none flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
-            <Link
-              to={`/library/${libraryId}`}
-              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-on-surface-variant hover:text-primary transition-colors mb-2.5 group"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-              <span>Back to Library Overview</span>
-            </Link>
+            <BackToLibrary libraryId={libraryId} className="mb-2" />
             <h1 className="layout-header-title">
               Historical Temporal Timeline
             </h1>

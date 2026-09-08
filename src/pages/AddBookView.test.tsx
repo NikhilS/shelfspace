@@ -1,6 +1,7 @@
 import React from 'react';
 import {render, screen, fireEvent, waitFor, act} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import AddBookView from './AddBookView';
 import {useAuth} from '../stores/authStore';
 import {BrowserRouter} from 'react-router-dom';
@@ -129,10 +130,14 @@ describe('AddBookView', () => {
       {title: 'Book One', author: 'Author One'},
     ]);
 
+    const queryClient = new QueryClient();
+
     render(
-      <BrowserRouter>
-        <AddBookView />
-      </BrowserRouter>,
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AddBookView />
+        </BrowserRouter>
+      </QueryClientProvider>,
     );
 
     // Switch to camera tab

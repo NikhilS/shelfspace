@@ -1,7 +1,7 @@
 export enum MetadataKey {
   GEO = 'geoMetadata',
   TEMPORAL = 'temporalMetadata',
-  GENRE = 'genres',
+  GENRE = 'primaryGenre',
   SYNOPSIS = 'synopsis',
   AUTHOR_BIO = 'authorBio',
   EMBEDDING = 'embeddings',
@@ -10,11 +10,20 @@ export enum MetadataKey {
   COVER_IMAGE = 'coverUrl', // High-res cover images
 }
 
+export interface BookGenreData {
+  primaryGenre: string;
+  subgenres?: string[];
+  isCustomPrimary?: boolean;
+}
+
 export interface CoreBookData {
   id: string; // The unique storage ID for a book in the database, also used to key results in bulk operations
   title: string;
   author: string;
   isbn?: string;
+  primaryGenre?: string;
+  subgenres?: string[];
+  synopsis?: string;
 }
 
 export interface IMetadataProvider<T = unknown> {

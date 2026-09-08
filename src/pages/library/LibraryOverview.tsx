@@ -57,19 +57,8 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
   const topCategories = useMemo(() => {
     const counts: Record<string, number> = {};
     books.forEach(b => {
-      if (b.genres && Array.isArray(b.genres)) {
-        const countedForBook = new Set<string>();
-        b.genres.forEach(g => {
-          if (!g) return;
-          const segments = g.split('/');
-          if (segments.length > 0) {
-            const rootCategory = toTitleCase(segments[0].trim());
-            if (rootCategory && !countedForBook.has(rootCategory)) {
-              countedForBook.add(rootCategory);
-              counts[rootCategory] = (counts[rootCategory] || 0) + 1;
-            }
-          }
-        });
+      if (b.primaryGenre) {
+        counts[b.primaryGenre] = (counts[b.primaryGenre] || 0) + 1;
       }
     });
     return Object.entries(counts)
@@ -96,8 +85,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
   }, [books]);
 
   const missingMetadataCount = useMemo(() => {
-    return books.filter(b => !b.coverUrl || !b.genres || b.genres.length === 0)
-      .length;
+    return books.filter(b => !b.coverUrl || !b.primaryGenre).length;
   }, [books]);
 
   const temporalBooksCount = useMemo(() => {

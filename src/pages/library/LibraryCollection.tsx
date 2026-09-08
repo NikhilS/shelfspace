@@ -47,6 +47,9 @@ interface LibraryCollectionProps {
   setIsFiltersOpen: (open: boolean) => void;
   filterGenre: string;
   setFilterGenre: (genre: string) => void;
+  filterSubgenre?: string;
+  setFilterSubgenre?: (subgenre: string) => void;
+  activeSubgenres?: Array<{name: string; count: number}>;
   filterAuthor: string;
   setFilterAuthor: (author: string) => void;
   filterYearMin: string;
@@ -80,6 +83,9 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
   setIsFiltersOpen,
   filterGenre,
   setFilterGenre,
+  filterSubgenre,
+  setFilterSubgenre,
+  activeSubgenres,
   filterAuthor,
   setFilterAuthor,
   filterYearMin,
@@ -98,11 +104,16 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
   navigate,
 }) => {
   const hasActiveFilters = Boolean(
-    filterGenre || filterAuthor || filterYearMin || filterYearMax,
+    filterGenre ||
+    filterSubgenre ||
+    filterAuthor ||
+    filterYearMin ||
+    filterYearMax,
   );
 
   const activeFilterCount =
     (filterGenre ? 1 : 0) +
+    (filterSubgenre ? 1 : 0) +
     (filterAuthor ? 1 : 0) +
     (filterYearMin || filterYearMax ? 1 : 0);
 
@@ -225,6 +236,44 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
                   }`}
                 >
                   {genre}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Drill-down Subgenre Chips Row for Selected Primary Genre */}
+        {filterGenre && activeSubgenres && activeSubgenres.length > 0 && (
+          <div className="px-3 sm:px-6 pb-2 pt-1 border-t border-outline-variant/15 flex items-center gap-1.5 overflow-x-auto hide-scrollbar scroll-smooth bg-surface-container-low/30">
+            <span className="text-[11px] font-sans text-on-surface-variant/80 font-medium mr-1 flex-shrink-0">
+              Subgenres:
+            </span>
+            <button
+              type="button"
+              onClick={() => setFilterSubgenre?.('')}
+              className={`text-[11px] px-2.5 py-0.5 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
+                !filterSubgenre
+                  ? 'bg-secondary text-on-secondary font-semibold shadow-xs'
+                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+              }`}
+            >
+              All {filterGenre}
+            </button>
+            {activeSubgenres.map(({name, count}) => {
+              const isSelected =
+                filterSubgenre?.toLowerCase() === name.toLowerCase();
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setFilterSubgenre?.(isSelected ? '' : name)}
+                  className={`text-[11px] px-2.5 py-0.5 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
+                    isSelected
+                      ? 'bg-secondary text-on-secondary font-semibold shadow-xs'
+                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                  }`}
+                >
+                  {name} ({count})
                 </button>
               );
             })}

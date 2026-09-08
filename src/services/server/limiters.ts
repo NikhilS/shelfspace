@@ -10,12 +10,18 @@ export const googleBooksLimiter = new Bottleneck({
 });
 
 googleBooksLimiter.on('failed', async (error, jobInfo) => {
-  const id = jobInfo.options.id;
-  console.warn(`[googleBooksLimiter] Job ${id} failed: ${error}`);
+  const id = jobInfo.options.id || 'task';
+  const errMessage = error instanceof Error ? error.message : String(error);
   if (jobInfo.retryCount < 3) {
-    // Exponential backoff
-    return 1000 * Math.pow(2, jobInfo.retryCount);
+    const delay = 1000 * Math.pow(2, jobInfo.retryCount);
+    console.info(
+      `[googleBooksLimiter] Retrying job '${id}' (attempt ${jobInfo.retryCount + 1}/3) after error: ${errMessage}`,
+    );
+    return delay;
   }
+  console.warn(
+    `[googleBooksLimiter] Job '${id}' failed after max retries: ${errMessage}`,
+  );
   return undefined;
 });
 
@@ -29,10 +35,17 @@ export const geminiLimiter = new Bottleneck({
 });
 
 geminiLimiter.on('failed', async (error, jobInfo) => {
-  const id = jobInfo.options.id;
-  console.warn(`[geminiLimiter] Job ${id} failed: ${error}`);
+  const id = jobInfo.options.id || 'ai-task';
+  const errMessage = error instanceof Error ? error.message : String(error);
   if (jobInfo.retryCount < 3) {
-    return 2000 * Math.pow(2, jobInfo.retryCount);
+    const delay = 2000 * Math.pow(2, jobInfo.retryCount);
+    console.info(
+      `[geminiLimiter] Retrying job '${id}' (attempt ${jobInfo.retryCount + 1}/3) after transient error (503/429/500): ${errMessage}`,
+    );
+    return delay;
   }
+  console.warn(
+    `[geminiLimiter] Job '${id}' failed after max retries: ${errMessage}`,
+  );
   return undefined;
 });

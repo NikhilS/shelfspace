@@ -1,4 +1,5 @@
 import {getAdminDb} from './firebaseAdmin';
+import {FieldValue} from 'firebase-admin/firestore';
 import {SUPERADMIN_EMAIL} from '../../constants/auth';
 import {TRPCError} from '@trpc/server';
 import {BookListInput} from '../../schemas/libraryApi';
@@ -97,6 +98,7 @@ export class LibraryService {
 
   /**
    * Lists all libraries accessible to the caller.
+   * @deprecated Retired in Phase 5: Real-time queries now execute natively on client Firestore SDK.
    */
   static async getUserLibraries(
     userId: string,
@@ -207,6 +209,7 @@ export class LibraryService {
 
   /**
    * Retrieves books within a specific library, supporting filters and pagination.
+   * @deprecated Retired in Phase 5: Real-time queries now execute natively on client Firestore SDK.
    */
   static async getFilteredBooks(
     userId: string,
@@ -280,18 +283,15 @@ export class LibraryService {
             b.temporalMetadata.rationale)
         );
 
-        const genreVal = b.genre || b.genres;
         const hasGenre = !!(
-          genreVal &&
-          (Array.isArray(genreVal)
-            ? genreVal.length > 0
-            : String(genreVal).trim().length > 0)
+          b.primaryGenre && String(b.primaryGenre).trim().length > 0
         );
 
         const hasSynopsis = !!(
-          b.synopsis &&
-          typeof b.synopsis === 'string' &&
-          b.synopsis.trim().length > 0
+          b.bookDetailsMetadata?.hasSynopsis ||
+          (b.synopsis &&
+            typeof b.synopsis === 'string' &&
+            b.synopsis.trim().length > 0)
         );
 
         const hasCoverImage = !!(
@@ -305,7 +305,11 @@ export class LibraryService {
         if (missingKind) {
           if (missingKind === 'geo' && hasGeo) return;
           if (missingKind === 'temporal' && hasTemporal) return;
-          if (missingKind === 'genre' && hasGenre) return;
+          if (
+            (missingKind === 'genre' || missingKind === 'primaryGenre') &&
+            hasGenre
+          )
+            return;
           if (missingKind === 'synopsis' && hasSynopsis) return;
           if (missingKind === 'coverImage' && hasCoverImage) return;
         }
@@ -316,9 +320,10 @@ export class LibraryService {
           author: b.author || 'Unknown Author',
           isbn: b.isbn || undefined,
           synopsis: b.synopsis || undefined,
-          genre: Array.isArray(genreVal)
-            ? genreVal.join(', ')
-            : genreVal || undefined,
+          primaryGenre: b.primaryGenre || undefined,
+          subgenres: b.subgenres || [],
+          isCustomPrimary: b.isCustomPrimary,
+          genre: b.primaryGenre || undefined,
           coverImage:
             b.coverUrlRaw ||
             b.coverUrl ||
@@ -359,6 +364,116 @@ export class LibraryService {
           errMsg,
         );
         return {books: [], nextCursor: undefined};
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Generalized metadata reset: purges any supported metadata category from all books.
+   */
+  static async resetMetadata(
+    userId: string,
+    userEmail: string | undefined,
+    libraryId: string,
+    metadataType: string,
+  ): Promise<{count: number}> {
+    await this.verifyLibraryAccess(userId, userEmail, libraryId, 'editor');
+
+    try {
+      const db = getAdminDb();
+      const booksRef = db
+        .collection('libraries')
+        .doc(libraryId)
+        .collection('books');
+      const snapshot = await booksRef.get();
+
+      if (snapshot.empty) {
+        return {count: 0};
+      }
+
+      let deletePayload: Record<string, unknown> = {};
+
+      if (metadataType === 'genre' || metadataType === 'primaryGenre') {
+        deletePayload = {
+          primaryGenre: FieldValue.delete(),
+          subgenres: FieldValue.delete(),
+          isCustomPrimary: FieldValue.delete(),
+          'enrichmentStatus.genre': FieldValue.delete(),
+        };
+      } else if (metadataType === 'geo') {
+        deletePayload = {
+          geoMetadata: FieldValue.delete(),
+          'enrichmentStatus.geo': FieldValue.delete(),
+        };
+      } else if (metadataType === 'temporal') {
+        deletePayload = {
+          temporalMetadata: FieldValue.delete(),
+          'enrichmentStatus.temporal': FieldValue.delete(),
+        };
+      } else if (metadataType === 'synopsis') {
+        deletePayload = {
+          synopsis: FieldValue.delete(),
+          'enrichmentStatus.synopsis': FieldValue.delete(),
+        };
+      } else if (metadataType === 'authorBio') {
+        deletePayload = {
+          authorBio: FieldValue.delete(),
+          'enrichmentStatus.authorBio': FieldValue.delete(),
+        };
+      } else if (metadataType === 'embedding') {
+        deletePayload = {
+          embedding: FieldValue.delete(),
+          clusterCoordinates: FieldValue.delete(),
+          'enrichmentStatus.embedding': FieldValue.delete(),
+        };
+      } else if (metadataType === 'coverImage') {
+        deletePayload = {
+          coverUrl: FieldValue.delete(),
+          coverUrlRaw: FieldValue.delete(),
+          'enrichmentStatus.coverImage': FieldValue.delete(),
+        };
+      } else if (metadataType === 'series') {
+        deletePayload = {
+          series: FieldValue.delete(),
+        };
+      } else {
+        throw new Error(`Unsupported metadata reset type: '${metadataType}'`);
+      }
+
+      const batchSize = 400;
+      let batch = db.batch();
+      let count = 0;
+      let totalReset = 0;
+
+      for (const doc of snapshot.docs) {
+        batch.update(doc.ref, deletePayload);
+        count++;
+        totalReset++;
+
+        if (count >= batchSize) {
+          await batch.commit();
+          batch = db.batch();
+          count = 0;
+        }
+      }
+
+      if (count > 0) {
+        await batch.commit();
+      }
+
+      return {count: totalReset};
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (
+        errMsg.includes('PERMISSION_DENIED') ||
+        errMsg.includes('permission-denied') ||
+        errMsg.includes('Firebase config not found')
+      ) {
+        console.warn(
+          `[LibraryService] Server-side Firestore permission unavailable (${errMsg}). Client-side Firestore Security Rules strictly govern document writes.`,
+        );
+        return {count: 0};
       }
       throw err;
     }

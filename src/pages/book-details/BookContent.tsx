@@ -1,6 +1,6 @@
 import {AnimatePresence} from 'motion/react';
 import React, {useState, useEffect, useMemo} from 'react';
-import {useLocation} from 'react-router-dom';
+import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuth} from '../../stores/authStore';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
@@ -43,6 +43,7 @@ export function BookContent({
   onNavigateBack,
   canEdit: passedCanEdit,
 }: BookContentProps) {
+  const navigate = useNavigate();
   const {user} = useAuth();
 
   const {
@@ -181,7 +182,12 @@ export function BookContent({
 
         {/* Right Column */}
         <div className="md:col-span-8 flex flex-col gap-10">
-          <BookHeader book={book} canEdit={canEdit} onEdit={startEditing} />
+          <BookHeader
+            book={book}
+            canEdit={canEdit}
+            onEdit={startEditing}
+            libraryId={libraryId}
+          />
 
           <ReadingStatusSelect
             libraryId={libraryId}
@@ -212,18 +218,40 @@ export function BookContent({
               )}
             </div>
 
-            {book.genres && book.genres.length > 0 && (
+            {(book.primaryGenre ||
+              (book.subgenres && book.subgenres.length > 0)) && (
               <div className="mt-8 pt-4 border-t border-surface-variant flex items-center flex-wrap gap-2">
                 <span className="font-label-caps text-label-caps text-on-surface-variant mr-2">
-                  All Categories:
+                  Genre & Subgenres:
                 </span>
-                {book.genres.map((g, idx) => (
-                  <span
-                    key={idx}
-                    className="font-label-caps text-label-caps text-on-surface-variant px-2 py-0.5 border border-outline-variant/30 rounded-sm bg-surface-variant/30"
+                {book.primaryGenre && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void navigate(
+                        `/library/${libraryId}/collection?genre=${encodeURIComponent(book.primaryGenre!)}`,
+                      )
+                    }
+                    className="font-label-caps text-label-caps text-primary px-2.5 py-1 border border-primary/30 rounded-md bg-primary/10 font-semibold hover:bg-primary/20 transition-colors cursor-pointer"
+                    title={`Filter library by ${book.primaryGenre}`}
                   >
-                    {g}
-                  </span>
+                    {book.primaryGenre}
+                  </button>
+                )}
+                {book.subgenres?.map((sg, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() =>
+                      void navigate(
+                        `/library/${libraryId}/collection?genre=${encodeURIComponent(book.primaryGenre || '')}&subgenre=${encodeURIComponent(sg)}`,
+                      )
+                    }
+                    className="font-label-caps text-label-caps text-on-surface-variant px-2 py-0.5 border border-outline-variant/30 rounded-sm bg-surface-variant/30 hover:bg-surface-variant/70 hover:text-primary transition-colors cursor-pointer"
+                    title={`Filter library by ${sg}`}
+                  >
+                    {sg}
+                  </button>
                 ))}
               </div>
             )}

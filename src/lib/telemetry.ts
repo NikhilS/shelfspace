@@ -25,6 +25,42 @@ export interface TelemetryMetrics {
   totalGeminiQueries: number;
   totalGeminiTokens: number;
   activeWorkers: number;
+
+  // Phase 0 Persistence & Payload Telemetry
+  totalBytesTransferred: number;
+  lastQueryPayloadBytes: number;
+  averageBookDocumentBytes: number;
+  activeFirestoreListeners: number;
+  cacheEfficiencyRatio: number;
+  snapshotParseDurationMs: number;
+}
+
+export interface ActiveListenerInfo {
+  id: string;
+  name: string;
+  path: string;
+  startedAt: string;
+}
+
+export interface TelemetryBaseline {
+  timestamp: string;
+  metrics: TelemetryMetrics;
+}
+
+/**
+ * Safely calculates the byte size of any data object / payload in UTF-8.
+ */
+export function calculatePayloadBytes(data: unknown): number {
+  if (data === undefined || data === null) return 0;
+  try {
+    if (typeof data === 'string') {
+      return new Blob([data]).size;
+    }
+    const json = JSON.stringify(data);
+    return new Blob([json]).size;
+  } catch {
+    return 0;
+  }
 }
 
 export class DebugTelemetryEngine {
@@ -33,6 +69,9 @@ export class DebugTelemetryEngine {
   private maxLogs = 200;
   private subscribers: Set<() => void> = new Set();
   private activeStates: Record<string, unknown> = {};
+  private activeListeners: Map<string, ActiveListenerInfo> = new Map();
+  private baseline: TelemetryBaseline | null = null;
+  private bookDocByteSamples: number[] = [];
 
   private metrics: TelemetryMetrics = {
     totalApiRequests: 0,
@@ -42,6 +81,12 @@ export class DebugTelemetryEngine {
     totalGeminiQueries: 0,
     totalGeminiTokens: 0,
     activeWorkers: 0,
+    totalBytesTransferred: 0,
+    lastQueryPayloadBytes: 0,
+    averageBookDocumentBytes: 0,
+    activeFirestoreListeners: 0,
+    cacheEfficiencyRatio: 100,
+    snapshotParseDurationMs: 0,
   };
 
   private latencies: number[] = [];
@@ -55,6 +100,87 @@ export class DebugTelemetryEngine {
       this.instance = new DebugTelemetryEngine();
     }
     return this.instance;
+  }
+
+  // Register and track active Firestore onSnapshot listeners
+  public registerListener(name: string, path: string): () => void {
+    const id = Math.random().toString(36).substring(7);
+    const info: ActiveListenerInfo = {
+      id,
+      name,
+      path,
+      startedAt: new Date().toLocaleTimeString([], {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+    };
+
+    this.activeListeners.set(id, info);
+    this.metrics.activeFirestoreListeners = this.activeListeners.size;
+    this.notifySubscribers();
+
+    return () => {
+      this.activeListeners.delete(id);
+      this.metrics.activeFirestoreListeners = this.activeListeners.size;
+      this.notifySubscribers();
+    };
+  }
+
+  public getActiveListeners(): ActiveListenerInfo[] {
+    return Array.from(this.activeListeners.values());
+  }
+
+  // Baseline capture for Before/After comparison
+  public captureBaseline(): TelemetryBaseline {
+    this.baseline = {
+      timestamp: new Date().toLocaleTimeString([], {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+      metrics: {...this.metrics},
+    };
+    this.notifySubscribers();
+    return this.baseline;
+  }
+
+  public getBaseline(): TelemetryBaseline | null {
+    return this.baseline
+      ? {
+          timestamp: this.baseline.timestamp,
+          metrics: {...this.baseline.metrics},
+        }
+      : null;
+  }
+
+  public clearBaseline() {
+    this.baseline = null;
+    this.notifySubscribers();
+  }
+
+  public resetMetrics() {
+    this.metrics = {
+      totalApiRequests: 0,
+      averageApiLatency: 0,
+      totalFirestoreReads: 0,
+      firestoreCacheHits: 0,
+      totalGeminiQueries: 0,
+      totalGeminiTokens: 0,
+      activeWorkers: 0,
+      totalBytesTransferred: 0,
+      lastQueryPayloadBytes: 0,
+      averageBookDocumentBytes: 0,
+      activeFirestoreListeners: this.activeListeners.size,
+      cacheEfficiencyRatio: 100,
+      snapshotParseDurationMs: 0,
+    };
+    this.latencies = [];
+    this.bookDocByteSamples = [];
+    this.baseline = null;
+    this.notifySubscribers();
   }
 
   // Add Log Entry
@@ -84,13 +210,49 @@ export class DebugTelemetryEngine {
     // Process type-specific metric aggregations on the telemetry stream
     if (type === 'db_read') {
       this.metrics.totalFirestoreReads++;
-      const p = payload as {fromCache?: boolean} | undefined;
+      const p = payload as
+        | {
+            fromCache?: boolean;
+            bytes?: number;
+            docCount?: number;
+            parseDurationMs?: number;
+          }
+        | undefined;
+
       if (p?.fromCache) {
         this.metrics.firestoreCacheHits++;
       }
+
+      if (this.metrics.totalFirestoreReads > 0) {
+        this.metrics.cacheEfficiencyRatio = Math.round(
+          (this.metrics.firestoreCacheHits / this.metrics.totalFirestoreReads) *
+            100,
+        );
+      }
+
+      if (p?.bytes !== undefined && p.bytes > 0) {
+        this.metrics.totalBytesTransferred += p.bytes;
+        this.metrics.lastQueryPayloadBytes = p.bytes;
+
+        if (p.docCount && p.docCount > 0) {
+          const avgForThis = Math.round(p.bytes / p.docCount);
+          this.bookDocByteSamples.push(avgForThis);
+          if (this.bookDocByteSamples.length > 20) {
+            this.bookDocByteSamples.shift();
+          }
+          const sum = this.bookDocByteSamples.reduce((a, b) => a + b, 0);
+          this.metrics.averageBookDocumentBytes = Math.round(
+            sum / this.bookDocByteSamples.length,
+          );
+        }
+      }
+
+      if (p?.parseDurationMs !== undefined) {
+        this.metrics.snapshotParseDurationMs = p.parseDurationMs;
+      }
     } else if (type === 'api_res') {
       this.metrics.totalApiRequests++;
-      const p = payload as {durationMs?: number} | undefined;
+      const p = payload as {durationMs?: number; bytes?: number} | undefined;
       if (p?.durationMs) {
         this.latencies.push(p.durationMs);
         if (this.latencies.length > 50) this.latencies.shift(); // keep sliding window
@@ -98,6 +260,9 @@ export class DebugTelemetryEngine {
         this.metrics.averageApiLatency = Math.round(
           sum / this.latencies.length,
         );
+      }
+      if (p?.bytes) {
+        this.metrics.totalBytesTransferred += p.bytes;
       }
     } else if (type === 'gen_ai') {
       this.metrics.totalGeminiQueries++;

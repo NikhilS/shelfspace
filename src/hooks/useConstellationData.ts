@@ -1,9 +1,13 @@
 import {useState, useEffect} from 'react';
-import {collection, doc, getDocs, deleteField} from 'firebase/firestore';
+import {doc, getDoc, deleteField} from 'firebase/firestore';
+import {useNavigate} from 'react-router-dom';
 import {db} from '../firebase';
 import {kmeans} from '../lib/clustering';
 import {BookDetails} from '../services/bookApi';
 import {trpc} from '../lib/trpc';
+import {useAuth} from '../stores/authStore';
+import {useLibraryData} from './useLibraryData';
+import {DebugTelemetryEngine, calculatePayloadBytes} from '../lib/telemetry';
 
 interface BookDoc extends BookDetails {
   id: string;
@@ -18,6 +22,16 @@ export interface ScatterPoint {
 }
 
 export function useConstellationData(libraryId: string | undefined) {
+  const {user} = useAuth();
+  const navigate = useNavigate();
+
+  // Consume the canonical ['books', libraryId] query provided by useLibraryData
+  const {books: libraryBooks, isBooksLoading} = useLibraryData(
+    libraryId,
+    user?.uid,
+    navigate,
+  );
+
   const [books, setBooks] = useState<BookDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<string>('Loading books...');
@@ -35,24 +49,67 @@ export function useConstellationData(libraryId: string | undefined) {
 
     async function processMap() {
       if (!libraryId) return;
+
+      if (isBooksLoading) {
+        setLoading(true);
+        setProgress('Loading books...');
+        return;
+      }
+
+      if (!libraryBooks || libraryBooks.length < 3) {
+        setBooks([]);
+        setProgress(
+          'Not enough books to form a constellation (minimum 3 needed).',
+        );
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
-        setProgress('Fetching library data...');
-        const [booksSnapshot, detailsSnapshot] = await Promise.all([
-          getDocs(collection(db, 'libraries', libraryId, 'books')),
-          getDocs(collection(db, 'libraries', libraryId, 'bookDetails')),
-        ]);
+        setProgress('Fetching book details...');
 
-        const detailsMap = new Map();
-        detailsSnapshot.forEach(doc => detailsMap.set(doc.id, doc.data()));
+        // Lazily query bookDetails in chunks of 50 only for books participating in active embedding visualization
+        const detailsMap = new Map<string, Record<string, unknown>>();
+        const chunkSize = 50;
+
+        for (let i = 0; i < libraryBooks.length; i += chunkSize) {
+          const chunk = libraryBooks.slice(i, i + chunkSize);
+          setProgress(
+            `Fetching book details (${Math.min(i + chunkSize, libraryBooks.length)}/${libraryBooks.length})...`,
+          );
+
+          const chunkSnaps = await Promise.all(
+            chunk.map(b =>
+              getDoc(doc(db, 'libraries', libraryId, 'bookDetails', b.id)),
+            ),
+          );
+
+          let chunkBytes = 0;
+          chunkSnaps.forEach(snap => {
+            if (snap.exists()) {
+              const data = snap.data();
+              detailsMap.set(snap.id, data);
+              chunkBytes += calculatePayloadBytes(data);
+            }
+          });
+
+          DebugTelemetryEngine.getInstance().addLog(
+            'db_read',
+            `Queried bookDetails chunk (${chunk.length} docs, ${(chunkBytes / 1024).toFixed(1)} KB)`,
+            {
+              path: `libraries/${libraryId}/bookDetails`,
+              size: chunk.length,
+              bytes: chunkBytes,
+              docCount: chunkSnaps.filter(s => s.exists()).length,
+            },
+          );
+        }
 
         const allBooks: BookDoc[] = [];
-
-        booksSnapshot.forEach(docSnap => {
-          const bData = docSnap.data();
-          const detail = detailsMap.get(docSnap.id) || {};
-          const merged = {id: docSnap.id, ...bData, ...detail};
-
+        libraryBooks.forEach(b => {
+          const detail = detailsMap.get(b.id) || {};
+          const merged = {id: b.id, ...b, ...detail};
           allBooks.push(merged as BookDoc);
         });
 
@@ -78,8 +135,13 @@ export function useConstellationData(libraryId: string | undefined) {
           const texts = toEmbed.map(b => {
             const parts = [b.title];
             if (b.author) parts.push(`by ${b.author}`);
-            if (b.genres && b.genres.length > 0)
-              parts.push(`[${b.genres.join(', ')}]`);
+            if (b.primaryGenre) {
+              const genreStr =
+                b.subgenres && b.subgenres.length > 0
+                  ? `${b.primaryGenre}: ${b.subgenres.join(', ')}`
+                  : b.primaryGenre;
+              parts.push(`[${genreStr}]`);
+            }
             if (b.synopsis) parts.push(b.synopsis);
             return parts.join(' - ');
           });
@@ -109,6 +171,16 @@ export function useConstellationData(libraryId: string | undefined) {
               toEmbed[j].id,
             );
             writer.set(ref, {embedding: embeddings[j]}, {merge: true});
+            const bookRef = doc(
+              db,
+              'libraries',
+              libraryId,
+              'books',
+              toEmbed[j].id,
+            );
+            writer.update(bookRef, {
+              'bookDetailsMetadata.hasEmbedding': true,
+            });
             toEmbed[j].embedding = embeddings[j];
           }
 
@@ -251,7 +323,7 @@ export function useConstellationData(libraryId: string | undefined) {
     return () => {
       isMounted = false;
     };
-  }, [libraryId, reclusterTrigger]);
+  }, [libraryId, isBooksLoading, libraryBooks, reclusterTrigger]);
 
   const handleRecluster = async () => {
     if (!libraryId || loading) return;
@@ -268,6 +340,9 @@ export function useConstellationData(libraryId: string | undefined) {
             embedding: deleteField(),
           },
         );
+        writer.update(doc(db, 'libraries', libraryId, 'books', books[j].id), {
+          'bookDetailsMetadata.hasEmbedding': false,
+        });
       }
       await writer.close();
       setClusterNames({});

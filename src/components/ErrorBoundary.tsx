@@ -33,6 +33,11 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleReset = () => {
+    try {
+      sessionStorage.removeItem('chunk_retry_reloaded');
+    } catch {
+      // Ignore storage errors in restricted contexts
+    }
     if (this.props.onReset) {
       try {
         this.props.onReset();
@@ -44,6 +49,11 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   private handleFullReload = () => {
+    try {
+      sessionStorage.removeItem('chunk_retry_reloaded');
+    } catch {
+      // Ignore storage errors in restricted contexts
+    }
     window.location.reload();
   };
 

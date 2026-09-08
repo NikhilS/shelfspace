@@ -63,6 +63,13 @@ export default function BookCard({
             </div>
           </button>
         )}
+        {book.primaryGenre && (
+          <div className="absolute top-2 right-2 z-10 pointer-events-none">
+            <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-surface/90 text-primary backdrop-blur-xs shadow-xs tracking-wider line-clamp-1 max-w-[120px]">
+              {book.primaryGenre}
+            </span>
+          </div>
+        )}
         {book.coverUrl ? (
           <img
             src={book.coverUrl}
@@ -101,6 +108,18 @@ export default function BookCard({
         <p className="font-body-md text-sm text-on-surface-variant line-clamp-1 mt-1">
           {toTitleCase(book.author)}
         </p>
+        {book.subgenres && book.subgenres.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {book.subgenres.slice(0, 2).map((sg, idx) => (
+              <span
+                key={idx}
+                className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant/80 border border-outline-variant/30 leading-none truncate max-w-[120px]"
+              >
+                {sg}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

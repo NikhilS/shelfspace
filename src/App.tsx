@@ -1,4 +1,4 @@
-import React, {Suspense, lazy} from 'react';
+import React, {Suspense} from 'react';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {
   BrowserRouter,
@@ -22,55 +22,16 @@ import {PageLoading} from './components/PageLoading';
 import {LibraryMainSkeleton} from './components/LibrarySkeletons';
 import {useDebug} from './stores/debugStore';
 
-function lazyWithRetry<T extends React.ComponentType>(
-  factory: () => Promise<{default: T}>,
-): React.LazyExoticComponent<T> {
-  return lazy(async () => {
-    try {
-      const module = await factory();
-      sessionStorage.removeItem('chunk_retry_reloaded');
-      return module;
-    } catch (error) {
-      console.warn('Dynamic import failed, retrying in 1 second...', error);
-      try {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const retryModule = await factory();
-        sessionStorage.removeItem('chunk_retry_reloaded');
-        return retryModule;
-      } catch (retryError) {
-        const hasReloaded = sessionStorage.getItem('chunk_retry_reloaded');
-        if (!hasReloaded) {
-          sessionStorage.setItem('chunk_retry_reloaded', 'true');
-          console.warn(
-            'Dynamic import failed after retry, reloading page once...',
-            retryError,
-          );
-          window.location.reload();
-          return new Promise(() => {});
-        }
-        sessionStorage.removeItem('chunk_retry_reloaded');
-        console.error(
-          'Dynamic import failed after reload attempt:',
-          retryError,
-        );
-        throw retryError;
-      }
-    }
-  });
-}
-
-const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'));
-const LibraryView = lazyWithRetry(() => import('./pages/LibraryView'));
-const BookDetailsView = lazyWithRetry(() => import('./pages/BookDetailsView'));
-const AddBookView = lazyWithRetry(() => import('./pages/AddBookView'));
-const ConstellationMap = lazyWithRetry(
-  () => import('./pages/ConstellationMap'),
-);
-const WorldMap = lazyWithRetry(() => import('./pages/WorldMap'));
-const Login = lazyWithRetry(() => import('./pages/Login'));
-const SpruceUpView = lazyWithRetry(() => import('./pages/SpruceUpView'));
-const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
-const TimelineView = lazyWithRetry(() => import('./pages/TimelineView'));
+import Dashboard from './pages/Dashboard';
+import LibraryView from './pages/LibraryView';
+import BookDetailsView from './pages/BookDetailsView';
+import AddBookView from './pages/AddBookView';
+import ConstellationMap from './pages/ConstellationMap';
+import WorldMap from './pages/WorldMap';
+import Login from './pages/Login';
+import SpruceUpView from './pages/SpruceUpView';
+import AdminDashboard from './pages/AdminDashboard';
+import TimelineView from './pages/TimelineView';
 
 function LoadingScreen() {
   return (
@@ -231,7 +192,14 @@ import {httpBatchLink} from '@trpc/client';
 import {trpc} from './lib/trpc';
 import {auth} from './firebase';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 1000 * 60 * 60, // 1 hour
+      staleTime: 1000 * 60 * 5, // 5 minutes
+    },
+  },
+});
 
 const trpcClient = trpc.createClient({
   links: [

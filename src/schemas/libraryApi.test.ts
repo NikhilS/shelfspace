@@ -97,5 +97,16 @@ describe('Library API Zod Validation Schemas', () => {
         }),
       ).toThrow();
     });
+
+    it('accepts primaryGenre as enrichmentType and normalizes it to genre', () => {
+      const parsed = enrichmentTriggerSchema.parse({
+        libraryId: 'lib_123',
+        enrichmentType: 'primaryGenre',
+        bookIds: ['b1', 'b2'],
+      });
+      expect(parsed.enrichmentType).toBe('genre');
+      expect(parsed.flow).toBe('genre');
+      expect(parsed.bookIds).toEqual(['b1', 'b2']);
+    });
   });
 });

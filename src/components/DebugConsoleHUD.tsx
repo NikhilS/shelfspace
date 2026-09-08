@@ -15,16 +15,25 @@ import {
   Clock,
   X,
   Share2,
+  HardDrive,
+  Layers,
+  Gauge,
 } from 'lucide-react';
-import {DebugTelemetryEngine, TelemetryLog} from '../lib/telemetry';
+import {
+  DebugTelemetryEngine,
+  TelemetryLog,
+  ActiveListenerInfo,
+  TelemetryBaseline,
+} from '../lib/telemetry';
 import {useDebug} from '../stores/debugStore';
 import {Button} from '@/components/ui/button';
+import {PersistenceTelemetryPanel} from './PersistenceTelemetryPanel';
 
 export const DebugConsoleHUD: React.FC = () => {
   const {isDebugMode, debugData, debugTitle} = useDebug();
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'logs' | 'network' | 'state' | 'entity' | 'diagnostics'
+    'logs' | 'network' | 'state' | 'entity' | 'diagnostics' | 'persistence'
   >('logs');
 
   // Realtime Telemetry State
@@ -32,6 +41,12 @@ export const DebugConsoleHUD: React.FC = () => {
   const [activeStates, setActiveStates] = useState<Record<string, unknown>>({});
   const [metrics, setMetrics] = useState(
     DebugTelemetryEngine.getInstance().getMetrics(),
+  );
+  const [activeListeners, setActiveListeners] = useState<ActiveListenerInfo[]>(
+    DebugTelemetryEngine.getInstance().getActiveListeners(),
+  );
+  const [baseline, setBaseline] = useState<TelemetryBaseline | null>(
+    DebugTelemetryEngine.getInstance().getBaseline(),
   );
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
@@ -52,11 +67,15 @@ export const DebugConsoleHUD: React.FC = () => {
     setLogs(engine.getLogs());
     setActiveStates(engine.getActiveStates());
     setMetrics(engine.getMetrics());
+    setActiveListeners(engine.getActiveListeners());
+    setBaseline(engine.getBaseline());
 
     const unsubscribe = engine.subscribe(() => {
       setLogs(engine.getLogs());
       setActiveStates(engine.getActiveStates());
       setMetrics(engine.getMetrics());
+      setActiveListeners(engine.getActiveListeners());
+      setBaseline(engine.getBaseline());
     });
 
     const handleConnectionChange = () => {
@@ -226,11 +245,34 @@ export const DebugConsoleHUD: React.FC = () => {
                 <div className="h-3 w-px bg-slate-800"></div>
 
                 <div className="flex items-center gap-1.25">
-                  <Clock size={12} className="text-slate-500" />
+                  <HardDrive size={12} className="text-cyan-400" />
                   <span>
-                    Last API:{' '}
-                    <strong className="text-slate-300">
-                      {metrics.averageApiLatency}ms
+                    Transferred:{' '}
+                    <strong className="text-cyan-300">
+                      {(metrics.totalBytesTransferred / 1024).toFixed(1)} KB
+                    </strong>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.25">
+                  <Layers
+                    size={12}
+                    className={
+                      metrics.activeFirestoreListeners > 2
+                        ? 'text-amber-400'
+                        : 'text-slate-500'
+                    }
+                  />
+                  <span>
+                    Listeners:{' '}
+                    <strong
+                      className={
+                        metrics.activeFirestoreListeners > 2
+                          ? 'text-amber-300'
+                          : 'text-slate-300'
+                      }
+                    >
+                      {metrics.activeFirestoreListeners}
                     </strong>
                   </span>
                 </div>
@@ -238,11 +280,21 @@ export const DebugConsoleHUD: React.FC = () => {
                 <div className="flex items-center gap-1.25">
                   <Database size={12} className="text-slate-500" />
                   <span>
-                    Firestore Cache:{' '}
-                    <strong className="text-slate-300">
+                    Cache:{' '}
+                    <strong className="text-emerald-300">
                       {fetchCacheHitRatio}% Hit
                     </strong>{' '}
                     ({metrics.firestoreCacheHits}/{metrics.totalFirestoreReads})
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.25">
+                  <Clock size={12} className="text-slate-500" />
+                  <span>
+                    Last API:{' '}
+                    <strong className="text-slate-300">
+                      {metrics.averageApiLatency}ms
+                    </strong>
                   </span>
                 </div>
 
@@ -370,6 +422,28 @@ export const DebugConsoleHUD: React.FC = () => {
                 >
                   <Cpu size={12} className="opacity-75" />
                   <span className="hidden sm:inline">Diagnostics</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setActiveTab('persistence')}
+                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
+                    activeTab === 'persistence'
+                      ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/40'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
+                  }`}
+                  title="Persistence & Data Telemetry"
+                >
+                  <Gauge size={12} className="opacity-75" />
+                  <span className="hidden sm:inline">
+                    Persistence Telemetry
+                  </span>
+                  {metrics.activeFirestoreListeners > 0 && (
+                    <span className="ml-[2px] sm:ml-1 text-[9px] bg-cyan-900/50 border border-cyan-500/30 px-1.5 py-0.25 rounded-full text-cyan-300">
+                      {metrics.activeFirestoreListeners}
+                    </span>
+                  )}
                 </Button>
               </div>
 
@@ -819,6 +893,44 @@ export const DebugConsoleHUD: React.FC = () => {
                       </div>
                       <div className="flex justify-between border-b border-slate-900 pb-1">
                         <span className="text-slate-500">
+                          Total Transferred Payload
+                        </span>
+                        <span className="text-cyan-400 font-bold">
+                          {(metrics.totalBytesTransferred / 1024).toFixed(1)} KB
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-900 pb-1">
+                        <span className="text-slate-500">
+                          Avg Book Document Size
+                        </span>
+                        <span
+                          className={`font-bold ${
+                            metrics.averageBookDocumentBytes > 2048
+                              ? 'text-amber-400'
+                              : 'text-emerald-400'
+                          }`}
+                        >
+                          {metrics.averageBookDocumentBytes > 1024
+                            ? `${(metrics.averageBookDocumentBytes / 1024).toFixed(1)} KB`
+                            : `${metrics.averageBookDocumentBytes} B`}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-900 pb-1">
+                        <span className="text-slate-500">
+                          Active Firestore Listeners
+                        </span>
+                        <span
+                          className={`font-bold ${
+                            metrics.activeFirestoreListeners > 2
+                              ? 'text-amber-400'
+                              : 'text-slate-200'
+                          }`}
+                        >
+                          {metrics.activeFirestoreListeners} active
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-900 pb-1">
+                        <span className="text-slate-500">
                           Average Outbound Latency
                         </span>
                         <span className="text-indigo-400 font-bold">
@@ -924,6 +1036,16 @@ export const DebugConsoleHUD: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* === TABS CONTENT 5: PERSISTENCE & DATA TELEMETRY === */}
+              {activeTab === 'persistence' && (
+                <PersistenceTelemetryPanel
+                  metrics={metrics}
+                  fetchCacheHitRatio={fetchCacheHitRatio}
+                  activeListeners={activeListeners}
+                  baseline={baseline}
+                />
               )}
             </div>
           </motion.div>

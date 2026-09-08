@@ -8,6 +8,13 @@ vi.mock('../stores/authStore', () => ({
   useAuth: () => ({user: {uid: 'u1'}, logOut: vi.fn()}),
 }));
 
+vi.mock('../hooks/useLibraryData', () => ({
+  useLibraryData: () => ({
+    books: [],
+    isBooksLoading: true,
+  }),
+}));
+
 vi.mock('../lib/trpc', () => ({
   trpc: {
     gemini: {

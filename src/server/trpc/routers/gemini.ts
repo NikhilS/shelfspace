@@ -111,6 +111,8 @@ export const geminiRouter = router({
           z.object({
             title: z.string(),
             author: z.string(),
+            primaryGenre: z.string().optional(),
+            subgenres: z.array(z.string()).optional(),
           }),
         ),
       }),

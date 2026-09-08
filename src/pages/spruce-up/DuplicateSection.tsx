@@ -123,12 +123,14 @@ export function DuplicateSection({
                           <span>Synopsis:</span>
                           <span
                             className={
-                              b.synopsis
+                              b.bookDetailsMetadata?.hasSynopsis
                                 ? 'text-success font-semibold'
                                 : 'text-on-surface-variant/40'
                             }
                           >
-                            {b.synopsis ? 'Present' : 'None'}
+                            {b.bookDetailsMetadata?.hasSynopsis
+                              ? 'Present'
+                              : 'None'}
                           </span>
                         </div>
                       </div>

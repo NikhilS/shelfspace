@@ -9,6 +9,12 @@ const mockLibWhere = vi.fn(() => ({
 }));
 const mockBooksGet = vi.fn();
 const mockBookDocGet = vi.fn();
+const mockBatchUpdate = vi.fn();
+const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
+const mockBatch = vi.fn(() => ({
+  update: mockBatchUpdate,
+  commit: mockBatchCommit,
+}));
 
 const mockCollection = vi.fn((path: string) => {
   if (path === 'libraries') {
@@ -18,6 +24,7 @@ const mockCollection = vi.fn((path: string) => {
         collection: vi.fn((subPath: string) => {
           if (subPath === 'books') {
             return {
+              get: mockBooksGet,
               orderBy: vi.fn(() => ({
                 limit: vi.fn(() => ({
                   get: mockBooksGet,
@@ -46,6 +53,7 @@ const mockCollection = vi.fn((path: string) => {
 vi.mock('./firebaseAdmin', () => ({
   getAdminDb: () => ({
     collection: mockCollection,
+    batch: mockBatch,
   }),
 }));
 
@@ -262,8 +270,9 @@ describe('LibraryService', () => {
           data: () => ({
             title: 'Complete Book',
             author: 'Author A',
-            synopsis: 'A great tale',
-            genre: ['Fantasy'],
+            bookDetailsMetadata: {hasSynopsis: true},
+            primaryGenre: 'Fantasy',
+            subgenres: ['Epic & High Fantasy'],
             coverUrl: 'https://example.com/cover.jpg',
             geoMetadata: {locations: [{name: 'Paris'}]},
             temporalMetadata: {startYear: 1800, eraName: '19th Century'},
@@ -359,6 +368,109 @@ describe('LibraryService', () => {
       expect(res.books.length).toBe(1);
       expect(res.books[0].id).toBe('b2');
       expect(res.books[0].title).toBe('Without Cover');
+    });
+  });
+
+  describe('resetMetadata', () => {
+    it('resets genre taxonomy fields across all books using FieldValue.delete()', async () => {
+      mockLibGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ownerId: 'u1',
+        }),
+      });
+
+      const mockRef1 = {id: 'b1'};
+      const mockRef2 = {id: 'b2'};
+
+      mockBooksGet.mockResolvedValueOnce({
+        empty: false,
+        size: 2,
+        docs: [
+          {
+            ref: mockRef1,
+            data: () => ({
+              primaryGenre: 'Science Fiction',
+              subgenres: ['Cyberpunk'],
+            }),
+          },
+          {
+            ref: mockRef2,
+            data: () => ({
+              primaryGenre: 'History',
+              isCustomPrimary: false,
+            }),
+          },
+        ],
+      });
+
+      const result = await LibraryService.resetMetadata(
+        'u1',
+        'u1@example.com',
+        'lib1',
+        'genre',
+      );
+
+      expect(result.count).toBe(2);
+      expect(mockBatchUpdate).toHaveBeenCalledTimes(2);
+      expect(mockBatchCommit).toHaveBeenCalled();
+    });
+
+    it('resets specified metadata category across all books', async () => {
+      mockLibGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ownerId: 'u1',
+        }),
+      });
+
+      const mockRef = {id: 'b1'};
+
+      mockBooksGet.mockResolvedValueOnce({
+        empty: false,
+        size: 1,
+        docs: [{ref: mockRef, data: () => ({geoMetadata: {locations: []}})}],
+      });
+
+      const result = await LibraryService.resetMetadata(
+        'u1',
+        'u1@example.com',
+        'lib1',
+        'geo',
+      );
+
+      expect(result.count).toBe(1);
+      expect(mockBatchUpdate).toHaveBeenCalledWith(
+        mockRef,
+        expect.objectContaining({
+          geoMetadata: expect.anything(),
+          'enrichmentStatus.geo': expect.anything(),
+        }),
+      );
+    });
+
+    it('returns count 0 if library has no books', async () => {
+      mockLibGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ownerId: 'u1',
+        }),
+      });
+
+      mockBooksGet.mockResolvedValueOnce({
+        empty: true,
+        size: 0,
+        docs: [],
+      });
+
+      const result = await LibraryService.resetMetadata(
+        'u1',
+        'u1@example.com',
+        'lib1',
+        'genre',
+      );
+      expect(result.count).toBe(0);
+      expect(mockBatchCommit).not.toHaveBeenCalled();
     });
   });
 });

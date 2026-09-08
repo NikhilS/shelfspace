@@ -1,7 +1,6 @@
-import {useState, useEffect, useRef} from 'react';
+import {useState, useEffect} from 'react';
 import {useAuth} from '../../stores/authStore';
 import {db, handleFirestoreError, OperationType} from '../../firebase';
-import {reconcileBookCount} from '../../services/db/books';
 import {uploadBase64Image} from '../../services/db/storage';
 import {useQueryClient} from '@tanstack/react-query';
 import {
@@ -19,6 +18,7 @@ import {
 import {Library} from '../../types';
 import {toast} from 'sonner';
 import {trpc} from '../../lib/trpc';
+import {DebugTelemetryEngine, calculatePayloadBytes} from '../../lib/telemetry';
 
 export function useLibraries() {
   const {user} = useAuth();
@@ -29,8 +29,6 @@ export function useLibraries() {
 
   const generateLibraryHeroImageMutation =
     trpc.gemini.generateLibraryHeroImage.useMutation();
-
-  const reconciledLibsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
@@ -51,9 +49,18 @@ export function useLibraries() {
       ),
     );
 
+    const unregisterTelemetry =
+      DebugTelemetryEngine.getInstance().registerListener(
+        'useLibraries',
+        'libraries(user)',
+      );
+
     const unsubscribe = onSnapshot(
       q,
+      {includeMetadataChanges: true},
       async snapshot => {
+        const parseStartTime = performance.now();
+        const fromCache = snapshot.metadata.fromCache;
         const libs: Library[] = [];
         snapshot.forEach(doc => {
           const data = doc.data();
@@ -62,6 +69,22 @@ export function useLibraries() {
             ...data,
           } as Library);
         });
+
+        const parseDurationMs = Math.round(performance.now() - parseStartTime);
+        const payloadBytes = calculatePayloadBytes(libs);
+
+        DebugTelemetryEngine.getInstance().addLog(
+          'db_read',
+          `Queried user libraries (${snapshot.size} docs, ${(payloadBytes / 1024).toFixed(1)} KB, ${parseDurationMs}ms)`,
+          {
+            path: 'libraries(user)',
+            fromCache,
+            size: snapshot.size,
+            bytes: payloadBytes,
+            docCount: snapshot.size,
+            parseDurationMs,
+          },
+        );
 
         setLibraries(libs);
         setIsLoading(false);
@@ -83,29 +106,6 @@ export function useLibraries() {
             );
           }
         });
-
-        // Reconcile legacy libraries that lack a bookCount field
-        libs.forEach(async lib => {
-          if (
-            lib.bookCount === undefined &&
-            !reconciledLibsRef.current.has(lib.id)
-          ) {
-            reconciledLibsRef.current.add(lib.id);
-            try {
-              const count = await reconcileBookCount(lib.id);
-              if (lib.bookCount !== count) {
-                await updateDoc(doc(db, 'libraries', lib.id), {
-                  bookCount: count,
-                });
-              }
-            } catch (e) {
-              console.error(
-                `Failed to reconcile legacy bookCount for lib ${lib.id}`,
-                e,
-              );
-            }
-          }
-        });
       },
       error => {
         setIsLoading(false);
@@ -113,7 +113,10 @@ export function useLibraries() {
       },
     );
 
-    return () => unsubscribe();
+    return () => {
+      unregisterTelemetry();
+      unsubscribe();
+    };
   }, [user]);
 
   const createLibrary = async (name: string) => {

@@ -41,10 +41,12 @@
         "isbn": { "type": "string" },
         "coverUrl": { "type": "string" },
         "publishedDate": { "type": "string" },
-        "genres": {
+        "primaryGenre": { "type": "string" },
+        "subgenres": {
           "type": "array",
           "items": { "type": "string" }
         },
+        "isCustomPrimary": { "type": "boolean" },
         "series": { "type": "string" },
         "format": { "type": "string", "enum": ["physical", "digital"] },
         "userStatuses": { 

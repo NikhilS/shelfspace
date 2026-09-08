@@ -1,4 +1,4 @@
-import {FirestoreDate} from '../types';
+import {FirestoreDate, BookDetailsMetadata} from '../types';
 import {BookDetails} from '../services/bookApi';
 import {clsx, type ClassValue} from 'clsx';
 import {twMerge} from 'tailwind-merge';
@@ -67,45 +67,6 @@ export function getFirestoreTime(
 }
 
 /**
- * Parses and normalizes raw genre/category/subject identifiers from books.
- * Commas and semicolons are treated as delimiters, but slashes (e.g. "Fiction / History")
- * are preserved as full category paths.
- */
-export function parseGenres(rawGenres: unknown): string[] {
-  if (!rawGenres) return [];
-  let tempGenres: string[] = [];
-  if (Array.isArray(rawGenres)) {
-    tempGenres = rawGenres.map(g => String(g));
-  } else if (typeof rawGenres === 'string') {
-    tempGenres = [rawGenres];
-  } else if (typeof rawGenres === 'object' && rawGenres !== null) {
-    tempGenres = Object.values(rawGenres).map(g => String(g));
-  }
-
-  const result = new Set<string>();
-  tempGenres.forEach((g: string) => {
-    if (typeof g === 'string') {
-      const splits = g
-        .split(/[,;]/)
-        .map((s: string) => s.trim())
-        .filter(Boolean);
-      splits.forEach((s: string) => {
-        // Clean each segment to title case or sentence case but keep any inner slashes
-        const normalized = s
-          .split('/')
-          .map(seg => seg.trim())
-          .filter(Boolean)
-          .join(' / ');
-        if (normalized) {
-          result.add(normalized);
-        }
-      });
-    }
-  });
-  return Array.from(result);
-}
-
-/**
  * Triggers haptic feedback on supported devices.
  */
 export function triggerHaptics(pattern: number | number[]) {
@@ -124,7 +85,9 @@ export const bookMetadataSchema = z.object({
   synopsis: z.string().optional(),
   authorBio: z.string().optional(),
   publishedDate: z.string().optional(),
-  genres: z.array(z.string()).optional(),
+  primaryGenre: z.string().optional(),
+  subgenres: z.array(z.string()).optional(),
+  isCustomPrimary: z.boolean().optional(),
   series: z.string().optional(),
 });
 
@@ -135,7 +98,10 @@ export interface MergeableBook {
   synopsis?: string | null;
   authorBio?: string | null;
   publishedDate?: string | null;
-  genres?: string[] | null;
+  primaryGenre?: string | null;
+  subgenres?: string[] | null;
+  isCustomPrimary?: boolean | null;
+  bookDetailsMetadata?: BookDetailsMetadata | null;
 }
 
 export function mergeBookMetadata(
@@ -151,28 +117,34 @@ export function mergeBookMetadata(
     if (enriched.synopsis) heavyData.synopsis = enriched.synopsis;
     if (enriched.authorBio) heavyData.authorBio = enriched.authorBio;
     if (enriched.publishedDate) newData.publishedDate = enriched.publishedDate;
-    if (enriched.genres && enriched.genres.length > 0) {
-      newData.genres = enriched.genres;
+    if (enriched.primaryGenre) {
+      newData.primaryGenre = enriched.primaryGenre;
+      newData.subgenres = enriched.subgenres || [];
+      newData.isCustomPrimary = enriched.isCustomPrimary || false;
     }
   } else {
     if (!existingBook.coverUrl && enriched.coverUrl) {
       newData.coverUrl = enriched.coverUrl;
     }
-    if (!existingBook.synopsis && enriched.synopsis) {
+    const hasExistingSynopsis = Boolean(
+      existingBook.bookDetailsMetadata?.hasSynopsis || existingBook.synopsis,
+    );
+    const hasExistingBio = Boolean(
+      existingBook.bookDetailsMetadata?.hasAuthorBio || existingBook.authorBio,
+    );
+    if (!hasExistingSynopsis && enriched.synopsis) {
       heavyData.synopsis = enriched.synopsis;
     }
-    if (!existingBook.authorBio && enriched.authorBio) {
+    if (!hasExistingBio && enriched.authorBio) {
       heavyData.authorBio = enriched.authorBio;
     }
     if (!existingBook.publishedDate && enriched.publishedDate) {
       newData.publishedDate = enriched.publishedDate;
     }
-    if (
-      (!existingBook.genres || existingBook.genres.length === 0) &&
-      enriched.genres &&
-      enriched.genres.length > 0
-    ) {
-      newData.genres = enriched.genres;
+    if (!existingBook.primaryGenre && enriched.primaryGenre) {
+      newData.primaryGenre = enriched.primaryGenre;
+      newData.subgenres = enriched.subgenres || [];
+      newData.isCustomPrimary = enriched.isCustomPrimary || false;
     }
   }
 
@@ -185,8 +157,9 @@ export interface GenericBookInput {
   isbn?: string;
   coverUrl?: string;
   publishedDate?: string;
-  genres?: string[];
-  genresInput?: string;
+  primaryGenre?: string;
+  subgenres?: string[];
+  isCustomPrimary?: boolean;
   series?: string;
   synopsis?: string;
   authorBio?: string;
@@ -198,23 +171,15 @@ export function normalizeBookDetails(raw: GenericBookInput): BookDetails {
   const author = normalizeName(raw.author || 'Unknown Author');
   const isbn = normalizeIsbn(raw.isbn || '');
 
-  let genres: string[] = [];
-  if (raw.genresInput) {
-    genres = raw.genresInput
-      .split(',')
-      .map(g => toSentenceCase(g.trim()))
-      .filter(Boolean);
-  } else if (raw.genres) {
-    genres = raw.genres;
-  }
-
   return {
     title,
     author,
     isbn: isbn && isbn !== 'NULL' ? isbn : '',
     coverUrl: raw.coverUrl || '',
     publishedDate: raw.publishedDate || '',
-    genres,
+    primaryGenre: raw.primaryGenre || undefined,
+    subgenres: raw.subgenres || [],
+    isCustomPrimary: raw.isCustomPrimary || false,
     series: normalizeText(raw.series || ''),
     synopsis: normalizeText(raw.synopsis || ''),
     authorBio: normalizeText(raw.authorBio || ''),

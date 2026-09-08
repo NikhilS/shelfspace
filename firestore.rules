@@ -79,7 +79,7 @@ service cloud.firestore {
     function isValidBook(data) {
       let required = ['title', 'addedAt'];
       return data.keys().hasAll(required) &&
-             data.keys().size() <= 25 &&
+             data.keys().size() <= 35 &&
              data.title is string && data.title.size() > 0 && data.title.size() <= 2000 &&
              data.addedAt is timestamp &&
              (!( 'addedBy' in data ) || data.addedBy == null || (data.addedBy is string && data.addedBy.size() <= 128)) &&
@@ -90,8 +90,10 @@ service cloud.firestore {
              (!( 'coverUrlRaw' in data ) || (data.coverUrlRaw == null || data.coverUrlRaw is string)) &&
              (!( 'authorBio' in data ) || (data.authorBio == null || data.authorBio is string)) &&
              (!( 'publishedDate' in data ) || (data.publishedDate == null || data.publishedDate is string)) &&
-             (!( 'genres' in data ) || (data.genres == null || data.genres is list)) &&
              (!( 'genre' in data ) || (data.genre == null || data.genre is string || data.genre is list)) &&
+             (!( 'primaryGenre' in data ) || (data.primaryGenre == null || data.primaryGenre is string)) &&
+             (!( 'subgenres' in data ) || (data.subgenres == null || data.subgenres is list)) &&
+             (!( 'isCustomPrimary' in data ) || (data.isCustomPrimary == null || data.isCustomPrimary is bool)) &&
              (!( 'series' in data ) || (data.series == null || data.series is string)) &&
              (!( 'format' in data ) || (data.format == null || data.format is string)) &&
              (!( 'geoMetadata' in data ) || (data.geoMetadata == null || data.geoMetadata is map)) &&
@@ -100,6 +102,8 @@ service cloud.firestore {
              (!( 'embedding' in data ) || (data.embedding == null || data.embedding is list)) &&
              (!( 'clusterCoordinates' in data ) || (data.clusterCoordinates == null || data.clusterCoordinates is map)) &&
              (!( '_inBooks' in data ) || (data._inBooks == null || data._inBooks is map)) &&
+             (!( 'enrichmentStatus' in data ) || (data.enrichmentStatus == null || data.enrichmentStatus is map)) &&
+             (!( 'updatedAt' in data ) || (data.updatedAt == null || data.updatedAt is timestamp || data.updatedAt is string)) &&
              (!( 'description' in data ) || (data.description == null || data.description is string));
     }
 

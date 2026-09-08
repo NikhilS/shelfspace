@@ -1,6 +1,6 @@
 import {trpcVanilla} from '../../lib/trpc';
 import {useState} from 'react';
-import {collection, doc, serverTimestamp, increment} from 'firebase/firestore';
+import {collection, doc, serverTimestamp} from 'firebase/firestore';
 import {db, auth} from '../../firebase';
 import {uploadBase64Image} from '../../services/db/storage';
 import {BookDetails} from '../../services/bookApi';
@@ -184,13 +184,24 @@ export function useAddBooks(libraryId?: string) {
           ...lightweightData
         } = cleanBook;
 
-        writer.set(newDocRef, {
+        const hasSynopsis = Boolean(_cleanSynopsis || synopsis);
+        const hasAuthorBio = Boolean(_cleanBio || authorBio);
+        const hasEmbedding = Boolean((_cleanEmbed || embedding)?.length);
+        const hasCluster = Boolean(_cleanCluster || clusterCoordinates);
+
+        const coreBookData = {
           ...otherEnrichedFields, // Enriched fields at the base
           ...lightweightData, // Existing UI fields take precedence so user uploads aren't overwritten
+          bookDetailsMetadata: {
+            hasSynopsis,
+            hasAuthorBio,
+            hasEmbedding,
+            hasClusterCoordinates: hasCluster,
+          },
           addedBy: user.uid,
           addedAt: serverTimestamp(),
           format: lightweightData.format || 'physical',
-        });
+        };
 
         const heavyData = {
           synopsis: _cleanSynopsis || synopsis,
@@ -202,24 +213,14 @@ export function useAddBooks(libraryId?: string) {
           Object.entries(heavyData).filter(([, v]) => v !== undefined),
         );
 
-        if (Object.keys(cleanHeavy).length > 0) {
-          const detailRef = doc(
-            db,
-            'libraries',
-            libraryId,
-            'bookDetails',
-            newDocRef.id,
-          );
-          writer.set(detailRef, cleanHeavy);
-        }
+        writer.addBook(
+          libraryId,
+          newDocRef.id,
+          coreBookData,
+          Object.keys(cleanHeavy).length > 0 ? cleanHeavy : undefined,
+        );
         addedCount++;
       }
-
-      const libRef = doc(db, 'libraries', libraryId);
-      writer.update(libRef, {
-        bookCount: increment(addedCount),
-        updatedAt: serverTimestamp(),
-      });
 
       toast.loading(
         `Committing ${books.length} book${books.length === 1 ? '' : 's'}...`,

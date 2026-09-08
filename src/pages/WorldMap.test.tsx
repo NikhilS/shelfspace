@@ -30,7 +30,8 @@ const mockBooks = [
     id: 'b1',
     title: 'Moby Dick',
     author: 'Herman Melville',
-    genres: ['Adventure', 'Classics'],
+    primaryGenre: 'Adventure',
+    subgenres: ['Maritime & Nautical'],
     geoMetadata: {
       isNonEarth: false,
       locations: [
@@ -47,7 +48,8 @@ const mockBooks = [
     id: 'b2',
     title: 'Dune',
     author: 'Frank Herbert',
-    genres: ['Sci-Fi', 'Adventure'],
+    primaryGenre: 'Science Fiction',
+    subgenres: ['Space Opera'],
     geoMetadata: {
       isNonEarth: true,
       locations: [],

@@ -1,10 +1,11 @@
 import React, {useState, useMemo, useCallback, useEffect} from 'react';
-import {useParams, useNavigate, Link} from 'react-router-dom';
+import {useParams, useNavigate} from 'react-router-dom';
 import {useAuth} from '../stores/authStore';
 import {useLibraryData} from '../hooks/useLibraryData';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../components/BulkEnrichmentBanner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
+import {BackToLibrary} from '../components/BackToLibrary';
 import {
   MapPin,
   Flame,
@@ -14,7 +15,6 @@ import {
   Globe,
   BookOpen,
   X,
-  ArrowLeft,
 } from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {BookLoader} from '../components/BookLoader';
@@ -151,9 +151,10 @@ export default function WorldMap() {
 
       const matchesGenre =
         selectedGenre === 'all' ||
-        (pin.book.genres &&
-          pin.book.genres.some(
-            g => g.toLowerCase() === selectedGenre.toLowerCase(),
+        pin.book.primaryGenre?.toLowerCase() === selectedGenre.toLowerCase() ||
+        (pin.book.subgenres &&
+          pin.book.subgenres.some(
+            sg => sg.toLowerCase() === selectedGenre.toLowerCase(),
           ));
 
       return matchesSearch && matchesGenre;
@@ -172,8 +173,11 @@ export default function WorldMap() {
   const genresList = useMemo(() => {
     const set = new Set<string>();
     for (const pin of flattenedPins) {
-      if (Array.isArray(pin.book.genres)) {
-        pin.book.genres.forEach(g => set.add(g));
+      if (pin.book.primaryGenre) {
+        set.add(pin.book.primaryGenre);
+      }
+      if (Array.isArray(pin.book.subgenres)) {
+        pin.book.subgenres.forEach(sg => set.add(sg));
       }
     }
     return Array.from(set).sort();
@@ -252,13 +256,7 @@ export default function WorldMap() {
         {/* Dynamic header information block */}
         <div className="layout-header border-none flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
-            <Link
-              to={`/library/${libraryId}`}
-              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-on-surface-variant hover:text-primary transition-colors mb-2.5 group"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-              <span>Back to Library Overview</span>
-            </Link>
+            <BackToLibrary libraryId={libraryId} className="mb-2" />
             <h1 className="layout-header-title">Literary World Map</h1>
             <p className="layout-header-subtitle max-w-3xl">
               Visualize the settings, narrative regions, and historical

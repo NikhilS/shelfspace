@@ -21,6 +21,7 @@ import {
   isDuplicateBook,
   normalizeBookDetails,
 } from '../../lib/utils';
+import {GenreSelect} from '../../components/GenreSelect';
 
 interface ManualEntryTabProps {
   existingBooks: BookDetails[];
@@ -33,7 +34,9 @@ const manualEntrySchema = z.object({
   author: z.string().min(1, 'Author is required').max(500),
   format: z.enum(['physical', 'digital']),
   isbn: z.string().optional(),
-  genresInput: z.string().optional(),
+  primaryGenre: z.string().optional(),
+  subgenres: z.array(z.string()).optional(),
+  isCustomPrimary: z.boolean().optional(),
   publishedDate: z.string().optional(),
   series: z.string().max(100).optional(),
   synopsis: z.string().optional(),
@@ -50,6 +53,16 @@ export function ManualEntryTab({
   const [isCoverCameraActive, setIsCoverCameraActive] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
 
+  const [genreData, setGenreData] = useState<{
+    primaryGenre: string;
+    subgenres: string[];
+    isCustomPrimary: boolean;
+  }>({
+    primaryGenre: '',
+    subgenres: [],
+    isCustomPrimary: false,
+  });
+
   const {
     register,
     handleSubmit,
@@ -63,7 +76,9 @@ export function ManualEntryTab({
       title: '',
       author: '',
       isbn: '',
-      genresInput: '',
+      primaryGenre: '',
+      subgenres: [],
+      isCustomPrimary: false,
       series: '',
       synopsis: '',
       publishedDate: '',
@@ -75,7 +90,13 @@ export function ManualEntryTab({
   const formatValue = watch('format');
 
   const onSubmit = async (data: ManualEntryFormValues) => {
-    const newBook = normalizeBookDetails({...data, coverUrl});
+    const newBook = normalizeBookDetails({
+      ...data,
+      coverUrl,
+      primaryGenre: genreData.primaryGenre || undefined,
+      subgenres: genreData.subgenres || [],
+      isCustomPrimary: genreData.isCustomPrimary || false,
+    });
 
     if (!allowDuplicates && isDuplicateBook(newBook, existingBooks)) {
       triggerHaptics([50, 100, 50]);
@@ -89,6 +110,11 @@ export function ManualEntryTab({
       triggerHaptics([30, 50, 30]);
       reset();
       setCoverUrl('');
+      setGenreData({
+        primaryGenre: '',
+        subgenres: [],
+        isCustomPrimary: false,
+      });
     } catch {
       triggerHaptics([50, 100, 50]);
     } finally {
@@ -183,20 +209,7 @@ export function ManualEntryTab({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          <div className="space-y-1">
-            <Label
-              htmlFor="genresInput"
-              className="text-sm font-bold text-on-surface ml-1"
-            >
-              Genres
-            </Label>
-            <Input
-              id="genresInput"
-              className="bg-surface-container-low/60 border-outline-variant/80 rounded-2xl px-5 py-6 font-medium"
-              {...register('genresInput')}
-            />
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div className="space-y-1">
             <Label
               htmlFor="series"
@@ -223,6 +236,20 @@ export function ManualEntryTab({
               {...register('isbn')}
             />
           </div>
+        </div>
+
+        <div className="p-4 bg-surface-container-low/50 border border-outline-variant/40 rounded-2xl">
+          <GenreSelect
+            primaryGenre={genreData.primaryGenre}
+            subgenres={genreData.subgenres}
+            isCustomPrimary={genreData.isCustomPrimary}
+            onChange={val => {
+              setGenreData(val);
+              setValue('primaryGenre', val.primaryGenre);
+              setValue('subgenres', val.subgenres);
+              setValue('isCustomPrimary', val.isCustomPrimary);
+            }}
+          />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">

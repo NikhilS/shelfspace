@@ -52,4 +52,16 @@ describe('BookCard component', () => {
     const deleteButton = screen.queryByRole('button', {name: /×/i});
     expect(deleteButton).not.toBeInTheDocument();
   });
+
+  it('renders primaryGenre badge and subgenres pills when provided', () => {
+    const bookWithTaxonomy = {
+      ...mockBook,
+      primaryGenre: 'Science Fiction',
+      subgenres: ['Cyberpunk', 'Space Opera'],
+    };
+    render(<BookCard book={bookWithTaxonomy} canEdit={false} />);
+    expect(screen.getByText('Science Fiction')).toBeInTheDocument();
+    expect(screen.getByText('Cyberpunk')).toBeInTheDocument();
+    expect(screen.getByText('Space Opera')).toBeInTheDocument();
+  });
 });

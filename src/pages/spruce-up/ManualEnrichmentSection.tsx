@@ -23,6 +23,56 @@ const ALL_METADATA_KEYS = [
   {id: MetadataKey.COVER_IMAGE, label: 'Cover Art'},
 ];
 
+function isMetadataPresent(book: Book, key: MetadataKey): boolean {
+  if (key === MetadataKey.SYNOPSIS) {
+    return Boolean(
+      book.bookDetailsMetadata?.hasSynopsis ||
+      book.enrichmentStatus?.synopsis === 'completed',
+    );
+  }
+  if (key === MetadataKey.AUTHOR_BIO) {
+    return Boolean(
+      book.bookDetailsMetadata?.hasAuthorBio ||
+      book.enrichmentStatus?.authorBio === 'completed',
+    );
+  }
+  if (key === MetadataKey.EMBEDDING) {
+    return Boolean(
+      book.bookDetailsMetadata?.hasEmbedding ||
+      book.enrichmentStatus?.embedding === 'completed',
+    );
+  }
+  if (key === MetadataKey.GEO) {
+    return Boolean(
+      book.geoMetadata?.locations &&
+      Array.isArray(book.geoMetadata.locations) &&
+      book.geoMetadata.locations.length > 0,
+    );
+  }
+  if (key === MetadataKey.TEMPORAL) {
+    return Boolean(
+      book.temporalMetadata &&
+      (book.temporalMetadata.startYear !== undefined ||
+        book.temporalMetadata.eraName ||
+        book.temporalMetadata.rationale),
+    );
+  }
+  if (key === MetadataKey.GENRE) {
+    return Boolean(book.primaryGenre && book.primaryGenre.trim().length > 0);
+  }
+  if (key === MetadataKey.COVER_IMAGE) {
+    return Boolean(book.coverUrl || book.coverUrlRaw);
+  }
+  if (key === MetadataKey.SERIES) {
+    return Boolean(book.series && book.series.trim().length > 0);
+  }
+  const val = (book as Record<string, unknown>)[key];
+  if (Array.isArray(val)) return val.length > 0;
+  if (typeof val === 'object' && val !== null)
+    return Object.keys(val).length > 0;
+  return Boolean(val);
+}
+
 export function ManualEnrichmentSection({
   books,
   libraryId,
@@ -44,16 +94,7 @@ export function ManualEnrichmentSection({
   const filteredBooks = useMemo(() => {
     if (filterMissing === 'all') return books;
 
-    return books.filter(b => {
-      // Return true if the book is MISSING the field
-      const val =
-        b[filterMissing as keyof Book] ||
-        (b as {_inBooks?: Record<string, unknown>})._inBooks?.[filterMissing];
-      if (Array.isArray(val)) return val.length === 0;
-      if (typeof val === 'object' && val !== null)
-        return Object.keys(val).length === 0;
-      return !val; // missing or falsy
-    });
+    return books.filter(b => !isMetadataPresent(b, filterMissing));
   }, [books, filterMissing]);
 
   // Handle select all logic for currently filtered books
@@ -314,20 +355,10 @@ export function ManualEnrichmentSection({
                     </div>
                   </td>
                   {ALL_METADATA_KEYS.map(keyDef => {
-                    const k = keyDef.id;
-                    const val =
-                      book[k as keyof Book] ||
-                      (book as {_inBooks?: Record<string, unknown>})._inBooks?.[
-                        k
-                      ];
-                    let isPresent = false;
-                    if (Array.isArray(val)) isPresent = val.length > 0;
-                    else if (typeof val === 'object' && val !== null)
-                      isPresent = Object.keys(val).length > 0;
-                    else isPresent = !!val;
+                    const isPresent = isMetadataPresent(book, keyDef.id);
 
                     return (
-                      <td key={k} className="px-4 py-3 text-center">
+                      <td key={keyDef.id} className="px-4 py-3 text-center">
                         {isPresent ? (
                           <span
                             className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500/80"
@@ -374,13 +405,7 @@ function EnrichmentRunner({
     overwrite,
     filterPredicate: b => {
       if (overwrite) return true;
-      const val =
-        b[targetMetadata as keyof Book] ||
-        (b as {_inBooks?: Record<string, unknown>})._inBooks?.[targetMetadata];
-      if (Array.isArray(val)) return val.length === 0;
-      if (typeof val === 'object' && val !== null)
-        return Object.keys(val).length === 0;
-      return !val;
+      return !isMetadataPresent(b, targetMetadata);
     },
     successToastMessage: `Successfully enriched ${targetMetadata}`,
     errorToastMessage: `Failed to enrich ${targetMetadata}`,

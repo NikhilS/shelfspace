@@ -107,9 +107,10 @@ describe.skip('SpruceUpView', () => {
       author: 'Isaac Asimov',
       isbn: '456',
       coverUrl: 'http',
-      synopsis: 'desc',
+      bookDetailsMetadata: {hasSynopsis: true},
       publishedDate: '1951',
-      genres: ['Sci-Fi'],
+      primaryGenre: 'Science Fiction',
+      subgenres: ['Space Opera'],
       addedAt: new Date(),
       addedBy: 'u1',
     });
