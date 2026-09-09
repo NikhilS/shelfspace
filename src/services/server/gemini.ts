@@ -15,7 +15,7 @@ const logger = {
   },
 };
 
-export function isApiKeyError(err: unknown): boolean {
+function isApiKeyError(err: unknown): boolean {
   if (!err) return false;
   const msg = err instanceof Error ? err.message : String(err);
   return (
@@ -51,14 +51,14 @@ function getGeminiClient(): GoogleGenAI {
  * All backend code calling Gemini models should use this to ensure we don't
  * breach global AI quotas.
  */
-export async function generateContentWithLimiter(
+async function generateContentWithLimiter(
   options: Parameters<GoogleGenAI['models']['generateContent']>[0],
 ) {
   const ai = getGeminiClient();
   return geminiLimiter.schedule(() => ai.models.generateContent(options));
 }
 
-export function handleGeminiError(error: unknown): never {
+function handleGeminiError(error: unknown): never {
   const errorMessage = error instanceof Error ? error.message : String(error);
   if (isApiKeyError(error)) {
     console.info('Gemini API key is invalid or not set.');
@@ -978,7 +978,7 @@ export interface BatchExtractedGeoResponse {
   enrichment: BatchExtractedGeoBookResult[];
 }
 
-export async function batchGeminiOperation<T>(
+async function batchGeminiOperation<T>(
   books: {id: string; title: string; author: string; synopsis?: string}[],
   prompt: string,
   schema: unknown,

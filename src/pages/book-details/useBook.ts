@@ -24,7 +24,11 @@ import {
 } from '@tanstack/react-query';
 
 import {deleteBookAtomic} from '../../services/db/books';
-import {DebugTelemetryEngine, calculatePayloadBytes} from '../../lib/telemetry';
+import {
+  DebugTelemetryEngine,
+  calculatePayloadBytes,
+  instrumentMutation,
+} from '../../lib/telemetry';
 import {mapDocToBook} from '../../hooks/useLibraryData';
 
 export interface Review {
@@ -40,6 +44,7 @@ export function useBook(
   libraryId: string | undefined,
   bookId: string | undefined,
   passedCanEdit?: boolean,
+  isLive: boolean = true,
 ) {
   const {user} = useAuth();
   const queryClient = useQueryClient();
@@ -99,7 +104,7 @@ export function useBook(
 
   useEffect(() => {
     if (passedCanEdit !== undefined) return;
-    if (!libraryId || !user) return;
+    if (!libraryId || !user || !isLive) return;
 
     const unregisterLib = DebugTelemetryEngine.getInstance().registerListener(
       'useBook:lib',
@@ -150,13 +155,46 @@ export function useBook(
       unregisterLib();
       unsubscribe();
     };
-  }, [libraryId, user, passedCanEdit]);
+  }, [libraryId, user, passedCanEdit, isLive]);
 
   useEffect(() => {
     if (!libraryId || !bookId) return;
 
     let isMounted = true;
     let hasNetworkUpdate = false;
+
+    // Inactive/adjacent carousel slides: do NOT open live onSnapshot listeners.
+    // Hydrate from TanStack Query or cache if missing, then exit cleanly.
+    if (!isLive) {
+      if (!queryClient.getQueryData(['bookBase', libraryId, bookId])) {
+        const cachedBooks = queryClient.getQueryData<Book[]>([
+          'books',
+          libraryId,
+        ]);
+        const foundInLib = cachedBooks?.find(b => b.id === bookId);
+        if (foundInLib) {
+          queryClient.setQueryData(['bookBase', libraryId, bookId], foundInLib);
+          setIsLoading(false);
+        } else {
+          const bookRef = doc(db, 'libraries', libraryId, 'books', bookId);
+          getDocFromCache(bookRef)
+            .then(cachedSnap => {
+              if (isMounted && cachedSnap.exists()) {
+                const bookData = mapDocToBook(cachedSnap);
+                queryClient.setQueryData(
+                  ['bookBase', libraryId, bookId],
+                  bookData,
+                );
+                setIsLoading(false);
+              }
+            })
+            .catch(() => {});
+        }
+      }
+      return () => {
+        isMounted = false;
+      };
+    }
 
     if (!queryClient.getQueryData(['bookBase', libraryId, bookId])) {
       const cachedBooks = queryClient.getQueryData<Book[]>([
@@ -363,7 +401,7 @@ export function useBook(
       unregisterReviews();
       unsubscribeReviews();
     };
-  }, [libraryId, bookId, queryClient]);
+  }, [libraryId, bookId, queryClient, isLive]);
 
   const deleteBookMutation = useMutation({
     mutationFn: async () => {
@@ -405,11 +443,21 @@ export function useBook(
       if (!libraryId || !bookId || !user || !book) return;
 
       try {
-        await updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), {
+        const updatePayload = {
           [`userStatuses.${user.uid}`]: status,
           addedBy: book.addedBy || user.uid,
           addedAt: book.addedAt || serverTimestamp(),
-        });
+        };
+        await instrumentMutation(
+          'update',
+          `libraries/${libraryId}/books/${bookId}`,
+          updatePayload,
+          () =>
+            updateDoc(
+              doc(db, 'libraries', libraryId, 'books', bookId),
+              updatePayload,
+            ),
+        );
       } catch (e) {
         handleFirestoreError(
           e,
@@ -451,15 +499,29 @@ export function useBook(
       if (!libraryId || !bookId || !user)
         throw new Error('Missing review context');
       try {
-        await addDoc(
-          collection(db, 'libraries', libraryId, 'books', bookId, 'reviews'),
-          {
-            userId: user.uid,
-            userName: user.displayName || user.email || 'Unknown User',
-            rating,
-            text,
-            createdAt: serverTimestamp(),
-          },
+        const revPayload = {
+          userId: user.uid,
+          userName: user.displayName || user.email || 'Unknown User',
+          rating,
+          text,
+          createdAt: serverTimestamp(),
+        };
+        await instrumentMutation(
+          'create',
+          `libraries/${libraryId}/books/${bookId}/reviews`,
+          revPayload,
+          () =>
+            addDoc(
+              collection(
+                db,
+                'libraries',
+                libraryId,
+                'books',
+                bookId,
+                'reviews',
+              ),
+              revPayload,
+            ),
         );
       } catch (e) {
         handleFirestoreError(
@@ -540,10 +602,16 @@ export function useBook(
 
         if (Object.keys(heavyUpdate).length > 0) {
           heavyUpdate.updatedAt = new Date().toISOString();
-          await setDoc(
-            doc(db, 'libraries', libraryId, 'bookDetails', bookId),
+          await instrumentMutation(
+            'update',
+            `libraries/${libraryId}/bookDetails/${bookId}`,
             heavyUpdate,
-            {merge: true},
+            () =>
+              setDoc(
+                doc(db, 'libraries', libraryId, 'bookDetails', bookId),
+                heavyUpdate,
+                {merge: true},
+              ),
           );
 
           cargo.bookDetailsMetadata = {
@@ -567,9 +635,12 @@ export function useBook(
           };
         }
 
-        await updateDoc(
-          doc(db, 'libraries', libraryId, 'books', bookId),
+        await instrumentMutation(
+          'update',
+          `libraries/${libraryId}/books/${bookId}`,
           cargo,
+          () =>
+            updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), cargo),
         );
       } catch (e) {
         handleFirestoreError(

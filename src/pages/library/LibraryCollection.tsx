@@ -17,6 +17,7 @@ import {User} from 'firebase/auth';
 import {NavigateFunction} from 'react-router-dom';
 import {Input} from '../../components/ui/input';
 import {Button} from '../../components/ui/button';
+import {Badge} from '../../components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -137,14 +138,16 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 aria-label="Clear search"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary p-0.5 rounded-full"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary h-6 w-6 p-0 rounded-full"
               >
                 <X className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             )}
           </div>
 
@@ -165,9 +168,13 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
               <span className="hidden sm:inline">Filter & Sort</span>
               <span className="sm:hidden">Filters</span>
               {activeFilterCount > 0 && (
-                <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-secondary text-on-secondary">
+                <Badge
+                  variant="secondary"
+                  size="sm"
+                  className="ml-0.5 px-1.5 py-0 font-label-caps-xs text-label-caps-xs font-bold bg-secondary text-on-secondary"
+                >
                   {activeFilterCount}
-                </span>
+                </Badge>
               )}
             </Button>
 
@@ -210,33 +217,37 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
         {/* Quick Genre Chips Row (Horizontal Scrollable, 1-tap filtering) */}
         {quickGenres.length > 0 && (
           <div className="px-3 sm:px-6 pb-2 pt-0.5 flex items-center gap-1.5 overflow-x-auto hide-scrollbar scroll-smooth">
-            <button
+            <Button
               type="button"
+              variant={!filterGenre ? 'default' : 'outline'}
+              size="sm"
               onClick={() => setFilterGenre('')}
-              className={`text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
+              className={`text-xs px-3 h-7 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
                 !filterGenre
                   ? 'bg-primary text-on-primary font-semibold shadow-xs'
-                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border-transparent'
               }`}
             >
               All Genres
-            </button>
+            </Button>
             {quickGenres.map(genre => {
               const isSelected =
                 filterGenre.toLowerCase() === genre.toLowerCase();
               return (
-                <button
+                <Button
                   key={genre}
                   type="button"
+                  variant={isSelected ? 'default' : 'outline'}
+                  size="sm"
                   onClick={() => setFilterGenre(isSelected ? '' : genre)}
-                  className={`text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
+                  className={`text-xs px-3 h-7 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
                     isSelected
                       ? 'bg-primary text-on-primary font-semibold shadow-xs'
-                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border-transparent'
                   }`}
                 >
                   {genre}
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -245,36 +256,40 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
         {/* Drill-down Subgenre Chips Row for Selected Primary Genre */}
         {filterGenre && activeSubgenres && activeSubgenres.length > 0 && (
           <div className="px-3 sm:px-6 pb-2 pt-1 border-t border-outline-variant/15 flex items-center gap-1.5 overflow-x-auto hide-scrollbar scroll-smooth bg-surface-container-low/30">
-            <span className="text-[11px] font-sans text-on-surface-variant/80 font-medium mr-1 flex-shrink-0">
+            <span className="font-label-caps-xs text-label-caps-xs font-sans text-on-surface-variant/80 font-medium mr-1 flex-shrink-0">
               Subgenres:
             </span>
-            <button
+            <Button
               type="button"
+              variant={!filterSubgenre ? 'secondary' : 'outline'}
+              size="sm"
               onClick={() => setFilterSubgenre?.('')}
-              className={`text-[11px] px-2.5 py-0.5 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
+              className={`font-label-caps-xs text-label-caps-xs px-2.5 h-6 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
                 !filterSubgenre
                   ? 'bg-secondary text-on-secondary font-semibold shadow-xs'
-                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border-transparent'
               }`}
             >
               All {filterGenre}
-            </button>
+            </Button>
             {activeSubgenres.map(({name, count}) => {
               const isSelected =
                 filterSubgenre?.toLowerCase() === name.toLowerCase();
               return (
-                <button
+                <Button
                   key={name}
                   type="button"
+                  variant={isSelected ? 'secondary' : 'outline'}
+                  size="sm"
                   onClick={() => setFilterSubgenre?.(isSelected ? '' : name)}
-                  className={`text-[11px] px-2.5 py-0.5 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
+                  className={`font-label-caps-xs text-label-caps-xs px-2.5 h-6 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
                     isSelected
                       ? 'bg-secondary text-on-secondary font-semibold shadow-xs'
-                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border-transparent'
                   }`}
                 >
                   {name} ({count})
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -285,35 +300,32 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
       <Dialog open={isFiltersOpen} onOpenChange={setIsFiltersOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-serif text-xl font-bold text-primary">
-              Filter & Sort Collection
-            </DialogTitle>
+            <DialogTitle>Filter & Sort Collection</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
             {/* Sort Options */}
             <div className="space-y-1.5">
-              <label className="text-xs font-sans font-semibold uppercase tracking-wider text-secondary/90">
-                Sort Order
-              </label>
+              <label className="metadata-eyebrow block">Sort Order</label>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   {id: 'added', label: 'Recently Added'},
                   {id: 'title', label: 'Title (A-Z)'},
                   {id: 'author', label: 'Author (A-Z)'},
                 ].map(opt => (
-                  <button
+                  <Button
                     key={opt.id}
                     type="button"
+                    variant={sortBy === opt.id ? 'default' : 'outline'}
                     onClick={() => handleSort(opt.id as SortOption)}
-                    className={`px-2.5 py-2 text-xs font-medium rounded-xl border text-center transition-all ${
+                    className={`px-2.5 py-2 h-auto text-xs font-medium rounded-xl border text-center transition-all ${
                       sortBy === opt.id
-                        ? 'border-primary bg-primary/10 text-primary font-semibold'
+                        ? 'border-primary bg-primary/10 text-primary font-semibold hover:bg-primary/15'
                         : 'border-outline-variant/40 bg-surface-container-low text-on-surface hover:bg-surface-container'
                     }`}
                   >
                     {opt.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
               {sortBy !== 'added' && (
@@ -343,9 +355,7 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
 
             {/* Genre Select */}
             <div className="space-y-1.5">
-              <label className="text-xs font-sans font-semibold uppercase tracking-wider text-secondary/90">
-                Genre
-              </label>
+              <label className="metadata-eyebrow block">Genre</label>
               <Select
                 value={filterGenre || 'all'}
                 onValueChange={val => setFilterGenre(val === 'all' ? '' : val)}
@@ -366,9 +376,7 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
 
             {/* Author Select */}
             <div className="space-y-1.5">
-              <label className="text-xs font-sans font-semibold uppercase tracking-wider text-secondary/90">
-                Author
-              </label>
+              <label className="metadata-eyebrow block">Author</label>
               <Select
                 value={filterAuthor || 'all'}
                 onValueChange={val => setFilterAuthor(val === 'all' ? '' : val)}
@@ -389,7 +397,7 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
 
             {/* Publication Year Range */}
             <div className="space-y-1.5">
-              <label className="text-xs font-sans font-semibold uppercase tracking-wider text-secondary/90">
+              <label className="metadata-eyebrow block">
                 Publication Year Range
               </label>
               <div className="grid grid-cols-2 gap-3 items-center">
@@ -446,10 +454,8 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
                   strokeWidth={1.5}
                 />
               </div>
-              <h3 className="text-2xl font-serif font-bold mb-3 text-primary relative z-10 tracking-tight">
-                No books found
-              </h3>
-              <p className="text-on-surface-variant text-lg max-w-md mx-auto relative z-10">
+              <h3 className="empty-state-title">No books found</h3>
+              <p className="empty-state-description">
                 {books.length === 0
                   ? "This library is empty. Let's add some great reads to your collection."
                   : 'No books match your current filters.'}

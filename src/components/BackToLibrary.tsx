@@ -1,6 +1,7 @@
 import React from 'react';
 import {Link} from 'react-router-dom';
 import {ArrowLeft} from 'lucide-react';
+import {Button} from '@/components/ui/button';
 
 export interface BackToLibraryProps {
   libraryId?: string;
@@ -30,15 +31,16 @@ export const BackToLibrary: React.FC<BackToLibraryProps> = ({
 
   if (onClick && !customTo && !libraryId) {
     return (
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={onClick}
         className={baseClasses}
         aria-label={ariaLabel || label}
       >
         <ArrowLeft className="w-4 h-4 text-on-surface-variant group-hover:text-primary group-hover:-translate-x-1 transition-transform duration-150 shrink-0" />
         <span className="truncate">{label}</span>
-      </button>
+      </Button>
     );
   }
 

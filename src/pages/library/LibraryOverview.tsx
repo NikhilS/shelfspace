@@ -6,7 +6,6 @@ import {
   Sparkles,
   RefreshCw,
   Plus,
-  BookOpen,
   Clock,
   Globe,
   Compass,
@@ -15,6 +14,7 @@ import {
 import {toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {useNavigate, useLocation, Link} from 'react-router-dom';
 import {Button} from '@/components/ui/button';
+import {Badge} from '@/components/ui/badge';
 import {BookLoader} from '../../components/BookLoader';
 import {format} from 'date-fns';
 import {User} from 'firebase/auth';
@@ -82,10 +82,6 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
           (getFirestoreTime(a.addedAt) || 0),
       )
       .slice(0, 6);
-  }, [books]);
-
-  const missingMetadataCount = useMemo(() => {
-    return books.filter(b => !b.coverUrl || !b.primaryGenre).length;
   }, [books]);
 
   const temporalBooksCount = useMemo(() => {
@@ -168,74 +164,16 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
         </div>
       ) : (
         <div className="space-y-10">
-          {/* Library Digest Ribbon */}
-          <section aria-label="Library Overview Digest">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-surface-container-low/70 border border-outline-variant/30 text-xs font-sans text-on-surface-variant">
-              <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                <span className="flex items-center gap-1.5 text-on-surface">
-                  <BookOpen className="w-3.5 h-3.5 text-primary" />
-                  <span>
-                    <strong className="font-semibold text-primary">
-                      {books.length}
-                    </strong>{' '}
-                    {books.length === 1 ? 'Volume' : 'Volumes'} Cataloged
-                  </span>
-                </span>
-                {topCategories.length > 0 && (
-                  <>
-                    <span className="hidden sm:inline text-outline-variant/60">
-                      •
-                    </span>
-                    <span className="hidden sm:flex items-center gap-1">
-                      <span>Primary Genre:</span>
-                      <strong className="font-semibold text-on-surface">
-                        {topCategories[0].name}
-                      </strong>
-                    </span>
-                  </>
-                )}
-                {readingBooks.length > 0 && (
-                  <>
-                    <span className="text-outline-variant/60">•</span>
-                    <span className="flex items-center gap-1 text-secondary font-medium">
-                      <span>
-                        {readingBooks.length} Active Read
-                        {readingBooks.length === 1 ? '' : 's'}
-                      </span>
-                    </span>
-                  </>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3 ml-auto sm:ml-0 text-[11px]">
-                {missingMetadataCount > 0 ? (
-                  <Link
-                    to={`/library/${library.id}/spruce-up`}
-                    className="flex items-center gap-1 text-accent hover:underline font-medium"
-                    title="Audit metadata and cover health"
-                  >
-                    <span>{missingMetadataCount} need cover/genre care</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </Link>
-                ) : (
-                  <span className="text-secondary font-medium flex items-center gap-1">
-                    <span>Shelf metadata complete</span>
-                  </span>
-                )}
-              </div>
-            </div>
-          </section>
-
           {/* Tier 1: Personal & Active (The "Now") - Reading Pulse & Curator Spotlight */}
           <section aria-label="Reading Pulse and Categories">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="font-serif text-xl sm:text-2xl font-bold tracking-tight text-on-surface">
+                <h2 className="section-heading">
                   {readingBooks.length > 0
                     ? 'Reading Pulse'
                     : "Curator's Spotlight"}
                 </h2>
-                <p className="font-sans text-xs sm:text-sm text-on-surface-variant">
+                <p className="section-subheading">
                   {readingBooks.length > 0
                     ? 'Active volumes in progress and daily literary curation'
                     : 'Personalized recommendations and category balance across your shelves'}
@@ -248,10 +186,8 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
               <div className="md:col-span-4 flex flex-col gap-5">
                 <div className="bg-surface p-5 sm:p-6 rounded-2xl border border-outline-variant/30 shadow-xs flex flex-col min-w-0">
                   <div className="flex items-center justify-between mb-4">
-                    <p className="text-xs font-sans font-semibold tracking-wider uppercase text-secondary/90">
-                      Top Categories
-                    </p>
-                    <span className="text-[11px] font-sans text-on-surface-variant">
+                    <p className="metadata-eyebrow">Top Categories</p>
+                    <span className="font-sans text-xs text-on-surface-variant">
                       Last added: {lastCatalogedDate}
                     </span>
                   </div>
@@ -300,7 +236,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                                 <span className="font-sans font-semibold text-primary group-hover:text-secondary transition-colors truncate pr-2">
                                   {category.name || 'Uncategorized'}
                                 </span>
-                                <span className="font-sans font-bold text-on-surface-variant group-hover:text-secondary transition-colors uppercase tracking-wider flex-shrink-0 text-[10px]">
+                                <span className="font-sans font-bold text-on-surface-variant group-hover:text-secondary transition-colors uppercase tracking-wider flex-shrink-0 font-label-caps-xs text-label-caps-xs">
                                   {category.value}{' '}
                                   {category.value === 1 ? 'vol' : 'vols'}
                                 </span>
@@ -363,7 +299,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         )}
                       </div>
                       <div className="flex-grow min-w-0 w-full text-center sm:text-left break-words">
-                        <span className="text-[11px] font-sans font-semibold tracking-wider uppercase text-secondary/90 block">
+                        <span className="font-label-caps-sm text-label-caps-sm font-sans font-semibold tracking-wider uppercase text-secondary/90 block">
                           Currently Reading
                         </span>
                         <h3 className="font-serif text-lg sm:text-xl font-bold tracking-tight text-primary mt-1 mb-0.5 line-clamp-2">
@@ -428,13 +364,13 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                             loading="lazy"
                           />
                         ) : (
-                          <div className="w-full h-28 bg-surface-variant rounded-sm shadow-md border border-outline-variant/20 flex items-center justify-center p-2 text-center text-[10px] font-serif text-on-surface-variant">
+                          <div className="w-full h-28 bg-surface-variant rounded-sm shadow-md border border-outline-variant/20 flex items-center justify-center p-2 text-center font-serif text-xs text-on-surface-variant">
                             {pickOfTheDay.title}
                           </div>
                         )}
                       </div>
                       <div className="flex flex-col justify-center flex-1 min-w-0 text-center sm:text-left break-words">
-                        <span className="text-[10px] font-sans font-semibold tracking-wider uppercase text-secondary/90 flex items-center justify-center sm:justify-start gap-1 mb-1">
+                        <span className="font-label-caps-sm text-label-caps-sm font-sans font-semibold tracking-wider uppercase text-secondary/90 flex items-center justify-center sm:justify-start gap-1 mb-1">
                           <Sparkles size={13} className="text-secondary/80" />
                           Curator's Recommendation
                         </span>
@@ -503,21 +439,21 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
             <section aria-label="Recent Acquisitions">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="font-serif text-xl sm:text-2xl font-bold tracking-tight text-on-surface">
-                    On the Shelves
-                  </h2>
-                  <p className="font-sans text-xs sm:text-sm text-on-surface-variant">
+                  <h2 className="section-heading">On the Shelves</h2>
+                  <p className="section-subheading">
                     Recent acquisitions and cataloged editions
                   </p>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setCurrentTab('collection')}
-                  className="text-xs font-sans font-semibold text-primary hover:text-primary/80 flex items-center gap-1 group cursor-pointer"
+                  className="text-xs font-sans font-semibold text-primary hover:text-primary/80 flex items-center gap-1 group h-auto p-1"
                 >
                   <span>Browse All {books.length} Books</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                </button>
+                </Button>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3.5">
@@ -545,19 +481,19 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         />
                       ) : (
                         <div className="w-full h-full p-2 flex flex-col justify-between text-center bg-surface-variant">
-                          <span className="text-[10px] font-serif font-bold text-on-surface-variant line-clamp-3">
+                          <span className="font-serif text-xs font-bold text-on-surface-variant line-clamp-3">
                             {book.title}
                           </span>
-                          <span className="text-[9px] font-sans text-on-surface-variant/70 truncate">
+                          <span className="font-label-caps-xs text-label-caps-xs text-on-surface-variant/70 truncate">
                             {book.author}
                           </span>
                         </div>
                       )}
                     </div>
-                    <h4 className="font-serif text-xs font-bold text-on-surface truncate group-hover:text-primary transition-colors">
+                    <h4 className="card-title-editorial truncate group-hover:text-primary transition-colors">
                       {toTitleCase(book.title)}
                     </h4>
-                    <p className="font-sans text-[11px] text-on-surface-variant truncate mt-0.5">
+                    <p className="font-sans text-xs text-on-surface-variant truncate mt-0.5">
                       {toTitleCase(book.author)}
                     </p>
                   </div>
@@ -571,12 +507,14 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-3.5">
               <div className="flex items-center gap-2">
                 <Compass className="w-4 h-4 text-secondary stroke-[2.2]" />
-                <h2 className="font-serif text-lg sm:text-xl font-bold tracking-tight text-on-surface">
-                  Explore The Collection
-                </h2>
-                <span className="hidden sm:inline-flex text-[10px] font-sans font-semibold tracking-wider uppercase text-on-surface-variant/70 bg-surface-container-high/60 px-2 py-0.5 rounded-full border border-outline-variant/20">
+                <h2 className="section-heading">Explore The Collection</h2>
+                <Badge
+                  variant="outline"
+                  size="sm"
+                  className="hidden sm:inline-flex font-label-caps-sm text-label-caps-sm tracking-wider uppercase text-on-surface-variant/70 bg-surface-container-high/60 border-outline-variant/20"
+                >
                   3 Perspectives
-                </span>
+                </Badge>
               </div>
               <p className="hidden md:block font-sans text-xs text-on-surface-variant">
                 Immersive perspectives across history, geography, and theme
@@ -648,11 +586,15 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         Historical Timeline
                       </h3>
                     </div>
-                    <span className="text-[10px] font-sans font-medium text-secondary/90 bg-secondary/10 px-2 py-0.5 rounded-full border border-secondary/20 flex-shrink-0 whitespace-nowrap">
+                    <Badge
+                      variant="secondary"
+                      size="sm"
+                      className="font-medium text-secondary/90 bg-secondary/10 border-secondary/20 flex-shrink-0 whitespace-nowrap"
+                    >
                       {temporalBooksCount > 0
                         ? `${temporalBooksCount} Charted`
                         : 'Chronology'}
-                    </span>
+                    </Badge>
                   </div>
                   <p className="font-sans text-xs text-on-surface-variant line-clamp-1 leading-snug">
                     Chronological epochs & publication eras
@@ -725,11 +667,15 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         Literary World Map
                       </h3>
                     </div>
-                    <span className="text-[10px] font-sans font-medium text-tertiary-fixed-variant-on dark:text-tertiary-fixed-base bg-tertiary-fixed-base/30 px-2 py-0.5 rounded-full border border-tertiary-fixed-dim-base/40 flex-shrink-0 whitespace-nowrap">
+                    <Badge
+                      variant="outline"
+                      size="sm"
+                      className="font-medium text-tertiary-fixed-variant-on dark:text-tertiary-fixed-base bg-tertiary-fixed-base/30 border-tertiary-fixed-dim-base/40 flex-shrink-0 whitespace-nowrap"
+                    >
                       {geoLocationsCount > 0
                         ? `${geoLocationsCount} Places`
                         : 'Cartography'}
-                    </span>
+                    </Badge>
                   </div>
                   <p className="font-sans text-xs text-on-surface-variant line-clamp-1 leading-snug">
                     Story settings & global author origins
@@ -797,11 +743,15 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         Thematic Constellations
                       </h3>
                     </div>
-                    <span className="text-[10px] font-sans font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20 flex-shrink-0 whitespace-nowrap">
+                    <Badge
+                      variant="default"
+                      size="sm"
+                      className="font-medium text-primary bg-primary/10 border-primary/20 flex-shrink-0 whitespace-nowrap"
+                    >
                       {topCategories.length > 0
                         ? `${topCategories.length} Genres`
                         : '3D Galaxy'}
-                    </span>
+                    </Badge>
                   </div>
                   <p className="font-sans text-xs text-on-surface-variant line-clamp-1 leading-snug">
                     3D celestial cluster mapped by genre & theme

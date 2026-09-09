@@ -23,8 +23,6 @@ if (firebaseConfig && !admin.apps.length) {
   }
 }
 
-export {SUPERADMIN_EMAIL} from '../../constants/auth';
-
 export const getAdminDb = () => {
   if (!firebaseConfig) {
     throw new Error('Firebase config not found');

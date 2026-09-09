@@ -4,6 +4,8 @@ import {motion} from 'motion/react';
 import {Library, Book} from '../../types';
 import {toTitleCase} from '../../lib/utils';
 import {CloudUpload, RefreshCw, ArrowLeft} from 'lucide-react';
+import {Badge} from '@/components/ui/badge';
+import {Button} from '@/components/ui/button';
 
 interface LibraryHeaderProps {
   library: Library;
@@ -46,7 +48,7 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
       <div className="relative z-10 w-full max-w-[1200px] mx-auto px-4 sm:px-8 pt-2.5 sm:pt-3.5">
         <Link
           to="/"
-          className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-sans font-medium text-white/90 hover:text-white bg-black/35 hover:bg-black/50 backdrop-blur-md px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full transition-all border border-white/15 shadow-xs"
+          className="inline-flex items-center gap-1.5 font-label-caps-sm text-label-caps-sm sm:text-xs font-sans font-medium text-white/90 hover:text-white bg-black/35 hover:bg-black/50 backdrop-blur-md px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full transition-all border border-white/15 shadow-xs"
         >
           <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
           <span>All Libraries</span>
@@ -62,23 +64,23 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
         >
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-0.5 sm:mb-1.5 max-w-full">
             <h1
-              className="font-headline-xl text-on-primary drop-shadow-md line-clamp-1 sm:line-clamp-2 break-words"
-              style={{
-                fontSize: 'clamp(1.2rem, 3.2vw, 2.2rem)',
-                lineHeight: '1.2',
-              }}
+              className="font-headline-lg sm:font-headline-xl text-headline-lg sm:text-headline-xl text-on-primary drop-shadow-md line-clamp-1 sm:line-clamp-2 break-words leading-tight"
               title={library.name}
             >
               {toTitleCase(library.name)}
             </h1>
             {role === 'viewer' && (
-              <span className="font-label-caps text-[9px] sm:text-[10px] tracking-wider uppercase bg-surface-container-high/80 text-on-surface-variant px-1.5 sm:px-2 py-0.5 flex items-center justify-center rounded border border-outline-variant/30 backdrop-blur-sm shadow-sm inline-flex shrink-0">
+              <Badge
+                variant="outline"
+                size="sm"
+                className="bg-surface-container-high/80 text-on-surface-variant backdrop-blur-sm shadow-sm"
+              >
                 Read-Only
-              </span>
+              </Badge>
             )}
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            <p className="font-label-caps text-[11px] sm:text-xs text-white/80">
+            <p className="font-label-caps text-label-caps-sm sm:text-label-caps text-white/90">
               {books.length > 0 || library.bookCount === undefined
                 ? `${books.length} ${books.length === 1 ? 'volume' : 'volumes'}`
                 : `${library.bookCount} ${library.bookCount === 1 ? 'volume' : 'volumes'}`}
@@ -88,16 +90,23 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
                 : `Shared by ${toTitleCase(library.ownerName)}`}
             </p>
             {isSyncing && (
-              <span className="flex items-center gap-1.5 font-label-caps text-[11px] sm:text-xs text-secondary bg-surface/10 px-2 py-0.5 rounded-full border border-white/10 backdrop-blur-sm">
+              <Badge
+                variant="secondary"
+                size="sm"
+                className="flex items-center gap-1.5 text-secondary bg-surface/10 border-white/10 backdrop-blur-sm font-label-caps"
+              >
                 <CloudUpload className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 Syncing
-              </span>
+              </Badge>
             )}
             {canEdit && onRefreshHero && (
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 onClick={onRefreshHero}
                 disabled={isRefreshingHero}
-                className="flex items-center justify-center text-white bg-white/15 hover:bg-white/25 active:bg-white/30 transition-colors w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-white/20 backdrop-blur-sm disabled:opacity-50 cursor-pointer ml-auto sm:ml-4 shadow-sm"
+                className="flex items-center justify-center text-white bg-white/15 hover:bg-white/25 active:bg-white/30 hover:text-white transition-colors w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-white/20 backdrop-blur-sm disabled:opacity-50 ml-auto sm:ml-4 shadow-sm"
                 title={isRefreshingHero ? 'Refreshing...' : 'Refresh Banner'}
                 aria-label="Refresh Banner"
               >
@@ -106,7 +115,7 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
                     isRefreshingHero ? 'animate-spin' : ''
                   }`}
                 />
-              </button>
+              </Button>
             )}
           </div>
         </motion.div>

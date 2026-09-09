@@ -93,7 +93,7 @@ function isPermissionOrUnavailableError(err: unknown): boolean {
   );
 }
 
-export function toSlug(name: string): string {
+function toSlug(name: string): string {
   return name
     .toLowerCase()
     .trim()

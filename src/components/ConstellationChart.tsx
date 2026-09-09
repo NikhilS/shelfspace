@@ -162,7 +162,7 @@ export default function ConstellationChart({
     <div className="relative w-full h-[480px] sm:h-[560px] md:h-[650px] bg-primary rounded-2xl border border-outline-variant shadow-sm overflow-hidden touch-pan-y">
       {/* Mobile Gesture Helper & Safety Toggle */}
       <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex items-center gap-2">
-        <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface/90 backdrop-blur-md border border-outline-variant/30 text-[11px] font-sans font-medium text-on-surface-variant shadow-xs">
+        <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface/90 backdrop-blur-md border border-outline-variant/30 font-body-xs text-body-xs font-sans font-medium text-on-surface-variant shadow-xs">
           2 fingers to pan & zoom • 1 finger scrolls
         </span>
         <button
@@ -256,17 +256,17 @@ export default function ConstellationChart({
               </p>
               <div className="flex flex-wrap gap-1 items-center mt-1">
                 {hoveredNode.data.book.primaryGenre && (
-                  <span className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-sans font-medium bg-secondary/10 text-secondary">
+                  <span className="inline-block px-1.5 py-0.5 rounded-md font-label-caps-xs text-label-caps-xs font-sans font-medium bg-secondary/10 text-secondary">
                     {hoveredNode.data.book.primaryGenre}
                   </span>
                 )}
                 {hoveredNode.data.clusterId >= 0 ? (
-                  <span className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-sans font-medium bg-tertiary-container/10 text-on-tertiary-container border border-on-tertiary-container/10">
+                  <span className="inline-block px-1.5 py-0.5 rounded-md font-label-caps-xs text-label-caps-xs font-sans font-medium bg-tertiary-container/10 text-on-tertiary-container border border-on-tertiary-container/10">
                     {clusterNames[hoveredNode.data.clusterId] ||
                       `Constellation ${hoveredNode.data.clusterId + 1}`}
                   </span>
                 ) : (
-                  <span className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-sans font-medium bg-surface-variant text-on-surface-variant">
+                  <span className="inline-block px-1.5 py-0.5 rounded-md font-label-caps-xs text-label-caps-xs font-sans font-medium bg-surface-variant text-on-surface-variant">
                     Uncategorized
                   </span>
                 )}

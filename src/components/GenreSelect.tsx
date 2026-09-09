@@ -7,6 +7,13 @@ import {
 import {Label} from './ui/label';
 import {Input} from './ui/input';
 import {Button} from './ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 import {Check, X} from 'lucide-react';
 
 export interface GenreSelectProps {
@@ -57,9 +64,8 @@ export function GenreSelect({
 
   const availableSubgenres = isCanonical ? getSubgenresFor(primaryGenre) : [];
 
-  const handleSelectPrimary = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    if (!val) {
+  const handleSelectPrimary = (val: string) => {
+    if (!val || val === 'none') {
       onChange({
         primaryGenre: '',
         subgenres: [],
@@ -162,26 +168,32 @@ export function GenreSelect({
             Primary Genre
           </Label>
           {primaryGenre && (
-            <span className="text-[11px] text-on-surface-variant">
+            <span className="font-body-xs text-body-xs text-on-surface-variant">
               Standardized taxonomy
             </span>
           )}
         </div>
-        <select
-          id="primary-genre-select"
-          value={selectValue}
-          onChange={handleSelectPrimary}
+        <Select
+          value={selectValue || 'none'}
+          onValueChange={handleSelectPrimary}
           disabled={disabled}
-          className="w-full bg-surface-container text-sm h-11 rounded-lg px-3 border border-outline-variant/40 text-on-surface outline-none focus:border-primary transition-colors disabled:opacity-50"
         >
-          <option value="">Select Primary Genre...</option>
-          {CANONICAL_PRIMARY_GENRES.map(genre => (
-            <option key={genre} value={genre}>
-              {genre}
-            </option>
-          ))}
-          <option value="Other">Other (Custom Genre)</option>
-        </select>
+          <SelectTrigger
+            id="primary-genre-select"
+            className="w-full bg-surface-container text-sm h-11 rounded-lg px-3 border border-outline-variant/40 text-on-surface outline-none focus:border-primary transition-colors disabled:opacity-50"
+          >
+            <SelectValue placeholder="Select Primary Genre..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Select Primary Genre...</SelectItem>
+            {CANONICAL_PRIMARY_GENRES.map(genre => (
+              <SelectItem key={genre} value={genre}>
+                {genre}
+              </SelectItem>
+            ))}
+            <SelectItem value="Other">Other (Custom Genre)</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Freeform input if "Other" is chosen */}
@@ -214,7 +226,7 @@ export function GenreSelect({
                 (Optional, up to 3)
               </span>
             </Label>
-            <span className="text-[11px] text-on-surface-variant font-medium">
+            <span className="font-body-xs text-body-xs text-on-surface-variant font-medium">
               {(subgenres || []).length}/3 selected
             </span>
           </div>
@@ -291,14 +303,17 @@ export function GenreSelect({
                       className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-primary/10 text-primary border border-primary/20 font-medium"
                     >
                       {sub}
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon"
                         onClick={() => removeSubgenre(sub)}
                         disabled={disabled}
-                        className="hover:text-primary/70 transition-colors"
+                        className="h-4 w-4 p-0 hover:bg-transparent hover:text-primary/70 transition-colors"
+                        aria-label={`Remove ${sub}`}
                       >
                         <X className="w-3 h-3" />
-                      </button>
+                      </Button>
                     </span>
                   ))}
                 </div>

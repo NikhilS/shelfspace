@@ -4,9 +4,25 @@ export type LogLevel =
   | 'warn'
   | 'error'
   | 'db_read'
+  | 'db_write'
   | 'api_res'
   | 'worker'
   | 'gen_ai';
+
+export type MutationType =
+  'setDoc' | 'updateDoc' | 'deleteDoc' | 'writeBatch' | 'addDoc';
+
+export interface MutationTelemetryPayload {
+  mutationType: MutationType;
+  path: string;
+  bytes: number;
+  commitDurationMs: number;
+  optimisticLatencyMs?: number;
+  operationCount?: number;
+  payload?: unknown;
+  status: 'success' | 'error';
+  error?: string;
+}
 
 export interface TelemetryLog {
   id: string;
@@ -33,6 +49,12 @@ export interface TelemetryMetrics {
   activeFirestoreListeners: number;
   cacheEfficiencyRatio: number;
   snapshotParseDurationMs: number;
+
+  // Phase 4 Full-Spectrum Write Telemetry
+  totalFirestoreWrites: number;
+  totalBytesWritten: number;
+  lastWritePayloadBytes: number;
+  averageWriteLatency: number;
 }
 
 export interface ActiveListenerInfo {
@@ -45,6 +67,27 @@ export interface ActiveListenerInfo {
 export interface TelemetryBaseline {
   timestamp: string;
   metrics: TelemetryMetrics;
+}
+
+export interface TelemetryPluginContext {
+  logs: TelemetryLog[];
+  metrics: TelemetryMetrics;
+  activeStates: Record<string, unknown>;
+  activeListeners: ActiveListenerInfo[];
+  baseline: TelemetryBaseline | null;
+  engine: DebugTelemetryEngine;
+  isOnline: boolean;
+}
+
+export interface TelemetryPlugin {
+  id: string;
+  name: string;
+  order?: number;
+  icon: React.ComponentType<{className?: string; size?: number}>;
+  badge?: (ctx: TelemetryPluginContext) => string | number | undefined;
+  onLog?: (entry: TelemetryLog, engine: DebugTelemetryEngine) => void;
+  renderTab: (ctx: TelemetryPluginContext) => React.ReactNode;
+  getMetrics?: () => Record<string, unknown>;
 }
 
 /**
@@ -87,9 +130,15 @@ export class DebugTelemetryEngine {
     activeFirestoreListeners: 0,
     cacheEfficiencyRatio: 100,
     snapshotParseDurationMs: 0,
+    totalFirestoreWrites: 0,
+    totalBytesWritten: 0,
+    lastWritePayloadBytes: 0,
+    averageWriteLatency: 0,
   };
 
   private latencies: number[] = [];
+  private writeLatencies: number[] = [];
+  private plugins: Map<string, TelemetryPlugin> = new Map();
 
   private constructor() {
     // Private constructor for singleton
@@ -100,6 +149,10 @@ export class DebugTelemetryEngine {
       this.instance = new DebugTelemetryEngine();
     }
     return this.instance;
+  }
+
+  public static resetInstance(): void {
+    this.instance = null;
   }
 
   // Register and track active Firestore onSnapshot listeners
@@ -176,8 +229,13 @@ export class DebugTelemetryEngine {
       activeFirestoreListeners: this.activeListeners.size,
       cacheEfficiencyRatio: 100,
       snapshotParseDurationMs: 0,
+      totalFirestoreWrites: 0,
+      totalBytesWritten: 0,
+      lastWritePayloadBytes: 0,
+      averageWriteLatency: 0,
     };
     this.latencies = [];
+    this.writeLatencies = [];
     this.bookDocByteSamples = [];
     this.baseline = null;
     this.notifySubscribers();
@@ -250,6 +308,22 @@ export class DebugTelemetryEngine {
       if (p?.parseDurationMs !== undefined) {
         this.metrics.snapshotParseDurationMs = p.parseDurationMs;
       }
+    } else if (type === 'db_write') {
+      this.metrics.totalFirestoreWrites++;
+      const p = payload as MutationTelemetryPayload | undefined;
+      if (p?.bytes !== undefined && p.bytes > 0) {
+        this.metrics.totalBytesWritten += p.bytes;
+        this.metrics.lastWritePayloadBytes = p.bytes;
+        this.metrics.totalBytesTransferred += p.bytes;
+      }
+      if (p?.commitDurationMs !== undefined && p.commitDurationMs >= 0) {
+        this.writeLatencies.push(p.commitDurationMs);
+        if (this.writeLatencies.length > 50) this.writeLatencies.shift();
+        const sum = this.writeLatencies.reduce((a, b) => a + b, 0);
+        this.metrics.averageWriteLatency = Math.round(
+          sum / this.writeLatencies.length,
+        );
+      }
     } else if (type === 'api_res') {
       this.metrics.totalApiRequests++;
       const p = payload as {durationMs?: number; bytes?: number} | undefined;
@@ -277,7 +351,79 @@ export class DebugTelemetryEngine {
       }
     }
 
+    // Broadcast log entry to active telemetry plugins
+    this.plugins.forEach(plugin => {
+      try {
+        plugin.onLog?.(entry, this);
+      } catch (err) {
+        console.error(`Error in telemetry plugin ${plugin.id} onLog:`, err);
+      }
+    });
+
     this.notifySubscribers();
+  }
+
+  // Record a dedicated Firestore write mutation with metrics
+  public recordMutation(info: {
+    mutationType?: MutationType;
+    type?: MutationType;
+    path: string;
+    payload?: unknown;
+    bytes?: number;
+    commitDurationMs?: number;
+    durationMs?: number;
+    optimisticLatencyMs?: number;
+    operationCount?: number;
+    status?: 'success' | 'error';
+    error?: string;
+  }) {
+    const mutationType = info.mutationType ?? info.type ?? 'update';
+    const commitDurationMs = info.commitDurationMs ?? info.durationMs ?? 0;
+    const bytes = info.bytes ?? calculatePayloadBytes(info.payload);
+    const logPayload: MutationTelemetryPayload = {
+      mutationType,
+      path: info.path,
+      bytes,
+      commitDurationMs,
+      optimisticLatencyMs: info.optimisticLatencyMs,
+      operationCount: info.operationCount ?? 1,
+      payload: info.payload,
+      status: info.status ?? 'success',
+      error: info.error,
+    };
+
+    const statusTag = info.status === 'error' ? ' [FAILED]' : '';
+    const msg = `[FIRESTORE WRITE${statusTag}] ${mutationType} on ${info.path} (${commitDurationMs}ms, ${bytes} B)`;
+    this.addLog(
+      info.status === 'error' ? 'error' : 'db_write',
+      msg,
+      logPayload,
+    );
+  }
+
+  // Telemetry Plugin Bus Registration API
+  public registerPlugin(plugin: TelemetryPlugin): () => void {
+    this.plugins.set(plugin.id, plugin);
+    this.notifySubscribers();
+    return () => {
+      this.plugins.delete(plugin.id);
+      this.notifySubscribers();
+    };
+  }
+
+  public unregisterPlugin(pluginId: string): void {
+    this.plugins.delete(pluginId);
+    this.notifySubscribers();
+  }
+
+  public getPlugins(): TelemetryPlugin[] {
+    return Array.from(this.plugins.values()).sort(
+      (a, b) => (a.order ?? 100) - (b.order ?? 100),
+    );
+  }
+
+  public getPlugin(id: string): TelemetryPlugin | undefined {
+    return this.plugins.get(id);
   }
 
   // Get current logs
@@ -305,6 +451,13 @@ export class DebugTelemetryEngine {
         sub();
       } catch {
         // Safe protection from dead/erroneous components
+      }
+    });
+    this.plugins.forEach(p => {
+      try {
+        p.onMetricUpdate?.(this.metrics);
+      } catch {
+        // Safe protection from plugin failures
       }
     });
   }
@@ -459,4 +612,51 @@ export function interceptConsoleLogs() {
   };
 
   isIntercepted = true;
+}
+
+/**
+ * Higher-order utility wrapping asynchronous Firestore write mutations
+ * with commit timing, payload sizing, and telemetry tracking.
+ */
+export async function instrumentMutation<T>(
+  mutationType: MutationType,
+  path: string,
+  payload: unknown,
+  mutationFn: () => Promise<T>,
+  options?: {
+    operationCount?: number;
+    optimisticLatencyMs?: number;
+  },
+): Promise<T> {
+  const start = performance.now();
+  const bytes = calculatePayloadBytes(payload);
+  try {
+    const result = await mutationFn();
+    const commitDurationMs = Math.max(1, Math.round(performance.now() - start));
+    DebugTelemetryEngine.getInstance().recordMutation({
+      mutationType,
+      path,
+      payload,
+      bytes,
+      commitDurationMs,
+      optimisticLatencyMs: options?.optimisticLatencyMs,
+      operationCount: options?.operationCount,
+      status: 'success',
+    });
+    return result;
+  } catch (err) {
+    const commitDurationMs = Math.max(1, Math.round(performance.now() - start));
+    DebugTelemetryEngine.getInstance().recordMutation({
+      mutationType,
+      path,
+      payload,
+      bytes,
+      commitDurationMs,
+      optimisticLatencyMs: options?.optimisticLatencyMs,
+      operationCount: options?.operationCount,
+      status: 'error',
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }

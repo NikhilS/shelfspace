@@ -24,7 +24,7 @@ export default function Dashboard() {
       <div className="layout-page-content">
         <div className="layout-header border-none pb-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="layout-header-title">My Libraries</h2>
+            <h1 className="layout-header-title">My Libraries</h1>
             <p className="layout-header-subtitle">
               Personal archives, curated collections, and literary catalogs.
             </p>
@@ -55,10 +55,8 @@ export default function Dashboard() {
               <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/50">
                 <LibraryIcon className="w-10 h-10 text-on-surface-variant" />
               </div>
-              <h3 className="text-2xl font-serif font-bold mb-3 text-primary tracking-tight">
-                No Libraries Cataloged
-              </h3>
-              <p className="text-on-surface-variant text-base max-w-md mx-auto mb-8 leading-relaxed">
+              <h3 className="empty-state-title">No Libraries Cataloged</h3>
+              <p className="empty-state-description">
                 Create your first library collection to begin archiving volumes,
                 editions, and literary works.
               </p>

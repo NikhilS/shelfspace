@@ -2,11 +2,24 @@ import React, {useState, useMemo} from 'react';
 import {Book} from '../../types';
 import {Button} from '@/components/ui/button';
 import {Checkbox} from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {Play, LibraryBig} from 'lucide-react';
 import {MetadataKey} from '../../types/metadata';
 import {useBulkEnrichment} from '../../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../../components/BulkEnrichmentBanner';
-import {TableVirtuoso} from 'react-virtuoso';
+import {
+  DataTable,
+  DataTableColumn,
+  DataTableCheckboxHeader,
+  DataTableCheckboxCell,
+  StatusDotCell,
+} from '@/components/ui/data-table';
 
 interface ManualEnrichmentSectionProps {
   books: Book[];
@@ -102,6 +115,17 @@ export function ManualEnrichmentSection({
     filteredBooks.length > 0 &&
     filteredBooks.every(b => selectedBookIds.has(b.id));
 
+  const someFilteredSelected =
+    filteredBooks.length > 0 &&
+    filteredBooks.some(b => selectedBookIds.has(b.id)) &&
+    !allFilteredSelected;
+
+  const selectAllState = allFilteredSelected
+    ? true
+    : someFilteredSelected
+      ? 'indeterminate'
+      : false;
+
   const toggleSelectAll = () => {
     if (allFilteredSelected) {
       // Deselect all filtered
@@ -125,6 +149,60 @@ export function ManualEnrichmentSection({
 
   const selectedBooksCount = selectedBookIds.size;
   const showActionBar = selectedBooksCount > 0 && !isEnriching;
+
+  const columns: DataTableColumn<Book>[] = useMemo(
+    () => [
+      {
+        id: 'select',
+        width: 48,
+        headerClassName:
+          'w-12 px-4 py-3 bg-surface-container-low border-b border-outline-variant/30 text-center',
+        cellClassName: 'w-12 px-4 py-3 text-center',
+        header: () => (
+          <DataTableCheckboxHeader
+            checked={selectAllState}
+            onCheckedChange={toggleSelectAll}
+            ariaLabel="Select all books"
+          />
+        ),
+        cell: book => (
+          <DataTableCheckboxCell
+            checked={selectedBookIds.has(book.id)}
+            onCheckedChange={() => toggleSelect(book.id)}
+            ariaLabel={`Select ${book.title}`}
+          />
+        ),
+      },
+      {
+        id: 'book',
+        header: 'Book',
+        headerClassName:
+          'px-4 py-3 bg-surface-container-low border-b border-outline-variant/30 font-medium font-sans text-on-surface-variant',
+        cellClassName: 'px-4 py-3 min-w-[200px]',
+        cell: book => (
+          <div>
+            <div className="font-medium text-on-surface">{book.title}</div>
+            <div className="text-xs text-on-surface-variant">{book.author}</div>
+          </div>
+        ),
+      },
+      ...ALL_METADATA_KEYS.map(k => ({
+        id: k.id,
+        header: k.label,
+        align: 'center' as const,
+        headerClassName:
+          'px-4 py-3 border-b border-outline-variant/30 text-center whitespace-nowrap bg-surface-container-low font-medium font-sans text-on-surface-variant',
+        cellClassName: 'px-4 py-3 text-center',
+        cell: (book: Book) => (
+          <StatusDotCell
+            present={isMetadataPresent(book, k.id)}
+            title={isMetadataPresent(book, k.id) ? 'Present' : 'Missing'}
+          />
+        ),
+      })),
+    ],
+    [selectAllState, selectedBookIds, toggleSelectAll, toggleSelect],
+  );
 
   return (
     <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl overflow-hidden shadow-sm flex flex-col">
@@ -150,26 +228,29 @@ export function ManualEnrichmentSection({
             <span className="text-sm font-medium text-on-surface-variant mr-2">
               Show Missing:
             </span>
-            <select
+            <Select
               value={filterMissing}
-              onChange={e => {
-                const val = e.target.value as MetadataKey | 'all';
-                setFilterMissing(val);
-                // Clear selections when filter changes
+              onValueChange={val => {
+                const typedVal = val as MetadataKey | 'all';
+                setFilterMissing(typedVal);
                 setSelectedBookIds(new Set());
-                if (val !== 'all') {
-                  setTargetMetadata(val as MetadataKey);
+                if (typedVal !== 'all') {
+                  setTargetMetadata(typedVal as MetadataKey);
                 }
               }}
-              className="bg-surface text-sm border-outline-variant/50 rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary"
             >
-              <option value="all">Show All Books</option>
-              {ALL_METADATA_KEYS.map(k => (
-                <option key={k.id} value={k.id}>
-                  {k.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="bg-surface text-sm border-outline-variant/50 rounded-lg px-3 py-2 text-on-surface h-10 w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Show All Books</SelectItem>
+                {ALL_METADATA_KEYS.map(k => (
+                  <SelectItem key={k.id} value={k.id}>
+                    {k.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
@@ -191,17 +272,21 @@ export function ManualEnrichmentSection({
             <span className="text-sm text-on-surface-variant whitespace-nowrap hidden sm:inline">
               Enrich with:
             </span>
-            <select
+            <Select
               value={targetMetadata}
-              onChange={e => setTargetMetadata(e.target.value as MetadataKey)}
-              className="bg-surface text-sm border-outline/30 rounded-lg px-3 py-1.5 text-on-surface outline-none focus:border-primary flex-1 md:min-w-[140px]"
+              onValueChange={val => setTargetMetadata(val as MetadataKey)}
             >
-              {ALL_METADATA_KEYS.map(k => (
-                <option key={k.id} value={k.id}>
-                  {k.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="bg-surface text-sm border-outline/30 rounded-lg px-3 py-1.5 text-on-surface flex-1 md:min-w-[140px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ALL_METADATA_KEYS.map(k => (
+                  <SelectItem key={k.id} value={k.id}>
+                    {k.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center justify-between w-full md:w-auto md:ml-2">
             <label
@@ -244,140 +329,16 @@ export function ManualEnrichmentSection({
 
       {/* Table view */}
       <div className="overflow-x-auto min-h-[500px]">
-        {filteredBooks.length === 0 ? (
-          <table className="w-full text-left border-collapse text-sm">
-            <thead className="bg-surface-container-low text-on-surface-variant font-medium font-sans sticky top-0 z-10 shadow-sm">
-              <tr>
-                <th className="px-4 py-3 border-b border-outline-variant/30 w-12">
-                  <Checkbox
-                    checked={allFilteredSelected}
-                    onCheckedChange={toggleSelectAll}
-                  />
-                </th>
-                <th className="px-4 py-3 border-b border-outline-variant/30">
-                  Book
-                </th>
-                {ALL_METADATA_KEYS.map(k => (
-                  <th
-                    key={k.id}
-                    className="px-4 py-3 border-b border-outline-variant/30 text-center whitespace-nowrap"
-                  >
-                    {k.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-surface divide-y divide-outline-variant/20">
-              <tr>
-                <td
-                  colSpan={ALL_METADATA_KEYS.length + 2}
-                  className="px-6 py-12 text-center text-on-surface-variant"
-                >
-                  No books found matching this filter.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        ) : (
-          <TableVirtuoso
-            data={filteredBooks}
-            useWindowScroll
-            className="w-full text-left border-collapse text-sm"
-            components={{
-              Table: ({...props}) => (
-                <table
-                  {...props}
-                  className="w-full text-left border-collapse text-sm"
-                />
-              ),
-              TableHead: React.forwardRef<
-                HTMLTableSectionElement,
-                React.HTMLAttributes<HTMLTableSectionElement>
-              >((props, ref) => <thead {...props} ref={ref} />),
-              TableRow: ({item, ...props}) => {
-                void item;
-                const isSelected = selectedBookIds.has(item.id);
-                return (
-                  <tr
-                    {...props}
-                    className={`hover:bg-surface-container-lowest/50 transition-colors bg-surface ${isSelected ? 'bg-primary/5' : ''}`}
-                  />
-                );
-              },
-              TableBody: React.forwardRef<
-                HTMLTableSectionElement,
-                React.HTMLAttributes<HTMLTableSectionElement>
-              >((props, ref) => (
-                <tbody
-                  {...props}
-                  ref={ref}
-                  className="divide-y divide-outline-variant/20"
-                />
-              )),
-            }}
-            fixedHeaderContent={() => (
-              <tr className="bg-surface-container-low text-on-surface-variant font-medium font-sans shadow-sm">
-                <th className="px-4 py-3 border-b border-outline-variant/30 w-12 bg-surface-container-low">
-                  <Checkbox
-                    checked={allFilteredSelected}
-                    onCheckedChange={toggleSelectAll}
-                  />
-                </th>
-                <th className="px-4 py-3 border-b border-outline-variant/30 bg-surface-container-low">
-                  Book
-                </th>
-                {ALL_METADATA_KEYS.map(k => (
-                  <th
-                    key={k.id}
-                    className="px-4 py-3 border-b border-outline-variant/30 text-center whitespace-nowrap bg-surface-container-low"
-                  >
-                    {k.label}
-                  </th>
-                ))}
-              </tr>
-            )}
-            itemContent={(_index, book) => {
-              const isSelected = selectedBookIds.has(book.id);
-              return (
-                <>
-                  <td className="px-4 py-3">
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={() => toggleSelect(book.id)}
-                    />
-                  </td>
-                  <td className="px-4 py-3 min-w-[200px]">
-                    <div className="font-medium text-on-surface">
-                      {book.title}
-                    </div>
-                    <div className="text-xs text-on-surface-variant">
-                      {book.author}
-                    </div>
-                  </td>
-                  {ALL_METADATA_KEYS.map(keyDef => {
-                    const isPresent = isMetadataPresent(book, keyDef.id);
-
-                    return (
-                      <td key={keyDef.id} className="px-4 py-3 text-center">
-                        {isPresent ? (
-                          <span
-                            className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500/80"
-                            title="Present"
-                          />
-                        ) : (
-                          <span
-                            className="inline-block w-2.5 h-2.5 rounded-full bg-error/40"
-                            title="Missing"
-                          />
-                        )}
-                      </td>
-                    );
-                  })}
-                </>
-              );
-            }}
-          />
-        )}
+        <DataTable<Book>
+          data={filteredBooks}
+          columns={columns}
+          keyExtractor={b => b.id}
+          onRowClick={book => toggleSelect(book.id)}
+          rowClassName={item =>
+            `transition-colors bg-surface ${selectedBookIds.has(item.id) ? 'bg-primary/5' : 'hover:bg-surface-container-lowest/50'}`
+          }
+          emptyPlaceholder="No books found matching this filter."
+        />
       </div>
     </div>
   );

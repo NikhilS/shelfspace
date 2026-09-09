@@ -17,6 +17,8 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import {BookLoader} from '../components/BookLoader';
+import {Input} from '@/components/ui/input';
+import {Badge} from '@/components/ui/badge';
 import {Book} from '../types';
 import {motion, AnimatePresence} from 'motion/react';
 
@@ -242,7 +244,11 @@ export default function TimelineView() {
         {/* Dynamic header information block */}
         <div className="layout-header border-none flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
-            <BackToLibrary libraryId={libraryId} className="mb-2" />
+            <BackToLibrary
+              libraryId={libraryId}
+              label="Back to Library Overview"
+              className="mb-2"
+            />
             <h1 className="layout-header-title">
               Historical Temporal Timeline
             </h1>
@@ -256,7 +262,7 @@ export default function TimelineView() {
           {/* Presentation and Slider controls / Range presets */}
           <div className="flex items-center gap-2.5 flex-wrap">
             {/* Presets buttons */}
-            <div className="bg-surface-variant p-1 rounded-full flex border border-outline-variant text-[11px] font-semibold">
+            <div className="bg-surface-variant p-1 rounded-full flex border border-outline-variant font-label-caps-sm text-label-caps-sm font-semibold">
               {PRESETS.map(p => (
                 <button
                   key={p.id}
@@ -388,9 +394,11 @@ export default function TimelineView() {
                                   }
                                   className={`p-5 rounded-2xl border transition-all duration-300 text-left ${isSelected ? 'bg-surface-container-high border-primary/50 shadow-md ring-1 ring-primary/20' : 'bg-surface-container-low border-outline-variant/20 shadow-sm hover:border-primary/20 hover:bg-surface-container-high cursor-pointer'}`}
                                 >
-                                  <div className="flex items-center gap-1.5 text-xs font-mono font-medium text-primary uppercase tracking-wider mb-2">
-                                    <Calendar className="w-3.5 h-3.5" />
-                                    <span>{formatYear(cluster.key)}</span>
+                                  <div className="flex items-center gap-1.5 mb-2">
+                                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                                    <Badge variant="temporal">
+                                      {formatYear(cluster.key)}
+                                    </Badge>
                                   </div>
                                   <h3 className="font-serif font-semibold text-on-surface text-lg text-balance line-clamp-2">
                                     {cluster.label}
@@ -465,13 +473,13 @@ export default function TimelineView() {
                               </p>
                               {/* Search input for nonhistorical list */}
                               <div className="relative w-full sm:w-64">
-                                <Search className="w-3.5 h-3.5 text-on-surface-variant absolute left-3 top-2.5" />
-                                <input
+                                <Search className="w-3.5 h-3.5 text-on-surface-variant absolute left-3 top-2.5 z-10 pointer-events-none" />
+                                <Input
                                   type="text"
                                   placeholder="Search non-historical..."
                                   value={searchQuery}
                                   onChange={e => setSearchQuery(e.target.value)}
-                                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface-container rounded-lg border border-outline-variant/30 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface-container rounded-lg border-outline-variant/30 text-on-surface h-8"
                                 />
                               </div>
                             </div>
@@ -524,8 +532,10 @@ export default function TimelineView() {
                     <h3 className="font-serif font-semibold text-on-surface text-lg">
                       {selectedCluster.label}
                     </h3>
-                    <div className="text-xs font-mono font-medium text-primary mt-0.5">
-                      {formatYear(selectedCluster.key)} Epoch
+                    <div className="mt-1">
+                      <Badge variant="temporal">
+                        {formatYear(selectedCluster.key)} Epoch
+                      </Badge>
                     </div>
                   </div>
                   <button
@@ -569,26 +579,29 @@ export default function TimelineView() {
                             by {b.author || 'Unknown Author'}
                           </div>
                           {b.publishedDate && (
-                            <div className="text-[10px] font-mono font-medium text-on-surface-variant/70 mt-1">
-                              Published: {b.publishedDate}
+                            <div className="mt-1">
+                              <Badge variant="format" size="sm">
+                                Published: {b.publishedDate}
+                              </Badge>
                             </div>
                           )}
                         </div>
                       </div>
 
                       <div className="pt-2 border-t border-outline-variant/10 text-xs text-on-surface-variant">
-                        <div className="flex items-center gap-1 text-primary font-mono text-[10px] font-semibold uppercase tracking-wider mb-1">
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>
-                            Analysis (
+                        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                          <Sparkles className="w-3.5 h-3.5 text-primary shrink-0" />
+                          <span className="text-primary font-mono font-label-caps-xs text-label-caps-xs font-semibold uppercase tracking-wider">
+                            Analysis
+                          </span>
+                          <Badge variant="temporal" size="sm">
                             {b.temporalMetadata?.startYear !== undefined &&
                             b.temporalMetadata?.endYear !== undefined
-                              ? `${formatYear(b.temporalMetadata.startYear)} - ${formatYear(b.temporalMetadata.endYear)}`
+                              ? `${formatYear(b.temporalMetadata.startYear)} – ${formatYear(b.temporalMetadata.endYear)}`
                               : b.temporalMetadata?.startYear !== undefined
                                 ? `Circa ${formatYear(b.temporalMetadata.startYear)}`
                                 : 'Historical Epoch'}
-                            )
-                          </span>
+                          </Badge>
                         </div>
                         <p className="italic line-clamp-3">
                           &ldquo;{b.temporalMetadata?.rationale}&rdquo;

@@ -17,6 +17,15 @@ import {
   X,
 } from 'lucide-react';
 import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {Badge} from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {BookLoader} from '../components/BookLoader';
 import {Book} from '../types';
 import {APIProvider, Map, AdvancedMarker} from '@vis.gl/react-google-maps';
@@ -310,31 +319,37 @@ export default function WorldMap() {
         {/* Map filters and control panel */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-4">
           <div className="md:col-span-7 relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant w-4.5 h-4.5" />
-            <input
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant w-4.5 h-4.5 z-10 pointer-events-none" />
+            <Input
               type="text"
               placeholder="Search setting place, book title or writer name..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-surface-container border border-outline-variant rounded-xl pl-11 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
+              className="w-full bg-surface-container border border-outline-variant rounded-xl pl-11 pr-4 py-2.5 text-sm h-11 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
               id="map-places-search"
             />
           </div>
 
           <div className="md:col-span-5 flex gap-2">
-            <select
+            <Select
               value={selectedGenre}
-              onChange={e => setSelectedGenre(e.target.value)}
-              className="w-full bg-surface-container border border-outline-variant rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
-              id="map-genre-filter"
+              onValueChange={val => setSelectedGenre(val)}
             >
-              <option value="all">All Genres</option>
-              {genresList.map(g => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                id="map-genre-filter"
+                className="w-full bg-surface-container border border-outline-variant rounded-xl px-3.5 py-2.5 text-sm h-11 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Genres</SelectItem>
+                {genresList.map(g => (
+                  <SelectItem key={g} value={g}>
+                    {g}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -369,10 +384,10 @@ export default function WorldMap() {
                   {/* Equator & Meridians */}
                   <div className="absolute left-1/2 top-0 bottom-0 border-l border-zinc-950/30 border-dashed" />
                   <div className="absolute top-1/2 left-0 right-0 border-t border-zinc-950/30 border-dashed" />
-                  <span className="absolute left-4 top-[51%] text-[8px] font-mono font-medium text-stone-600 uppercase tracking-widest">
+                  <span className="absolute left-4 top-[51%] font-label-caps-xs text-label-caps-xs font-mono font-medium text-stone-600 uppercase tracking-widest">
                     Equator
                   </span>
-                  <span className="absolute left-[51%] top-4 text-[8px] font-mono font-medium text-stone-600 uppercase tracking-widest leading-none rotate-90 origin-top-left">
+                  <span className="absolute left-[51%] top-4 font-label-caps-xs text-label-caps-xs font-mono font-medium text-stone-600 uppercase tracking-widest leading-none rotate-90 origin-top-left">
                     Prime Meridian
                   </span>
                 </div>
@@ -410,7 +425,7 @@ export default function WorldMap() {
                     onClick={() => setShowApiSetupModal(true)}
                     variant="outline"
                     type="button"
-                    className="text-[10px] h-7 px-3 py-1 font-bold rounded-xl border-zinc-200 hover:bg-neutral-50 active:bg-neutral-100 uppercase tracking-widest text-zinc-800"
+                    className="font-label-caps-xs text-label-caps-xs h-7 px-3 py-1 font-bold rounded-xl border-zinc-200 hover:bg-neutral-50 active:bg-neutral-100 uppercase tracking-widest text-zinc-800"
                   >
                     Set Google Maps Key
                   </Button>
@@ -485,7 +500,7 @@ export default function WorldMap() {
                             />
 
                             {/* Custom hovering overlay metadata indicator */}
-                            <div className="pointer-events-none opacity-0 group-hover/pin:opacity-100 absolute bottom-6 bg-stone-900 text-white rounded-lg px-2.5 py-1.5 text-[10px] font-medium leading-none whitespace-nowrap shadow-xl z-30 transition border border-stone-800">
+                            <div className="pointer-events-none opacity-0 group-hover/pin:opacity-100 absolute bottom-6 bg-stone-900 text-white rounded-lg px-2.5 py-1.5 font-body-xs text-body-xs font-medium leading-none whitespace-nowrap shadow-xl z-30 transition border border-stone-800">
                               <span className="font-bold text-emerald-400">
                                 {pin.name}
                               </span>
@@ -501,7 +516,7 @@ export default function WorldMap() {
                 </div>
 
                 {/* Aesthetic footer map coordinate axes labels info */}
-                <div className="absolute bottom-3 left-4 right-4 flex justify-between text-[9px] font-mono font-medium text-stone-500 select-none uppercase tracking-widest">
+                <div className="absolute bottom-3 left-4 right-4 flex justify-between font-mono font-label-caps-xs text-label-caps-xs font-medium text-stone-500 select-none uppercase tracking-widest">
                   <span>Plotted Settings: {filteredPins.length}</span>
                   <span>Projection: Equirectangular 1.0</span>
                 </div>
@@ -519,7 +534,7 @@ export default function WorldMap() {
                             <h3 className="text-sm font-bold text-stone-900 leading-none">
                               Connect Google Maps API
                             </h3>
-                            <p className="text-[10px] text-stone-500 mt-1">
+                            <p className="font-body-xs text-body-xs text-stone-500 mt-1">
                               Unlock live map zoom & coordinates
                             </p>
                           </div>
@@ -565,7 +580,7 @@ export default function WorldMap() {
                             the field.
                           </p>
                         </div>
-                        <p className="text-[10px] text-stone-500 bg-amber-50/50 border border-amber-100 rounded-xl p-3">
+                        <p className="font-body-xs text-body-xs text-stone-500 bg-amber-50/50 border border-amber-100 rounded-xl p-3">
                           ⚠️ Note: Server tasks require the{' '}
                           <span className="font-semibold text-stone-700">
                             Geocoding API
@@ -762,7 +777,7 @@ export default function WorldMap() {
                               loading="lazy"
                             />
                           ) : (
-                            <div className="w-12 h-16 bg-neutral-100 text-neutral-400 rounded-lg flex items-center justify-center text-[10px] uppercase font-bold text-center border p-1 flex-shrink-0">
+                            <div className="w-12 h-16 bg-neutral-100 text-neutral-400 rounded-lg flex items-center justify-center font-label-caps-xs text-label-caps-xs uppercase font-bold text-center border p-1 flex-shrink-0">
                               No Cover
                             </div>
                           )}
@@ -773,9 +788,15 @@ export default function WorldMap() {
                             <p className="text-xs text-on-surface-variant truncate mt-0.5">
                               by {pin.book.author || 'Unknown'}
                             </p>
-                            <span className="inline-block mt-2 bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                              {pin.adminLevel}
-                            </span>
+                            <div className="mt-2">
+                              <Badge
+                                variant="status-read"
+                                size="sm"
+                                className="uppercase tracking-wider font-label-caps-xs text-label-caps-xs"
+                              >
+                                {pin.adminLevel}
+                              </Badge>
+                            </div>
                           </div>
                         </div>
                         {pin.rationale && (
@@ -853,9 +874,13 @@ export default function WorldMap() {
                               by {b.author || 'Unknown'}
                             </p>
                           </div>
-                          <span className="bg-stone-100 text-stone-600 border border-stone-200 text-[9px] font-semibold tracking-wide px-2 py-0.5 rounded-full whitespace-nowrap">
+                          <Badge
+                            variant="outline"
+                            size="sm"
+                            className="font-label-caps-xs text-label-caps-xs font-semibold tracking-wide whitespace-nowrap bg-stone-100 text-stone-600 border-stone-200"
+                          >
                             Fictional / Sci-Fi
-                          </span>
+                          </Badge>
                         </div>
                       ))}
                     </div>

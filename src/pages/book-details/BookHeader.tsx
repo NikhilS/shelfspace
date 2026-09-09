@@ -2,6 +2,7 @@ import React, {memo} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
+import {Badge} from '@/components/ui/badge';
 import {Edit2} from 'lucide-react';
 import {Book} from './useBook';
 
@@ -28,34 +29,35 @@ export const BookHeader = memo(
     return (
       <>
         <div>
-          <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="flex flex-wrap items-center gap-2 mb-4 swiper-no-swiping">
             {book.primaryGenre && (
-              <button
-                type="button"
+              <Badge
+                variant="genre"
                 onClick={() => handleGenreClick(book.primaryGenre!)}
-                disabled={!libraryId}
-                className="bg-tertiary-container/10 text-tertiary-container font-label-caps text-label-caps px-3 py-1 rounded-[0.125rem] hover:bg-tertiary-container/20 transition-colors cursor-pointer disabled:cursor-default"
+                className="cursor-pointer swiper-no-swiping uppercase"
                 title={`Filter library by ${book.primaryGenre}`}
               >
-                {book.primaryGenre.toUpperCase()}
-              </button>
+                {book.primaryGenre}
+              </Badge>
             )}
             {book.subgenres?.map((sg, idx) => (
-              <button
+              <Badge
                 key={idx}
-                type="button"
+                variant="subgenre"
                 onClick={() => handleGenreClick(book.primaryGenre || '', sg)}
-                disabled={!libraryId}
-                className="bg-secondary-container/10 text-secondary-container font-label-caps text-label-caps px-2.5 py-1 rounded-[0.125rem] hover:bg-secondary-container/20 transition-colors cursor-pointer disabled:cursor-default"
+                className="cursor-pointer swiper-no-swiping"
                 title={`Filter library by ${sg}`}
               >
                 {sg}
-              </button>
+              </Badge>
             ))}
             {book.series && book.series !== 'Standalone' && (
-              <span className="bg-secondary-container/10 text-secondary-container font-label-caps text-label-caps px-3 py-1 rounded-[0.125rem]">
-                {String(book.series).toUpperCase()}
-              </span>
+              <Badge
+                variant="secondary"
+                className="font-label-caps text-label-caps uppercase"
+              >
+                {String(book.series)}
+              </Badge>
             )}
           </div>
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">

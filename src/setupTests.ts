@@ -3,10 +3,18 @@ import '@testing-library/jest-dom';
 import {server} from './mocks/server';
 
 beforeAll(() => server.listen({onUnhandledRequest: 'bypass'}));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  document.body.removeAttribute('data-scroll-locked');
+  document.body.style.pointerEvents = 'auto';
+  server.resetHandlers();
+});
 afterAll(() => server.close());
 
 window.scrollTo = vi.fn();
+window.HTMLElement.prototype.scrollIntoView = vi.fn();
+window.HTMLElement.prototype.hasPointerCapture = vi.fn();
+window.HTMLElement.prototype.releasePointerCapture = vi.fn();
+window.HTMLElement.prototype.setPointerCapture = vi.fn();
 
 class MockIntersectionObserver {
   readonly root: Element | Document | null = null;

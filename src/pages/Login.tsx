@@ -26,7 +26,7 @@ export default function Login() {
           size="lg"
           className="mb-4 animate-in fade-in zoom-in-95 duration-500"
         />
-        <span className="font-sans text-[10px] font-bold tracking-[0.2em] text-on-surface-variant uppercase animate-pulse">
+        <span className="metadata-eyebrow text-on-surface-variant animate-pulse">
           Consulting Archives...
         </span>
       </div>
@@ -52,13 +52,13 @@ export default function Login() {
           <Button
             onClick={signIn}
             variant="ghost"
-            className="hidden sm:flex text-on-surface-variant hover:text-primary hover:bg-surface-container font-sans text-xs font-bold uppercase tracking-wider"
+            className="hidden sm:flex text-on-surface-variant hover:text-primary hover:bg-surface-container font-label-caps-sm text-label-caps-sm font-bold uppercase tracking-wider"
           >
             Sign-In
           </Button>
           <Button
             onClick={signIn}
-            className="bg-secondary hover:bg-secondary/90 text-on-secondary font-sans text-[10px] sm:text-xs font-bold uppercase tracking-wider px-4 sm:px-6 shadow-elevation-1 hover:shadow-elevation-2 transition-all rounded-full"
+            className="bg-secondary hover:bg-secondary/90 text-on-secondary font-label-caps-sm text-label-caps-sm font-bold uppercase tracking-wider px-4 sm:px-6 shadow-elevation-1 hover:shadow-elevation-2 transition-all rounded-full"
           >
             Get Started
             <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -77,7 +77,7 @@ export default function Login() {
           >
             <div className="inline-flex items-center gap-2 bg-secondary/10 border border-secondary/20 px-4 py-1.5 rounded-full mb-8">
               <Sparkles className="w-3.5 h-3.5 text-secondary" />
-              <span className="font-sans text-[10px] font-bold tracking-widest text-secondary uppercase">
+              <span className="metadata-eyebrow text-secondary">
                 Now featuring Gemini AI Insights
               </span>
             </div>
@@ -100,7 +100,7 @@ export default function Login() {
             <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto mt-12">
               <Button
                 onClick={signIn}
-                className="bg-secondary hover:bg-secondary/90 text-on-secondary h-14 px-10 rounded-full font-sans font-bold text-[11px] sm:text-sm uppercase tracking-wider flex items-center justify-center gap-3 shadow-elevation-2 hover:-translate-y-0.5 transition-all"
+                className="bg-secondary hover:bg-secondary/90 text-on-secondary h-14 px-10 rounded-full font-label-caps font-bold uppercase tracking-wider flex items-center justify-center gap-3 shadow-elevation-2 hover:-translate-y-0.5 transition-all"
               >
                 <Database className="w-5 h-5 text-on-secondary/80" />
                 Open Your Vault
@@ -113,7 +113,7 @@ export default function Login() {
         <section className="w-full bg-surface-container-low/30 py-24 border-y border-outline-variant/30">
           <div className="max-w-[1200px] mx-auto px-6 sm:px-12">
             <div className="text-center max-w-2xl mx-auto mb-16">
-              <span className="font-sans text-[10px] font-bold tracking-widest text-secondary uppercase block mb-3">
+              <span className="metadata-eyebrow text-secondary block mb-3">
                 Architectural Capabilities
               </span>
               <h2 className="font-serif text-3xl sm:text-4xl font-bold text-primary tracking-tight">
@@ -178,7 +178,7 @@ export default function Login() {
                     <div className="w-6 h-6 rounded-full bg-success/20 flex items-center justify-center border border-success/30">
                       <Check className="w-3.5 h-3.5 text-success" />
                     </div>
-                    <span className="font-sans text-[11px] uppercase tracking-wider text-primary font-bold">
+                    <span className="font-label-caps-sm text-label-caps-sm uppercase tracking-wider text-primary font-bold">
                       12 Covers Fixed
                     </span>
                   </div>
@@ -186,7 +186,7 @@ export default function Login() {
                     <div className="w-6 h-6 rounded-full bg-success/20 flex items-center justify-center border border-success/30">
                       <Check className="w-3.5 h-3.5 text-success" />
                     </div>
-                    <span className="font-sans text-[11px] uppercase tracking-wider text-primary font-bold">
+                    <span className="font-label-caps-sm text-label-caps-sm uppercase tracking-wider text-primary font-bold">
                       3 Duplicates Merged
                     </span>
                   </div>
@@ -267,7 +267,7 @@ export default function Login() {
             <div className="pt-12">
               <Button
                 onClick={signIn}
-                className="bg-secondary hover:bg-secondary/90 text-on-secondary font-sans text-[11px] sm:text-sm uppercase tracking-wider font-bold h-14 px-8 sm:px-10 rounded-full shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 transition-all mx-auto flex items-center gap-3"
+                className="bg-secondary hover:bg-secondary/90 text-on-secondary font-label-caps font-bold uppercase tracking-wider h-14 px-8 sm:px-10 rounded-full shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 transition-all mx-auto flex items-center gap-3"
               >
                 Sign In & Start Scanning
                 <ArrowRight className="w-4 h-4 ml-1" />
@@ -285,7 +285,7 @@ export default function Login() {
             <span className="font-serif text-lg font-bold text-primary">
               book(ish)
             </span>
-            <span className="text-[10px] text-on-surface-variant/60 ml-3 uppercase tracking-widest font-bold">
+            <span className="font-label-caps-xs text-label-caps-xs text-on-surface-variant/60 ml-3 uppercase tracking-widest font-bold">
               © {new Date().getFullYear()} Archive Systems
             </span>
           </div>

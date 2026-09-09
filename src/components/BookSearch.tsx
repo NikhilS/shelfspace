@@ -8,6 +8,7 @@ import {
 import {toast} from 'sonner';
 import {toTitleCase, isDuplicateBook, normalizeBookDetails} from '../lib/utils';
 import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
 
 interface BookSearchProps {
   existingBooks: BookDetails[];
@@ -89,12 +90,12 @@ export default function BookSearch({
   return (
     <div className="space-y-6">
       <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
-        <input
+        <Input
           type="text"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           placeholder="Search by title, author, or ISBN..."
-          className="flex-1 bg-surface-container/50 border border-outline-variant/60 rounded-full px-6 py-4 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium placeholder:text-on-surface-variant/60"
+          className="flex-1 bg-surface-container/50 border-outline-variant/60 rounded-full px-6 py-4 h-14 text-on-surface font-medium placeholder:text-on-surface-variant/60"
         />
         <Button
           type="submit"

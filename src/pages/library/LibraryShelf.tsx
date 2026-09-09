@@ -1,13 +1,19 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {useNavigate, useLocation} from 'react-router-dom';
 import {Book} from '../../types';
-import {TableVirtuoso, VirtuosoGrid} from 'react-virtuoso';
-import {ArrowUpDown, ArrowUp, ArrowDown, Book as BookIcon} from 'lucide-react';
+import {VirtuosoGrid} from 'react-virtuoso';
+import {Book as BookIcon} from 'lucide-react';
 import BookCard from '../../components/BookCard';
-import {toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {SortOption} from '../../hooks/useBookFilters';
 import {User} from 'firebase/auth';
-import {format} from 'date-fns';
+import {Checkbox} from '@/components/ui/checkbox';
+import {
+  DataTable,
+  DataTableColumn,
+  BookTitleCell,
+  BookAuthorCell,
+  BookDateCell,
+} from '@/components/ui/data-table';
 
 interface LibraryShelfProps {
   books: Book[];
@@ -41,254 +47,116 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
 
-  if (viewMode === 'table') {
-    const SortIcon = ({column}: {column: string}) => {
-      if (sortBy !== column)
-        return <ArrowUpDown size={14} className="opacity-30" />;
-      return sortOrder === 'asc' ? (
-        <ArrowUp size={14} className="text-accent" />
-      ) : (
-        <ArrowDown size={14} className="text-accent" />
-      );
-    };
+  const allBooksSelected =
+    books.length > 0 && books.every(b => selectedBooks.has(b.id));
+  const someBooksSelected =
+    books.length > 0 &&
+    books.some(b => selectedBooks.has(b.id)) &&
+    !allBooksSelected;
+  const shelfSelectAllState = allBooksSelected
+    ? true
+    : someBooksSelected
+      ? 'indeterminate'
+      : false;
 
+  const tableColumns: DataTableColumn<Book>[] = useMemo(
+    () => [
+      {
+        id: 'title',
+        header: () => (
+          <div className="flex items-center gap-4">
+            {user && (
+              <div
+                className={`w-8 flex items-center justify-center flex-shrink-0 transition-opacity ${selectedBooks.size > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                onClick={e => {
+                  e.stopPropagation();
+                  toggleAllBooks(books);
+                }}
+              >
+                <Checkbox
+                  checked={shelfSelectAllState}
+                  onCheckedChange={() => toggleAllBooks(books)}
+                  className="pointer-events-none w-4 h-4"
+                />
+              </div>
+            )}
+            <div className="flex items-center gap-2">Title</div>
+          </div>
+        ),
+        sortable: true,
+        headerClassName:
+          'py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-2/3 sm:w-1/2',
+        cellClassName: 'py-4 px-6',
+        cell: book => (
+          <BookTitleCell
+            title={book.title}
+            coverUrl={book.coverUrl}
+            userStatus={user ? book.userStatuses?.[user.uid] : undefined}
+            isSelected={selectedBooks.has(book.id)}
+            showCheckbox={Boolean(user)}
+            onToggleSelect={e => toggleBookSelection(e, book.id)}
+          />
+        ),
+      },
+      {
+        id: 'author',
+        header: 'Author',
+        sortable: true,
+        headerClassName:
+          'py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/3 sm:w-1/4',
+        cellClassName: 'py-4 px-6',
+        cell: book => <BookAuthorCell author={book.author} />,
+      },
+      {
+        id: 'added',
+        header: 'Added',
+        sortable: true,
+        align: 'right',
+        headerClassName:
+          'hidden sm:table-cell sm:w-1/4 py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right',
+        cellClassName: 'hidden sm:table-cell py-4 px-6 text-right',
+        cell: book => <BookDateCell date={book.addedAt || book.dateAdded} />,
+      },
+    ],
+    [
+      books,
+      user,
+      selectedBooks,
+      shelfSelectAllState,
+      toggleAllBooks,
+      toggleBookSelection,
+    ],
+  );
+
+  if (viewMode === 'table') {
     return (
       <div className="bg-surface-container-lowest rounded-xl border border-surface-variant overflow-hidden shadow-elevation-1">
         <div className="overflow-x-auto min-h-[500px]">
-          {books.length === 0 ? (
-            <table className="w-full table-fixed text-left border-collapse">
-              <thead>
-                <tr className="bg-surface-container-low border-b border-surface-variant shadow-sm h-14">
-                  <th
-                    className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-2/3 sm:w-1/2 cursor-pointer hover:bg-surface-variant/30 transition-colors"
-                    onClick={() => handleSort('title' as SortOption)}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        Title <SortIcon column="title" />
-                      </div>
-                    </div>
-                  </th>
-                  <th
-                    className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/3 sm:w-1/4 cursor-pointer hover:bg-surface-variant/30 transition-colors"
-                    onClick={() => handleSort('author' as SortOption)}
-                  >
-                    <div className="flex items-center gap-2">
-                      Author <SortIcon column="author" />
-                    </div>
-                  </th>
-                  <th
-                    className="hidden sm:table-cell sm:w-1/4 py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right cursor-pointer hover:bg-surface-variant/30 transition-colors"
-                    onClick={() => handleSort('added' as SortOption)}
-                  >
-                    <div className="flex items-center gap-2 justify-end">
-                      Added <SortIcon column="added" />
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="px-6 py-8 text-center text-on-surface-variant italic font-body-md text-sm"
-                  >
-                    {emptyMessage}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          ) : (
-            <TableVirtuoso
-              data={books}
-              useWindowScroll
-              className="w-full text-left border-collapse"
-              components={{
-                Table: ({...props}) => (
-                  <table
-                    {...props}
-                    className="w-full table-fixed text-left border-collapse"
-                  />
-                ),
-                TableHead: React.forwardRef<
-                  HTMLTableSectionElement,
-                  React.HTMLAttributes<HTMLTableSectionElement>
-                >((props, ref) => <thead {...props} ref={ref} />),
-                TableRow: ({item, ...props}) => {
-                  void item;
-                  return (
-                    <tr
-                      {...props}
-                      className="group hover:bg-surface-container-low/50 transition-colors cursor-pointer border-b border-surface-variant/60"
-                    />
-                  );
+          <DataTable<Book>
+            data={books}
+            columns={tableColumns}
+            keyExtractor={b => b.id}
+            sortColumn={sortBy}
+            sortDirection={sortOrder}
+            onSort={colId => handleSort(colId as SortOption)}
+            onRowClick={book =>
+              navigate(`/library/${libraryId}/book/${book.id}`, {
+                state: {
+                  from: location.pathname + location.search,
+                  bookList: books.map(b => b.id),
                 },
-                TableBody: React.forwardRef<
-                  HTMLTableSectionElement,
-                  React.HTMLAttributes<HTMLTableSectionElement>
-                >((props, ref) => <tbody {...props} ref={ref} />),
-              }}
-              fixedHeaderContent={() => (
-                <tr className="bg-surface-container-low border-b border-surface-variant shadow-sm h-14">
-                  <th
-                    className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-2/3 sm:w-1/2 cursor-pointer hover:bg-surface-variant/30 transition-colors bg-surface-container-low"
-                    onClick={() => handleSort('title' as SortOption)}
-                  >
-                    <div className="flex items-center gap-4">
-                      {user && (
-                        <div
-                          className={`w-8 flex items-center justify-center flex-shrink-0 transition-opacity ${selectedBooks.size > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                          onClick={e => {
-                            e.stopPropagation();
-                            toggleAllBooks(books);
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={
-                              selectedBooks.size > 0 &&
-                              books.length > 0 &&
-                              books.every(b => selectedBooks.has(b.id))
-                            }
-                            ref={el => {
-                              if (el)
-                                el.indeterminate =
-                                  selectedBooks.size > 0 &&
-                                  !books.every(b => selectedBooks.has(b.id));
-                            }}
-                            onChange={() => {}}
-                            className="pointer-events-none w-4 h-4 accent-primary"
-                          />
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        Title <SortIcon column="title" />
-                      </div>
-                    </div>
-                  </th>
-                  <th
-                    className="py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/3 sm:w-1/4 cursor-pointer hover:bg-surface-variant/30 transition-colors bg-surface-container-low"
-                    onClick={() => handleSort('author' as SortOption)}
-                  >
-                    <div className="flex items-center gap-2">
-                      Author <SortIcon column="author" />
-                    </div>
-                  </th>
-                  <th
-                    className="hidden sm:table-cell sm:w-1/4 py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right cursor-pointer hover:bg-surface-variant/30 transition-colors bg-surface-container-low"
-                    onClick={() => handleSort('added' as SortOption)}
-                  >
-                    <div className="flex items-center gap-2 justify-end">
-                      Added <SortIcon column="added" />
-                    </div>
-                  </th>
-                </tr>
-              )}
-              itemContent={(_index, book) => {
-                const hash = (book.title || '')
-                  .split('')
-                  .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                const gradients = [
-                  'from-on-tertiary-fixed-variant to-tertiary-container',
-                  'from-secondary to-on-secondary-fixed',
-                  'from-primary to-on-primary-fixed',
-                  'from-on-primary-container to-surface-tint',
-                  'from-surface-container-highest to-surface-dim',
-                ];
-                const gradientClass = gradients[hash % gradients.length];
-
-                return (
-                  <>
-                    <td
-                      className="py-4 px-6"
-                      onClick={() =>
-                        navigate(`/library/${libraryId}/book/${book.id}`, {
-                          state: {
-                            from: location.pathname + location.search,
-                            bookList: books.map(b => b.id),
-                          },
-                        })
-                      }
-                    >
-                      <div className="flex items-center gap-4 group/cover">
-                        <div
-                          className="h-12 w-8 flex-shrink-0 relative overflow-hidden rounded-sm cursor-pointer"
-                          onClick={e => {
-                            e.stopPropagation();
-                            toggleBookSelection(e, book.id);
-                          }}
-                        >
-                          {user && (
-                            <div
-                              className={`absolute inset-0 z-20 flex items-center justify-center transition-all ${selectedBooks.size > 0 || selectedBooks.has(book.id) ? 'opacity-100 bg-transparent' : 'opacity-0 group-hover/cover:opacity-100 hover:bg-surface-variant/30'}`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedBooks.has(book.id)}
-                                onChange={() => {}}
-                                className="pointer-events-none w-4 h-4 accent-primary"
-                              />
-                            </div>
-                          )}
-                          <div
-                            className={`absolute inset-0 bg-surface-variant shadow-sm border border-outline-variant/30 transition-opacity ${user && (selectedBooks.size > 0 || selectedBooks.has(book.id)) ? 'opacity-0' : 'opacity-100 group-hover/cover:opacity-0'}`}
-                          >
-                            {book.coverUrl ? (
-                              <img
-                                src={book.coverUrl}
-                                alt={book.title}
-                                className="w-full h-full object-cover"
-                                referrerPolicy="no-referrer"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div
-                                className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-80`}
-                              />
-                            )}
-                          </div>
-                        </div>
-                        <span className="font-serif text-lg sm:text-xl font-medium text-on-surface line-clamp-2 max-w-lg leading-snug">
-                          {toTitleCase(book.title)}
-                        </span>
-                      </div>
-                    </td>
-                    <td
-                      className="py-4 px-6 font-body-md text-body-md text-on-surface-variant"
-                      onClick={() =>
-                        navigate(`/library/${libraryId}/book/${book.id}`, {
-                          state: {
-                            from: location.pathname + location.search,
-                            bookList: books.map(b => b.id),
-                          },
-                        })
-                      }
-                    >
-                      {toTitleCase(book.author)}
-                    </td>
-                    <td
-                      className="hidden sm:table-cell py-4 px-6 text-right font-body-md text-outline whitespace-nowrap"
-                      onClick={() =>
-                        navigate(`/library/${libraryId}/book/${book.id}`, {
-                          state: {
-                            from: location.pathname + location.search,
-                            bookList: books.map(b => b.id),
-                          },
-                        })
-                      }
-                    >
-                      {book.addedAt && getFirestoreTime(book.addedAt) > 0
-                        ? format(
-                            new Date(getFirestoreTime(book.addedAt)),
-                            'MMM d, yyyy',
-                          )
-                        : 'Unknown'}
-                    </td>
-                  </>
-                );
-              }}
-            />
-          )}
+              })
+            }
+            rowClassName={() =>
+              'group hover:bg-surface-container-low/50 transition-colors cursor-pointer border-b border-surface-variant/60'
+            }
+            headerRowClassName="bg-surface-container-low border-b border-surface-variant shadow-sm h-14"
+            emptyPlaceholder={
+              <div className="px-6 py-8 text-center text-on-surface-variant italic font-body-md text-sm">
+                {emptyMessage}
+              </div>
+            }
+          />
         </div>
       </div>
     );

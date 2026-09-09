@@ -9,7 +9,7 @@ export interface SanitizeStorageResult {
   purgedFieldsCount: number;
 }
 
-export const LEAKED_FIELDS = [
+const LEAKED_FIELDS = [
   'synopsis',
   'authorBio',
   'embedding',

@@ -2,6 +2,7 @@ import React from 'react';
 import {EyeOff, Loader2, Trash2, Layers} from 'lucide-react';
 import {Book} from '../../types';
 import {Button} from '@/components/ui/button';
+import {Badge} from '@/components/ui/badge';
 import {formatFirestoreDate} from '../../lib/date';
 
 interface DuplicateSectionProps {
@@ -51,7 +52,7 @@ export function DuplicateSection({
                     Group {idx + 1}: {group[0].title}
                   </span>
                   <span
-                    className="font-sans text-[10px] uppercase font-bold tracking-widest text-secondary block mb-1"
+                    className="metadata-eyebrow text-secondary block mb-1"
                     aria-hidden="true"
                   >
                     Group {idx + 1} • Duplicate Check
@@ -89,24 +90,24 @@ export function DuplicateSection({
                       </p>
 
                       <div className="flex items-center gap-2 mb-3">
-                        <span className="inline-flex px-2 py-0.5 rounded-sm text-[9px] font-bold bg-surface-container-high text-secondary uppercase tracking-widest border border-outline-variant/20">
+                        <Badge variant="format" size="sm">
                           {b.format || 'Physical'}
-                        </span>
+                        </Badge>
                       </div>
 
                       {b.isbn && (
-                        <p className="text-[11px] font-mono text-on-surface-variant font-medium mt-1 bg-surface-container/50 px-2 py-1 rounded">
+                        <p className="font-body-xs text-body-xs font-mono text-on-surface-variant font-medium mt-1 bg-surface-container/50 px-2 py-1 rounded">
                           ISBN: {b.isbn}
                         </p>
                       )}
 
                       {b.addedAt && (
-                        <p className="text-[11px] font-mono text-on-surface-variant font-medium mt-1 bg-surface-container/50 px-2 py-1 rounded">
+                        <p className="font-body-xs text-body-xs font-mono text-on-surface-variant font-medium mt-1 bg-surface-container/50 px-2 py-1 rounded">
                           Added: {formatAddedAt(b.addedAt)}
                         </p>
                       )}
 
-                      <div className="text-[11px] text-on-surface-variant/80 mt-3 font-sans space-y-1">
+                      <div className="font-body-xs text-body-xs text-on-surface-variant/80 mt-3 font-sans space-y-1">
                         <div className="flex justify-between">
                           <span>Cover Art:</span>
                           <span

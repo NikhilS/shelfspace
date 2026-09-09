@@ -22,7 +22,7 @@ export const AiInsightsPanel = memo(
 
     return (
       <section className="mt-8">
-        <div className="flex flex-wrap gap-2 mb-6">
+        <div className="flex flex-wrap gap-2 mb-6 swiper-no-swiping">
           <Button
             variant={activeInsight === 'catchup' ? 'default' : 'outline'}
             onClick={() => handleGenerateInsight('catchup')}

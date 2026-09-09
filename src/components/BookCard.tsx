@@ -3,6 +3,8 @@ import {BookDetails} from '../services/bookApi';
 import {Book as BookIcon} from 'lucide-react';
 import {toTitleCase} from '../lib/utils';
 import {FirestoreDate} from '../types';
+import {Badge} from '@/components/ui/badge';
+import {Button} from '@/components/ui/button';
 
 interface BookCardProps {
   key?: React.Key;
@@ -35,10 +37,12 @@ export default function BookCard({
         className={`relative aspect-[2/3] mb-4 bg-surface-container rounded-lg shadow-elevation-2 overflow-hidden transform transition-transform duration-300 group-hover:-translate-y-1 ${isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
       >
         {onSelect && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             aria-label={isSelected ? 'Deselect book' : 'Select book'}
-            className={`absolute top-1 left-1 z-20 w-11 h-11 flex items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary transition-opacity ${
+            className={`absolute top-1 left-1 z-20 min-w-[44px] min-h-[44px] w-11 h-11 p-0 flex items-center justify-center rounded-lg hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary transition-opacity ${
               isSelected || isSelectMode
                 ? 'opacity-100'
                 : 'opacity-0 group-hover:opacity-100'
@@ -61,13 +65,17 @@ export default function BookCard({
                 </span>
               )}
             </div>
-          </button>
+          </Button>
         )}
         {book.primaryGenre && (
           <div className="absolute top-2 right-2 z-10 pointer-events-none">
-            <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-surface/90 text-primary backdrop-blur-xs shadow-xs tracking-wider line-clamp-1 max-w-[120px]">
+            <Badge
+              variant="genre"
+              size="sm"
+              className="bg-surface/90 text-primary backdrop-blur-xs shadow-xs tracking-wider line-clamp-1 max-w-[120px] uppercase font-semibold border-none"
+            >
               {book.primaryGenre}
-            </span>
+            </Badge>
           </div>
         )}
         {book.coverUrl ? (
@@ -111,12 +119,14 @@ export default function BookCard({
         {book.subgenres && book.subgenres.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
             {book.subgenres.slice(0, 2).map((sg, idx) => (
-              <span
+              <Badge
                 key={idx}
-                className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant/80 border border-outline-variant/30 leading-none truncate max-w-[120px]"
+                variant="subgenre"
+                size="sm"
+                className="leading-none truncate max-w-[120px]"
               >
                 {sg}
-              </span>
+              </Badge>
             ))}
           </div>
         )}

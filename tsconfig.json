@@ -24,10 +24,6 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
-    "components/**/*.ts",
-    "components/**/*.tsx",
-    "lib/**/*.ts",
-    "lib/**/*.tsx",
     "*.ts",
     "*.tsx",
     "firebase-applet-config.json"

@@ -3,6 +3,7 @@ import {Camera, UploadCloud, Loader2, Sparkles} from 'lucide-react';
 import {toast} from 'sonner';
 import {logger} from '../stores/debugStore';
 import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
 import {trpc} from '../lib/trpc';
 
 interface CameraScannerProps {
@@ -249,7 +250,7 @@ export default function CameraScanner({
           >
             <Camera size={18} strokeWidth={2} /> Capture Shelf
           </Button>
-          <input
+          <Input
             type="file"
             accept="image/*"
             className="hidden"
@@ -267,7 +268,7 @@ export default function CameraScanner({
         <div className="absolute inset-0 flex flex-col items-center justify-center text-surface/60 font-medium">
           <Camera size={48} strokeWidth={1.5} className="mb-4 opacity-40" />
           Camera inactive
-          <input
+          <Input
             type="file"
             accept="image/*"
             className="hidden"

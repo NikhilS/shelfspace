@@ -13,8 +13,6 @@ export interface ContextUser {
   apiKeyId?: string;
 }
 
-export {SUPERADMIN_EMAIL};
-
 interface CachedUserPerms {
   perms: {isAppAllowed: boolean; isAdmin: boolean};
   expiresAt: number;
@@ -22,7 +20,7 @@ interface CachedUserPerms {
 const userPermsCache = new Map<string, CachedUserPerms>();
 const PERMS_CACHE_TTL_MS = 1000 * 60 * 3; // 3 minutes
 
-export async function checkUserPermissions(
+async function checkUserPermissions(
   email: string,
 ): Promise<{isAppAllowed: boolean; isAdmin: boolean}> {
   const normalizedEmail = email.toLowerCase().trim();
@@ -134,7 +132,6 @@ export type Context = Awaited<ReturnType<typeof createContext>>;
 const t = initTRPC.context<Context>().create();
 
 export const router = t.router;
-export const publicProcedure = t.procedure;
 
 export const protectedProcedure = t.procedure.use(({ctx, next}) => {
   if (!ctx.user) {
@@ -142,13 +139,6 @@ export const protectedProcedure = t.procedure.use(({ctx, next}) => {
   }
   if (!ctx.isAppAllowed) {
     throw new TRPCError({code: 'FORBIDDEN', message: 'User not on allowlist'});
-  }
-  return next({ctx: {user: ctx.user}});
-});
-
-export const adminProcedure = protectedProcedure.use(({ctx, next}) => {
-  if (!ctx.isAdmin) {
-    throw new TRPCError({code: 'FORBIDDEN', message: 'Admin access required'});
   }
   return next({ctx: {user: ctx.user}});
 });

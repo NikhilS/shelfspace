@@ -13,6 +13,8 @@ import {
 } from 'firebase/firestore';
 import {Shield, X, PlusCircle, AlertTriangle} from 'lucide-react';
 import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {Badge} from '@/components/ui/badge';
 import {toast} from 'sonner';
 import {ApiKeyManagement} from '../components/ApiKeyManagement';
 import {BackToLibrary} from '../components/BackToLibrary';
@@ -136,10 +138,10 @@ export default function AdminDashboard() {
             <Shield size={32} />
           </div>
           <div>
-            <h1 className="text-4xl font-serif text-primary">
+            <h1 className="layout-header-title mb-1 sm:mb-2">
               Admin Dashboard
             </h1>
-            <p className="text-on-surface-variant mt-2 text-lg">
+            <p className="layout-header-subtitle">
               Manage the global allowlist. Only users listed below can sign in.
             </p>
           </div>
@@ -148,20 +150,18 @@ export default function AdminDashboard() {
         <div className="bg-surface-container-lowest rounded-2xl p-8 border border-outline-variant/30 architectural-shadow relative overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between mb-8 pb-6 border-b border-outline-variant/30">
-            <h2 className="text-xl font-medium text-on-surface">
-              Authorized Users
-            </h2>
+            <h2 className="section-heading">Authorized Users</h2>
           </div>
 
           {/* Add User Form */}
           <form onSubmit={handleAddUser} className="flex gap-4 mb-10">
             <div className="flex-1 relative">
-              <input
+              <Input
                 type="email"
                 value={newEmail}
                 onChange={e => setNewEmail(e.target.value)}
                 placeholder="developer@example.com"
-                className="w-full bg-surface border border-outline-variant/50 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
+                className="w-full bg-surface border-outline-variant/50 rounded-xl px-4 py-3 text-on-surface h-11"
                 required
               />
             </div>
@@ -204,9 +204,13 @@ export default function AdminDashboard() {
                           {u.email}
                         </span>
                         {u.role === 'admin' && (
-                          <span className="text-xs text-primary font-medium bg-primary/10 w-fit px-2 py-0.5 rounded-full mt-1">
+                          <Badge
+                            variant="default"
+                            size="sm"
+                            className="bg-primary/10 text-primary border-primary/20 w-fit mt-1 font-label-caps-sm text-label-caps-sm"
+                          >
                             System Administrator
-                          </span>
+                          </Badge>
                         )}
                       </div>
                     </div>

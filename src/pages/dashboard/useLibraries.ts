@@ -18,7 +18,11 @@ import {
 import {Library} from '../../types';
 import {toast} from 'sonner';
 import {trpc} from '../../lib/trpc';
-import {DebugTelemetryEngine, calculatePayloadBytes} from '../../lib/telemetry';
+import {
+  DebugTelemetryEngine,
+  calculatePayloadBytes,
+  instrumentMutation,
+} from '../../lib/telemetry';
 
 export function useLibraries() {
   const {user} = useAuth();
@@ -126,7 +130,7 @@ export function useLibraries() {
     setIsSubmitting(true);
 
     try {
-      const docRef = await addDoc(collection(db, 'libraries'), {
+      const libPayload = {
         name: trimmedName,
         ownerId: user.uid,
         ownerName: user.displayName || user.email || 'Unknown',
@@ -136,7 +140,14 @@ export function useLibraries() {
         createdAt: serverTimestamp(),
         heroImageUrl: null,
         bookCount: 0,
-      });
+      };
+
+      const docRef = await instrumentMutation(
+        'create',
+        'libraries',
+        libPayload,
+        () => addDoc(collection(db, 'libraries'), libPayload),
+      );
 
       toast.success('Library created successfully');
 
@@ -148,9 +159,15 @@ export function useLibraries() {
             try {
               const storagePath = `libraries/${docRef.id}/hero.png`;
               const storageUrl = await uploadBase64Image(url, storagePath);
-              await updateDoc(doc(db, 'libraries', docRef.id), {
-                heroImageUrl: storageUrl,
-              });
+              await instrumentMutation(
+                'update',
+                `libraries/${docRef.id}`,
+                {heroImageUrl: storageUrl},
+                () =>
+                  updateDoc(doc(db, 'libraries', docRef.id), {
+                    heroImageUrl: storageUrl,
+                  }),
+              );
             } catch (e) {
               console.error('Failed to save hero image', e);
             }

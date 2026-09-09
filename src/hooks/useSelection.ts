@@ -3,6 +3,7 @@ import {db, handleFirestoreError, OperationType} from '../firebase';
 import {Book} from '../types';
 import {toast} from 'sonner';
 import {useUIStore} from '../stores/uiStore';
+import {instrumentMutation} from '../lib/telemetry';
 
 export function useSelection(
   libraryId: string | undefined,
@@ -28,18 +29,25 @@ export function useSelection(
   const handleBulkStatusChange = async (newStatus: string) => {
     if (selectedBooks.size === 0 || !userId || !libraryId) return;
     try {
-      const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
-      const writer = new ClientBulkWriter(db);
-
       const booksArray = Array.from(selectedBooks);
-      booksArray.forEach(bookId => {
-        const bookRef = doc(db, 'libraries', libraryId, 'books', bookId);
-        writer.update(bookRef, {
-          [`userStatuses.${userId}`]: newStatus,
-        });
-      });
+      await instrumentMutation(
+        'update',
+        `libraries/${libraryId}/books(bulk-status)`,
+        {count: booksArray.length, status: newStatus},
+        async () => {
+          const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
+          const writer = new ClientBulkWriter(db);
 
-      await writer.close();
+          booksArray.forEach(bookId => {
+            const bookRef = doc(db, 'libraries', libraryId, 'books', bookId);
+            writer.update(bookRef, {
+              [`userStatuses.${userId}`]: newStatus,
+            });
+          });
+
+          await writer.close();
+        },
+      );
       toast.success(`Updated status for ${selectedBooks.size} books`);
       clearSelection();
     } catch (error) {
@@ -54,15 +62,22 @@ export function useSelection(
   const handleBulkDelete = async () => {
     if (selectedBooks.size === 0 || !libraryId) return;
     try {
-      const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
-      const writer = new ClientBulkWriter(db);
-
       const count = selectedBooks.size;
-      selectedBooks.forEach(bookId => {
-        writer.deleteBook(libraryId, bookId);
-      });
+      await instrumentMutation(
+        'delete',
+        `libraries/${libraryId}/books(bulk-delete)`,
+        {count},
+        async () => {
+          const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
+          const writer = new ClientBulkWriter(db);
 
-      await writer.close();
+          selectedBooks.forEach(bookId => {
+            writer.deleteBook(libraryId, bookId);
+          });
+
+          await writer.close();
+        },
+      );
       toast.success(`Deleted ${count} books`);
       clearSelection();
     } catch (error) {

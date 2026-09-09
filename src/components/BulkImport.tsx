@@ -3,6 +3,7 @@ import {UploadCloud, Loader2, FileText} from 'lucide-react';
 import {toast} from 'sonner';
 import {logger} from '../stores/debugStore';
 import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
 import {trpc} from '../lib/trpc';
 
 import {
@@ -122,7 +123,7 @@ export default function BulkImport({
         </Select>
       </div>
 
-      <input
+      <Input
         type="file"
         accept=".csv"
         className="hidden"

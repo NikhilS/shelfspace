@@ -8,7 +8,7 @@ import {EmbeddingMetadataProvider} from './providers/EmbeddingMetadataProvider';
 import {CoverImageMetadataProvider} from './providers/CoverImageMetadataProvider';
 
 // Initialize the registry
-export const registry = MetadataRegistry.getInstance();
+const registry = MetadataRegistry.getInstance();
 
 registry.register(new SynopsisMetadataProvider());
 registry.register(new AuthorBioMetadataProvider());

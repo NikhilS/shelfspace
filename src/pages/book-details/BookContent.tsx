@@ -5,6 +5,7 @@ import {useAuth} from '../../stores/authStore';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {toTitleCase} from '../../lib/utils';
+import {Badge} from '@/components/ui/badge';
 import {
   Loader2,
   Book as BookIcon,
@@ -59,7 +60,7 @@ export function BookContent({
     updateBook,
     updateBookOptimistically,
     setReviewsOptimistically,
-  } = useBook(libraryId, bookId, passedCanEdit);
+  } = useBook(libraryId, bookId, passedCanEdit, isActive);
 
   const [isEditingDetails, setIsEditingDetails] = useState(false);
 
@@ -161,20 +162,22 @@ export function BookContent({
             {/* Status Badge */}
             {book.userStatuses?.[user?.uid || ''] &&
               book.userStatuses?.[user?.uid || ''] !== 'unset' && (
-                <div
-                  className={`absolute top-4 right-4 font-label-caps text-label-caps px-3 py-1 rounded shadow-sm ${
-                    book.userStatuses[user?.uid || ''] === 'reading'
-                      ? 'bg-primary text-on-primary'
+                <div className="absolute top-4 right-4 shadow-sm swiper-no-swiping">
+                  <Badge
+                    variant={
+                      book.userStatuses[user?.uid || ''] === 'reading'
+                        ? 'status-reading'
+                        : book.userStatuses[user?.uid || ''] === 'finished'
+                          ? 'status-read'
+                          : 'status-abandoned'
+                    }
+                  >
+                    {book.userStatuses[user?.uid || ''] === 'reading'
+                      ? 'READING'
                       : book.userStatuses[user?.uid || ''] === 'finished'
-                        ? 'bg-on-tertiary-fixed-variant text-white'
-                        : 'bg-error text-on-error'
-                  }`}
-                >
-                  {book.userStatuses[user?.uid || ''] === 'reading'
-                    ? 'READING'
-                    : book.userStatuses[user?.uid || ''] === 'finished'
-                      ? 'FINISHED'
-                      : 'ABANDONED'}
+                        ? 'FINISHED'
+                        : 'ABANDONED'}
+                  </Badge>
                 </div>
               )}
           </div>
@@ -220,38 +223,38 @@ export function BookContent({
 
             {(book.primaryGenre ||
               (book.subgenres && book.subgenres.length > 0)) && (
-              <div className="mt-8 pt-4 border-t border-surface-variant flex items-center flex-wrap gap-2">
+              <div className="mt-8 pt-4 border-t border-surface-variant flex items-center flex-wrap gap-2 swiper-no-swiping">
                 <span className="font-label-caps text-label-caps text-on-surface-variant mr-2">
                   Genre & Subgenres:
                 </span>
                 {book.primaryGenre && (
-                  <button
-                    type="button"
+                  <Badge
+                    variant="genre"
                     onClick={() =>
                       void navigate(
                         `/library/${libraryId}/collection?genre=${encodeURIComponent(book.primaryGenre!)}`,
                       )
                     }
-                    className="font-label-caps text-label-caps text-primary px-2.5 py-1 border border-primary/30 rounded-md bg-primary/10 font-semibold hover:bg-primary/20 transition-colors cursor-pointer"
+                    className="cursor-pointer swiper-no-swiping"
                     title={`Filter library by ${book.primaryGenre}`}
                   >
                     {book.primaryGenre}
-                  </button>
+                  </Badge>
                 )}
                 {book.subgenres?.map((sg, idx) => (
-                  <button
+                  <Badge
                     key={idx}
-                    type="button"
+                    variant="subgenre"
                     onClick={() =>
                       void navigate(
                         `/library/${libraryId}/collection?genre=${encodeURIComponent(book.primaryGenre || '')}&subgenre=${encodeURIComponent(sg)}`,
                       )
                     }
-                    className="font-label-caps text-label-caps text-on-surface-variant px-2 py-0.5 border border-outline-variant/30 rounded-sm bg-surface-variant/30 hover:bg-surface-variant/70 hover:text-primary transition-colors cursor-pointer"
+                    className="cursor-pointer swiper-no-swiping"
                     title={`Filter library by ${sg}`}
                   >
                     {sg}
-                  </button>
+                  </Badge>
                 ))}
               </div>
             )}
@@ -310,13 +313,15 @@ export function BookContent({
                                   <MapPin className="w-5 h-5 text-primary shrink-0" />
                                   {loc.name}
                                 </span>
-                                <span
-                                  className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-sm border shrink-0 ${getAdminLevelBadgeClass(
+                                <Badge
+                                  variant="outline"
+                                  size="sm"
+                                  className={`font-bold tracking-wider uppercase shrink-0 ${getAdminLevelBadgeClass(
                                     loc.adminLevel,
                                   )}`}
                                 >
                                   {loc.adminLevel}
-                                </span>
+                                </Badge>
                               </div>
                               {loc.rationale && (
                                 <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed">
@@ -383,21 +388,21 @@ export function BookContent({
                             {book.temporalMetadata.eraName}
                           </h4>
                         )}
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-mono font-bold tracking-wider uppercase text-primary bg-primary/10 border border-primary/20 px-2.5 py-0.5 rounded">
+                        <div className="flex items-center gap-2 swiper-no-swiping">
+                          <Badge variant="temporal">
                             {book.temporalMetadata.startYear !== undefined &&
                             book.temporalMetadata.endYear !== undefined
                               ? `${formatYear(book.temporalMetadata.startYear)} – ${formatYear(book.temporalMetadata.endYear)}`
                               : book.temporalMetadata.startYear !== undefined
                                 ? `Circa ${formatYear(book.temporalMetadata.startYear)}`
                                 : 'Historical Epoch'}
-                          </span>
+                          </Badge>
                         </div>
                       </div>
                     </div>
                     {book.temporalMetadata.rationale && (
                       <div className="mt-4 pt-4 border-t border-outline-variant/20">
-                        <h5 className="text-[11px] font-bold tracking-wider uppercase text-on-surface-variant mb-2">
+                        <h5 className="metadata-eyebrow text-on-surface-variant mb-2">
                           Historical Evidence & Rationale
                         </h5>
                         <p className="font-body-sm text-body-sm text-on-surface-variant leading-relaxed italic">

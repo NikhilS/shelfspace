@@ -3,6 +3,7 @@ import {Link, useLocation, Outlet} from 'react-router-dom';
 import {useAuth} from '../stores/authStore';
 import {ConnectivityBanner} from './ConnectivityBanner';
 import {UserProfileDialog} from './UserProfileDialog';
+import {Button} from '@/components/ui/button';
 
 interface AppLayoutProps {
   children?: React.ReactNode;
@@ -31,7 +32,7 @@ export default function AppLayout({children}: AppLayoutProps) {
               <span className="font-headline-lg text-headline-lg text-primary tracking-tight italic font-serif">
                 book(ish)
               </span>
-              <span className="hidden sm:inline-block text-[11px] font-sans font-medium uppercase tracking-widest text-on-surface-variant opacity-80 pl-2 border-l border-outline-variant/40">
+              <span className="hidden sm:inline-block font-label-caps-sm text-label-caps-sm font-sans font-medium uppercase tracking-widest text-on-surface-variant opacity-80 pl-2 border-l border-outline-variant/40">
                 Modern Archivist
               </span>
             </Link>
@@ -39,10 +40,11 @@ export default function AppLayout({children}: AppLayoutProps) {
 
           {/* Right Header: User Profile Action */}
           <div className="flex items-center gap-2 sm:gap-4">
-            <button
+            <Button
               type="button"
+              variant="ghost"
               onClick={() => setIsProfileOpen(true)}
-              className="group flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-full hover:bg-surface-container-low border border-transparent hover:border-outline-variant/30 transition-all cursor-pointer"
+              className="group flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1.5 h-auto rounded-full hover:bg-surface-container-low border border-transparent hover:border-outline-variant/30 transition-all min-h-[44px] min-w-[44px]"
               title="Account & Settings"
               aria-label="Open profile and settings"
             >
@@ -65,7 +67,7 @@ export default function AppLayout({children}: AppLayoutProps) {
                   </div>
                 )}
               </div>
-            </button>
+            </Button>
           </div>
         </div>
       </header>

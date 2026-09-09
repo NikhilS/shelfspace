@@ -8,6 +8,14 @@ import {useDebugMode} from '../../hooks/useDebugMode';
 import {Bug} from 'lucide-react';
 import {Dialog, DialogContent, DialogTitle} from '@/components/ui/dialog';
 import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface LibrarySettingsModalsProps {
   isSettingsOpen: boolean;
@@ -61,6 +69,8 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: {errors, isValid},
   } = useForm<ShareFormValues>({
     resolver: zodResolver(shareSchema),
@@ -108,12 +118,16 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
               </div>
               Share Access
             </DialogTitle>
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => setIsSettingsOpen(false)}
-              className="p-2.5 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors"
+              className="p-2.5 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors h-10 w-10 min-w-[44px] min-h-[44px]"
+              aria-label="Close dialog"
             >
               <X size={20} />
-            </button>
+            </Button>
           </div>
           <div className="mb-6">
             <form
@@ -121,26 +135,28 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
               className="flex flex-col gap-2 mb-6"
             >
               <div className="flex gap-2">
-                <input
+                <Input
                   type="email"
                   {...register('email')}
                   placeholder="friend@email.com"
-                  className="flex-1 bg-surface-container border border-outline-variant/50 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 text-on-surface min-w-0"
+                  className="flex-1 bg-surface-container border-outline-variant/50 rounded-xl px-3 py-2 text-sm text-on-surface min-w-0"
                 />
-                <select
-                  {...register('role')}
-                  className="bg-surface-container border border-outline-variant/50 rounded-xl pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 text-on-surface appearance-none cursor-pointer"
-                  style={{
-                    backgroundImage:
-                      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")",
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 0.75rem center',
-                    backgroundSize: '1rem',
-                  }}
+                <Select
+                  value={watch('role') || 'viewer'}
+                  onValueChange={val =>
+                    setValue('role', val as 'editor' | 'viewer', {
+                      shouldValidate: true,
+                    })
+                  }
                 >
-                  <option value="viewer">Viewer</option>
-                  <option value="editor">Editor</option>
-                </select>
+                  <SelectTrigger className="w-[110px] bg-surface-container border-outline-variant/50 rounded-xl px-3 py-2 text-sm text-on-surface h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="viewer">Viewer</SelectItem>
+                    <SelectItem value="editor">Editor</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   type="submit"
                   disabled={!isValid || isSharing}
@@ -179,35 +195,35 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
                   </span>
 
                   <div className="flex items-center gap-2">
-                    <select
+                    <Select
                       value={getRoleForEmail(email)}
-                      onChange={e =>
-                        handleUpdateRole?.(
+                      onValueChange={val => {
+                        void handleUpdateRole?.(
                           email,
-                          e.target.value as 'editor' | 'viewer',
-                        )
-                      }
-                      className="bg-transparent border-none text-xs text-on-surface-variant focus:outline-none cursor-pointer pr-5 appearance-none"
-                      style={{
-                        backgroundImage:
-                          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")",
-                        backgroundRepeat: 'no-repeat',
-                        backgroundPosition: 'right center',
-                        backgroundSize: '0.75rem',
+                          val as 'editor' | 'viewer',
+                        );
                       }}
                     >
-                      <option value="viewer">Viewer</option>
-                      <option value="editor">Editor</option>
-                    </select>
+                      <SelectTrigger className="h-8 w-[100px] border-none bg-transparent text-xs text-on-surface-variant focus:outline-none focus:ring-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                        <SelectItem value="editor">Editor</SelectItem>
+                      </SelectContent>
+                    </Select>
 
-                    <button
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleRemoveShare(email)}
-                      className="text-on-surface-variant hover:text-error p-1.5 rounded-md hover:bg-error-container transition-colors"
+                      className="text-on-surface-variant hover:text-error h-8 w-8 p-1.5 rounded-md hover:bg-error-container transition-colors"
                       title="Remove access"
                       aria-label={`Remove access for ${email}`}
                     >
                       <X size={16} />
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -231,12 +247,16 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
               </div>
               Advanced Settings
             </DialogTitle>
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => setIsAdvancedSettingsOpen(false)}
-              className="p-2.5 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors"
+              className="p-2.5 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors h-10 w-10 min-w-[44px] min-h-[44px]"
+              aria-label="Close dialog"
             >
               <X size={20} />
-            </button>
+            </Button>
           </div>
           <div className="mb-10">
             <h4 className="text-sm font-medium text-on-surface-variant mb-4 uppercase tracking-wider">
@@ -301,12 +321,16 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
               </div>
               Delete Library
             </DialogTitle>
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => setLibraryToDelete(false)}
-              className="p-2.5 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors"
+              className="p-2.5 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors h-10 w-10 min-w-[44px] min-h-[44px]"
+              aria-label="Close dialog"
             >
               <X size={20} />
-            </button>
+            </Button>
           </div>
 
           <div className="mb-8">

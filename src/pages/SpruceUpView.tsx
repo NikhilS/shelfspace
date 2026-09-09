@@ -35,10 +35,8 @@ export default function SpruceUpView() {
         <div className="layout-header mb-6">
           <div>
             <BackToLibrary libraryId={libraryId} className="mb-2" />
-            <h2 className="layout-header-title text-3xl font-serif tracking-tight pr-4">
-              Shelf Care
-            </h2>
-            <p className="layout-header-subtitle font-sans text-xs sm:text-sm text-on-surface-variant/80 mt-1 max-w-2xl leading-relaxed">
+            <h1 className="layout-header-title">Shelf Care</h1>
+            <p className="layout-header-subtitle">
               Audit your collection's health by identifying and resolving
               duplicate entries and backfilling missing record metadata.
             </p>

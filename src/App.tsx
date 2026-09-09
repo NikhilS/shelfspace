@@ -1,4 +1,4 @@
-import React, {Suspense} from 'react';
+import React, {Suspense, lazy} from 'react';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {
   BrowserRouter,
@@ -21,17 +21,18 @@ import {BookLoader} from './components/BookLoader';
 import {PageLoading} from './components/PageLoading';
 import {LibraryMainSkeleton} from './components/LibrarySkeletons';
 import {useDebug} from './stores/debugStore';
+import {Button} from './components/ui/button';
 
-import Dashboard from './pages/Dashboard';
-import LibraryView from './pages/LibraryView';
-import BookDetailsView from './pages/BookDetailsView';
-import AddBookView from './pages/AddBookView';
-import ConstellationMap from './pages/ConstellationMap';
-import WorldMap from './pages/WorldMap';
-import Login from './pages/Login';
-import SpruceUpView from './pages/SpruceUpView';
-import AdminDashboard from './pages/AdminDashboard';
-import TimelineView from './pages/TimelineView';
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const LibraryView = lazy(() => import('./pages/LibraryView'));
+const BookDetailsView = lazy(() => import('./pages/BookDetailsView'));
+const AddBookView = lazy(() => import('./pages/AddBookView'));
+const ConstellationMap = lazy(() => import('./pages/ConstellationMap'));
+const WorldMap = lazy(() => import('./pages/WorldMap'));
+const Login = lazy(() => import('./pages/Login'));
+const SpruceUpView = lazy(() => import('./pages/SpruceUpView'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const TimelineView = lazy(() => import('./pages/TimelineView'));
 
 function LoadingScreen() {
   return (
@@ -250,12 +251,14 @@ function AuthGuard({children}: {children: React.ReactNode}) {
             yet. Please contact the administrator to be added to the allowlist.
           </p>
           <div className="pt-4">
-            <button
+            <Button
+              type="button"
+              variant="default"
               onClick={logOut}
-              className="w-full bg-primary text-on-primary py-2 px-4 rounded-md font-medium"
+              className="w-full"
             >
               Sign Out
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -287,12 +290,14 @@ function AuthGuard({children}: {children: React.ReactNode}) {
           <h1 className="text-3xl font-serif text-on-surface">Access Denied</h1>
           <p className="text-on-surface-variant leading-relaxed">{authError}</p>
           <div className="pt-4">
-            <button
+            <Button
+              type="button"
+              variant="default"
               onClick={logOut}
-              className="w-full bg-primary text-on-primary py-2 px-4 rounded-md font-medium"
+              className="w-full"
             >
               Go Back
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -357,6 +362,12 @@ function DebugDataClearer() {
   return null;
 }
 
+function TelemetryHUD() {
+  const isDebugMode = useDebug(state => state.isDebugMode);
+  if (!isDebugMode) return null;
+  return <DebugConsoleHUD />;
+}
+
 export default function App() {
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
@@ -367,7 +378,7 @@ export default function App() {
               <BrowserRouter>
                 <AnimatedRoutes />
                 <DebugDataClearer />
-                <DebugConsoleHUD />
+                <TelemetryHUD />
               </BrowserRouter>
               <Toaster position="bottom-right" />
             </AuthGuard>

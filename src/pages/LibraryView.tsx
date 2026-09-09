@@ -26,6 +26,9 @@ import {motion, AnimatePresence} from 'motion/react';
 import {format} from 'date-fns';
 import {Library} from '../types';
 import {trpc} from '../lib/trpc';
+import {Badge} from '@/components/ui/badge';
+import {Button} from '@/components/ui/button';
+import {instrumentMutation} from '../lib/telemetry';
 
 // Hooks
 import {useLibraryData} from '../hooks/useLibraryData';
@@ -185,7 +188,9 @@ export default function LibraryView() {
         updateData.access = newAccess;
       }
 
-      await updateDoc(doc(db, 'libraries', id), updateData);
+      await instrumentMutation('update', `libraries/${id}`, updateData, () =>
+        updateDoc(doc(db, 'libraries', id), updateData),
+      );
 
       toast.success(`Removed access for ${email}`);
     } catch (error) {
@@ -200,9 +205,15 @@ export default function LibraryView() {
       const newAccess = {...(library.access || {})};
       newAccess[targetEmail] = role;
 
-      await updateDoc(doc(db, 'libraries', id), {
-        access: newAccess,
-      });
+      await instrumentMutation(
+        'update',
+        `libraries/${id}`,
+        {access: newAccess},
+        () =>
+          updateDoc(doc(db, 'libraries', id), {
+            access: newAccess,
+          }),
+      );
 
       toast.success(`Updated role for ${email} to ${role}`);
     } catch (error) {
@@ -233,7 +244,12 @@ export default function LibraryView() {
       const libRef = doc(db, 'libraries', id);
       batch.delete(libRef);
 
-      await batch.commit();
+      await instrumentMutation(
+        'delete',
+        `libraries/${id}`,
+        {libraryId: id, booksCount: booksSnap.size},
+        () => batch.commit(),
+      );
 
       toast.success('Library deleted');
       void navigate('/');
@@ -316,9 +332,15 @@ export default function LibraryView() {
       if (url) {
         const storagePath = `libraries/${id}/hero.png`;
         const storageUrl = await uploadBase64Image(url, storagePath);
-        await updateDoc(doc(db, 'libraries', id), {
-          heroImageUrl: storageUrl,
-        });
+        await instrumentMutation(
+          'update',
+          `libraries/${id}`,
+          {heroImageUrl: storageUrl},
+          () =>
+            updateDoc(doc(db, 'libraries', id), {
+              heroImageUrl: storageUrl,
+            }),
+        );
         toast.success('Library banner updated!', {id: toastId});
       } else {
         toast.error('Failed to generate a new hero image.', {id: toastId});
@@ -397,38 +419,46 @@ export default function LibraryView() {
             <div className="w-full max-w-[1200px] mx-auto px-4 sm:px-8 py-2 flex items-center justify-between gap-2">
               {/* Tabs Switcher */}
               <div className="flex items-center gap-1 sm:gap-1.5 p-1 bg-surface-container-low rounded-xl border border-outline-variant/30 text-xs font-sans font-medium shrink-0">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => filters.setCurrentTab('overview')}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-lg transition-all ${
                     filters.currentTab === 'overview'
-                      ? 'bg-surface text-primary font-semibold shadow-xs'
-                      : 'text-on-surface-variant hover:text-on-surface'
+                      ? 'bg-surface text-primary font-semibold shadow-xs hover:bg-surface'
+                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>Overview</span>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => filters.setCurrentTab('collection')}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-lg transition-all ${
                     filters.currentTab === 'collection'
-                      ? 'bg-surface text-primary font-semibold shadow-xs'
-                      : 'text-on-surface-variant hover:text-on-surface'
+                      ? 'bg-surface text-primary font-semibold shadow-xs hover:bg-surface'
+                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
                   <BookOpen className="w-3.5 h-3.5" />
                   <span>All Books</span>
-                  <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-surface-container text-on-surface-variant">
+                  <Badge
+                    variant="outline"
+                    size="sm"
+                    className="ml-0.5 px-1.5 py-0 font-label-caps-xs text-label-caps-xs font-semibold bg-surface-container text-on-surface-variant border-transparent"
+                  >
                     {isBooksLoading && books.length === 0
                       ? library.bookCount !== undefined
                         ? library.bookCount
                         : '...'
                       : books.length}
-                  </span>
-                </button>
+                  </Badge>
+                </Button>
 
                 <Link
                   to={`/library/${id}/spruce-up`}
@@ -563,18 +593,30 @@ export default function LibraryView() {
                 newAccess[newEmail] = role;
 
                 // 1. Update library access
-                await updateDoc(doc(db, 'libraries', id), {
-                  access: newAccess,
-                });
+                await instrumentMutation(
+                  'update',
+                  `libraries/${id}`,
+                  {access: newAccess},
+                  () =>
+                    updateDoc(doc(db, 'libraries', id), {
+                      access: newAccess,
+                    }),
+                );
 
                 // 2. Auto-provision to global allowlist
-                await setDoc(
-                  doc(db, 'appSettings/allowlist/users', newEmail),
-                  {
-                    email: newEmail,
-                    addedAt: serverTimestamp(),
-                  },
-                  {merge: true},
+                await instrumentMutation(
+                  'create',
+                  `appSettings/allowlist/users/${newEmail}`,
+                  {email: newEmail},
+                  () =>
+                    setDoc(
+                      doc(db, 'appSettings/allowlist/users', newEmail),
+                      {
+                        email: newEmail,
+                        addedAt: serverTimestamp(),
+                      },
+                      {merge: true},
+                    ),
                 );
 
                 toast.success(`Shared with ${email} as ${toTitleCase(role)}`);

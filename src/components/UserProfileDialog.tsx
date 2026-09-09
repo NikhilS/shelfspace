@@ -20,6 +20,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import {Button} from '@/components/ui/button';
+import {Badge} from '@/components/ui/badge';
 import {useAuth} from '../stores/authStore';
 import {useAppStore} from '../stores/appStore';
 import {useAppPermissions} from '../hooks/useAppPermissions';
@@ -123,14 +124,22 @@ export function UserProfileDialog({
               </DialogDescription>
               <div className="flex items-center gap-2 mt-1.5">
                 {isAdmin ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-sans font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                  <Badge
+                    variant="default"
+                    size="sm"
+                    className="inline-flex items-center gap-1 font-label-caps-xs text-label-caps-xs bg-primary/10 text-primary border-primary/20"
+                  >
                     <Shield className="w-3 h-3" />
                     Administrator
-                  </span>
+                  </Badge>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-sans font-medium px-2 py-0.5 rounded-full bg-secondary/10 text-secondary border border-secondary/20">
+                  <Badge
+                    variant="secondary"
+                    size="sm"
+                    className="inline-flex items-center gap-1 font-label-caps-xs text-label-caps-xs bg-secondary/10 text-secondary border-secondary/20"
+                  >
                     Curator
-                  </span>
+                  </Badge>
                 )}
               </div>
             </div>
@@ -140,7 +149,7 @@ export function UserProfileDialog({
         <div className="p-6 space-y-6">
           {/* Appearance / Theme Selector */}
           <div>
-            <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-on-surface-variant mb-2.5">
+            <div className="metadata-eyebrow text-on-surface-variant mb-2.5">
               Appearance
             </div>
             <div className="grid grid-cols-3 gap-2 bg-surface-container-low p-1.5 rounded-xl border border-outline-variant/30">
@@ -185,7 +194,7 @@ export function UserProfileDialog({
 
           {/* Navigation & Contextual Actions */}
           <div>
-            <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-on-surface-variant mb-2">
+            <div className="metadata-eyebrow text-on-surface-variant mb-2">
               Actions & Navigation
             </div>
             <div className="space-y-1">

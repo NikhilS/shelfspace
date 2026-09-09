@@ -101,6 +101,11 @@ describe('ResetMetadataSection', () => {
         'Successfully reset Taxonomy Genres across 1 book.',
       );
     });
+    await waitFor(() => {
+      expect(
+        screen.queryByText('Confirm Metadata Reset'),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('handles resetting when 0 books require the reset', async () => {
@@ -127,6 +132,11 @@ describe('ResetMetadataSection', () => {
         'Successfully reset Taxonomy Genres across 0 books.',
       );
     });
+    await waitFor(() => {
+      expect(
+        screen.queryByText('Confirm Metadata Reset'),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('allows selecting another metadata category to reset', async () => {
@@ -145,7 +155,9 @@ describe('ResetMetadataSection', () => {
     render(<ResetMetadataSection libraryId="lib-123" books={[geoBook]} />);
 
     const select = screen.getByRole('combobox');
-    fireEvent.change(select, {target: {value: 'geo'}});
+    fireEvent.pointerDown(select, {pointerType: 'mouse', button: 0});
+    const option = await screen.findByText('Settings & Places (Geo Metadata)');
+    fireEvent.click(option);
 
     const resetBtn = screen.getByRole('button', {
       name: /Reset Settings & Places/i,

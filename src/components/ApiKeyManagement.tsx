@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
 import {Dialog, DialogContent, DialogTitle} from '@/components/ui/dialog';
 import {toast} from 'sonner';
 import {formatDateTime} from '../lib/date';
@@ -103,12 +104,12 @@ export const ApiKeyManagement: React.FC = () => {
         className="flex flex-col sm:flex-row gap-4 mb-8"
       >
         <div className="flex-1">
-          <input
+          <Input
             type="text"
             value={newKeyName}
             onChange={e => setNewKeyName(e.target.value)}
             placeholder="Key description (e.g. CLI Sync, iOS Companion)"
-            className="w-full bg-surface border border-outline-variant/50 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+            className="w-full bg-surface border-outline-variant/50 rounded-xl px-4 py-3 text-on-surface text-sm h-11"
             required
           />
         </div>
@@ -153,11 +154,11 @@ export const ApiKeyManagement: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-on-surface">{k.name}</span>
                   {k.revoked ? (
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-error/20 text-error">
+                    <span className="font-label-caps-xs text-label-caps-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-error/20 text-error">
                       Revoked
                     </span>
                   ) : (
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center gap-1">
+                    <span className="font-label-caps-xs text-label-caps-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center gap-1">
                       <ShieldCheck size={10} /> Active
                     </span>
                   )}

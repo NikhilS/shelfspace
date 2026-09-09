@@ -1,4 +1,4 @@
-import {FirestoreDate, BookDetailsMetadata} from '../types';
+import {FirestoreDate} from '../types';
 import {BookDetails} from '../services/bookApi';
 import {clsx, type ClassValue} from 'clsx';
 import {twMerge} from 'tailwind-merge';
@@ -26,11 +26,6 @@ export function toSentenceCase(str: string) {
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
 }
 
-export function normalizeEmail(email?: string): string {
-  if (!email) return '';
-  return email.trim().toLowerCase();
-}
-
 export function normalizeName(name?: string): string {
   if (!name) return '';
   return toTitleCase(name.trim());
@@ -41,8 +36,8 @@ export function normalizeTitle(title?: string): string {
   return title.trim();
 }
 
-import {normalizeIsbn, isValidIsbn} from './isbn';
-export {normalizeIsbn, isValidIsbn};
+import {normalizeIsbn} from './isbn';
+export {normalizeIsbn};
 
 export function normalizeText(text?: string): string {
   if (!text) return '';
@@ -73,82 +68,6 @@ export function triggerHaptics(pattern: number | number[]) {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     navigator.vibrate(pattern);
   }
-}
-
-import {z} from 'zod';
-
-export const bookMetadataSchema = z.object({
-  title: z.string().min(1, 'Title is required').max(500),
-  author: z.string().min(1, 'Author is required').max(500),
-  isbn: z.string().optional(),
-  coverUrl: z.string().optional(),
-  synopsis: z.string().optional(),
-  authorBio: z.string().optional(),
-  publishedDate: z.string().optional(),
-  primaryGenre: z.string().optional(),
-  subgenres: z.array(z.string()).optional(),
-  isCustomPrimary: z.boolean().optional(),
-  series: z.string().optional(),
-});
-
-export type ValidatedBookMetadata = z.infer<typeof bookMetadataSchema>;
-
-export interface MergeableBook {
-  coverUrl?: string | null;
-  synopsis?: string | null;
-  authorBio?: string | null;
-  publishedDate?: string | null;
-  primaryGenre?: string | null;
-  subgenres?: string[] | null;
-  isCustomPrimary?: boolean | null;
-  bookDetailsMetadata?: BookDetailsMetadata | null;
-}
-
-export function mergeBookMetadata(
-  existingBook: MergeableBook,
-  enriched: MergeableBook,
-  forceResync = false,
-) {
-  const newData: Record<string, unknown> = {};
-  const heavyData: Record<string, unknown> = {};
-
-  if (forceResync) {
-    if (enriched.coverUrl) newData.coverUrl = enriched.coverUrl;
-    if (enriched.synopsis) heavyData.synopsis = enriched.synopsis;
-    if (enriched.authorBio) heavyData.authorBio = enriched.authorBio;
-    if (enriched.publishedDate) newData.publishedDate = enriched.publishedDate;
-    if (enriched.primaryGenre) {
-      newData.primaryGenre = enriched.primaryGenre;
-      newData.subgenres = enriched.subgenres || [];
-      newData.isCustomPrimary = enriched.isCustomPrimary || false;
-    }
-  } else {
-    if (!existingBook.coverUrl && enriched.coverUrl) {
-      newData.coverUrl = enriched.coverUrl;
-    }
-    const hasExistingSynopsis = Boolean(
-      existingBook.bookDetailsMetadata?.hasSynopsis || existingBook.synopsis,
-    );
-    const hasExistingBio = Boolean(
-      existingBook.bookDetailsMetadata?.hasAuthorBio || existingBook.authorBio,
-    );
-    if (!hasExistingSynopsis && enriched.synopsis) {
-      heavyData.synopsis = enriched.synopsis;
-    }
-    if (!hasExistingBio && enriched.authorBio) {
-      heavyData.authorBio = enriched.authorBio;
-    }
-    if (!existingBook.publishedDate && enriched.publishedDate) {
-      newData.publishedDate = enriched.publishedDate;
-    }
-    if (!existingBook.primaryGenre && enriched.primaryGenre) {
-      newData.primaryGenre = enriched.primaryGenre;
-      newData.subgenres = enriched.subgenres || [];
-      newData.isCustomPrimary = enriched.isCustomPrimary || false;
-    }
-  }
-
-  return {newData, heavyData};
 }
 
 export interface GenericBookInput {

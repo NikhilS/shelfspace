@@ -76,12 +76,10 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
     const sectionLabels = sections.map(s => s.getAttribute('aria-label'));
 
     // Expected order:
-    // 0: Library Overview Digest Ribbon
-    // 1: Tier 1 - Reading Pulse and Categories
-    // 2: Tier 2 - Recent Acquisitions (On the Shelves)
-    // 3: Tier 3 - Explore Collection Visualizers (Timeline, World Map, Constellation)
+    // 0: Tier 1 - Reading Pulse and Categories
+    // 1: Tier 2 - Recent Acquisitions (On the Shelves)
+    // 2: Tier 3 - Explore Collection Visualizers (Timeline, World Map, Constellation)
     expect(sectionLabels).toEqual([
-      'Library Overview Digest',
       'Reading Pulse and Categories',
       'Recent Acquisitions',
       'Explore Collection Visualizers',

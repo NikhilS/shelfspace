@@ -132,6 +132,9 @@ export default defineConfig(({mode}) => {
               if (id.includes('@tanstack') || id.includes('@trpc')) {
                 return 'vendor-data';
               }
+              if (id.includes('zxing')) {
+                return 'vendor-zxing';
+              }
               if (id.includes('lucide-react') || id.includes('motion')) {
                 return 'vendor-ui';
               }

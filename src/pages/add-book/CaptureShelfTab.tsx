@@ -11,7 +11,7 @@ interface CaptureShelfTabProps {
   allowDuplicates: boolean;
 }
 
-export function CaptureShelfTab({
+function CaptureShelfTab({
   addBooks,
   existingBooks,
   allowDuplicates,
@@ -68,3 +68,5 @@ export function CaptureShelfTab({
     </div>
   );
 }
+
+export default CaptureShelfTab;

@@ -15,7 +15,11 @@ import {Book} from '../../types';
 import {toast} from 'sonner';
 import {useAuth} from '../../stores/authStore';
 import {useLibraryData} from '../../hooks/useLibraryData';
-import {DebugTelemetryEngine, calculatePayloadBytes} from '../../lib/telemetry';
+import {
+  DebugTelemetryEngine,
+  calculatePayloadBytes,
+  instrumentMutation,
+} from '../../lib/telemetry';
 
 const getFingerprints = (b: Book) => {
   const cleanIsbn = (b.isbn || '').trim().replace(/[^0-9X]/gi, '');
@@ -224,7 +228,12 @@ export function useSpruceUp(libraryId: string | undefined) {
         );
       }
 
-      await batch.commit();
+      await instrumentMutation(
+        'delete',
+        `libraries/${libraryId}/books/${id}`,
+        {libraryId, bookId: id},
+        () => batch.commit(),
+      );
       toast.success('Book deleted');
     } catch (error) {
       queryClient.setQueryData(['books', libraryId], originalBooks);
@@ -249,12 +258,19 @@ export function useSpruceUp(libraryId: string | undefined) {
     const originalAllowed = [...allowedDuplicateGroups];
     try {
       setAllowedDuplicateGroups(prev => [...prev, bookIds]);
-      await addDoc(
-        collection(db, 'libraries', libraryId, 'allowedDuplicates'),
-        {
-          bookIds,
-          createdAt: serverTimestamp(),
-        },
+      const dupPayload = {
+        bookIds,
+        createdAt: serverTimestamp(),
+      };
+      await instrumentMutation(
+        'create',
+        `libraries/${libraryId}/allowedDuplicates`,
+        dupPayload,
+        () =>
+          addDoc(
+            collection(db, 'libraries', libraryId, 'allowedDuplicates'),
+            dupPayload,
+          ),
       );
       toast.success('Duplicate suggestion dismissed');
     } catch (error) {

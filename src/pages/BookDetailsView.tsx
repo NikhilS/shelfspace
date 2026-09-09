@@ -10,6 +10,7 @@ import {useAuth} from '../stores/authStore';
 import {PrefetchAdjacentBooks} from '../components/PrefetchAdjacentBooks';
 import {ChevronLeft, ChevronRight} from 'lucide-react';
 import {BackToLibrary} from '../components/BackToLibrary';
+import {Button} from '@/components/ui/button';
 import {Book} from '../types';
 
 import 'swiper/css';
@@ -51,6 +52,12 @@ export default function BookDetailsView() {
   const [swiperInstance, setSwiperInstance] = useState<SwiperClass | null>(
     null,
   );
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(activeIndex);
+
+  // Sync internal slide tracker if activeIndex changes from URL change
+  useEffect(() => {
+    setCurrentSlideIndex(activeIndex);
+  }, [activeIndex]);
 
   // Sync swiper physically when the derived activeIndex changes (e.g., via browser history)
   useEffect(() => {
@@ -60,13 +67,18 @@ export default function BookDetailsView() {
   }, [activeIndex, swiperInstance]);
 
   const handleSlideChange = (swiper: SwiperClass) => {
-    const newIndex = swiper.activeIndex;
+    // Keep internal index in sync during swipe for responsive counter and desktop chevrons
+    setCurrentSlideIndex(swiper.activeIndex);
+  };
 
-    // Use computed activeIndex to check if we actually need to update the URL
+  const handleSlideChangeTransitionEnd = (swiper: SwiperClass) => {
+    const newIndex = swiper.activeIndex;
+    setCurrentSlideIndex(newIndex);
+
+    // Commit URL route change ONLY when gesture transition has completely settled
     if (newIndex >= 0 && newIndex < bookList.length) {
       const currentBookId = bookList[newIndex];
       if (currentBookId !== bookId) {
-        // Sync URL with the new active slide without storing to history stack excessively
         void navigate(`/library/${libraryId}/book/${currentBookId}`, {
           state: {from: backUrl, bookList},
           replace: true,
@@ -126,8 +138,8 @@ export default function BookDetailsView() {
       <PrefetchAdjacentBooks
         libraryId={libraryId}
         bookList={bookList}
-        currentIndex={activeIndex}
-        radius={3}
+        currentIndex={currentSlideIndex}
+        radius={2}
       />
 
       <div className="h-full w-full bg-surface overflow-hidden relative flex flex-col">
@@ -138,29 +150,33 @@ export default function BookDetailsView() {
             {bookList.length > 1 && (
               <div className="flex items-center gap-2">
                 <span className="text-xs font-sans text-on-surface-variant font-medium">
-                  {activeIndex + 1} of {bookList.length}
+                  {currentSlideIndex + 1} of {bookList.length}
                 </span>
                 <div className="flex items-center gap-0.5 border border-outline-variant/30 rounded-full p-0.5 bg-surface-container-low">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => swiperInstance?.slidePrev()}
-                    disabled={activeIndex <= 0}
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    disabled={currentSlideIndex <= 0}
+                    className="w-7 h-7 min-w-[28px] min-h-[28px] rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant disabled:cursor-not-allowed transition-colors"
                     aria-label="Previous Book"
                     title="Previous Book"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => swiperInstance?.slideNext()}
-                    disabled={activeIndex >= bookList.length - 1}
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    disabled={currentSlideIndex >= bookList.length - 1}
+                    className="w-7 h-7 min-w-[28px] min-h-[28px] rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant disabled:cursor-not-allowed transition-colors"
                     aria-label="Next Book"
                     title="Next Book"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -170,27 +186,33 @@ export default function BookDetailsView() {
         {/* Content & Swiper area */}
         <div className="flex-1 min-h-0 w-full relative">
           {/* Desktop Previous Book Chevron */}
-          {activeIndex > 0 && (
-            <button
+          {currentSlideIndex > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
               onClick={() => swiperInstance?.slidePrev()}
-              className="hidden md:flex fixed left-76 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100 cursor-pointer"
+              className="hidden md:flex fixed left-76 top-1/2 -translate-y-1/2 z-20 min-w-[44px] min-h-[44px] w-11 h-11 rounded-full bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100"
               title="Previous Book (Left Arrow)"
               aria-label="Previous Book"
             >
               <ChevronLeft className="w-6 h-6" />
-            </button>
+            </Button>
           )}
 
           {/* Desktop Next Book Chevron */}
-          {activeIndex < bookList.length - 1 && (
-            <button
+          {currentSlideIndex < bookList.length - 1 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
               onClick={() => swiperInstance?.slideNext()}
-              className="hidden md:flex fixed right-6 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100 cursor-pointer"
+              className="hidden md:flex fixed right-6 top-1/2 -translate-y-1/2 z-20 min-w-[44px] min-h-[44px] w-11 h-11 rounded-full bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100"
               title="Next Book (Right Arrow)"
               aria-label="Next Book"
             >
               <ChevronRight className="w-6 h-6" />
-            </button>
+            </Button>
           )}
 
           <Swiper
@@ -205,6 +227,7 @@ export default function BookDetailsView() {
             initialSlide={activeIndex}
             onSwiper={setSwiperInstance}
             onSlideChange={handleSlideChange}
+            onSlideChangeTransitionEnd={handleSlideChangeTransitionEnd}
             className="h-full w-full"
             resistanceRatio={0.85} // Make 'bouncing' at edges feel nice
             threshold={12} // Require deliberate gesture before initiating swipe
@@ -217,18 +240,20 @@ export default function BookDetailsView() {
                 {({isActive}) => {
                   // Lazily load BookContent based on distance from active slide
                   // to prevent Hook Spam and save connections.
-                  const distance = Math.abs(activeIndex - index);
+                  const distance = Math.abs(currentSlideIndex - index);
                   const shouldLoad = distance <= 2; // only mount hooks for adjacent and active slides
 
                   if (!shouldLoad) {
                     return <div className="h-full w-full bg-surface" />; // skeleton placeholder
                   }
 
+                  const isSlideActive = isActive || currentSlideIndex === index;
+
                   return (
                     <BookContent
                       libraryId={libraryId}
                       bookId={id}
-                      isActive={isActive || activeIndex === index}
+                      isActive={isSlideActive}
                       onNavigateBack={handleNavigateBack}
                       canEdit={canEdit}
                     />

@@ -1,4 +1,4 @@
-import React, {useState, useRef} from 'react';
+import React, {useState, useRef, useMemo} from 'react';
 import {BookDetails, searchBookByIsbn} from '../../services/bookApi';
 import BarcodeScanner from '../../components/BarcodeScanner';
 import {Loader2, X, BookPlus} from 'lucide-react';
@@ -11,13 +11,19 @@ import {
 import {Checkbox} from '../../components/ui/checkbox';
 import {Button} from '../../components/ui/button';
 import {logger} from '../../stores/debugStore';
+import {
+  DataTable,
+  DataTableColumn,
+  DataTableCheckboxHeader,
+  DataTableCheckboxCell,
+} from '../../components/ui/data-table';
 
 interface ScanISBNTabProps {
   addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
   isAddingAll: boolean;
 }
 
-export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
+function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
   const [processingIsbns, setProcessingIsbns] = useState<Set<string>>(
     new Set(),
   );
@@ -80,6 +86,78 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
     else next.add(key);
     setSelectedScanned(next);
   };
+
+  const allScannedSelected =
+    scannedBooks.length > 0 &&
+    scannedBooks.every(b => selectedScanned.has(b.isbn || b.title));
+  const someScannedSelected =
+    scannedBooks.length > 0 &&
+    scannedBooks.some(b => selectedScanned.has(b.isbn || b.title)) &&
+    !allScannedSelected;
+  const scannedSelectAllState = allScannedSelected
+    ? true
+    : someScannedSelected
+      ? 'indeterminate'
+      : false;
+
+  const toggleSelectAllScanned = () => {
+    if (allScannedSelected) {
+      setSelectedScanned(new Set());
+    } else {
+      setSelectedScanned(new Set(scannedBooks.map(b => b.isbn || b.title)));
+    }
+  };
+
+  const columns: DataTableColumn<BookDetails>[] = useMemo(
+    () => [
+      {
+        id: 'select',
+        width: 48,
+        headerClassName: 'px-4 py-3 w-12 text-center',
+        cellClassName: 'px-4 py-3 text-center',
+        align: 'center',
+        header: () => (
+          <DataTableCheckboxHeader
+            checked={scannedSelectAllState}
+            onCheckedChange={toggleSelectAllScanned}
+            ariaLabel="Select all scanned books"
+          />
+        ),
+        cell: book => (
+          <DataTableCheckboxCell
+            checked={selectedScanned.has(book.isbn || book.title)}
+            onCheckedChange={() => toggleSelectScanned(book)}
+            ariaLabel={`Select ${book.title}`}
+          />
+        ),
+      },
+      {
+        id: 'title',
+        header: 'Title',
+        headerClassName:
+          'px-4 py-3 font-semibold text-xs uppercase text-on-surface-variant',
+        cellClassName: 'px-4 py-3 font-medium text-on-surface',
+        cell: book => toTitleCase(book.title),
+      },
+      {
+        id: 'author',
+        header: 'Author',
+        headerClassName:
+          'px-4 py-3 font-semibold text-xs uppercase text-on-surface-variant',
+        cellClassName: 'px-4 py-3 text-on-surface-variant',
+        cell: book => toTitleCase(book.author),
+      },
+      {
+        id: 'isbn',
+        header: 'ISBN',
+        headerClassName:
+          'px-4 py-3 font-semibold text-xs uppercase text-on-surface-variant',
+        cellClassName: 'px-4 py-3 font-mono text-xs text-outline',
+        cell: book => book.isbn || '—',
+      },
+    ],
+    [scannedSelectAllState, selectedScanned, scannedBooks],
+  );
 
   const handleAddSelectedScanned = async () => {
     const booksToAdd = scannedBooks.filter(b =>
@@ -192,43 +270,24 @@ export function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
             </div>
           </div>
 
-          <div className="w-full overflow-x-auto rounded-xl border border-outline-variant/40 bg-surface shadow-sm">
-            <table className="w-full text-left text-sm text-on-surface">
-              <thead className="bg-surface-container-low text-xs uppercase text-on-surface-variant">
-                <tr>
-                  <th className="px-4 py-3 w-12 text-center">#</th>
-                  <th className="px-4 py-3">Title</th>
-                  <th className="px-4 py-3">Author</th>
-                  <th className="px-4 py-3">ISBN</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/30">
-                {scannedBooks.map((book, idx) => (
-                  <tr
-                    key={idx}
-                    className={`hover:bg-primary/5 transition-colors cursor-pointer ${selectedScanned.has(book.isbn || book.title) ? 'bg-primary/5' : ''}`}
-                    onClick={() => toggleSelectScanned(book)}
-                  >
-                    <td className="px-4 py-3 text-center">
-                      <Checkbox
-                        checked={selectedScanned.has(book.isbn || book.title)}
-                        onCheckedChange={() => toggleSelectScanned(book)}
-                        onClick={e => e.stopPropagation()}
-                        aria-label={`Select ${book.title}`}
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-medium text-on-surface flex items-center gap-2">
-                      {toTitleCase(book.title)}
-                    </td>
-                    <td className="px-4 py-3">{toTitleCase(book.author)}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{book.isbn}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="w-full rounded-xl border border-outline-variant/40 bg-surface shadow-sm overflow-hidden">
+            <DataTable<BookDetails>
+              data={scannedBooks}
+              columns={columns}
+              keyExtractor={(book, idx) =>
+                book.isbn || book.title || String(idx)
+              }
+              onRowClick={book => toggleSelectScanned(book)}
+              rowClassName={item =>
+                `hover:bg-primary/5 transition-colors cursor-pointer ${selectedScanned.has(item.isbn || item.title) ? 'bg-primary/5' : ''}`
+              }
+              emptyPlaceholder="No scanned books in queue."
+            />
           </div>
         </div>
       )}
     </div>
   );
 }
+
+export default ScanISBNTab;

@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, Suspense, lazy} from 'react';
 import {Camera, FileText, Plus, ScanBarcode, Search} from 'lucide-react';
 import {BookDetails} from '../services/bookApi';
 import {toast} from 'sonner';
@@ -8,6 +8,7 @@ import {useAddBooks} from './add-book/useAddBooks';
 import {useExistingBooks} from './add-book/useExistingBooks';
 import {Checkbox} from '../components/ui/checkbox';
 import {isDuplicateBook, normalizeBookDetails} from '../lib/utils';
+import {BookLoader} from '../components/BookLoader';
 import {
   Select,
   SelectContent,
@@ -18,9 +19,10 @@ import {
 
 import BookSearch from '../components/BookSearch';
 import CSVImportTab from '../components/CSVImportTab';
-import {ScanISBNTab} from './add-book/ScanISBNTab';
-import {CaptureShelfTab} from './add-book/CaptureShelfTab';
 import {ManualEntryTab} from './add-book/ManualEntryTab';
+
+const ScanISBNTab = lazy(() => import('./add-book/ScanISBNTab'));
+const CaptureShelfTab = lazy(() => import('./add-book/CaptureShelfTab'));
 
 type TabId = 'scan' | 'search' | 'camera' | 'csv' | 'manual';
 
@@ -54,7 +56,7 @@ export default function AddBookView() {
         <div className="layout-header">
           <div>
             <BackToLibrary libraryId={libraryId} className="mb-2" />
-            <h2 className="layout-header-title">Expand Your Shelves</h2>
+            <h1 className="layout-header-title">Expand Your Shelves</h1>
             <p className="layout-header-subtitle">
               Grow your library! Dust off your books and add them via
               barcode-scan, snapshot, CSV upload, or lookup.
@@ -130,41 +132,52 @@ export default function AddBookView() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-surface-container-lowest custom-scrollbar min-h-[500px]">
-            {activeTab === 'search' && (
-              <BookSearch
-                existingBooks={existingBooks}
-                allowDuplicates={allowDuplicates}
-                onAdd={handleAdd}
-              />
-            )}
+            <Suspense
+              fallback={
+                <div className="flex flex-col items-center justify-center min-h-[300px]">
+                  <BookLoader size="lg" className="mb-3" />
+                  <p className="text-sm font-sans text-on-surface-variant animate-pulse">
+                    Loading scanning tools...
+                  </p>
+                </div>
+              }
+            >
+              {activeTab === 'search' && (
+                <BookSearch
+                  existingBooks={existingBooks}
+                  allowDuplicates={allowDuplicates}
+                  onAdd={handleAdd}
+                />
+              )}
 
-            {activeTab === 'scan' && (
-              <ScanISBNTab addBooks={addBooks} isAddingAll={isAddingAll} />
-            )}
+              {activeTab === 'scan' && (
+                <ScanISBNTab addBooks={addBooks} isAddingAll={isAddingAll} />
+              )}
 
-            {activeTab === 'camera' && (
-              <CaptureShelfTab
-                addBooks={addBooks}
-                existingBooks={existingBooks}
-                allowDuplicates={allowDuplicates}
-              />
-            )}
+              {activeTab === 'camera' && (
+                <CaptureShelfTab
+                  addBooks={addBooks}
+                  existingBooks={existingBooks}
+                  allowDuplicates={allowDuplicates}
+                />
+              )}
 
-            {activeTab === 'csv' && (
-              <CSVImportTab
-                allowDuplicates={allowDuplicates}
-                existingBooks={existingBooks}
-                addBooks={addBooks}
-              />
-            )}
+              {activeTab === 'csv' && (
+                <CSVImportTab
+                  allowDuplicates={allowDuplicates}
+                  existingBooks={existingBooks}
+                  addBooks={addBooks}
+                />
+              )}
 
-            {activeTab === 'manual' && (
-              <ManualEntryTab
-                existingBooks={existingBooks}
-                allowDuplicates={allowDuplicates}
-                addBooks={addBooks}
-              />
-            )}
+              {activeTab === 'manual' && (
+                <ManualEntryTab
+                  existingBooks={existingBooks}
+                  allowDuplicates={allowDuplicates}
+                  addBooks={addBooks}
+                />
+              )}
+            </Suspense>
           </div>
         </div>
       </div>

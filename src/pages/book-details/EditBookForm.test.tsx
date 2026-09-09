@@ -124,7 +124,7 @@ describe('EditBookForm', () => {
     expect(screen.getByLabelText('ISBN Code')).toHaveValue('9780261102217');
     expect(screen.getByLabelText('Published Year / Date')).toHaveValue('1937');
     expect(screen.getByLabelText('Series Name')).toHaveValue('Middle-earth');
-    expect(screen.getByLabelText('Primary Genre')).toHaveValue('Fantasy');
+    expect(screen.getByLabelText('Primary Genre')).toHaveTextContent('Fantasy');
   });
 
   it('renders the delete book action at the end of the form', () => {

@@ -9,6 +9,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   RotateCcw,
   AlertTriangle,
   CheckCircle2,
@@ -325,11 +332,11 @@ export function ResetMetadataSection({
                   <p className="text-xs text-on-surface-variant leading-relaxed">
                     Root documents still hold full synopses or embedding
                     vectors. Purging them relocates payloads to the isolated{' '}
-                    <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-surface-container">
+                    <code className="font-mono font-body-xs text-body-xs px-1 py-0.5 rounded bg-surface-container">
                       bookDetails
                     </code>{' '}
                     collection and sets lightweight{' '}
-                    <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-surface-container">
+                    <code className="font-mono font-body-xs text-body-xs px-1 py-0.5 rounded bg-surface-container">
                       bookDetailsMetadata
                     </code>{' '}
                     flags.
@@ -415,7 +422,7 @@ export function ResetMetadataSection({
                 Last purge: Sanitized {lastSanitizeResult.sanitized} books and
                 purged {lastSanitizeResult.purged} leaked root fields.
               </span>
-              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+              <span className="font-body-xs text-body-xs text-emerald-600 dark:text-emerald-400 font-medium">
                 Up to date
               </span>
             </div>
@@ -453,21 +460,27 @@ export function ResetMetadataSection({
               >
                 Metadata Category to Reset
               </label>
-              <select
-                id="reset-metadata-select"
+              <Select
                 value={selectedType}
-                onChange={e => {
-                  setSelectedType(e.target.value);
+                onValueChange={val => {
+                  setSelectedType(val);
                   setLastResetInfo(null);
                 }}
-                className="w-full max-w-md bg-surface-container text-sm border border-outline-variant/50 rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary"
               >
-                {RESETTABLE_METADATA_OPTIONS.map(opt => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  id="reset-metadata-select"
+                  className="w-full max-w-md bg-surface-container text-sm border-outline-variant/50 rounded-lg px-3 py-2 text-on-surface h-10"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RESETTABLE_METADATA_OPTIONS.map(opt => (
+                    <SelectItem key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="text-xs text-on-surface-variant/80 mt-2 font-sans leading-relaxed max-w-xl">
                 {currentOption.description}
               </p>

@@ -2,6 +2,13 @@ import React, {memo} from 'react';
 import {toast} from 'sonner';
 import {useAuth} from '../../stores/authStore';
 import {Book, BookDetailsPayload} from './useBook';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface ReadingStatusSelectProps {
   libraryId: string;
@@ -34,20 +41,18 @@ export const ReadingStatusSelect = memo(
     const currentStatus = book.userStatuses?.[user?.uid || ''] || 'unset';
 
     return (
-      <section className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-surface-container p-4 rounded-lg border border-outline-variant/30 w-fit">
+      <section className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-surface-container p-4 rounded-lg border border-outline-variant/30 w-fit swiper-no-swiping">
         <label
           htmlFor="readingStatus"
           className="font-label-caps text-label-caps text-on-surface-variant"
         >
           Reading Status
         </label>
-        <select
-          id="readingStatus"
+        <Select
           value={currentStatus}
-          onChange={async e => {
+          onValueChange={async (val: string) => {
             if (!libraryId || !bookId || !user) return;
-            const newStatus = e.target.value as
-              'unset' | 'reading' | 'finished' | 'abandoned';
+            const newStatus = val as 'unset' | 'reading' | 'finished';
             const originalBookBase = bookBase ? {...bookBase} : null;
             const originalBookDetails = bookDetails ? {...bookDetails} : null;
 
@@ -71,20 +76,20 @@ export const ReadingStatusSelect = memo(
             }
           }}
           disabled={!canEdit}
-          className="px-4 py-2 bg-surface text-on-surface border border-outline-variant/60 rounded focus:ring-1 focus:ring-primary focus:outline-none cursor-pointer disabled:opacity-50 appearance-none min-w-[180px] text-sm font-medium"
-          style={{
-            backgroundImage:
-              "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E\")",
-            backgroundPosition: 'right 0.75rem center',
-            backgroundRepeat: 'no-repeat',
-            backgroundSize: '1em',
-          }}
         >
-          <option value="unset">Not Started</option>
-          <option value="reading">Currently Reading</option>
-          <option value="finished">Finished</option>
-          <option value="abandoned">Abandoned</option>
-        </select>
+          <SelectTrigger
+            id="readingStatus"
+            className="swiper-no-swiping min-w-[180px] bg-surface text-on-surface border-outline-variant/60"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="swiper-no-swiping">
+            <SelectItem value="unset">Not Started</SelectItem>
+            <SelectItem value="reading">Currently Reading</SelectItem>
+            <SelectItem value="finished">Finished</SelectItem>
+            <SelectItem value="abandoned">Abandoned</SelectItem>
+          </SelectContent>
+        </Select>
       </section>
     );
   },

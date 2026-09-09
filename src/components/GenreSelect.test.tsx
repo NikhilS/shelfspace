@@ -4,24 +4,28 @@ import {describe, it, expect, vi} from 'vitest';
 import {GenreSelect} from './GenreSelect';
 
 describe('GenreSelect component', () => {
-  it('renders primary genre dropdown with canonical genres', () => {
-    const onChange = vi.fn();
-    render(<GenreSelect onChange={onChange} />);
-
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    expect(select).toBeInTheDocument();
-    expect(screen.getByText('Select Primary Genre...')).toBeInTheDocument();
-    expect(screen.getByText('Science Fiction')).toBeInTheDocument();
-    expect(screen.getByText('Fantasy')).toBeInTheDocument();
-    expect(screen.getByText('Other (Custom Genre)')).toBeInTheDocument();
-  });
-
-  it('calls onChange with sanitized payload when primary genre is selected', () => {
+  it('renders primary genre dropdown with canonical genres', async () => {
     const onChange = vi.fn();
     render(<GenreSelect onChange={onChange} />);
 
     const select = screen.getByRole('combobox');
-    fireEvent.change(select, {target: {value: 'Science Fiction'}});
+    expect(select).toBeInTheDocument();
+    expect(screen.getByText('Select Primary Genre...')).toBeInTheDocument();
+
+    fireEvent.pointerDown(select, {pointerType: 'mouse', button: 0});
+    expect(await screen.findByText('Science Fiction')).toBeInTheDocument();
+    expect(screen.getByText('Fantasy')).toBeInTheDocument();
+    expect(screen.getByText('Other (Custom Genre)')).toBeInTheDocument();
+  });
+
+  it('calls onChange with sanitized payload when primary genre is selected', async () => {
+    const onChange = vi.fn();
+    render(<GenreSelect onChange={onChange} />);
+
+    const select = screen.getByRole('combobox');
+    fireEvent.pointerDown(select, {pointerType: 'mouse', button: 0});
+    const option = await screen.findByText('Science Fiction');
+    fireEvent.click(option);
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({

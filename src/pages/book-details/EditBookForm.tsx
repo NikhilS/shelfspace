@@ -25,6 +25,7 @@ import {
 import {Button} from '../../components/ui/button';
 import {Input} from '../../components/ui/input';
 import {Label} from '../../components/ui/label';
+import {Checkbox} from '../../components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -417,14 +418,13 @@ export function EditBookForm({
                             </p>
                           </div>
                         </div>
-                        <input
+                        <Checkbox
                           id="nanobanana-toggle"
-                          type="checkbox"
                           checked={useNanobananaFlash}
-                          onChange={e => {
-                            void handleToggleNanobanana(e.target.checked);
+                          onCheckedChange={checked => {
+                            void handleToggleNanobanana(Boolean(checked));
                           }}
-                          className="w-5 h-5 accent-primary rounded cursor-pointer shrink-0 ml-3"
+                          className="w-5 h-5 rounded cursor-pointer shrink-0 ml-3"
                         />
                       </div>
                     )}

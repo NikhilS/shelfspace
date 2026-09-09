@@ -1,10 +1,11 @@
 import React, {useState} from 'react';
 import {toast} from 'sonner';
-import {StarRating} from '../../components/StarRating';
+import {StarRating} from '@/components/ui/star-rating';
 import {Review} from './useBook';
 import {Book, FirestoreDate} from '../../types';
 import {useAuth} from '../../stores/authStore';
 import {Button} from '@/components/ui/button';
+import {Textarea} from '@/components/ui/textarea';
 import {format} from 'date-fns';
 
 interface ReviewSectionProps {
@@ -86,7 +87,7 @@ export function ReviewSection({
         (book.userStatuses?.[user?.uid || ''] === 'finished' ||
           book.userStatuses?.[user?.uid || ''] === 'abandoned') && (
           <div className="bg-surface-container rounded-lg p-6 mb-8 border border-surface-variant swiper-no-swiping">
-            <div className="mb-4">
+            <div className="mb-4 swiper-no-swiping">
               <StarRating
                 interactive
                 rating={reviewRating}
@@ -94,11 +95,11 @@ export function ReviewSection({
                 size="lg"
               />
             </div>
-            <textarea
+            <Textarea
               value={reviewText}
               onChange={e => setReviewText(e.target.value)}
               placeholder="What did you think of this book?"
-              className="w-full bg-surface-container-lowest border border-outline-variant/60 rounded-md p-4 text-body-md text-on-surface focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all min-h-[120px] mb-6 resize-y swiper-no-swiping"
+              className="w-full bg-surface-container-lowest border-outline-variant/60 rounded-md p-4 text-body-md text-on-surface min-h-[120px] mb-6 resize-y swiper-no-swiping"
             />
             <div className="flex justify-end gap-2">
               <Button
@@ -136,7 +137,7 @@ export function ReviewSection({
                     <p className="font-medium text-primary">
                       {review.userName}
                     </p>
-                    <div className="flex items-center gap-1 mt-1 text-secondary">
+                    <div className="flex items-center gap-1 mt-1 text-secondary swiper-no-swiping">
                       <StarRating rating={review.rating} size="sm" />
                     </div>
                   </div>

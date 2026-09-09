@@ -9,6 +9,7 @@ import {z} from 'zod';
 import {Input} from '../../components/ui/input';
 import {Label} from '../../components/ui/label';
 import {Button} from '../../components/ui/button';
+import {Textarea} from '../../components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -143,19 +144,23 @@ export function ManualEntryTab({
                   className="w-32 h-48 object-cover rounded-xl shadow-elevation-2 border border-outline-variant/40"
                   referrerPolicy="no-referrer"
                 />
-                <button
+                <Button
                   type="button"
+                  variant="destructive"
+                  size="icon"
                   onClick={() => setCoverUrl('')}
-                  className="absolute -top-3 -right-3 p-2 bg-error text-on-error rounded-full opacity-0 group-hover:opacity-100 transition-all hover:scale-110 shadow-md"
+                  className="absolute -top-3 -right-3 h-8 w-8 min-w-[32px] min-h-[32px] p-0 bg-error text-on-error rounded-full opacity-0 group-hover:opacity-100 transition-all hover:scale-110 shadow-md"
+                  aria-label="Remove cover photo"
                 >
                   <X size={14} strokeWidth={2.5} />
-                </button>
+                </Button>
               </div>
             ) : (
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setIsCoverCameraActive(true)}
-                className="w-32 h-48 bg-surface-container/50 border-2 border-dashed border-outline-variant/60 rounded-2xl flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-primary/40 transition-all shadow-sm hover:shadow-md"
+                className="w-32 h-48 bg-surface-container/50 border-2 border-dashed border-outline-variant/60 rounded-2xl flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-primary/40 transition-all shadow-sm hover:shadow-md p-2 whitespace-normal"
               >
                 <Camera
                   size={32}
@@ -167,7 +172,7 @@ export function ManualEntryTab({
                   <br />
                   Photo
                 </span>
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -295,9 +300,9 @@ export function ManualEntryTab({
           >
             Synopsis
           </Label>
-          <textarea
+          <Textarea
             id="synopsis"
-            className="w-full bg-surface-container-low/60 border border-outline-variant/80 rounded-2xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/60 transition-all text-on-surface font-medium min-h-[120px] resize-y"
+            className="w-full bg-surface-container-low/60 border-outline-variant/80 rounded-2xl px-5 py-3.5 text-on-surface font-medium min-h-[120px] resize-y"
             {...register('synopsis')}
           />
         </div>

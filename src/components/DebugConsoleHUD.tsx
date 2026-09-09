@@ -17,24 +17,39 @@ import {
   Share2,
   HardDrive,
   Layers,
-  Gauge,
+  Maximize2,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   DebugTelemetryEngine,
   TelemetryLog,
   ActiveListenerInfo,
   TelemetryBaseline,
+  TelemetryPlugin,
+  TelemetryPluginContext,
 } from '../lib/telemetry';
+import {PersistenceTelemetryPlugin} from '../lib/telemetry/PersistenceTelemetryPlugin';
+import {GeminiTelemetryPlugin} from '../lib/telemetry/GeminiTelemetryPlugin';
+import {RenderPerformancePlugin} from '../lib/telemetry/RenderPerformancePlugin';
 import {useDebug} from '../stores/debugStore';
 import {Button} from '@/components/ui/button';
+import {Checkbox} from '@/components/ui/checkbox';
+import {Input} from '@/components/ui/input';
 import {PersistenceTelemetryPanel} from './PersistenceTelemetryPanel';
+
+type HeightPreset = 'compact' | 'medium' | 'tall';
+
+const HEIGHT_CLASSES: Record<HeightPreset, string> = {
+  compact: 'h-[35vh] min-h-[280px]',
+  medium: 'h-[50vh] min-h-[380px]',
+  tall: 'h-[82vh] min-h-[520px]',
+};
 
 export const DebugConsoleHUD: React.FC = () => {
   const {isDebugMode, debugData, debugTitle} = useDebug();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    'logs' | 'network' | 'state' | 'entity' | 'diagnostics' | 'persistence'
-  >('logs');
+  const [heightPreset, setHeightPreset] = useState<HeightPreset>('medium');
+  const [activeTab, setActiveTab] = useState<string>('logs');
 
   // Realtime Telemetry State
   const [logs, setLogs] = useState<TelemetryLog[]>([]);
@@ -48,6 +63,7 @@ export const DebugConsoleHUD: React.FC = () => {
   const [baseline, setBaseline] = useState<TelemetryBaseline | null>(
     DebugTelemetryEngine.getInstance().getBaseline(),
   );
+  const [plugins, setPlugins] = useState<TelemetryPlugin[]>([]);
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
@@ -63,12 +79,20 @@ export const DebugConsoleHUD: React.FC = () => {
   useEffect(() => {
     const engine = DebugTelemetryEngine.getInstance();
 
+    // Auto-register Phase 4 plugins if not yet registered
+    if (engine.getPlugins().length === 0) {
+      engine.registerPlugin(new PersistenceTelemetryPlugin());
+      engine.registerPlugin(new GeminiTelemetryPlugin());
+      engine.registerPlugin(new RenderPerformancePlugin());
+    }
+
     // Sync initial logs & stats
     setLogs(engine.getLogs());
     setActiveStates(engine.getActiveStates());
     setMetrics(engine.getMetrics());
     setActiveListeners(engine.getActiveListeners());
     setBaseline(engine.getBaseline());
+    setPlugins(engine.getPlugins());
 
     const unsubscribe = engine.subscribe(() => {
       setLogs(engine.getLogs());
@@ -76,6 +100,7 @@ export const DebugConsoleHUD: React.FC = () => {
       setMetrics(engine.getMetrics());
       setActiveListeners(engine.getActiveListeners());
       setBaseline(engine.getBaseline());
+      setPlugins(engine.getPlugins());
     });
 
     const handleConnectionChange = () => {
@@ -180,6 +205,31 @@ export const DebugConsoleHUD: React.FC = () => {
     DebugTelemetryEngine.getInstance().clearLogs();
   };
 
+  const pluginContext = useMemo(
+    (): TelemetryPluginContext => ({
+      metrics,
+      logs,
+      activeStates,
+      activeListeners,
+      baseline,
+      engine: DebugTelemetryEngine.getInstance(),
+    }),
+    [metrics, logs, activeStates, activeListeners, baseline],
+  );
+
+  const activePlugin = useMemo(
+    () => plugins.find(p => p.id === activeTab),
+    [plugins, activeTab],
+  );
+
+  const cycleHeight = () => {
+    setHeightPreset(prev => {
+      if (prev === 'compact') return 'medium';
+      if (prev === 'medium') return 'tall';
+      return 'compact';
+    });
+  };
+
   if (!isDebugMode) return null;
 
   return (
@@ -194,7 +244,7 @@ export const DebugConsoleHUD: React.FC = () => {
               exit={{opacity: 0, scale: 0.8, x: 20}}
               className="flex items-center gap-2 sm:gap-3 bg-slate-900/95 backdrop-blur-md border border-slate-700/50 p-2 sm:px-4 sm:py-2 rounded-full shadow-2xl"
             >
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+              <div className="flex items-center gap-1.5 font-label-caps-xs text-label-caps-xs text-slate-400">
                 <span className="relative flex h-2 w-2">
                   <span
                     className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isOnline ? 'bg-cyan-400' : 'bg-red-400'} opacity-75`}
@@ -231,13 +281,13 @@ export const DebugConsoleHUD: React.FC = () => {
             animate={{y: 0}}
             exit={{y: '100%'}}
             transition={{type: 'spring', damping: 24, stiffness: 180}}
-            className="w-full bg-[#0d0f14]/98 md:bg-[#0c0e12]/95 backdrop-blur-xl border-t border-slate-800 shadow-2xl pointer-events-auto h-[45vh] min-h-[350px] max-h-[600px] flex flex-col focus:outline-none"
+            className={`w-full bg-[#0d0f14]/98 md:bg-[#0c0e12]/95 backdrop-blur-xl border-t border-slate-800 shadow-2xl pointer-events-auto ${HEIGHT_CLASSES[heightPreset]} flex flex-col focus:outline-none transition-[height] duration-200`}
             id="debug-hud-panel"
           >
             {/* HUD Status Header line */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 text-[11px] text-slate-400 select-none bg-slate-950/40">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 font-label-caps-sm text-label-caps-sm text-slate-400 select-none bg-slate-950/40">
               <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-1.5 text-cyan-400 font-bold uppercase tracking-wider text-[10px]">
+                <div className="flex items-center gap-1.5 text-cyan-400 font-bold uppercase tracking-wider font-label-caps-xs text-label-caps-xs">
                   <Bug size={12} />
                   <span>Telemetry HUD</span>
                 </div>
@@ -250,6 +300,16 @@ export const DebugConsoleHUD: React.FC = () => {
                     Transferred:{' '}
                     <strong className="text-cyan-300">
                       {(metrics.totalBytesTransferred / 1024).toFixed(1)} KB
+                    </strong>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.25">
+                  <ArrowUpRight size={12} className="text-amber-400" />
+                  <span>
+                    Writes:{' '}
+                    <strong className="text-amber-300">
+                      {metrics.totalFirestoreWrites}
                     </strong>
                   </span>
                 </div>
@@ -315,7 +375,15 @@ export const DebugConsoleHUD: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={cycleHeight}
+                  className="text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 px-2 py-0.5 rounded-md transition-colors font-label-caps-xs text-label-caps-xs flex items-center gap-1 border border-slate-800/80"
+                  title="Toggle console height preset (compact 35vh / medium 50vh / tall 82vh)"
+                >
+                  <Maximize2 size={11} />
+                  <span className="capitalize">{heightPreset}</span>
+                </button>
                 <button
                   onClick={() => setIsExpanded(false)}
                   className="text-slate-500 hover:text-slate-200 hover:bg-slate-800/80 p-1 rounded-md transition-colors"
@@ -326,24 +394,24 @@ export const DebugConsoleHUD: React.FC = () => {
               </div>
             </div>
 
-            {/* Main Tabs Navigation Bar */}
-            <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-800/60 bg-[#0f121a]/80 flex-wrap gap-2">
-              <div className="flex gap-1">
+            {/* Main Tabs Navigation Bar with Mobile Pill Scrolling */}
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-800/60 bg-[#0f121a]/80 gap-2 overflow-hidden">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 pr-2">
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveTab('logs')}
-                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
+                  className={`h-7 px-2.5 sm:px-3 font-label-caps-sm text-label-caps-sm font-semibold tracking-wide rounded-full shrink-0 transition-all flex items-center gap-1.5 ${
                     activeTab === 'logs'
-                      ? 'bg-slate-800/80 text-white border border-slate-700/50'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
+                      ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
                   }`}
                   title="Logs"
                 >
                   <Terminal size={12} className="opacity-75" />
-                  <span className="hidden sm:inline">Logs</span>
+                  <span>Logs</span>
                   {filteredLogs.length > 0 && (
-                    <span className="ml-[2px] sm:ml-1 text-[9px] bg-slate-900 px-1.5 py-0.25 rounded-full text-slate-400">
+                    <span className="font-label-caps-xs text-label-caps-xs bg-slate-900 px-1.5 py-0.2 rounded-full text-slate-400">
                       {filteredLogs.length}
                     </span>
                   )}
@@ -353,17 +421,17 @@ export const DebugConsoleHUD: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveTab('network')}
-                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
+                  className={`h-7 px-2.5 sm:px-3 font-label-caps-sm text-label-caps-sm font-semibold tracking-wide rounded-full shrink-0 transition-all flex items-center gap-1.5 ${
                     activeTab === 'network'
-                      ? 'bg-slate-800/80 text-white border border-slate-700/50'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
+                      ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
                   }`}
                   title="Network & DB Ops"
                 >
                   <Activity size={12} className="opacity-75" />
-                  <span className="hidden sm:inline">Network &amp; DB Ops</span>
+                  <span>Network &amp; DB Ops</span>
                   {networkLogs.length > 0 && (
-                    <span className="ml-[2px] sm:ml-1 text-[9px] bg-slate-900 px-1.5 py-0.25 rounded-full text-slate-400">
+                    <span className="font-label-caps-xs text-label-caps-xs bg-slate-900 px-1.5 py-0.2 rounded-full text-slate-400">
                       {networkLogs.length}
                     </span>
                   )}
@@ -373,17 +441,17 @@ export const DebugConsoleHUD: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveTab('state')}
-                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
+                  className={`h-7 px-2.5 sm:px-3 font-label-caps-sm text-label-caps-sm font-semibold tracking-wide rounded-full shrink-0 transition-all flex items-center gap-1.5 ${
                     activeTab === 'state'
-                      ? 'bg-slate-800/80 text-white border border-slate-700/50'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
+                      ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
                   }`}
                   title="Active Page State"
                 >
                   <Share2 size={12} className="opacity-75" />
-                  <span className="hidden sm:inline">Active Page State</span>
+                  <span>Active Page State</span>
                   {Object.keys(activeStates).length > 0 && (
-                    <span className="ml-[2px] sm:ml-1 text-[9px] bg-cyan-900/40 border border-cyan-500/20 px-1.5 py-0.25 rounded-full text-cyan-400">
+                    <span className="font-label-caps-xs text-label-caps-xs bg-cyan-900/40 border border-cyan-500/20 px-1.5 py-0.2 rounded-full text-cyan-400">
                       {Object.keys(activeStates).length}
                     </span>
                   )}
@@ -393,17 +461,17 @@ export const DebugConsoleHUD: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveTab('entity')}
-                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
+                  className={`h-7 px-2.5 sm:px-3 font-label-caps-sm text-label-caps-sm font-semibold tracking-wide rounded-full shrink-0 transition-all flex items-center gap-1.5 ${
                     activeTab === 'entity'
-                      ? 'bg-slate-800/80 text-white border border-slate-700/50'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
+                      ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
                   }`}
                   title="Entity Database"
                 >
                   <Database size={12} className="opacity-75" />
-                  <span className="hidden sm:inline">Entity DB</span>
+                  <span>Entity</span>
                   {!!debugData && (
-                    <span className="ml-[2px] sm:ml-1 text-[9px] bg-purple-900/40 border border-purple-500/20 px-1.5 py-0.25 rounded-full text-purple-400">
+                    <span className="font-label-caps-xs text-label-caps-xs bg-purple-900/40 border border-purple-500/20 px-1.5 py-0.2 rounded-full text-purple-400">
                       1
                     </span>
                   )}
@@ -413,38 +481,49 @@ export const DebugConsoleHUD: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   onClick={() => setActiveTab('diagnostics')}
-                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
+                  className={`h-7 px-2.5 sm:px-3 font-label-caps-sm text-label-caps-sm font-semibold tracking-wide rounded-full shrink-0 transition-all flex items-center gap-1.5 ${
                     activeTab === 'diagnostics'
-                      ? 'bg-slate-800/80 text-white border border-slate-700/50'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
+                      ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
                   }`}
                   title="Diagnostics"
                 >
                   <Cpu size={12} className="opacity-75" />
-                  <span className="hidden sm:inline">Diagnostics</span>
+                  <span>Diagnostics</span>
                 </Button>
 
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setActiveTab('persistence')}
-                  className={`h-8 px-2 sm:px-3 text-[11px] font-semibold tracking-wide rounded-md transition-all flex items-center gap-1 sm:gap-1.5 ${
-                    activeTab === 'persistence'
-                      ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/40'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
-                  }`}
-                  title="Persistence & Data Telemetry"
-                >
-                  <Gauge size={12} className="opacity-75" />
-                  <span className="hidden sm:inline">
-                    Persistence Telemetry
-                  </span>
-                  {metrics.activeFirestoreListeners > 0 && (
-                    <span className="ml-[2px] sm:ml-1 text-[9px] bg-cyan-900/50 border border-cyan-500/30 px-1.5 py-0.25 rounded-full text-cyan-300">
-                      {metrics.activeFirestoreListeners}
-                    </span>
-                  )}
-                </Button>
+                {/* Dynamic Pluggable Telemetry Plugins Navigation Pills */}
+                {plugins.map(plugin => {
+                  const Icon = plugin.icon;
+                  const isCurrent = activeTab === plugin.id;
+                  const badge = plugin.badge?.(pluginContext);
+
+                  return (
+                    <Button
+                      key={plugin.id}
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setActiveTab(plugin.id)}
+                      className={`h-7 px-2.5 sm:px-3 font-label-caps-sm text-label-caps-sm font-semibold tracking-wide rounded-full shrink-0 transition-all flex items-center gap-1.5 ${
+                        isCurrent
+                          ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
+                      }`}
+                      title={plugin.name}
+                    >
+                      <Icon
+                        size={12}
+                        className={isCurrent ? 'text-cyan-400' : 'opacity-75'}
+                      />
+                      <span className="whitespace-nowrap">{plugin.name}</span>
+                      {badge !== undefined && (
+                        <span className="font-label-caps-xs text-label-caps-xs bg-cyan-900/50 border border-cyan-500/30 px-1.5 py-0.2 rounded-full text-cyan-300">
+                          {badge}
+                        </span>
+                      )}
+                    </Button>
+                  );
+                })}
               </div>
 
               {/* Toolbar utility controls */}
@@ -454,7 +533,7 @@ export const DebugConsoleHUD: React.FC = () => {
                   variant="ghost"
                   onClick={handleExportLogs}
                   title="Export Telemetry JSON"
-                  className="h-8 px-2 sm:px-2.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-md gap-1 text-[11px]"
+                  className="h-8 px-2 sm:px-2.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-md gap-1 font-label-caps-sm text-label-caps-sm"
                 >
                   <Download size={12} />
                   <span className="hidden sm:inline">Export</span>
@@ -465,7 +544,7 @@ export const DebugConsoleHUD: React.FC = () => {
                   variant="ghost"
                   onClick={handleClearLogs}
                   title="Clear Telemetry Console Logs"
-                  className="h-8 px-2 sm:px-2.5 hover:bg-red-950 hover:text-red-300 text-slate-400 rounded-md gap-1 text-[11px] transition-all"
+                  className="h-8 px-2 sm:px-2.5 hover:bg-red-950 hover:text-red-300 text-slate-400 rounded-md gap-1 font-label-caps-sm text-label-caps-sm transition-all"
                 >
                   <Trash2 size={12} />
                   <span className="hidden sm:inline">Clear</span>
@@ -480,43 +559,47 @@ export const DebugConsoleHUD: React.FC = () => {
                 <div className="flex flex-col h-full space-y-4">
                   {/* Internal Search and Quick Filter Flags */}
                   <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/50 p-2 border border-slate-800/50 rounded-lg">
-                    <div className="flex items-center gap-3 text-[10px] text-slate-400">
+                    <div className="flex items-center gap-3 font-label-caps-xs text-label-caps-xs text-slate-400">
                       <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-200">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={showLog}
-                          onChange={e => setShowLog(e.target.checked)}
-                          className="rounded border-slate-700 bg-slate-950 text-cyan-500 focus:ring-0 focus:ring-offset-0 h-3 w-3"
+                          onCheckedChange={checked => {
+                            setShowLog(Boolean(checked));
+                          }}
+                          className="rounded border-slate-700 bg-slate-950 text-cyan-500 h-3.5 w-3.5"
                         />
                         <span>LOGS</span>
                       </label>
 
                       <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-200">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={showInfo}
-                          onChange={e => setShowInfo(e.target.checked)}
-                          className="rounded border-slate-700 bg-slate-950 text-cyan-500 focus:ring-0 focus:ring-offset-0 h-3 w-3"
+                          onCheckedChange={checked => {
+                            setShowInfo(Boolean(checked));
+                          }}
+                          className="rounded border-slate-700 bg-slate-950 text-cyan-500 h-3.5 w-3.5"
                         />
                         <span>INFOS</span>
                       </label>
 
                       <label className="flex items-center gap-1.5 cursor-pointer hover:text-amber-400">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={showWarn}
-                          onChange={e => setShowWarn(e.target.checked)}
-                          className="rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-0 focus:ring-offset-0 h-3 w-3"
+                          onCheckedChange={checked => {
+                            setShowWarn(Boolean(checked));
+                          }}
+                          className="rounded border-slate-700 bg-slate-950 text-amber-500 h-3.5 w-3.5"
                         />
                         <span>WARNINGS</span>
                       </label>
 
                       <label className="flex items-center gap-1.5 cursor-pointer hover:text-red-400">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={showError}
-                          onChange={e => setShowError(e.target.checked)}
-                          className="rounded border-slate-700 bg-slate-950 text-red-500 focus:ring-0 focus:ring-offset-0 h-3 w-3"
+                          onCheckedChange={checked => {
+                            setShowError(Boolean(checked));
+                          }}
+                          className="rounded border-slate-700 bg-slate-950 text-red-500 h-3.5 w-3.5"
                         />
                         <span>ERRORS</span>
                       </label>
@@ -525,14 +608,14 @@ export const DebugConsoleHUD: React.FC = () => {
                     <div className="relative w-full sm:w-[260px] flex items-center">
                       <Search
                         size={12}
-                        className="absolute left-2.5 text-slate-500"
+                        className="absolute left-2.5 text-slate-500 pointer-events-none z-10"
                       />
-                      <input
+                      <Input
                         type="text"
                         placeholder="Search logs &amp; payloads..."
                         value={searchText}
                         onChange={e => setSearchText(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 text-[10px] text-slate-300 pl-8 pr-7 py-1 rounded focus:outline-none focus:border-slate-600 font-mono"
+                        className="w-full bg-slate-950 border border-slate-800 font-body-xs text-body-xs text-slate-300 pl-8 pr-7 py-1 h-7 rounded focus:outline-none focus:border-slate-600 font-mono"
                       />
                       {searchText && (
                         <button
@@ -597,10 +680,10 @@ export const DebugConsoleHUD: React.FC = () => {
                             className={`flex flex-col border border-slate-900 px-2 py-1.5 rounded bg-slate-950/30 overflow-x-auto ${colorClass}`}
                           >
                             <div className="flex items-start gap-2 flex-wrap">
-                              <span className="text-[10px] text-slate-500 shrink-0 select-none">
+                              <span className="font-body-xs text-body-xs text-slate-500 shrink-0 select-none">
                                 {log.timestamp}
                               </span>
-                              <span className="font-bold text-[9px] uppercase tracking-wide shrink-0">
+                              <span className="font-bold font-label-caps-xs text-label-caps-xs uppercase tracking-wide shrink-0">
                                 {prefix}
                               </span>
                               <span className="flex-1 break-words font-mono min-w-0">
@@ -609,7 +692,7 @@ export const DebugConsoleHUD: React.FC = () => {
                             </div>
 
                             {!!log.payload && (
-                              <pre className="mt-1 ml-12 p-1.5 bg-slate-950 border border-slate-900 rounded text-[9px] text-slate-400 max-h-[140px] overflow-auto whitespace-pre-wrap select-all">
+                              <pre className="mt-1 ml-12 p-1.5 bg-slate-950 border border-slate-900 rounded font-body-xs text-body-xs text-slate-400 max-h-[140px] overflow-auto whitespace-pre-wrap select-all">
                                 {typeof log.payload === 'object'
                                   ? JSON.stringify(log.payload, null, 2)
                                   : String(log.payload)}
@@ -628,7 +711,7 @@ export const DebugConsoleHUD: React.FC = () => {
                 <div className="flex flex-col h-full space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-900/60 p-3 rounded-lg border border-slate-800/40">
                     <div className="flex flex-col">
-                      <span className="text-[10px] text-slate-500">
+                      <span className="font-label-caps-xs text-label-caps-xs text-slate-500">
                         TOTAL SERVICE READS
                       </span>
                       <strong className="text-sm text-slate-200">
@@ -636,7 +719,7 @@ export const DebugConsoleHUD: React.FC = () => {
                       </strong>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[10px] text-slate-500">
+                      <span className="font-label-caps-xs text-label-caps-xs text-slate-500">
                         CACHE HITS
                       </span>
                       <strong className="text-sm text-emerald-400">
@@ -644,7 +727,7 @@ export const DebugConsoleHUD: React.FC = () => {
                       </strong>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[10px] text-slate-500">
+                      <span className="font-label-caps-xs text-label-caps-xs text-slate-500">
                         CACHE HIT RATIO
                       </span>
                       <strong className="text-sm text-cyan-400">
@@ -652,7 +735,7 @@ export const DebugConsoleHUD: React.FC = () => {
                       </strong>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[10px] text-slate-500">
+                      <span className="font-label-caps-xs text-label-caps-xs text-slate-500">
                         AVG REQUEST TIME
                       </span>
                       <strong className="text-sm text-indigo-400">
@@ -682,13 +765,13 @@ export const DebugConsoleHUD: React.FC = () => {
                         return (
                           <div
                             key={log.id}
-                            className="border border-slate-800/80 bg-slate-950/40 p-2 rounded flex flex-col font-mono text-[11px]"
+                            className="border border-slate-800/80 bg-slate-950/40 p-2 rounded flex flex-col font-mono font-body-xs text-body-xs"
                           >
                             <div className="flex items-center justify-between flex-wrap gap-2 mb-1 text-slate-500 border-b border-slate-900/40 pb-1">
-                              <span className="text-[9px]">
+                              <span className="font-body-xs text-body-xs">
                                 {log.timestamp}
                               </span>
-                              <span className="text-[9px] uppercase tracking-widest font-bold text-slate-400">
+                              <span className="font-label-caps-xs text-label-caps-xs uppercase tracking-widest font-bold text-slate-400">
                                 {log.type === 'db_read'
                                   ? 'Firestore READ'
                                   : log.type === 'gen_ai'
@@ -707,11 +790,11 @@ export const DebugConsoleHUD: React.FC = () => {
                                     {log.message}
                                   </span>
                                   {isCache ? (
-                                    <span className="text-[9px] font-bold bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
+                                    <span className="font-label-caps-xs text-label-caps-xs font-bold bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
                                       ✓ FROM LOCAL CACHE
                                     </span>
                                   ) : (
-                                    <span className="text-[9px] font-bold bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">
+                                    <span className="font-label-caps-xs text-label-caps-xs font-bold bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">
                                       • SERVER READ
                                     </span>
                                   )}
@@ -727,7 +810,7 @@ export const DebugConsoleHUD: React.FC = () => {
                                     {log.message}
                                   </span>
                                   {logPayload?.durationMs && (
-                                    <span className="text-[10px] text-slate-400 bg-slate-900 px-1.5 py-0.5 border border-slate-800/80 rounded shrink-0">
+                                    <span className="font-body-xs text-body-xs text-slate-400 bg-slate-900 px-1.5 py-0.5 border border-slate-800/80 rounded shrink-0">
                                       Latency: {logPayload.durationMs}ms
                                     </span>
                                   )}
@@ -741,7 +824,7 @@ export const DebugConsoleHUD: React.FC = () => {
                                       {logPayload?.model || 'Gemini Flash'}:
                                     </span>
                                     {logPayload?.tokens && (
-                                      <span className="text-[9px] text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded border border-purple-500/20">
+                                      <span className="font-label-caps-xs text-label-caps-xs text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded border border-purple-500/20">
                                         Tokens: {logPayload.tokens}
                                       </span>
                                     )}
@@ -754,7 +837,7 @@ export const DebugConsoleHUD: React.FC = () => {
                             </div>
 
                             {!!log.payload && (
-                              <pre className="mt-1.5 p-1 px-2 bg-slate-950 text-[9px] text-slate-500 select-all border border-slate-900 rounded max-h-[80px] overflow-auto">
+                              <pre className="mt-1.5 p-1 px-2 bg-slate-950 font-body-xs text-body-xs text-slate-500 select-all border border-slate-900 rounded max-h-[80px] overflow-auto">
                                 {typeof log.payload === 'object'
                                   ? JSON.stringify(log.payload, null, 2)
                                   : String(log.payload)}
@@ -772,10 +855,10 @@ export const DebugConsoleHUD: React.FC = () => {
               {activeTab === 'state' && (
                 <div className="flex flex-col h-full space-y-4">
                   <div className="flex items-center justify-between bg-slate-900/60 p-2 border border-slate-800/40 rounded-lg">
-                    <span className="text-[10px] text-slate-400">
+                    <span className="font-label-caps-xs text-label-caps-xs text-slate-400">
                       REGISTERED COMPONENT CHANNELS
                     </span>
-                    <span className="text-[10px] bg-cyan-950 text-cyan-400 border border-cyan-500/25 px-2 py-0.5 rounded-full font-bold">
+                    <span className="font-label-caps-xs text-label-caps-xs bg-cyan-950 text-cyan-400 border border-cyan-500/25 px-2 py-0.5 rounded-full font-bold">
                       {Object.keys(activeStates).length} Active
                     </span>
                   </div>
@@ -798,13 +881,13 @@ export const DebugConsoleHUD: React.FC = () => {
                           key={moduleName}
                           className="border border-slate-800 bg-[#0d1016]/80 rounded p-3 font-mono"
                         >
-                          <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800/60 pb-1 flex justify-between items-center">
+                          <div className="font-label-caps-sm text-label-caps-sm font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800/60 pb-1 flex justify-between items-center">
                             <span>Module: {moduleName}</span>
-                            <span className="text-[9px] text-slate-500 font-normal normal-case">
+                            <span className="font-label-caps-xs text-label-caps-xs text-slate-500 font-normal normal-case">
                               实时监控 / LIVE STATE
                             </span>
                           </div>
-                          <div className="mt-2 text-slate-300 overflow-x-auto text-[10px] relative select-all scrollbar-thin">
+                          <div className="mt-2 text-slate-300 overflow-x-auto font-body-xs text-body-xs relative select-all scrollbar-thin">
                             <pre className="bg-black/50 p-2 border border-slate-900 rounded overflow-auto max-h-[220px]">
                               {JSON.stringify(
                                 activeStates[moduleName],
@@ -824,7 +907,7 @@ export const DebugConsoleHUD: React.FC = () => {
               {activeTab === 'entity' && (
                 <div className="flex flex-col h-full space-y-4">
                   <div className="flex items-center justify-between bg-slate-900/60 p-2 border border-slate-800/40 rounded-lg">
-                    <span className="text-[10px] text-slate-400">
+                    <span className="font-label-caps-xs text-label-caps-xs text-slate-400">
                       CURRENT ENTITY CONTEXT
                     </span>
                   </div>
@@ -840,13 +923,13 @@ export const DebugConsoleHUD: React.FC = () => {
                       </div>
                     ) : (
                       <div className="border border-slate-800 bg-[#0d1016]/80 rounded p-3 font-mono">
-                        <div className="text-[11px] font-bold text-purple-400 uppercase tracking-widest border-b border-slate-800/60 pb-1 flex justify-between items-center">
+                        <div className="font-label-caps-sm text-label-caps-sm font-bold text-purple-400 uppercase tracking-widest border-b border-slate-800/60 pb-1 flex justify-between items-center">
                           <span>Document: {debugTitle || 'Entity Data'}</span>
-                          <span className="text-[9px] text-slate-500 font-normal normal-case">
+                          <span className="font-label-caps-xs text-label-caps-xs text-slate-500 font-normal normal-case">
                             DATABASE SYNC
                           </span>
                         </div>
-                        <div className="mt-2 text-slate-300 overflow-x-auto text-[10px] relative select-all scrollbar-thin">
+                        <div className="mt-2 text-slate-300 overflow-x-auto font-body-xs text-body-xs relative select-all scrollbar-thin">
                           <pre className="bg-black/50 p-2 border border-slate-900 rounded overflow-auto max-h-[350px]">
                             {JSON.stringify(debugData, null, 2)}
                           </pre>
@@ -861,8 +944,8 @@ export const DebugConsoleHUD: React.FC = () => {
               {activeTab === 'diagnostics' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full">
                   {/* System Counters Panel */}
-                  <div className="border border-slate-800/80 bg-slate-900/20 p-3 rounded-xl flex flex-col font-mono text-[11px] space-y-2.5">
-                    <h4 className="text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-800/70 pb-1">
+                  <div className="border border-slate-800/80 bg-slate-900/20 p-3 rounded-xl flex flex-col font-mono font-body-xs text-body-xs space-y-2.5">
+                    <h4 className="text-slate-400 font-bold uppercase font-label-caps-xs text-label-caps-xs tracking-wider border-b border-slate-800/70 pb-1">
                       Session Stats &amp; Counters
                     </h4>
 
@@ -965,8 +1048,8 @@ export const DebugConsoleHUD: React.FC = () => {
                   </div>
 
                   {/* Device Telemetry Info Panel */}
-                  <div className="border border-slate-800/80 bg-slate-900/20 p-3 rounded-xl flex flex-col font-mono text-[11px] space-y-2.5">
-                    <h4 className="text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-800/70 pb-1">
+                  <div className="border border-slate-800/80 bg-slate-900/20 p-3 rounded-xl flex flex-col font-mono font-body-xs text-body-xs space-y-2.5">
+                    <h4 className="text-slate-400 font-bold uppercase font-label-caps-xs text-label-caps-xs tracking-wider border-b border-slate-800/70 pb-1">
                       Dev Workspace Environment
                     </h4>
 
@@ -986,7 +1069,7 @@ export const DebugConsoleHUD: React.FC = () => {
                           Browser Environment Agent
                         </span>
                         <span
-                          className="text-slate-400 text-[10px] text-right truncate max-w-[200px]"
+                          className="text-slate-400 font-body-xs text-body-xs text-right truncate max-w-[200px]"
                           title={
                             typeof navigator !== 'undefined'
                               ? navigator.userAgent
@@ -1038,15 +1121,18 @@ export const DebugConsoleHUD: React.FC = () => {
                 </div>
               )}
 
-              {/* === TABS CONTENT 5: PERSISTENCE & DATA TELEMETRY === */}
-              {activeTab === 'persistence' && (
+              {/* === DYNAMIC PLUGGABLE TELEMETRY PLUGIN VIEW === */}
+              {activePlugin ? (
+                activePlugin.renderTab(pluginContext)
+              ) : activeTab === 'persistence' ? (
                 <PersistenceTelemetryPanel
+                  initialContext={pluginContext}
                   metrics={metrics}
                   fetchCacheHitRatio={fetchCacheHitRatio}
                   activeListeners={activeListeners}
                   baseline={baseline}
                 />
-              )}
+              ) : null}
             </div>
           </motion.div>
         )}
