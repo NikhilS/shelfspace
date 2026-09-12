@@ -29,7 +29,9 @@ export default function Dashboard() {
               Personal archives, curated collections, and literary catalogs.
             </p>
           </div>
-          {libraries.length > 0 && (
+          {isLoading ? (
+            <div className="h-[42px] w-36 bg-surface-variant/40 rounded-xl self-start sm:self-auto animate-pulse shrink-0" />
+          ) : libraries.length > 0 ? (
             <Button
               onClick={() => setIsCreating(true)}
               className="flex items-center gap-2 min-h-[42px] px-5 bg-primary text-on-primary font-sans font-semibold rounded-xl hover:bg-primary/90 shadow-xs self-start sm:self-auto transition-all"
@@ -37,7 +39,7 @@ export default function Dashboard() {
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>Create Library</span>
             </Button>
-          )}
+          ) : null}
         </div>
 
         <ErrorBoundary name="Dashboard Content">

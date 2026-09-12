@@ -1,10 +1,12 @@
 import {create} from 'zustand';
+import {DebugTelemetryEngine} from '../lib/telemetry';
 
 interface DebugLog {
   id: string;
   timestamp: Date;
   message: string;
   level: 'info' | 'warn' | 'error';
+  payload?: unknown;
 }
 
 interface DebugState {
@@ -13,7 +15,11 @@ interface DebugState {
   debugData: unknown;
   debugTitle: string;
   toggleDebugMode: () => void;
-  addLog: (message: string, level?: DebugLog['level']) => void;
+  addLog: (
+    message: string,
+    level?: DebugLog['level'],
+    payload?: unknown,
+  ) => void;
   clearLogs: () => void;
   setDebugData: (data: unknown, title?: string) => void;
 }
@@ -37,15 +43,27 @@ export const useDebugStore = create<DebugState>(set => {
         return {isDebugMode: next};
       }),
 
-    addLog: (message, level = 'info') =>
+    addLog: (message, level = 'info', payload?: unknown) =>
       set(state => {
         const newLog: DebugLog = {
           id: Math.random().toString(36).substring(7),
           timestamp: new Date(),
           message,
           level,
+          payload,
         };
-        console.log(`[DEBUG] [${level.toUpperCase()}] ${message}`);
+        console.log(
+          `[DEBUG] [${level.toUpperCase()}] ${message}`,
+          payload !== undefined ? payload : '',
+        );
+
+        // Forward directly to DebugTelemetryEngine so logs are visible in the HUD
+        try {
+          DebugTelemetryEngine.getInstance().addLog(level, message, payload);
+        } catch {
+          // Ignore if telemetry engine is not yet initialized
+        }
+
         return {logs: [newLog, ...state.logs.slice(0, 99)]};
       }),
 
@@ -60,9 +78,12 @@ export const useDebugStore = create<DebugState>(set => {
 });
 
 export const logger = {
-  info: (message: string) => useDebugStore.getState().addLog(message, 'info'),
-  warn: (message: string) => useDebugStore.getState().addLog(message, 'warn'),
-  error: (message: string) => useDebugStore.getState().addLog(message, 'error'),
+  info: (message: string, payload?: unknown) =>
+    useDebugStore.getState().addLog(message, 'info', payload),
+  warn: (message: string, payload?: unknown) =>
+    useDebugStore.getState().addLog(message, 'warn', payload),
+  error: (message: string, payload?: unknown) =>
+    useDebugStore.getState().addLog(message, 'error', payload),
 };
 
 export const useDebug = useDebugStore;

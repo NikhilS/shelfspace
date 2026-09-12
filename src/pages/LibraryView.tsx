@@ -21,7 +21,7 @@ import {
 } from 'firebase/firestore';
 
 import {toast} from 'sonner';
-import {toTitleCase, getFirestoreTime} from '../lib/utils';
+import {toTitleCase, getFirestoreTime, formatCompactNumber} from '../lib/utils';
 import {motion, AnimatePresence} from 'motion/react';
 import {format} from 'date-fns';
 import {Library} from '../types';
@@ -416,7 +416,7 @@ export default function LibraryView() {
 
           {/* Sticky Library Sub-Navigation Bar */}
           <div className="sticky top-16 z-20 bg-background/95 backdrop-blur-md border-b border-outline-variant/20 shadow-xs">
-            <div className="w-full max-w-[1200px] mx-auto px-4 sm:px-8 py-2 flex items-center justify-between gap-2">
+            <div className="w-full max-w-[1200px] mx-auto px-3 sm:px-8 py-2 flex items-center justify-between gap-1.5 sm:gap-2">
               {/* Tabs Switcher */}
               <div className="flex items-center gap-1 sm:gap-1.5 p-1 bg-surface-container-low rounded-xl border border-outline-variant/30 text-xs font-sans font-medium shrink-0">
                 <Button
@@ -439,24 +439,30 @@ export default function LibraryView() {
                   variant="ghost"
                   size="sm"
                   onClick={() => filters.setCurrentTab('collection')}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-lg transition-all ${
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3.5 h-8 rounded-lg transition-all ${
                     filters.currentTab === 'collection'
                       ? 'bg-surface text-primary font-semibold shadow-xs hover:bg-surface'
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>All Books</span>
+                  <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden sm:inline">All Books</span>
+                  <span className="sm:hidden">Books</span>
                   <Badge
                     variant="outline"
                     size="sm"
-                    className="ml-0.5 px-1.5 py-0 font-label-caps-xs text-label-caps-xs font-semibold bg-surface-container text-on-surface-variant border-transparent"
+                    className="ml-0.5 px-1 sm:px-1.5 py-0 font-label-caps-xs text-label-caps-xs font-semibold bg-surface-container text-on-surface-variant border-transparent"
+                    title={
+                      isBooksLoading && books.length === 0
+                        ? undefined
+                        : `${books.length} volumes`
+                    }
                   >
                     {isBooksLoading && books.length === 0
                       ? library.bookCount !== undefined
-                        ? library.bookCount
+                        ? formatCompactNumber(library.bookCount)
                         : '...'
-                      : books.length}
+                      : formatCompactNumber(books.length)}
                   </Badge>
                 </Button>
 
@@ -474,10 +480,12 @@ export default function LibraryView() {
               {canEdit && (
                 <Link
                   to={`/library/${id}/add`}
-                  className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl bg-primary text-on-primary hover:bg-primary/90 text-xs font-sans font-semibold transition-all shadow-xs shrink-0"
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-primary text-on-primary hover:bg-primary/90 text-xs font-sans font-semibold transition-all shadow-xs shrink-0"
+                  title="Add Books"
                 >
                   <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>Add Books</span>
+                  <span className="hidden sm:inline">Add Books</span>
+                  <span className="sm:hidden">Add</span>
                 </Link>
               )}
             </div>

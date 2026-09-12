@@ -121,6 +121,54 @@ describe('Shared cell formatting components', () => {
     expect(screen.getByText('READING')).toBeInTheDocument();
   });
 
+  it('wraps and truncates long book titles with line-clamp and tooltip', () => {
+    const longTitle =
+      'The Lord of the Rings: 50th Anniversary One-Volume Edition with The Fellowship of the Ring and The Two Towers';
+    render(
+      <BookTitleCell
+        title={longTitle}
+        author="j.r.r. tolkien"
+        maxWidth={320}
+      />,
+    );
+
+    const titleElement = screen.getByText(/The Lord of the Rings/i);
+    expect(titleElement).toBeInTheDocument();
+    expect(titleElement.className).toContain('line-clamp-2');
+    expect(titleElement.className).toContain('break-words');
+    expect(titleElement.className).toContain('whitespace-normal');
+    expect(titleElement).toHaveAttribute('title', longTitle);
+  });
+
+  it('supports single-line truncation when truncateSingleLine or maxLines=1 is specified', () => {
+    render(
+      <BookTitleCell
+        title="Super Long Title That Should Be On A Single Truncated Line"
+        truncateSingleLine
+      />,
+    );
+
+    const titleEl = screen.getByText(/Super Long Title/);
+    expect(titleEl.className).toContain('truncate');
+    expect(titleEl.className).toContain('whitespace-nowrap');
+  });
+
+  it('supports compact size="sm" and showCover=false', () => {
+    const {container} = render(
+      <BookTitleCell
+        title="Dune"
+        author="frank herbert"
+        size="sm"
+        showCover={false}
+      />,
+    );
+
+    const titleEl = screen.getByText('Dune');
+    expect(titleEl.className).toContain('text-sm');
+    expect(container.querySelector('img')).not.toBeInTheDocument();
+    expect(container.querySelector('.h-9')).not.toBeInTheDocument();
+  });
+
   it('renders BookAuthorCell in TitleCase', () => {
     render(<BookAuthorCell author="ursula k. le guin" />);
     expect(screen.getByText('Ursula K. Le Guin')).toBeInTheDocument();

@@ -167,6 +167,7 @@ export const DebugConsoleHUD: React.FC = () => {
     return logs.filter(log => {
       const isNetOp =
         log.type === 'db_read' ||
+        log.type === 'db_write' ||
         log.type === 'api_res' ||
         log.type === 'gen_ai';
       if (!isNetOp) return false;
@@ -659,7 +660,11 @@ export const DebugConsoleHUD: React.FC = () => {
                         } else if (log.type === 'db_read') {
                           colorClass =
                             'text-emerald-400/90 border-l border-emerald-600/50 pl-2';
-                          prefix = '[FIRESTORE]';
+                          prefix = '[FIRESTORE_READ]';
+                        } else if (log.type === 'db_write') {
+                          colorClass =
+                            'text-emerald-300/90 border-l border-emerald-500/60 pl-2 bg-emerald-950/10';
+                          prefix = '[FIRESTORE_WRITE]';
                         } else if (log.type === 'api_res') {
                           colorClass =
                             'text-indigo-400/95 border-l border-indigo-600/50 pl-2';

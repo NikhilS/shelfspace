@@ -10,18 +10,26 @@ describe('Badge UI component', () => {
   });
 
   it('renders semantic status badges correctly', () => {
-    const {container: c1} = render(<Badge variant="status-read">Finished</Badge>);
+    const {container: c1} = render(
+      <Badge variant="status-read">Finished</Badge>,
+    );
     expect(c1.firstChild).toHaveClass('text-emerald-800');
 
-    const {container: c2} = render(<Badge variant="status-reading">Reading</Badge>);
+    const {container: c2} = render(
+      <Badge variant="status-reading">Reading</Badge>,
+    );
     expect(c2.firstChild).toHaveClass('text-amber-800');
 
-    const {container: c3} = render(<Badge variant="status-abandoned">Abandoned</Badge>);
+    const {container: c3} = render(
+      <Badge variant="status-abandoned">Abandoned</Badge>,
+    );
     expect(c3.firstChild).toHaveClass('text-rose-800');
   });
 
   it('renders genre and subgenre variants', () => {
-    const {container: c1} = render(<Badge variant="genre">Science Fiction</Badge>);
+    const {container: c1} = render(
+      <Badge variant="genre">Science Fiction</Badge>,
+    );
     expect(c1.firstChild).toHaveClass('text-primary');
 
     const {container: c2} = render(<Badge variant="subgenre">Cyberpunk</Badge>);

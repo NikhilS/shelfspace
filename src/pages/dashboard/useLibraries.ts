@@ -14,6 +14,7 @@ import {
   doc,
   addDoc,
   serverTimestamp,
+  getDocsFromCache,
 } from 'firebase/firestore';
 import {Library} from '../../types';
 import {toast} from 'sonner';
@@ -27,8 +28,17 @@ import {
 export function useLibraries() {
   const {user} = useAuth();
   const queryClient = useQueryClient();
-  const [libraries, setLibraries] = useState<Library[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const userLibrariesKey = ['userLibraries', user?.uid];
+
+  const [libraries, setLibraries] = useState<Library[]>(() => {
+    if (!user) return [];
+    return queryClient.getQueryData<Library[]>(userLibrariesKey) || [];
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    if (!user) return true;
+    const cached = queryClient.getQueryData<Library[]>(userLibrariesKey);
+    return !cached || cached.length === 0;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const generateLibraryHeroImageMutation =
@@ -36,6 +46,9 @@ export function useLibraries() {
 
   useEffect(() => {
     if (!user) return;
+
+    let isMounted = true;
+    let hasReceivedNetworkUpdate = false;
 
     const q = query(
       collection(db, 'libraries'),
@@ -59,10 +72,68 @@ export function useLibraries() {
         'libraries(user)',
       );
 
+    // Stage 1: Immediate IndexedDB Cache Paint for instant 0ms perception
+    const hydrateFromCache = async () => {
+      try {
+        const cachedSnapshot = await getDocsFromCache(q);
+        if (isMounted && !hasReceivedNetworkUpdate && !cachedSnapshot.empty) {
+          const libs: Library[] = [];
+          cachedSnapshot.forEach(doc => {
+            const data = doc.data();
+            libs.push({
+              id: doc.id,
+              ...data,
+            } as Library);
+          });
+
+          const payloadBytes = calculatePayloadBytes(libs);
+          DebugTelemetryEngine.getInstance().addLog(
+            'db_read',
+            `Hydrated libraries list from local cache (${cachedSnapshot.size} docs, ${(payloadBytes / 1024).toFixed(1)} KB)`,
+            {
+              path: 'libraries(user)',
+              fromCache: true,
+              size: cachedSnapshot.size,
+              bytes: payloadBytes,
+              docCount: cachedSnapshot.size,
+            },
+          );
+
+          setLibraries(libs);
+          setIsLoading(false);
+          queryClient.setQueryData(userLibrariesKey, libs);
+
+          // Pre-seed individual library caches
+          libs.forEach(lib => {
+            queryClient.setQueryData(['library', lib.id], lib);
+            if (user) {
+              const email = user.email?.toLowerCase();
+              const role =
+                lib.ownerId === user.uid
+                  ? 'owner'
+                  : (email && lib.access?.[email]) ||
+                    (email && lib.access?.[user.email || '']) ||
+                    'viewer';
+              queryClient.setQueryData(
+                ['libraryPermissions', lib.id, user.uid, email],
+                role,
+              );
+            }
+          });
+        }
+      } catch {
+        // Cache miss or first visit - proceed smoothly to onSnapshot
+      }
+    };
+
+    void hydrateFromCache();
+
+    // Stage 2: Live real-time listener
     const unsubscribe = onSnapshot(
       q,
       {includeMetadataChanges: true},
       async snapshot => {
+        hasReceivedNetworkUpdate = true;
         const parseStartTime = performance.now();
         const fromCache = snapshot.metadata.fromCache;
         const libs: Library[] = [];
@@ -90,8 +161,12 @@ export function useLibraries() {
           },
         );
 
-        setLibraries(libs);
-        setIsLoading(false);
+        if (isMounted) {
+          setLibraries(libs);
+          setIsLoading(false);
+        }
+
+        queryClient.setQueryData(userLibrariesKey, libs);
 
         // Pre-seed TanStack Query cache so navigation to any library is immediate (0ms delay)
         libs.forEach(lib => {
@@ -112,12 +187,15 @@ export function useLibraries() {
         });
       },
       error => {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
         handleFirestoreError(error, OperationType.LIST, 'libraries');
       },
     );
 
     return () => {
+      isMounted = false;
       unregisterTelemetry();
       unsubscribe();
     };

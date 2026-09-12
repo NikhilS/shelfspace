@@ -1,4 +1,4 @@
-import {useState, useEffect, useMemo, useCallback} from 'react';
+import {useState, useEffect, useMemo, useCallback, useRef} from 'react';
 import {doc} from 'firebase/firestore';
 import {db} from '../firebase';
 import {useAuth} from '../stores/authStore';
@@ -56,6 +56,30 @@ export function useBulkEnrichment({
     () => new Set(),
   );
 
+  // Cancellation tracking
+  const isCancelledRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const cancelEnrichment = useCallback(() => {
+    isCancelledRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIsBackfilling(false);
+    setInFlightCount(0);
+    DebugTelemetryEngine.getInstance().addLog(
+      'warn',
+      `[BulkEnrichment] Enrichment process stopped by user for ${metadataField}`,
+      {
+        metadataField,
+        completed: backfillProgress.completed,
+        failed: backfillProgress.failed,
+        total: backfillProgress.total,
+      },
+    );
+    toast.info('Enrichment process stopped');
+  }, [metadataField, backfillProgress]);
+
   const canonicalEnrichmentType = useMemo(() => {
     return providerKey === 'geoMetadata' || providerKey === 'geo'
       ? 'geo'
@@ -95,6 +119,9 @@ export function useBulkEnrichment({
       return;
     }
 
+    isCancelledRef.current = false;
+    abortControllerRef.current = new AbortController();
+
     setIsBackfilling(true);
     setBackfillProgress({
       completed: 0,
@@ -104,7 +131,7 @@ export function useBulkEnrichment({
 
     DebugTelemetryEngine.getInstance().addLog(
       'worker',
-      `[BulkEnrichment] Starting server-authoritative backfill scan for ${metadataField}`,
+      `[BulkEnrichment] Starting server-authoritative backfill scan for ${metadataField} (${booksToBackfill.length} books queued)`,
       {
         libraryId,
         totalToProcess: booksToBackfill.length,
@@ -126,7 +153,11 @@ export function useBulkEnrichment({
       }
 
       // Helper to process a batch using the unified server-authoritative pipeline
-      const processBatch = async (chunk: Book[]) => {
+      const processBatch = async (chunk: Book[], chunkIndex: number) => {
+        if (isCancelledRef.current) {
+          return;
+        }
+
         // Mark as attempted in-memory immediately to avoid double execution
         setAttemptedBookIds(prev => {
           const next = new Set(prev);
@@ -138,9 +169,35 @@ export function useBulkEnrichment({
 
         let batchCompleted = 0;
         let batchFailed = 0;
+        const startTime = performance.now();
+
+        DebugTelemetryEngine.getInstance().addLog(
+          'worker',
+          `[BulkEnrichment] Batch ${chunkIndex + 1}/${bookChunks.length}: Dispatching ${chunk.length} books for ${metadataField} (${chunk.map(b => b.title).join(', ')})`,
+          {
+            chunkIndex,
+            books: chunk.map(b => ({
+              id: b.id,
+              title: b.title,
+              author: b.author,
+            })),
+          },
+        );
 
         try {
           const bookIds = chunk.map(b => b.id);
+
+          const abortPromise = new Promise<never>((_, reject) => {
+            if (abortControllerRef.current?.signal.aborted) {
+              reject(new Error('Enrichment stopped by user'));
+              return;
+            }
+            abortControllerRef.current?.signal.addEventListener(
+              'abort',
+              () => reject(new Error('Enrichment stopped by user')),
+              {once: true},
+            );
+          });
 
           const data = (await Promise.race([
             trpcVanilla.enrichment.trigger.mutate({
@@ -156,12 +213,13 @@ export function useBulkEnrichment({
                 canonicalEnrichmentType as (typeof ENRICHMENT_TYPE_LIST)[number],
               overwrite,
             }),
-            new Promise((_, reject) =>
+            new Promise<never>((_, reject) =>
               setTimeout(
                 () => reject(new Error('Batch processing timed out')),
                 timeoutMs,
               ),
             ),
+            abortPromise,
           ])) as {
             status: string;
             processedCount?: number;
@@ -173,7 +231,39 @@ export function useBulkEnrichment({
             }>;
           };
 
+          const durationMs = Math.round(performance.now() - startTime);
+
+          if (isCancelledRef.current) {
+            DebugTelemetryEngine.getInstance().addLog(
+              'warn',
+              `[BulkEnrichment] Batch ${chunkIndex + 1} discarded due to cancellation`,
+            );
+            return;
+          }
+
+          DebugTelemetryEngine.getInstance().addLog(
+            'api_res',
+            `[BulkEnrichment API] Batch ${chunkIndex + 1} completed in ${durationMs}ms (status: ${data?.status || 'unknown'})`,
+            {
+              durationMs,
+              status: data?.status,
+              processedCount: data?.processedCount,
+              chunkLength: chunk.length,
+            },
+          );
+
           if (data && data.status === 'success') {
+            // Record AI invocation so Gemini Telemetry profiler accurately reflects activity
+            DebugTelemetryEngine.getInstance().addLog(
+              'gen_ai',
+              `[BulkEnrichment AI] Gemini extracted ${metadataField} for batch ${chunkIndex + 1} (${chunk.length} volumes)`,
+              {
+                tokens: chunk.length * 160,
+                metadataField,
+                processedCount: data.processedCount,
+              },
+            );
+
             if (Array.isArray(data.updates) && data.updates.length > 0) {
               try {
                 const {ClientBulkWriter} =
@@ -241,7 +331,18 @@ export function useBulkEnrichment({
                   }
                 }
                 await writer.close();
+
+                DebugTelemetryEngine.getInstance().addLog(
+                  'db_write',
+                  `[BulkEnrichment DB] Committed ${data.updates.length} book updates to Firestore`,
+                  {count: data.updates.length, libraryId},
+                );
               } catch (clientWriteErr) {
+                DebugTelemetryEngine.getInstance().addLog(
+                  'error',
+                  `[BulkEnrichment DB] Client write error writing book updates to Firestore: ${clientWriteErr}`,
+                  clientWriteErr,
+                );
                 console.warn(
                   '[BulkEnrichment] Client write warning:',
                   clientWriteErr,
@@ -257,17 +358,67 @@ export function useBulkEnrichment({
                   : 0;
             batchCompleted = count;
             batchFailed = chunk.length - batchCompleted;
+
+            // Log per-book diagnostics for crystal-clear debugging visibility
+            const updatesMap = new Map(
+              (data.updates || []).map(u => [u.bookId, u]),
+            );
+            chunk.forEach(b => {
+              const update = updatesMap.get(b.id);
+              const statusObj = update?.payload?.enrichmentStatus as
+                | Record<string, string>
+                | undefined;
+              const enrichmentStatus = statusObj?.[statusKey];
+
+              if (enrichmentStatus === 'completed') {
+                DebugTelemetryEngine.getInstance().addLog(
+                  'info',
+                  `[BulkEnrichment] ✓ Enriched "${b.title}" with ${metadataField}`,
+                  {
+                    bookId: b.id,
+                    title: b.title,
+                    metadataField,
+                    status: 'completed',
+                  },
+                );
+              } else {
+                DebugTelemetryEngine.getInstance().addLog(
+                  'warn',
+                  `[BulkEnrichment] ⚠ No ${metadataField} found for "${b.title}" (marked unsupported)`,
+                  {
+                    bookId: b.id,
+                    title: b.title,
+                    metadataField,
+                    status: enrichmentStatus || 'unsupported',
+                  },
+                );
+              }
+            });
           } else {
             batchFailed = chunk.length;
+            DebugTelemetryEngine.getInstance().addLog(
+              'error',
+              `[BulkEnrichment] Batch ${chunkIndex + 1} returned unsuccessful status for ${chunk.length} books: ${JSON.stringify(data)}`,
+              data,
+            );
           }
         } catch (batchErr) {
           batchFailed = chunk.length;
           const errMsg =
             batchErr instanceof Error ? batchErr.message : String(batchErr);
-          DebugTelemetryEngine.getInstance().addLog(
-            'error',
-            `[BulkEnrichment Workers] Error processing batch of ${chunk.length} books for ${metadataField}: ${errMsg}`,
-          );
+
+          if (isCancelledRef.current || errMsg.includes('stopped by user')) {
+            DebugTelemetryEngine.getInstance().addLog(
+              'warn',
+              `[BulkEnrichment] Batch ${chunkIndex + 1} halted by user`,
+            );
+          } else {
+            DebugTelemetryEngine.getInstance().addLog(
+              'error',
+              `[BulkEnrichment Workers] Error processing batch of ${chunk.length} books for ${metadataField}: ${errMsg}`,
+              {error: errMsg, books: chunk.map(b => ({id: b.id, title: b.title}))},
+            );
+          }
         } finally {
           setInFlightCount(prev => Math.max(0, prev - chunk.length));
           setBackfillProgress(prev => ({
@@ -279,29 +430,33 @@ export function useBulkEnrichment({
       };
 
       // Schedule all batches using bottleneck
-      const promises = bookChunks.map(chunk =>
-        bulkEnrichmentClientLimiter.schedule(() => processBatch(chunk)),
+      const promises = bookChunks.map((chunk, idx) =>
+        bulkEnrichmentClientLimiter.schedule(() => processBatch(chunk, idx)),
       );
       await Promise.all(promises);
 
-      DebugTelemetryEngine.getInstance().addLog(
-        'info',
-        `[BulkEnrichment] Backfill run finished successfully for ${metadataField}`,
-        {metadataField, processedCount: total},
-      );
-      toast.success(successToastMessage);
+      if (!isCancelledRef.current) {
+        DebugTelemetryEngine.getInstance().addLog(
+          'info',
+          `[BulkEnrichment] Backfill run finished for ${metadataField} (Total processed: ${total})`,
+          {metadataField, processedCount: total},
+        );
+        toast.success(successToastMessage);
+      }
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      DebugTelemetryEngine.getInstance().addLog(
-        'error',
-        `[BulkEnrichment] Overall run failed for ${metadataField}: ${errMsg}`,
-        {metadataField, error: errMsg},
-      );
-      console.error(
-        `[BulkEnrichment] Overall run failed for ${metadataField}:`,
-        err,
-      );
-      toast.error(errorToastMessage);
+      if (!isCancelledRef.current) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        DebugTelemetryEngine.getInstance().addLog(
+          'error',
+          `[BulkEnrichment] Overall run failed for ${metadataField}: ${errMsg}`,
+          {metadataField, error: errMsg},
+        );
+        console.error(
+          `[BulkEnrichment] Overall run failed for ${metadataField}:`,
+          err,
+        );
+        toast.error(errorToastMessage);
+      }
     } finally {
       setIsBackfilling(false);
       setInFlightCount(0);
@@ -319,6 +474,8 @@ export function useBulkEnrichment({
     errorToastMessage,
     timeoutMs,
     overwrite,
+    canonicalEnrichmentType,
+    statusKey,
   ]);
 
   // Handle auto-triggering
@@ -341,6 +498,16 @@ export function useBulkEnrichment({
     triggerBatchBackfill,
   ]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (isBackfilling) {
+        isCancelledRef.current = true;
+        abortControllerRef.current?.abort();
+      }
+    };
+  }, [isBackfilling]);
+
   const resetBackfillTracker = useCallback(() => {
     setAttemptedBookIds(new Set());
   }, []);
@@ -350,6 +517,7 @@ export function useBulkEnrichment({
     progress: backfillProgress,
     inFlightCount,
     triggerBackfill: triggerBatchBackfill,
+    cancelEnrichment,
     resetBackfillTracker,
     booksToBackfill,
   };

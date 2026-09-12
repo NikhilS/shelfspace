@@ -18,7 +18,9 @@ describe('Loader UI component', () => {
   });
 
   it('renders BookLoader alias identical to Loader', () => {
-    const {container} = render(<BookLoader size="sm" className="test-custom-class" />);
+    const {container} = render(
+      <BookLoader size="sm" className="test-custom-class" />,
+    );
     expect(container.querySelector('.test-custom-class')).toBeInTheDocument();
   });
 });

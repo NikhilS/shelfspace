@@ -28,6 +28,8 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
   },
 }));
 
@@ -188,5 +190,63 @@ describe('useBulkEnrichment', () => {
         overwrite: false,
       }),
     );
+  });
+
+  it('allows enrichments to be cancelled/stopped via cancelEnrichment', async () => {
+    const books: Book[] = [
+      {
+        ...baseBook,
+        id: 'b30',
+        title: 'Cancelable Book',
+      },
+    ];
+
+    let resolveMutate: (val: unknown) => void;
+    const mutatePromise = new Promise(resolve => {
+      resolveMutate = resolve;
+    });
+
+    vi.mocked(trpcVanilla.enrichment.trigger.mutate).mockReturnValueOnce(
+      mutatePromise as ReturnType<typeof trpcVanilla.enrichment.trigger.mutate>,
+    );
+
+    const {result} = renderHook(() =>
+      useBulkEnrichment({
+        books,
+        isBooksLoading: false,
+        libraryId: 'lib1',
+        providerKey: 'genre',
+        metadataField: 'genre',
+        filterPredicate: () => true,
+        autoTrigger: false,
+      }),
+    );
+
+    let backfillPromise: Promise<void>;
+    act(() => {
+      backfillPromise = result.current.triggerBackfill();
+    });
+
+    expect(result.current.isBackfilling).toBe(true);
+
+    act(() => {
+      result.current.cancelEnrichment();
+    });
+
+    expect(result.current.isBackfilling).toBe(false);
+
+    // Resolve in-flight mutation
+    resolveMutate!({
+      status: 'success',
+      enrichmentType: 'genre',
+      processedCount: 1,
+      results: [{id: 'b30', primaryGenre: 'Mystery'}],
+    });
+
+    await act(async () => {
+      await backfillPromise;
+    });
+
+    expect(result.current.isBackfilling).toBe(false);
   });
 });

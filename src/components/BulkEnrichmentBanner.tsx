@@ -1,5 +1,5 @@
 import React from 'react';
-import {Sparkles} from 'lucide-react';
+import {Sparkles, Square} from 'lucide-react';
 import {motion} from 'motion/react';
 
 interface BulkEnrichmentBannerProps {
@@ -13,6 +13,8 @@ interface BulkEnrichmentBannerProps {
   id?: string;
   inFlightCount?: number;
   failed?: number;
+  onCancel?: () => void;
+  cancelLabel?: string;
 }
 
 export function BulkEnrichmentBanner({
@@ -26,6 +28,8 @@ export function BulkEnrichmentBanner({
   id = 'sync-progress-banner',
   inFlightCount,
   failed = 0,
+  onCancel,
+  cancelLabel = 'Stop',
 }: BulkEnrichmentBannerProps) {
   if (!isBackfilling && completed === 0 && failed === 0) return null;
   if (!isBackfilling && completed + failed >= total) return null;
@@ -90,13 +94,26 @@ export function BulkEnrichmentBanner({
           </p>
         </div>
       </div>
-      <div
-        className={`w-full sm:w-36 rounded-full h-1.5 overflow-hidden shrink-0 sm:ml-4 ${selectedTheme.progressBg}`}
-      >
+      <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 justify-between sm:justify-end">
         <div
-          className={`h-1.5 rounded-full transition-all duration-300 ${selectedTheme.progressBar}`}
-          style={{width: `${percentage}%`}}
-        />
+          className={`w-full sm:w-36 rounded-full h-1.5 overflow-hidden shrink-0 ${selectedTheme.progressBg}`}
+        >
+          <div
+            className={`h-1.5 rounded-full transition-all duration-300 ${selectedTheme.progressBar}`}
+            style={{width: `${percentage}%`}}
+          />
+        </div>
+        {onCancel && isBackfilling && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded border border-red-300 dark:border-red-900/60 bg-red-50/90 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 transition-colors shadow-xs cursor-pointer select-none"
+            title="Stop ongoing enrichment"
+          >
+            <Square className="w-2.5 h-2.5 fill-current" />
+            <span>{cancelLabel}</span>
+          </button>
+        )}
       </div>
     </motion.div>
   );

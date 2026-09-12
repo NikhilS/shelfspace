@@ -28,8 +28,12 @@ export interface DataTableColumn<T> {
   headerClassName?: string;
   cellClassName?: string;
   width?: string | number;
+  minWidth?: string | number;
+  maxWidth?: string | number;
   sortable?: boolean;
   align?: 'left' | 'center' | 'right';
+  wrap?: boolean;
+  truncate?: boolean;
 }
 
 export interface DataTableProps<T> {
@@ -58,6 +62,8 @@ export interface DataTableProps<T> {
   headerClassName?: string;
   headerRowClassName?: string;
   bodyClassName?: string;
+  style?: React.CSSProperties;
+  useWindowScroll?: boolean;
 }
 
 export function DataTable<T>({
@@ -77,6 +83,8 @@ export function DataTable<T>({
   headerClassName,
   headerRowClassName,
   bodyClassName,
+  style,
+  useWindowScroll = true,
 }: DataTableProps<T>) {
   const threshold = virtualizationThreshold ?? 50;
   const isVirtualized =
@@ -87,7 +95,11 @@ export function DataTable<T>({
     return (
       <TableHead
         key={col.id}
-        style={col.width !== undefined ? {width: col.width} : undefined}
+        style={{
+          ...(col.width !== undefined ? {width: col.width} : {}),
+          ...(col.minWidth !== undefined ? {minWidth: col.minWidth} : {}),
+          ...(col.maxWidth !== undefined ? {maxWidth: col.maxWidth} : {}),
+        }}
         className={cn(
           col.sortable &&
             'cursor-pointer hover:bg-surface-variant/30 transition-colors select-none',
@@ -140,13 +152,20 @@ export function DataTable<T>({
     return (
       <TableCell
         key={col.id}
-        style={col.width !== undefined ? {width: col.width} : undefined}
+        style={{
+          ...(col.width !== undefined ? {width: col.width} : {}),
+          ...(col.minWidth !== undefined ? {minWidth: col.minWidth} : {}),
+          ...(col.maxWidth !== undefined ? {maxWidth: col.maxWidth} : {}),
+        }}
         className={cn(
           col.align === 'center'
             ? 'text-center'
             : col.align === 'right'
               ? 'text-right'
               : 'text-left',
+          col.wrap && 'whitespace-normal break-words',
+          col.truncate && 'truncate overflow-hidden max-w-[260px]',
+          col.maxWidth !== undefined && 'overflow-hidden',
           col.cellClassName,
         )}
       >
@@ -183,7 +202,8 @@ export function DataTable<T>({
     return (
       <TableVirtuoso
         data={data}
-        useWindowScroll
+        useWindowScroll={useWindowScroll}
+        style={style}
         className={cn('w-full text-left border-collapse', className)}
         components={{
           Table: ({style, ...props}) => (
@@ -353,8 +373,15 @@ export interface BookTitleCellProps {
   userStatus?: 'reading' | 'finished' | 'abandoned' | string | null;
   isSelected?: boolean;
   showCheckbox?: boolean;
+  showCover?: boolean;
   onToggleSelect?: (e: React.MouseEvent) => void;
   className?: string;
+  titleClassName?: string;
+  authorClassName?: string;
+  maxLines?: number;
+  maxWidth?: string | number;
+  truncateSingleLine?: boolean;
+  size?: 'sm' | 'md' | 'lg';
 }
 
 export function BookTitleCell({
@@ -364,8 +391,15 @@ export function BookTitleCell({
   userStatus,
   isSelected = false,
   showCheckbox = false,
+  showCover = true,
   onToggleSelect,
   className,
+  titleClassName,
+  authorClassName,
+  maxLines = 2,
+  maxWidth,
+  truncateSingleLine = false,
+  size = 'md',
 }: BookTitleCellProps) {
   const hash = (title || '')
     .split('')
@@ -379,61 +413,119 @@ export function BookTitleCell({
   ];
   const gradientClass = gradients[hash % gradients.length];
 
+  const coverSizes = {
+    sm: 'h-9 w-6 rounded-xs',
+    md: 'h-12 w-8 rounded-sm',
+    lg: 'h-14 w-9 rounded-sm',
+  };
+
+  const titleSizes = {
+    sm: 'text-sm font-medium text-on-surface leading-tight',
+    md: 'font-serif text-base sm:text-lg font-medium text-on-surface leading-snug',
+    lg: 'font-serif text-lg sm:text-xl font-medium text-on-surface leading-snug',
+  };
+
+  const defaultMaxWidths = {
+    sm: 'max-w-[200px] sm:max-w-[260px] md:max-w-[320px]',
+    md: 'max-w-[240px] sm:max-w-[320px] md:max-w-[400px]',
+    lg: 'max-w-[280px] sm:max-w-[380px] md:max-w-[460px]',
+  };
+
+  const formattedTitle = toTitleCase(title || 'Untitled');
+  const formattedAuthor = author ? toTitleCase(author) : undefined;
+
+  const clampClass =
+    truncateSingleLine || maxLines === 1
+      ? 'truncate whitespace-nowrap overflow-hidden block'
+      : maxLines === 3
+        ? 'line-clamp-3 whitespace-normal break-words overflow-hidden'
+        : 'line-clamp-2 whitespace-normal break-words overflow-hidden';
+
+  const containerStyle: React.CSSProperties = {
+    ...(maxWidth !== undefined
+      ? {
+          maxWidth: typeof maxWidth === 'number' ? `${maxWidth}px` : maxWidth,
+        }
+      : {}),
+  };
+
   return (
-    <div className={cn('flex items-center gap-4 group/cover', className)}>
-      <div
-        className="h-12 w-8 flex-shrink-0 relative overflow-hidden rounded-sm cursor-pointer"
-        onClick={e => {
-          if (onToggleSelect) {
-            e.stopPropagation();
-            onToggleSelect(e);
-          }
-        }}
-      >
-        {showCheckbox && (
-          <div
-            className={cn(
-              'absolute inset-0 z-20 flex items-center justify-center transition-all',
-              isSelected
-                ? 'opacity-100 bg-transparent'
-                : 'opacity-0 group-hover/cover:opacity-100 hover:bg-surface-variant/30',
-            )}
-          >
-            <Checkbox
-              checked={isSelected}
-              onCheckedChange={() => {}}
-              className="pointer-events-none w-4 h-4 bg-surface"
-              aria-label={`Select ${title}`}
-            />
-          </div>
-        )}
+    <div
+      className={cn(
+        'flex items-center group/cover min-w-0',
+        size === 'sm' ? 'gap-2.5 sm:gap-3' : 'gap-3 sm:gap-4',
+        maxWidth === undefined && defaultMaxWidths[size],
+        className,
+      )}
+      style={containerStyle}
+      title={title}
+    >
+      {showCover && (
         <div
           className={cn(
-            'absolute inset-0 bg-surface-variant shadow-sm border border-outline-variant/30 transition-opacity',
-            showCheckbox && isSelected
-              ? 'opacity-0'
-              : 'opacity-100 group-hover/cover:opacity-0',
+            coverSizes[size],
+            'flex-shrink-0 relative overflow-hidden cursor-pointer shadow-xs border border-outline-variant/30',
           )}
+          onClick={e => {
+            if (onToggleSelect) {
+              e.stopPropagation();
+              onToggleSelect(e);
+            }
+          }}
         >
-          {coverUrl ? (
-            <img
-              src={coverUrl}
-              alt={title}
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-              loading="lazy"
-            />
-          ) : (
+          {showCheckbox && (
             <div
-              className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-80`}
-            />
+              className={cn(
+                'absolute inset-0 z-20 flex items-center justify-center transition-all',
+                isSelected
+                  ? 'opacity-100 bg-transparent'
+                  : 'opacity-0 group-hover/cover:opacity-100 hover:bg-surface-variant/30',
+              )}
+            >
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => {}}
+                className="pointer-events-none w-4 h-4 bg-surface"
+                aria-label={`Select ${title}`}
+              />
+            </div>
           )}
+          <div
+            className={cn(
+              'absolute inset-0 bg-surface-variant transition-opacity',
+              showCheckbox && isSelected
+                ? 'opacity-0'
+                : 'opacity-100 group-hover/cover:opacity-0',
+            )}
+          >
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt={title}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+                loading="lazy"
+              />
+            ) : (
+              <div
+                className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-80`}
+              />
+            )}
+          </div>
         </div>
-      </div>
-      <div className="flex flex-col min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-serif text-lg sm:text-xl font-medium text-on-surface line-clamp-2 max-w-lg leading-snug">
-            {toTitleCase(title)}
+      )}
+      <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          <span
+            className={cn(
+              titleSizes[size],
+              clampClass,
+              'min-w-0 flex-1',
+              titleClassName,
+            )}
+            title={title}
+          >
+            {formattedTitle}
           </span>
           {userStatus && userStatus !== 'unset' && (
             <Badge
@@ -445,6 +537,7 @@ export function BookTitleCell({
                     ? 'status-read'
                     : 'status-abandoned'
               }
+              className="shrink-0"
             >
               {userStatus === 'reading'
                 ? 'READING'
@@ -454,9 +547,15 @@ export function BookTitleCell({
             </Badge>
           )}
         </div>
-        {author && (
-          <span className="text-xs text-on-surface-variant font-sans truncate">
-            {toTitleCase(author)}
+        {formattedAuthor && (
+          <span
+            className={cn(
+              'text-xs text-on-surface-variant font-sans truncate block max-w-full overflow-hidden mt-0.5',
+              authorClassName,
+            )}
+            title={author}
+          >
+            {formattedAuthor}
           </span>
         )}
       </div>

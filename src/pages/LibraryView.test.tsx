@@ -155,4 +155,28 @@ describe('LibraryView', () => {
     const topCatCard = await screen.findByText(/Top Categories/i);
     expect(topCatCard).toBeInTheDocument();
   });
+
+  it('renders responsive navigation tabs with adaptive labels and compact badge count', async () => {
+    const testQueryClient = createTestQueryClient();
+    render(
+      <QueryClientProvider client={testQueryClient}>
+        <MemoryRouter initialEntries={['/library/lib1']}>
+          <Routes>
+            <Route path="/library/:id" element={<LibraryView />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    // Verify adaptive desktop/mobile text elements exist
+    const allBooksLabel = await screen.findByText('All Books');
+    const mobileBooksLabel = await screen.findByText('Books');
+    expect(allBooksLabel).toBeInTheDocument();
+    expect(mobileBooksLabel).toBeInTheDocument();
+
+    const addBooksLabel = await screen.findByText('Add Books');
+    const mobileAddLabel = await screen.findByText('Add');
+    expect(addBooksLabel).toBeInTheDocument();
+    expect(mobileAddLabel).toBeInTheDocument();
+  });
 });

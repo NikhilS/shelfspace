@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {Play, LibraryBig} from 'lucide-react';
+import {Play, LibraryBig, Square, CheckCircle2} from 'lucide-react';
 import {MetadataKey} from '../../types/metadata';
 import {useBulkEnrichment} from '../../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../../components/BulkEnrichmentBanner';
@@ -19,6 +19,7 @@ import {
   DataTableCheckboxHeader,
   DataTableCheckboxCell,
   StatusDotCell,
+  BookTitleCell,
 } from '@/components/ui/data-table';
 
 interface ManualEnrichmentSectionProps {
@@ -177,13 +178,18 @@ export function ManualEnrichmentSection({
         id: 'book',
         header: 'Book',
         headerClassName:
-          'px-4 py-3 bg-surface-container-low border-b border-outline-variant/30 font-medium font-sans text-on-surface-variant',
-        cellClassName: 'px-4 py-3 min-w-[200px]',
+          'px-4 py-3 bg-surface-container-low border-b border-outline-variant/30 font-medium font-sans text-on-surface-variant w-[240px] sm:w-[280px] max-w-[320px]',
+        cellClassName: 'px-4 py-3 w-[240px] sm:w-[280px] max-w-[320px]',
+        wrap: true,
+        maxWidth: 320,
         cell: book => (
-          <div>
-            <div className="font-medium text-on-surface">{book.title}</div>
-            <div className="text-xs text-on-surface-variant">{book.author}</div>
-          </div>
+          <BookTitleCell
+            title={book.title}
+            author={book.author}
+            coverUrl={book.coverUrl}
+            size="sm"
+            maxWidth={280}
+          />
         ),
       },
       ...ALL_METADATA_KEYS.map(k => ({
@@ -327,18 +333,38 @@ export function ManualEnrichmentSection({
         </div>
       )}
 
-      {/* Table view */}
-      <div className="overflow-x-auto min-h-[500px]">
-        <DataTable<Book>
-          data={filteredBooks}
-          columns={columns}
-          keyExtractor={b => b.id}
-          onRowClick={book => toggleSelect(book.id)}
-          rowClassName={item =>
-            `transition-colors bg-surface ${selectedBookIds.has(item.id) ? 'bg-primary/5' : 'hover:bg-surface-container-lowest/50'}`
-          }
-          emptyPlaceholder="No books found matching this filter."
-        />
+      {/* Table view - nested in a bounded scrollable container so users don't have to scroll far to reach functionality below */}
+      <div className="relative border-t border-outline-variant/30 bg-surface rounded-b-xl overflow-hidden">
+        <div className="max-h-[500px] overflow-y-auto overflow-x-auto">
+          <DataTable<Book>
+            data={filteredBooks}
+            columns={columns}
+            keyExtractor={b => b.id}
+            onRowClick={book => toggleSelect(book.id)}
+            rowClassName={item =>
+              `transition-colors bg-surface ${selectedBookIds.has(item.id) ? 'bg-primary/5' : 'hover:bg-surface-container-lowest/50'}`
+            }
+            emptyPlaceholder="No books found matching this filter."
+            useWindowScroll={false}
+            style={{
+              height: Math.min(
+                500,
+                Math.max(220, filteredBooks.length * 52 + 50),
+              ),
+            }}
+          />
+        </div>
+        {/* Table footer bar showing count and scroll helper */}
+        <div className="px-4 py-2.5 bg-surface-container-lowest border-t border-outline-variant/20 flex items-center justify-between text-xs text-on-surface-variant select-none">
+          <span className="font-medium text-on-surface">
+            {filteredBooks.length}{' '}
+            {filteredBooks.length === 1 ? 'book' : 'books'} shown
+            {selectedBookIds.size > 0 && ` (${selectedBookIds.size} selected)`}
+          </span>
+          <span className="text-[11px] text-on-surface-variant/70 italic">
+            Scroll inside table to browse • Headers stay pinned
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -357,37 +383,72 @@ function EnrichmentRunner({
   overwrite: boolean;
   onComplete: () => void;
 }) {
-  const {isBackfilling, progress, inFlightCount} = useBulkEnrichment({
-    books,
-    isBooksLoading: false,
-    libraryId,
-    providerKey: targetMetadata,
-    metadataField: targetMetadata,
-    overwrite,
-    filterPredicate: b => {
-      if (overwrite) return true;
-      return !isMetadataPresent(b, targetMetadata);
-    },
-    successToastMessage: `Successfully enriched ${targetMetadata}`,
-    errorToastMessage: `Failed to enrich ${targetMetadata}`,
-  });
+  const {isBackfilling, progress, inFlightCount, cancelEnrichment} =
+    useBulkEnrichment({
+      books,
+      isBooksLoading: false,
+      libraryId,
+      providerKey: targetMetadata,
+      metadataField: targetMetadata,
+      overwrite,
+      filterPredicate: b => {
+        if (overwrite) return true;
+        return !isMetadataPresent(b, targetMetadata);
+      },
+      successToastMessage: `Successfully enriched ${targetMetadata}`,
+      errorToastMessage: `Failed to enrich ${targetMetadata}`,
+    });
+
+  const isFinished =
+    !isBackfilling &&
+    progress.total > 0 &&
+    progress.completed + progress.failed >= progress.total;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center">
         <div>
-          <h4 className="font-semibold text-on-surface text-sm">
-            Enrichment in Progress...
+          <h4 className="font-semibold text-on-surface text-sm flex items-center gap-2">
+            {isBackfilling ? (
+              <>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+                Enrichment in Progress...
+              </>
+            ) : isFinished ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                Enrichment Complete
+              </>
+            ) : (
+              'Enrichment Stopped / Ready'
+            )}
           </h4>
           <p className="text-xs text-on-surface-variant mt-1">
-            Fetching metadata securely using Gemini extraction.
+            {isBackfilling
+              ? 'Analyzing books and extracting rich metadata with Gemini AI.'
+              : `${progress.completed} of ${progress.total} enriched${progress.failed > 0 ? ` (${progress.failed} skipped/unsupported)` : ''}.`}
           </p>
         </div>
-        {!isBackfilling && (
-          <Button size="sm" variant="outline" onClick={onComplete}>
-            Close
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {isBackfilling ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={cancelEnrichment}
+              className="text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 gap-1.5 cursor-pointer"
+            >
+              <Square className="w-3 h-3 fill-current" />
+              Stop Enrichment
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={onComplete}>
+              Close
+            </Button>
+          )}
+        </div>
       </div>
       {(progress.total > 0 || isBackfilling) && (
         <BulkEnrichmentBanner
@@ -396,8 +457,10 @@ function EnrichmentRunner({
           failed={progress.failed}
           total={progress.total}
           title="Curator Enrichment"
-          description="Fetching deep metadata..."
+          description="Extracting metadata..."
           inFlightCount={inFlightCount}
+          onCancel={cancelEnrichment}
+          cancelLabel="Stop"
         />
       )}
     </div>

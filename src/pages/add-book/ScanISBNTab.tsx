@@ -3,11 +3,7 @@ import {BookDetails, searchBookByIsbn} from '../../services/bookApi';
 import BarcodeScanner from '../../components/BarcodeScanner';
 import {Loader2, X, BookPlus} from 'lucide-react';
 import {toast} from 'sonner';
-import {
-  toTitleCase,
-  triggerHaptics,
-  normalizeBookDetails,
-} from '../../lib/utils';
+import {triggerHaptics, normalizeBookDetails} from '../../lib/utils';
 import {Checkbox} from '../../components/ui/checkbox';
 import {Button} from '../../components/ui/button';
 import {logger} from '../../stores/debugStore';
@@ -16,6 +12,8 @@ import {
   DataTableColumn,
   DataTableCheckboxHeader,
   DataTableCheckboxCell,
+  BookTitleCell,
+  BookAuthorCell,
 } from '../../components/ui/data-table';
 
 interface ScanISBNTabProps {
@@ -135,9 +133,18 @@ function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
         id: 'title',
         header: 'Title',
         headerClassName:
-          'px-4 py-3 font-semibold text-xs uppercase text-on-surface-variant',
+          'px-4 py-3 font-semibold text-xs uppercase text-on-surface-variant w-[240px] sm:w-[280px]',
         cellClassName: 'px-4 py-3 font-medium text-on-surface',
-        cell: book => toTitleCase(book.title),
+        wrap: true,
+        maxWidth: 300,
+        cell: book => (
+          <BookTitleCell
+            title={book.title}
+            coverUrl={book.coverUrl}
+            size="sm"
+            maxWidth={260}
+          />
+        ),
       },
       {
         id: 'author',
@@ -145,7 +152,9 @@ function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
         headerClassName:
           'px-4 py-3 font-semibold text-xs uppercase text-on-surface-variant',
         cellClassName: 'px-4 py-3 text-on-surface-variant',
-        cell: book => toTitleCase(book.author),
+        truncate: true,
+        maxWidth: 180,
+        cell: book => <BookAuthorCell author={book.author} />,
       },
       {
         id: 'isbn',

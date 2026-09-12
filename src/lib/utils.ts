@@ -153,3 +153,18 @@ export function filterDuplicateBooks(
 
   return {unique: uniqueNormalized, duplicatesFromInput};
 }
+
+/**
+ * Formats numbers into compact notation for space-constrained UI badges and metrics
+ * (e.g. 950 -> "950", 1620 -> "1.6k", 25000 -> "25k").
+ */
+export function formatCompactNumber(num: number): string {
+  if (!num && num !== 0) return '0';
+  if (num < 1000) return num.toString();
+  return new Intl.NumberFormat('en', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  })
+    .format(num)
+    .toLowerCase();
+}

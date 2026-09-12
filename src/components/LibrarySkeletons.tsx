@@ -192,3 +192,40 @@ export function LibraryMainSkeleton({
     </div>
   );
 }
+
+// DASHBOARD skeleton page that matches the Dashboard layout, header, and library cards
+export function DashboardMainSkeleton() {
+  return (
+    <div className="flex-1 flex flex-col min-w-0 h-full w-full">
+      <div className="layout-page-content animate-pulse">
+        {/* Header matching Dashboard.tsx */}
+        <div className="layout-header border-none pb-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="space-y-2">
+            <div className="h-8 sm:h-9 bg-surface-variant/50 rounded-lg w-44" />
+            <div className="h-4 bg-surface-variant/30 rounded w-72 sm:w-96 max-w-full" />
+          </div>
+          <div className="h-[42px] w-36 bg-surface-variant/40 rounded-xl self-start sm:self-auto shrink-0" />
+        </div>
+
+        {/* 2-column cards grid matching LibraryCard anatomy exactly */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-2">
+          {[1, 2, 3, 4].map(i => (
+            <div
+              key={i}
+              className="bg-surface-container-low rounded-lg overflow-hidden border border-outline-variant/30 shadow-elevation-1 flex flex-col h-full"
+            >
+              <div className="h-44 w-full bg-surface-variant/40" />
+              <div className="p-6 flex flex-col flex-grow justify-between bg-surface-container-lowest">
+                <div className="h-7 bg-surface-variant/50 rounded w-2/3 mb-6" />
+                <div className="flex items-center justify-between mt-auto pt-2">
+                  <div className="h-4 bg-surface-variant/40 rounded w-24" />
+                  <div className="h-5 bg-surface-variant/30 rounded-sm w-20" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

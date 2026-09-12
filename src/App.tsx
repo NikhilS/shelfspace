@@ -19,11 +19,16 @@ import ScrollToTop from './components/ScrollToTop';
 import {RequireLibraryPermission} from './components/RequireLibraryPermission';
 import {BookLoader} from './components/BookLoader';
 import {PageLoading} from './components/PageLoading';
-import {LibraryMainSkeleton} from './components/LibrarySkeletons';
+import {
+  LibraryMainSkeleton,
+  DashboardMainSkeleton,
+} from './components/LibrarySkeletons';
 import {useDebug} from './stores/debugStore';
 import {Button} from './components/ui/button';
 
-const Dashboard = lazy(() => import('./pages/Dashboard'));
+// Eagerly prefetch the primary Dashboard chunk while auth initializes
+const dashboardPromise = import('./pages/Dashboard');
+const Dashboard = lazy(() => dashboardPromise);
 const LibraryView = lazy(() => import('./pages/LibraryView'));
 const BookDetailsView = lazy(() => import('./pages/BookDetailsView'));
 const AddBookView = lazy(() => import('./pages/AddBookView'));
@@ -45,6 +50,7 @@ function LoadingScreen() {
 function PageWrapper({children}: {children?: React.ReactNode}) {
   const location = useLocation();
   const isLibraryRoute = location.pathname.startsWith('/library/');
+  const isDashboardRoute = location.pathname === '/';
 
   return (
     <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out flex-1">
@@ -53,6 +59,8 @@ function PageWrapper({children}: {children?: React.ReactNode}) {
           fallback={
             isLibraryRoute ? (
               <LibraryMainSkeleton />
+            ) : isDashboardRoute ? (
+              <DashboardMainSkeleton />
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh]">
                 <PageLoading
