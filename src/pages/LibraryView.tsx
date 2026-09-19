@@ -8,24 +8,13 @@ import {
 } from 'react-router-dom';
 import {Sparkles, BookOpen, Wand2, Plus} from 'lucide-react';
 import {useAuth} from '../stores/authStore';
-import {auth, db, handleFirestoreError, OperationType} from '../firebase';
+import {auth} from '../firebase';
 import {uploadBase64Image} from '../services/db/storage';
-import {
-  collection,
-  getDocs,
-  writeBatch,
-  doc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
-
+import {trpc, trpcVanilla} from '../lib/trpc';
 import {toast} from 'sonner';
 import {toTitleCase, getFirestoreTime, formatCompactNumber} from '../lib/utils';
 import {motion, AnimatePresence} from 'motion/react';
 import {format} from 'date-fns';
-import {Library} from '../types';
-import {trpc} from '../lib/trpc';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {instrumentMutation} from '../lib/telemetry';
@@ -179,22 +168,25 @@ export default function LibraryView() {
 
       const targetEmail = email.trim().toLowerCase();
 
-      const updateData: Partial<Library> = {};
-
       // Remove from access
-      if (library.access && library.access[targetEmail]) {
-        const newAccess = {...library.access};
-        delete newAccess[targetEmail];
-        updateData.access = newAccess;
-      }
+      const newAccess = {...(library.access || {})};
+      delete newAccess[targetEmail];
 
-      await instrumentMutation('update', `libraries/${id}`, updateData, () =>
-        updateDoc(doc(db, 'libraries', id), updateData),
+      await instrumentMutation(
+        'update',
+        `libraries/${id}`,
+        {access: newAccess},
+        () =>
+          trpcVanilla.library.update.mutate({
+            libraryId: id,
+            access: newAccess,
+          }),
       );
 
       toast.success(`Removed access for ${email}`);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `libraries/${id}`);
+      console.error('Failed to remove collaborator:', error);
+      toast.error('Failed to remove collaborator');
     }
   };
 
@@ -210,14 +202,16 @@ export default function LibraryView() {
         `libraries/${id}`,
         {access: newAccess},
         () =>
-          updateDoc(doc(db, 'libraries', id), {
+          trpcVanilla.library.update.mutate({
+            libraryId: id,
             access: newAccess,
           }),
       );
 
       toast.success(`Updated role for ${email} to ${role}`);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `libraries/${id}`);
+      console.error('Failed to update role:', error);
+      toast.error('Failed to update collaborator role');
     }
   };
 
@@ -227,34 +221,18 @@ export default function LibraryView() {
       const user = auth.currentUser;
       if (!user) throw new Error('Not logged in');
 
-      // Fetch all books in the library to delete them (optional cleanup, but good practice)
-      const booksRef = collection(db, 'libraries', id, 'books');
-      const booksSnap = await getDocs(booksRef);
-
-      const batch = writeBatch(db);
-
-      // Add deletes for all books
-      booksSnap.forEach(bookDoc => {
-        batch.delete(bookDoc.ref);
-        // Note: this won't delete subcollections of books like reviews if they exist,
-        // but for a client-side delete it's okay to skip deeper orphans rather than building a full recursive delete here.
-      });
-
-      // Delete the library document itself
-      const libRef = doc(db, 'libraries', id);
-      batch.delete(libRef);
-
       await instrumentMutation(
         'delete',
         `libraries/${id}`,
-        {libraryId: id, booksCount: booksSnap.size},
-        () => batch.commit(),
+        {libraryId: id},
+        () => trpcVanilla.library.delete.mutate({libraryId: id}),
       );
 
       toast.success('Library deleted');
       void navigate('/');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `libraries/${id}`);
+      console.error('Failed to delete library:', error);
+      toast.error('Failed to delete library');
     } finally {
       setLibraryToDelete(false);
     }
@@ -337,7 +315,8 @@ export default function LibraryView() {
           `libraries/${id}`,
           {heroImageUrl: storageUrl},
           () =>
-            updateDoc(doc(db, 'libraries', id), {
+            trpcVanilla.library.update.mutate({
+              libraryId: id,
               heroImageUrl: storageUrl,
             }),
         );
@@ -600,40 +579,22 @@ export default function LibraryView() {
                 const newAccess = {...(library.access || {})};
                 newAccess[newEmail] = role;
 
-                // 1. Update library access
+                // Update library access via unified tRPC gateway
                 await instrumentMutation(
                   'update',
                   `libraries/${id}`,
                   {access: newAccess},
                   () =>
-                    updateDoc(doc(db, 'libraries', id), {
+                    trpcVanilla.library.update.mutate({
+                      libraryId: id,
                       access: newAccess,
                     }),
                 );
 
-                // 2. Auto-provision to global allowlist
-                await instrumentMutation(
-                  'create',
-                  `appSettings/allowlist/users/${newEmail}`,
-                  {email: newEmail},
-                  () =>
-                    setDoc(
-                      doc(db, 'appSettings/allowlist/users', newEmail),
-                      {
-                        email: newEmail,
-                        addedAt: serverTimestamp(),
-                      },
-                      {merge: true},
-                    ),
-                );
-
                 toast.success(`Shared with ${email} as ${toTitleCase(role)}`);
               } catch (error) {
-                handleFirestoreError(
-                  error,
-                  OperationType.UPDATE,
-                  `libraries/${id}`,
-                );
+                console.error('Failed to share library:', error);
+                toast.error('Failed to update collaborator access');
               }
             }}
             handleRemoveShare={handleRemoveShare}

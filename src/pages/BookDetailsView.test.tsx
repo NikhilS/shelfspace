@@ -21,8 +21,74 @@ vi.mock('../stores/authStore', () => ({
 
 vi.mock('../firebase', () => ({
   db: {},
+  auth: {
+    currentUser: {
+      getIdToken: vi.fn().mockResolvedValue('mock-token'),
+      uid: 'u1',
+    },
+  },
   handleFirestoreError: vi.fn(),
   OperationType: {},
+}));
+
+vi.mock('../lib/trpc', () => ({
+  trpc: {
+    library: {
+      get: {
+        useQuery: vi.fn(() => ({
+          data: {
+            id: '123',
+            name: 'Test Library',
+            ownerId: 'u1',
+            callerRole: 'owner',
+          },
+          isLoading: false,
+        })),
+      },
+      getPermissions: {
+        useQuery: vi.fn(() => ({
+          data: {
+            role: 'owner',
+            canEdit: true,
+          },
+          isLoading: false,
+        })),
+      },
+    },
+    book: {
+      get: {
+        useQuery: vi.fn(() => ({
+          data: null,
+          isLoading: true,
+        })),
+      },
+      listReviews: {
+        useQuery: vi.fn(() => ({
+          data: [],
+          isLoading: false,
+        })),
+      },
+      update: {
+        useMutation: vi.fn(() => ({
+          mutateAsync: vi.fn(),
+          isLoading: false,
+        })),
+      },
+      addReview: {
+        useMutation: vi.fn(() => ({
+          mutateAsync: vi.fn(),
+          isLoading: false,
+        })),
+      },
+      deleteReview: {
+        useMutation: vi.fn(() => ({
+          mutateAsync: vi.fn(),
+          isLoading: false,
+        })),
+      },
+    },
+  },
+  trpcVanilla: {},
 }));
 
 vi.mock('firebase/firestore', () => ({

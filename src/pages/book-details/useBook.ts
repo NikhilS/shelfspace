@@ -1,35 +1,12 @@
 import {useState, useEffect, useMemo} from 'react';
-import {
-  doc,
-  collection,
-  query,
-  onSnapshot,
-  orderBy,
-  updateDoc,
-  setDoc,
-  serverTimestamp,
-  addDoc,
-  getDocFromCache,
-} from 'firebase/firestore';
-import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {uploadBase64Image} from '../../services/db/storage';
 import {Book, BookDetailsPayload, FirestoreDate} from '../../types';
 export type {Book, BookDetailsPayload, FirestoreDate};
 import {useAuth} from '../../stores/authStore';
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  skipToken,
-} from '@tanstack/react-query';
-
+import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query';
 import {deleteBookAtomic} from '../../services/db/books';
-import {
-  DebugTelemetryEngine,
-  calculatePayloadBytes,
-  instrumentMutation,
-} from '../../lib/telemetry';
-import {mapDocToBook} from '../../hooks/useLibraryData';
+import {trpc, trpcVanilla} from '../../lib/trpc';
+import {instrumentMutation} from '../../lib/telemetry';
 
 export interface Review {
   id: string;
@@ -37,7 +14,7 @@ export interface Review {
   userName: string;
   rating: number;
   text: string;
-  createdAt: FirestoreDate;
+  createdAt: FirestoreDate | string;
 }
 
 export function useBook(
@@ -52,387 +29,133 @@ export function useBook(
 
   const canEdit = passedCanEdit !== undefined ? passedCanEdit : canEditLocal;
 
-  const qBookBase = useQuery<Book | null>({
-    queryKey: ['bookBase', libraryId, bookId],
-    queryFn: skipToken,
-    initialData: () => {
-      const direct = queryClient.getQueryData<Book>([
-        'bookBase',
-        libraryId,
-        bookId,
-      ]);
-      if (direct) return direct;
-      const cachedBooks = libraryId
-        ? queryClient.getQueryData<Book[]>(['books', libraryId])
-        : undefined;
-      return cachedBooks?.find(b => b.id === bookId) || null;
+  // 1. Library query for permissions
+  const libraryQuery = trpc.library.get.useQuery(
+    {libraryId: libraryId || ''},
+    {
+      enabled: Boolean(
+        passedCanEdit === undefined && libraryId && user && isLive,
+      ),
+      staleTime: 1000 * 60 * 5,
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    gcTime: 1000 * 60 * 60, // 1 hour
-  });
+  );
 
-  const qBookDetails = useQuery<BookDetailsPayload | null>({
+  useEffect(() => {
+    if (passedCanEdit !== undefined) return;
+    if (!libraryQuery.data || !user) return;
+
+    const data = libraryQuery.data as Record<string, unknown>;
+    const isOwner = data.callerRole === 'owner' || data.ownerId === user.uid;
+    const isEditor = data.callerRole === 'editor' || data.canEdit === true;
+    setCanEditLocal(isOwner || isEditor);
+  }, [libraryQuery.data, user, passedCanEdit]);
+
+  // 2. Book query via tRPC
+  const trpcBookQuery = trpc.book.get.useQuery(
+    {libraryId: libraryId || '', bookId: bookId || ''},
+    {
+      enabled: Boolean(libraryId && bookId && isLive),
+      initialData: () => {
+        const cached = queryClient.getQueryData<Book>([
+          'bookBase',
+          libraryId,
+          bookId,
+        ]);
+        if (cached) return cached;
+        const cachedBooks = libraryId
+          ? queryClient.getQueryData<Book[]>(['books', libraryId])
+          : undefined;
+        return cachedBooks?.find(b => b.id === bookId);
+      },
+      staleTime: 1000 * 60 * 5,
+    },
+  );
+
+  // 3. Reviews query via tRPC
+  const trpcReviewsQuery = trpc.book.listReviews.useQuery(
+    {libraryId: libraryId || '', bookId: bookId || ''},
+    {
+      enabled: Boolean(libraryId && bookId && isLive),
+      staleTime: 1000 * 60 * 2,
+    },
+  );
+
+  const rawBook = trpcBookQuery.data;
+
+  // Sync to query cache
+  useEffect(() => {
+    if (!libraryId || !bookId || !rawBook) return;
+    const b = rawBook as Book;
+    queryClient.setQueryData(['bookBase', libraryId, bookId], b);
+    queryClient.setQueryData(['bookDetails', libraryId, bookId], {
+      synopsis: (rawBook as {synopsis?: string}).synopsis,
+      authorBio: (rawBook as {authorBio?: string}).authorBio,
+      embedding: (rawBook as {embedding?: number[]}).embedding,
+      clusterCoordinates: (
+        rawBook as {clusterCoordinates?: {x: number; y: number}}
+      ).clusterCoordinates,
+    });
+  }, [libraryId, bookId, rawBook, queryClient]);
+
+  const bookBase = useQuery<Book | null>({
+    queryKey: ['bookBase', libraryId, bookId],
+    queryFn: () => (rawBook as Book) || null,
+    initialData: () => (rawBook as Book) || null,
+    staleTime: 1000 * 60 * 5,
+  }).data;
+
+  const bookDetails = useQuery<BookDetailsPayload | null>({
     queryKey: ['bookDetails', libraryId, bookId],
-    queryFn: skipToken,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    gcTime: 1000 * 60 * 60, // 1 hour
-  });
-
-  const qReviews = useQuery<Review[]>({
-    queryKey: ['bookReviews', libraryId, bookId],
-    queryFn: skipToken,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    gcTime: 1000 * 60 * 60, // 1 hour
-  });
-
-  const [isLoading, setIsLoading] = useState(() => {
-    if (queryClient.getQueryData(['bookBase', libraryId, bookId])) return false;
-    const cachedBooks = libraryId
-      ? queryClient.getQueryData<Book[]>(['books', libraryId])
-      : undefined;
-    return !cachedBooks?.some(b => b.id === bookId);
-  });
-
-  const bookBase = qBookBase.data || null;
-  const bookDetails = qBookDetails.data || null;
-  const reviews = qReviews.data || [];
+    queryFn: () => ({
+      synopsis: (rawBook as {synopsis?: string})?.synopsis,
+      authorBio: (rawBook as {authorBio?: string})?.authorBio,
+      embedding: (rawBook as {embedding?: number[]})?.embedding,
+      clusterCoordinates: (
+        rawBook as {clusterCoordinates?: {x: number; y: number}}
+      )?.clusterCoordinates,
+    }),
+    initialData: () => ({
+      synopsis: (rawBook as {synopsis?: string})?.synopsis,
+      authorBio: (rawBook as {authorBio?: string})?.authorBio,
+      embedding: (rawBook as {embedding?: number[]})?.embedding,
+      clusterCoordinates: (
+        rawBook as {clusterCoordinates?: {x: number; y: number}}
+      )?.clusterCoordinates,
+    }),
+    staleTime: 1000 * 60 * 5,
+  }).data;
 
   const book = useMemo(() => {
     if (!bookBase) return null;
     return {...bookBase, ...bookDetails};
   }, [bookBase, bookDetails]);
 
-  useEffect(() => {
-    if (passedCanEdit !== undefined) return;
-    if (!libraryId || !user || !isLive) return;
-
-    const unregisterLib = DebugTelemetryEngine.getInstance().registerListener(
-      'useBook:lib',
-      `libraries/${libraryId}`,
-    );
-    const unsubscribe = onSnapshot(
-      doc(db, 'libraries', libraryId),
-      {includeMetadataChanges: true},
-      libDoc => {
-        const fromCache = libDoc.metadata.fromCache;
-        const libData = libDoc.exists() ? libDoc.data() : null;
-        const libBytes = libData ? calculatePayloadBytes(libData) : 0;
-
-        DebugTelemetryEngine.getInstance().addLog(
-          'db_read',
-          `Read library permissions: "libraries/${libraryId}" (${(libBytes / 1024).toFixed(1)} KB)`,
-          {
-            path: `libraries/${libraryId}`,
-            fromCache,
-            exists: libDoc.exists(),
-            bytes: libBytes,
-            docCount: 1,
-          },
-        );
-
-        if (libDoc.exists()) {
-          const data = libDoc.data();
-          setCanEditLocal(
-            data.ownerId === user.uid ||
-              (user.email &&
-                data.access &&
-                data.access[user.email.toLowerCase()] &&
-                (data.access[user.email.toLowerCase()] === 'owner' ||
-                  data.access[user.email.toLowerCase()] === 'editor')),
-          );
-        }
-      },
-      error => {
-        handleFirestoreError(
-          error,
-          OperationType.GET,
-          `libraries/${libraryId}`,
-        );
-      },
-    );
-
-    return () => {
-      unregisterLib();
-      unsubscribe();
-    };
-  }, [libraryId, user, passedCanEdit, isLive]);
-
-  useEffect(() => {
-    if (!libraryId || !bookId) return;
-
-    let isMounted = true;
-    let hasNetworkUpdate = false;
-
-    // Inactive/adjacent carousel slides: do NOT open live onSnapshot listeners.
-    // Hydrate from TanStack Query or cache if missing, then exit cleanly.
-    if (!isLive) {
-      if (!queryClient.getQueryData(['bookBase', libraryId, bookId])) {
-        const cachedBooks = queryClient.getQueryData<Book[]>([
-          'books',
-          libraryId,
-        ]);
-        const foundInLib = cachedBooks?.find(b => b.id === bookId);
-        if (foundInLib) {
-          queryClient.setQueryData(['bookBase', libraryId, bookId], foundInLib);
-          setIsLoading(false);
-        } else {
-          const bookRef = doc(db, 'libraries', libraryId, 'books', bookId);
-          getDocFromCache(bookRef)
-            .then(cachedSnap => {
-              if (isMounted && cachedSnap.exists()) {
-                const bookData = mapDocToBook(cachedSnap);
-                queryClient.setQueryData(
-                  ['bookBase', libraryId, bookId],
-                  bookData,
-                );
-                setIsLoading(false);
-              }
-            })
-            .catch(() => {});
-        }
-      }
-      return () => {
-        isMounted = false;
-      };
+  const reviews = useMemo(() => {
+    if (trpcReviewsQuery.data?.reviews) {
+      return trpcReviewsQuery.data.reviews as unknown as Review[];
     }
-
-    if (!queryClient.getQueryData(['bookBase', libraryId, bookId])) {
-      const cachedBooks = queryClient.getQueryData<Book[]>([
-        'books',
-        libraryId,
-      ]);
-      if (!cachedBooks?.some(b => b.id === bookId)) {
-        setIsLoading(true);
-        const bookRef = doc(db, 'libraries', libraryId, 'books', bookId);
-        getDocFromCache(bookRef)
-          .then(cachedSnap => {
-            if (isMounted && !hasNetworkUpdate && cachedSnap.exists()) {
-              const bookData = mapDocToBook(cachedSnap);
-              queryClient.setQueryData(
-                ['bookBase', libraryId, bookId],
-                bookData,
-              );
-              setIsLoading(false);
-            }
-          })
-          .catch(() => {});
-      }
-    }
-
-    const unregisterBook = DebugTelemetryEngine.getInstance().registerListener(
-      'useBook:book',
-      `libraries/${libraryId}/books/${bookId}`,
-    );
-    const unsubscribeBook = onSnapshot(
-      doc(db, 'libraries', libraryId, 'books', bookId),
-      {includeMetadataChanges: true},
-      docSnap => {
-        if (!isMounted) return;
-        const parseStartTime = performance.now();
-        const fromCache = docSnap.metadata.fromCache;
-        if (!fromCache) {
-          hasNetworkUpdate = true;
-        }
-
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const bookData = {
-            id: docSnap.id,
-            ...data,
-            primaryGenre: data.primaryGenre || undefined,
-            subgenres: data.subgenres || [],
-            isCustomPrimary: Boolean(data.isCustomPrimary),
-          } as Book;
-
-          if (bookData.temporalMetadata) {
-            if (
-              bookData.temporalMetadata.startYear !== undefined &&
-              bookData.temporalMetadata.endYear === undefined
-            ) {
-              bookData.temporalMetadata.endYear =
-                bookData.temporalMetadata.startYear;
-            }
-
-            if (
-              (bookData.temporalMetadata.startYear !== undefined &&
-                (bookData.temporalMetadata.startYear < -10000 ||
-                  bookData.temporalMetadata.startYear > 2100)) ||
-              (bookData.temporalMetadata.endYear !== undefined &&
-                (bookData.temporalMetadata.endYear < -10000 ||
-                  bookData.temporalMetadata.endYear > 2100))
-            ) {
-              delete bookData.temporalMetadata;
-            }
-          }
-
-          const parseDurationMs = Math.round(
-            performance.now() - parseStartTime,
-          );
-          const payloadBytes = calculatePayloadBytes(bookData);
-
-          DebugTelemetryEngine.getInstance().addLog(
-            'db_read',
-            `Read single book: "${bookData.title}" (${(payloadBytes / 1024).toFixed(1)} KB, ${parseDurationMs}ms)`,
-            {
-              path: `libraries/${libraryId}/books/${bookId}`,
-              fromCache,
-              exists: true,
-              bytes: payloadBytes,
-              docCount: 1,
-              parseDurationMs,
-            },
-          );
-
-          queryClient.setQueryData(['bookBase', libraryId, bookId], bookData);
-        } else {
-          queryClient.setQueryData(['bookBase', libraryId, bookId], null);
-        }
-        setIsLoading(false);
-      },
-      error => {
-        handleFirestoreError(
-          error,
-          OperationType.GET,
-          `libraries/${libraryId}/books/${bookId}`,
-        );
-        setIsLoading(false);
-      },
-    );
-
-    const unregisterDetails =
-      DebugTelemetryEngine.getInstance().registerListener(
-        'useBook:bookDetails',
-        `libraries/${libraryId}/bookDetails/${bookId}`,
-      );
-    const unsubscribeDetails = onSnapshot(
-      doc(db, 'libraries', libraryId, 'bookDetails', bookId),
-      {includeMetadataChanges: true},
-      docSnap => {
-        const fromCache = docSnap.metadata.fromCache;
-        const detailsData = docSnap.exists() ? docSnap.data() : null;
-        const detailsBytes = detailsData
-          ? calculatePayloadBytes(detailsData)
-          : 0;
-
-        DebugTelemetryEngine.getInstance().addLog(
-          'db_read',
-          `Read book details: "libraries/${libraryId}/bookDetails/${bookId}" (${(detailsBytes / 1024).toFixed(1)} KB)`,
-          {
-            path: `libraries/${libraryId}/bookDetails/${bookId}`,
-            fromCache,
-            exists: docSnap.exists(),
-            bytes: detailsBytes,
-            docCount: 1,
-          },
-        );
-
-        if (docSnap.exists()) {
-          queryClient.setQueryData(
-            ['bookDetails', libraryId, bookId],
-            docSnap.data() as BookDetailsPayload,
-          );
-        } else {
-          queryClient.setQueryData(['bookDetails', libraryId, bookId], null);
-        }
-      },
-      error => {
-        handleFirestoreError(
-          error,
-          OperationType.GET,
-          `libraries/${libraryId}/bookDetails/${bookId}`,
-        );
-      },
-    );
-
-    const reviewsRef = collection(
-      db,
-      'libraries',
+    const cached = queryClient.getQueryData<Review[]>([
+      'bookReviews',
       libraryId,
-      'books',
       bookId,
-      'reviews',
-    );
-    const q = query(reviewsRef, orderBy('createdAt', 'desc'));
-    const unregisterReviews =
-      DebugTelemetryEngine.getInstance().registerListener(
-        'useBook:reviews',
-        `libraries/${libraryId}/books/${bookId}/reviews`,
-      );
-    const unsubscribeReviews = onSnapshot(
-      q,
-      {includeMetadataChanges: true},
-      snapshot => {
-        const fromCache = snapshot.metadata.fromCache;
-        const revs: Review[] = [];
-        snapshot.forEach(doc => {
-          revs.push({id: doc.id, ...doc.data()} as Review);
-        });
-        const revBytes = calculatePayloadBytes(revs);
+    ]);
+    return cached || [];
+  }, [trpcReviewsQuery.data, queryClient, libraryId, bookId]);
 
-        DebugTelemetryEngine.getInstance().addLog(
-          'db_read',
-          `Read book reviews (${snapshot.size} reviews, ${(revBytes / 1024).toFixed(1)} KB)`,
-          {
-            path: `libraries/${libraryId}/books/${bookId}/reviews`,
-            fromCache,
-            size: snapshot.size,
-            bytes: revBytes,
-            docCount: snapshot.size,
-          },
-        );
+  const isLoading = trpcBookQuery.isLoading && !book;
 
-        queryClient.setQueryData(['bookReviews', libraryId, bookId], revs);
-      },
-      error => {
-        handleFirestoreError(
-          error,
-          OperationType.GET,
-          `libraries/${libraryId}/books/${bookId}/reviews`,
-        );
-      },
-    );
-
-    return () => {
-      isMounted = false;
-      unregisterBook();
-      unsubscribeBook();
-      unregisterDetails();
-      unsubscribeDetails();
-      unregisterReviews();
-      unsubscribeReviews();
-    };
-  }, [libraryId, bookId, queryClient, isLive]);
-
+  // Mutations
   const deleteBookMutation = useMutation({
     mutationFn: async () => {
       if (!libraryId || !bookId) return;
-
-      try {
-        await deleteBookAtomic(libraryId, bookId);
-      } catch (e) {
-        handleFirestoreError(
-          e,
-          OperationType.DELETE,
-          `libraries/${libraryId}/books/${bookId}`,
-        );
-        throw e;
-      }
+      await deleteBookAtomic(libraryId, bookId);
     },
-    onMutate: () => {
-      // Optimistic delete: remove it from current hook
+    onSuccess: () => {
       queryClient.setQueryData(['bookBase', libraryId, bookId], null);
-
-      // Attempt to delete it from the main library view globally
-      const currentBooks = queryClient.getQueryData<Book[]>([
-        'books',
-        libraryId,
-      ]);
-      if (currentBooks) {
-        queryClient.setQueryData(
-          ['books', libraryId],
-          currentBooks.filter(b => b.id !== bookId),
-        );
-      }
+      queryClient.setQueryData(['bookDetails', libraryId, bookId], null);
+      void queryClient.invalidateQueries({
+        queryKey: ['books', libraryId],
+      });
     },
   });
 
@@ -440,111 +163,80 @@ export function useBook(
     mutationFn: async (
       status: 'unset' | 'reading' | 'finished' | 'abandoned',
     ) => {
-      if (!libraryId || !bookId || !user || !book) return;
-
-      try {
-        const updatePayload = {
-          [`userStatuses.${user.uid}`]: status,
-          addedBy: book.addedBy || user.uid,
-          addedAt: book.addedAt || serverTimestamp(),
-        };
-        await instrumentMutation(
-          'update',
-          `libraries/${libraryId}/books/${bookId}`,
-          updatePayload,
-          () =>
-            updateDoc(
-              doc(db, 'libraries', libraryId, 'books', bookId),
-              updatePayload,
-            ),
-        );
-      } catch (e) {
-        handleFirestoreError(
-          e,
-          OperationType.UPDATE,
-          `libraries/${libraryId}/books/${bookId}`,
-        );
-        throw e;
-      }
+      if (!libraryId || !bookId || !user) return;
+      const updates = {[`userStatuses.${user.uid}`]: status};
+      await instrumentMutation(
+        'update',
+        `libraries/${libraryId}/books/${bookId}`,
+        updates,
+        () =>
+          trpcVanilla.book.update.mutate({
+            libraryId,
+            bookId,
+            updates,
+          }),
+      );
     },
-    onMutate: async status => {
+    onMutate: async newStatus => {
       if (!user) return;
-      const prevBook = queryClient.getQueryData([
+      const prev = queryClient.getQueryData<Book>([
         'bookBase',
         libraryId,
         bookId,
       ]);
       queryClient.setQueryData(
         ['bookBase', libraryId, bookId],
-        (old: Book | null) => ({
-          ...old,
-          userStatuses: {
-            ...(old?.userStatuses || {}),
-            [user.uid]: status,
-          },
-        }),
+        (old: Book | null) => {
+          if (!old) return old;
+          return {
+            ...old,
+            userStatuses: {
+              ...(old.userStatuses || {}),
+              [user.uid]: newStatus,
+            },
+          };
+        },
       );
-      return {prevBook};
+      return {prev};
     },
     onError: (err, newStatus, context) => {
-      const ctx = context as {prevBook?: Book | null};
-      if (ctx?.prevBook) {
-        queryClient.setQueryData(['bookBase', libraryId, bookId], ctx.prevBook);
+      const ctx = context as {prev?: Book | null};
+      if (ctx?.prev) {
+        queryClient.setQueryData(['bookBase', libraryId, bookId], ctx.prev);
       }
     },
   });
 
   const addReviewMutation = useMutation({
     mutationFn: async ({rating, text}: {rating: number; text: string}) => {
-      if (!libraryId || !bookId || !user)
-        throw new Error('Missing review context');
-      try {
-        const revPayload = {
-          userId: user.uid,
-          userName: user.displayName || user.email || 'Unknown User',
-          rating,
-          text,
-          createdAt: serverTimestamp(),
-        };
-        await instrumentMutation(
-          'create',
-          `libraries/${libraryId}/books/${bookId}/reviews`,
-          revPayload,
-          () =>
-            addDoc(
-              collection(
-                db,
-                'libraries',
-                libraryId,
-                'books',
-                bookId,
-                'reviews',
-              ),
-              revPayload,
-            ),
-        );
-      } catch (e) {
-        handleFirestoreError(
-          e,
-          OperationType.CREATE,
-          `libraries/${libraryId}/books/${bookId}/reviews`,
-        );
-        throw e;
-      }
+      if (!libraryId || !bookId || !user) return;
+      await instrumentMutation(
+        'create',
+        `libraries/${libraryId}/books/${bookId}/reviews`,
+        {rating, text},
+        () =>
+          trpcVanilla.book.addReview.mutate({
+            libraryId,
+            bookId,
+            rating,
+            text,
+          }),
+      );
+      void trpcReviewsQuery.refetch();
     },
     onMutate: async newReview => {
       if (!user) return;
       const tempId = `temp-${Date.now()}`;
-      const rev = {
+      const rev: Review = {
         id: tempId,
         userId: user.uid,
         userName: user.displayName || user.email || 'Unknown User',
         rating: newReview.rating,
         text: newReview.text,
-        createdAt: new Date() as unknown as FirestoreDate,
+        createdAt: new Date().toISOString(),
       };
 
-      const prevReviews = queryClient.getQueryData([
+      const prevReviews = queryClient.getQueryData<Review[]>([
         'bookReviews',
         libraryId,
         bookId,
@@ -569,87 +261,32 @@ export function useBook(
   const updateBookMutation = useMutation({
     mutationFn: async (cleanForm: Partial<Book & BookDetailsPayload>) => {
       if (!libraryId || !bookId || !book) return;
-      try {
-        const cargo = {...cleanForm};
+      const cargo = {...cleanForm};
 
-        if (cargo.coverUrl && cargo.coverUrl.startsWith('data:')) {
-          const storagePath = `libraries/${libraryId}/books/${bookId}/cover.png`;
-          cargo.coverUrl = await uploadBase64Image(cargo.coverUrl, storagePath);
-        }
-
-        if (cargo.coverUrlRaw && cargo.coverUrlRaw.startsWith('data:')) {
-          const storagePath = `libraries/${libraryId}/books/${bookId}/cover_raw.png`;
-          cargo.coverUrlRaw = await uploadBase64Image(
-            cargo.coverUrlRaw,
-            storagePath,
-          );
-        }
-
-        // Separate heavy fields from core book update
-        const heavyUpdate: Record<string, unknown> = {};
-        if (cargo.synopsis !== undefined) heavyUpdate.synopsis = cargo.synopsis;
-        if (cargo.authorBio !== undefined)
-          heavyUpdate.authorBio = cargo.authorBio;
-        if (cargo.embedding !== undefined)
-          heavyUpdate.embedding = cargo.embedding;
-        if (cargo.clusterCoordinates !== undefined)
-          heavyUpdate.clusterCoordinates = cargo.clusterCoordinates;
-
-        delete cargo.synopsis;
-        delete cargo.authorBio;
-        delete cargo.embedding;
-        delete cargo.clusterCoordinates;
-
-        if (Object.keys(heavyUpdate).length > 0) {
-          heavyUpdate.updatedAt = new Date().toISOString();
-          await instrumentMutation(
-            'update',
-            `libraries/${libraryId}/bookDetails/${bookId}`,
-            heavyUpdate,
-            () =>
-              setDoc(
-                doc(db, 'libraries', libraryId, 'bookDetails', bookId),
-                heavyUpdate,
-                {merge: true},
-              ),
-          );
-
-          cargo.bookDetailsMetadata = {
-            ...(book.bookDetailsMetadata || {}),
-            ...(heavyUpdate.synopsis !== undefined
-              ? {hasSynopsis: Boolean(heavyUpdate.synopsis)}
-              : {}),
-            ...(heavyUpdate.authorBio !== undefined
-              ? {hasAuthorBio: Boolean(heavyUpdate.authorBio)}
-              : {}),
-            ...(heavyUpdate.embedding !== undefined
-              ? {
-                  hasEmbedding: Boolean(
-                    (heavyUpdate.embedding as number[])?.length,
-                  ),
-                }
-              : {}),
-            ...(heavyUpdate.clusterCoordinates !== undefined
-              ? {hasClusterCoordinates: Boolean(heavyUpdate.clusterCoordinates)}
-              : {}),
-          };
-        }
-
-        await instrumentMutation(
-          'update',
-          `libraries/${libraryId}/books/${bookId}`,
-          cargo,
-          () =>
-            updateDoc(doc(db, 'libraries', libraryId, 'books', bookId), cargo),
-        );
-      } catch (e) {
-        handleFirestoreError(
-          e,
-          OperationType.UPDATE,
-          `libraries/${libraryId}/books/${bookId}`,
-        );
-        throw e;
+      if (cargo.coverUrl && cargo.coverUrl.startsWith('data:')) {
+        const storagePath = `libraries/${libraryId}/books/${bookId}/cover.png`;
+        cargo.coverUrl = await uploadBase64Image(cargo.coverUrl, storagePath);
       }
+
+      if (cargo.coverUrlRaw && cargo.coverUrlRaw.startsWith('data:')) {
+        const storagePath = `libraries/${libraryId}/books/${bookId}/cover_raw.png`;
+        cargo.coverUrlRaw = await uploadBase64Image(
+          cargo.coverUrlRaw,
+          storagePath,
+        );
+      }
+
+      await instrumentMutation(
+        'update',
+        `libraries/${libraryId}/books/${bookId}`,
+        cargo,
+        () =>
+          trpcVanilla.book.update.mutate({
+            libraryId,
+            bookId,
+            updates: cargo,
+          }),
+      );
     },
     onMutate: async partialBook => {
       const prevBase = queryClient.getQueryData([
@@ -707,7 +344,6 @@ export function useBook(
     updateBookOptimistically: (
       partialBook: Partial<Book & BookDetailsPayload>,
     ) => {
-      // Kept for backward compatibility, but not technically needed if we always use mutation
       queryClient.setQueryData(
         ['bookBase', libraryId, bookId],
         (old: Book | null) => (old ? {...old, ...partialBook} : old),

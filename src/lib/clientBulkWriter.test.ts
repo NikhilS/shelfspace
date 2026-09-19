@@ -22,7 +22,116 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: vi.fn(() => 'MOCK_TIMESTAMP'),
 }));
 
-describe('ClientBulkWriter - Phase 5 Atomic Counter Reconciliation', () => {
+const mockBatchUpsertMutate = vi.fn().mockResolvedValue({
+  success: true,
+  count: 1,
+  added: 1,
+  updated: 0,
+  deleted: 0,
+});
+
+vi.mock('./trpc', () => ({
+  trpcVanilla: {
+    book: {
+      batchUpsert: {
+        mutate: (...args: unknown[]) => mockBatchUpsertMutate(...args),
+      },
+    },
+  },
+}));
+
+describe('ClientBulkWriter - tRPC Mode (Phase 2 Unified Gateway)', () => {
+  const mockDb = {} as any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('batches addBook operations and dispatches to trpcVanilla.book.batchUpsert on close()', async () => {
+    const writer = new ClientBulkWriter(mockDb, {mode: 'trpc'});
+
+    writer.addBook(
+      'lib-123',
+      'book-1',
+      {title: 'The Hobbit', author: 'J.R.R. Tolkien'},
+      {synopsis: 'A great journey'},
+    );
+
+    expect(writer.getPendingCount()).toBe(1);
+
+    await writer.close();
+
+    expect(mockBatchUpsertMutate).toHaveBeenCalledTimes(1);
+    expect(mockBatchUpsertMutate).toHaveBeenCalledWith({
+      libraryId: 'lib-123',
+      operations: [
+        {
+          type: 'create',
+          bookId: 'book-1',
+          data: {title: 'The Hobbit', author: 'J.R.R. Tolkien'},
+          heavyData: {synopsis: 'A great journey'},
+          merge: undefined,
+        },
+      ],
+    });
+  });
+
+  it('batches deleteBook operations to tRPC gateway', async () => {
+    const writer = new ClientBulkWriter(mockDb, {mode: 'trpc'});
+
+    writer.deleteBook('lib-123', 'book-999');
+    await writer.close();
+
+    expect(mockBatchUpsertMutate).toHaveBeenCalledTimes(1);
+    expect(mockBatchUpsertMutate).toHaveBeenCalledWith({
+      libraryId: 'lib-123',
+      operations: [
+        {
+          type: 'delete',
+          bookId: 'book-999',
+          data: undefined,
+          heavyData: undefined,
+          merge: undefined,
+        },
+      ],
+    });
+  });
+
+  it('batches docRef update and parses book path', async () => {
+    const writer = new ClientBulkWriter(mockDb, {mode: 'trpc'});
+
+    writer.update({path: 'libraries/lib-abc/books/book-777'} as any, {
+      title: 'Updated Title',
+    });
+    await writer.close();
+
+    expect(mockBatchUpsertMutate).toHaveBeenCalledWith({
+      libraryId: 'lib-abc',
+      operations: [
+        {
+          type: 'update',
+          bookId: 'book-777',
+          data: {title: 'Updated Title'},
+          heavyData: undefined,
+          merge: undefined,
+        },
+      ],
+    });
+  });
+
+  it('flushes automatically when batchSize threshold is reached in tRPC mode', async () => {
+    const writer = new ClientBulkWriter(mockDb, {mode: 'trpc', batchSize: 2});
+
+    writer.addBook('lib-1', 'b1', {title: 'Book 1'});
+    writer.addBook('lib-1', 'b2', {title: 'Book 2'}); // triggers flush
+
+    await writer.close();
+
+    expect(mockBatchUpsertMutate).toHaveBeenCalled();
+  });
+});
+
+describe('ClientBulkWriter - Firestore Mode (Fallback / Offline)', () => {
   const mockDb = {} as any;
 
   beforeEach(() => {
@@ -30,7 +139,7 @@ describe('ClientBulkWriter - Phase 5 Atomic Counter Reconciliation', () => {
   });
 
   it('atomically tracks book additions and applies increment in library on close()', async () => {
-    const writer = new ClientBulkWriter(mockDb);
+    const writer = new ClientBulkWriter(mockDb, {mode: 'firestore'});
 
     writer.addBook(
       'lib-123',
@@ -69,7 +178,7 @@ describe('ClientBulkWriter - Phase 5 Atomic Counter Reconciliation', () => {
   });
 
   it('atomically tracks book deletions and applies decrement in library on close()', async () => {
-    const writer = new ClientBulkWriter(mockDb);
+    const writer = new ClientBulkWriter(mockDb, {mode: 'firestore'});
 
     writer.deleteBook('lib-123', 'book-999');
 
@@ -96,7 +205,7 @@ describe('ClientBulkWriter - Phase 5 Atomic Counter Reconciliation', () => {
   });
 
   it('tracks direct delete(docRef) on books collection and updates bookCount', async () => {
-    const writer = new ClientBulkWriter(mockDb);
+    const writer = new ClientBulkWriter(mockDb, {mode: 'firestore'});
 
     writer.delete({path: 'libraries/lib-xyz/books/book-abc'} as any);
 
@@ -115,7 +224,7 @@ describe('ClientBulkWriter - Phase 5 Atomic Counter Reconciliation', () => {
   });
 
   it('correctly aggregates multiple additions and deletions per library into net deltas', async () => {
-    const writer = new ClientBulkWriter(mockDb);
+    const writer = new ClientBulkWriter(mockDb, {mode: 'firestore'});
 
     // Lib A: +3, -1 => net +2
     writer.addBook('lib-A', 'b1', {title: 'Book 1'});
@@ -147,6 +256,7 @@ describe('ClientBulkWriter - Phase 5 Atomic Counter Reconciliation', () => {
 
   it('does not touch bookCount when autoReconcileBookCount is false', async () => {
     const writer = new ClientBulkWriter(mockDb, {
+      mode: 'firestore',
       autoReconcileBookCount: false,
     });
 
@@ -161,6 +271,7 @@ describe('ClientBulkWriter - Phase 5 Atomic Counter Reconciliation', () => {
 
   it('flushes in chunks according to batchSize', async () => {
     const writer = new ClientBulkWriter(mockDb, {
+      mode: 'firestore',
       batchSize: 2,
       autoReconcileBookCount: false,
     });

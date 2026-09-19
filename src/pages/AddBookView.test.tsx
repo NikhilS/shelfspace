@@ -8,8 +8,19 @@ import {BrowserRouter} from 'react-router-dom';
 import {writeBatch} from 'firebase/firestore';
 
 const mockExtractBooksFromImage = vi.fn();
+const mockBatchUpsertMutate = vi.fn().mockResolvedValue({success: true});
+
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    book: {
+      list: {
+        useQuery: vi.fn(() => ({
+          data: {books: []},
+          isLoading: false,
+          isFetching: false,
+        })),
+      },
+    },
     gemini: {
       extractBooksFromImage: {
         useMutation: () => ({
@@ -19,6 +30,14 @@ vi.mock('../lib/trpc', () => ({
     },
   },
   trpcVanilla: {
+    book: {
+      create: {
+        mutate: vi.fn().mockResolvedValue({id: 'new-book-1'}),
+      },
+      batchUpsert: {
+        mutate: (...args: unknown[]) => mockBatchUpsertMutate(...args),
+      },
+    },
     metadata: {
       enrichCreate: {
         mutate: vi.fn(() => Promise.resolve({status: 'success', results: []})),
@@ -186,7 +205,7 @@ describe('AddBookView', () => {
     fireEvent.click(addButton);
 
     await waitFor(() => {
-      expect(writeBatch).toHaveBeenCalledTimes(1);
+      expect(mockBatchUpsertMutate).toHaveBeenCalledTimes(1);
     });
 
     await waitFor(() => {
@@ -220,7 +239,7 @@ describe('AddBookView', () => {
     fireEvent.click(addButton2);
 
     await waitFor(() => {
-      expect(writeBatch).toHaveBeenCalledTimes(2);
+      expect(mockBatchUpsertMutate).toHaveBeenCalledTimes(2);
     });
   });
 });

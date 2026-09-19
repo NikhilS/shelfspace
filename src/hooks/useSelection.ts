@@ -1,14 +1,15 @@
-import {doc} from 'firebase/firestore';
-import {db, handleFirestoreError, OperationType} from '../firebase';
 import {Book} from '../types';
 import {toast} from 'sonner';
 import {useUIStore} from '../stores/uiStore';
 import {instrumentMutation} from '../lib/telemetry';
+import {trpcVanilla} from '../lib/trpc';
+import {useQueryClient} from '@tanstack/react-query';
 
 export function useSelection(
   libraryId: string | undefined,
   userId: string | undefined,
 ) {
+  const queryClient = useQueryClient();
   const {
     selectedBookIds: selectedBooks,
     toggleBookSelection: toggleStoreBook,
@@ -35,27 +36,24 @@ export function useSelection(
         `libraries/${libraryId}/books(bulk-status)`,
         {count: booksArray.length, status: newStatus},
         async () => {
-          const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
-          const writer = new ClientBulkWriter(db);
-
-          booksArray.forEach(bookId => {
-            const bookRef = doc(db, 'libraries', libraryId, 'books', bookId);
-            writer.update(bookRef, {
-              [`userStatuses.${userId}`]: newStatus,
-            });
+          await trpcVanilla.book.batchUpsert.mutate({
+            libraryId,
+            operations: booksArray.map(bookId => ({
+              type: 'update',
+              bookId,
+              data: {
+                [`userStatuses.${userId}`]: newStatus,
+              },
+            })),
           });
-
-          await writer.close();
+          void queryClient.invalidateQueries({queryKey: ['books', libraryId]});
         },
       );
       toast.success(`Updated status for ${selectedBooks.size} books`);
       clearSelection();
     } catch (error) {
-      handleFirestoreError(
-        error,
-        OperationType.UPDATE,
-        `libraries/${libraryId}/books`,
-      );
+      console.error('Failed to update status in bulk:', error);
+      toast.error('Failed to update status for selected books');
     }
   };
 
@@ -63,29 +61,27 @@ export function useSelection(
     if (selectedBooks.size === 0 || !libraryId) return;
     try {
       const count = selectedBooks.size;
+      const booksArray = Array.from(selectedBooks);
       await instrumentMutation(
         'delete',
         `libraries/${libraryId}/books(bulk-delete)`,
         {count},
         async () => {
-          const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
-          const writer = new ClientBulkWriter(db);
-
-          selectedBooks.forEach(bookId => {
-            writer.deleteBook(libraryId, bookId);
+          await trpcVanilla.book.batchUpsert.mutate({
+            libraryId,
+            operations: booksArray.map(bookId => ({
+              type: 'delete',
+              bookId,
+            })),
           });
-
-          await writer.close();
+          void queryClient.invalidateQueries({queryKey: ['books', libraryId]});
         },
       );
       toast.success(`Deleted ${count} books`);
       clearSelection();
     } catch (error) {
-      handleFirestoreError(
-        error,
-        OperationType.DELETE,
-        `libraries/${libraryId}/books`,
-      );
+      console.error('Failed to bulk delete books:', error);
+      toast.error('Failed to delete selected books');
     }
   };
 

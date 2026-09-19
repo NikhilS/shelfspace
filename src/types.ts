@@ -1,7 +1,12 @@
-import {Timestamp} from 'firebase/firestore';
 import {BookDetails} from './services/bookApi';
 
-export type FirestoreDate = Timestamp;
+export interface Timestamp {
+  seconds: number;
+  nanoseconds: number;
+  toDate?: () => Date;
+}
+
+export type FirestoreDate = Timestamp | Date | string;
 
 export interface Library {
   id: string;

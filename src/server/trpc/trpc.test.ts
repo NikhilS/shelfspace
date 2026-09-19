@@ -11,6 +11,9 @@ import admin from 'firebase-admin';
 
 vi.mock('../../services/server/apiKeyService');
 vi.mock('../../services/server/libraryService');
+vi.mock('../../services/server/firebaseAdmin', () => ({
+  getAdminDb: () => mockFirestore(),
+}));
 
 const mockDocGet = vi.fn();
 const mockDoc = vi.fn((_path: string) => ({

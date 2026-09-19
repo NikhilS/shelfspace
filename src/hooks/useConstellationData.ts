@@ -1,10 +1,8 @@
 import {useState, useEffect} from 'react';
-import {doc, getDoc, deleteField} from 'firebase/firestore';
 import {useNavigate} from 'react-router-dom';
-import {db} from '../firebase';
 import {kmeans} from '../lib/clustering';
 import {BookDetails} from '../services/bookApi';
-import {trpc} from '../lib/trpc';
+import {trpc, trpcVanilla} from '../lib/trpc';
 import {useAuth} from '../stores/authStore';
 import {useLibraryData} from './useLibraryData';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../lib/telemetry';
@@ -32,7 +30,7 @@ export function useConstellationData(libraryId: string | undefined) {
     navigate,
   );
 
-  const [books, setBooks] = useState<BookDoc[]>([]);
+  const [, setBooks] = useState<BookDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<string>('Loading books...');
   const [plotData, setPlotData] = useState<ScatterPoint[]>([]);
@@ -79,20 +77,20 @@ export function useConstellationData(libraryId: string | undefined) {
             `Fetching book details (${Math.min(i + chunkSize, libraryBooks.length)}/${libraryBooks.length})...`,
           );
 
-          const chunkSnaps = await Promise.all(
-            chunk.map(b =>
-              getDoc(doc(db, 'libraries', libraryId, 'bookDetails', b.id)),
-            ),
-          );
+          const res = await trpcVanilla.book.getBookDetailsChunk.mutate({
+            libraryId,
+            bookIds: chunk.map(b => b.id),
+          });
 
           let chunkBytes = 0;
-          chunkSnaps.forEach(snap => {
-            if (snap.exists()) {
-              const data = snap.data();
-              detailsMap.set(snap.id, data);
+          let docCount = 0;
+          if (res?.details) {
+            for (const [id, data] of Object.entries(res.details)) {
+              detailsMap.set(id, data);
               chunkBytes += calculatePayloadBytes(data);
+              docCount++;
             }
-          });
+          }
 
           DebugTelemetryEngine.getInstance().addLog(
             'db_read',
@@ -101,7 +99,7 @@ export function useConstellationData(libraryId: string | undefined) {
               path: `libraries/${libraryId}/bookDetails`,
               size: chunk.length,
               bytes: chunkBytes,
-              docCount: chunkSnaps.filter(s => s.exists()).length,
+              docCount,
             },
           );
         }
@@ -159,32 +157,28 @@ export function useConstellationData(libraryId: string | undefined) {
           }
 
           setProgress(`Saving embeddings to library... (0/${toEmbed.length})`);
-          const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
-          const writer = new ClientBulkWriter(db, 50);
+
+          await trpcVanilla.book.batchUpsert.mutate({
+            libraryId,
+            operations: toEmbed.map((b, j) => ({
+              type: 'update',
+              bookId: b.id,
+              data: {
+                bookDetailsMetadata: {
+                  ...(b.bookDetailsMetadata || {}),
+                  hasEmbedding: true,
+                },
+              },
+              heavyData: {
+                embedding: embeddings[j],
+              },
+            })),
+          });
 
           for (let j = 0; j < toEmbed.length; j++) {
-            const ref = doc(
-              db,
-              'libraries',
-              libraryId,
-              'bookDetails',
-              toEmbed[j].id,
-            );
-            writer.set(ref, {embedding: embeddings[j]}, {merge: true});
-            const bookRef = doc(
-              db,
-              'libraries',
-              libraryId,
-              'books',
-              toEmbed[j].id,
-            );
-            writer.update(bookRef, {
-              'bookDetailsMetadata.hasEmbedding': true,
-            });
             toEmbed[j].embedding = embeddings[j];
           }
 
-          await writer.close();
           setProgress(
             `Saving embeddings to library... (${toEmbed.length}/${toEmbed.length})`,
           );
@@ -330,21 +324,10 @@ export function useConstellationData(libraryId: string | undefined) {
     try {
       setLoading(true);
       setProgress('Clearing old embeddings...');
-      const {ClientBulkWriter} = await import('../lib/clientBulkWriter');
-      const writer = new ClientBulkWriter(db, 400);
-
-      for (let j = 0; j < books.length; j++) {
-        writer.update(
-          doc(db, 'libraries', libraryId, 'bookDetails', books[j].id),
-          {
-            embedding: deleteField(),
-          },
-        );
-        writer.update(doc(db, 'libraries', libraryId, 'books', books[j].id), {
-          'bookDetailsMetadata.hasEmbedding': false,
-        });
-      }
-      await writer.close();
+      await trpcVanilla.library.resetMetadata.mutate({
+        libraryId,
+        metadataType: 'embedding',
+      });
       setClusterNames({});
       setReclusterTrigger(prev => prev + 1);
     } catch (err) {

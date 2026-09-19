@@ -21,12 +21,36 @@ vi.mock('../stores/authStore', () => ({
 
 vi.mock('../firebase', () => ({
   db: {},
+  auth: {
+    currentUser: {
+      getIdToken: vi.fn().mockResolvedValue('mock-token'),
+      uid: 'u1',
+    },
+  },
   handleFirestoreError: vi.fn(),
   OperationType: {},
 }));
 
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    library: {
+      get: {
+        useQuery: () => ({
+          data: {
+            id: 'lib1',
+            name: 'My Sci-Fi Library',
+            ownerId: 'u1',
+            ownerName: 'Test User',
+            access: {
+              'test@test.com': 'owner',
+            },
+            bookCount: 2,
+            callerRole: 'owner',
+          },
+          isLoading: false,
+        }),
+      },
+    },
     gemini: {
       generateLibraryHeroImage: {
         useMutation: () => ({
@@ -42,6 +66,34 @@ vi.mock('../lib/trpc', () => ({
     libraryApi: {
       list: {
         useQuery: () => ({data: null, isLoading: false}),
+      },
+    },
+    book: {
+      list: {
+        useQuery: () => ({
+          data: {
+            books: [
+              {
+                id: 'book1',
+                title: 'Dune',
+                primaryGenre: 'Science Fiction',
+                subgenres: ['Space Opera'],
+                author: 'Frank Herbert',
+                addedAt: '2023-01-01',
+              },
+              {
+                id: 'book2',
+                title: 'Foundation',
+                primaryGenre: 'Science Fiction',
+                subgenres: ['Hard Sci-Fi'],
+                author: 'Isaac Asimov',
+                addedAt: '2023-01-01',
+              },
+            ],
+          },
+          isLoading: false,
+          isFetching: false,
+        }),
       },
     },
   },

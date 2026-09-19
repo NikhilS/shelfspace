@@ -1,25 +1,12 @@
-import {useMemo, useState, useEffect} from 'react';
-import {
-  collection,
-  doc,
-  onSnapshot,
-  increment,
-  writeBatch,
-  serverTimestamp,
-  addDoc,
-} from 'firebase/firestore';
+import {useMemo, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useQueryClient} from '@tanstack/react-query';
-import {db, handleFirestoreError, OperationType} from '../../firebase';
 import {Book} from '../../types';
 import {toast} from 'sonner';
 import {useAuth} from '../../stores/authStore';
 import {useLibraryData} from '../../hooks/useLibraryData';
-import {
-  DebugTelemetryEngine,
-  calculatePayloadBytes,
-  instrumentMutation,
-} from '../../lib/telemetry';
+import {trpc, trpcVanilla} from '../../lib/trpc';
+import {instrumentMutation} from '../../lib/telemetry';
 
 const getFingerprints = (b: Book) => {
   const cleanIsbn = (b.isbn || '').trim().replace(/[^0-9X]/gi, '');
@@ -114,66 +101,16 @@ export function useSpruceUp(libraryId: string | undefined) {
     navigate,
   );
 
-  const [allowedDuplicateGroups, setAllowedDuplicateGroups] = useState<
-    string[][]
-  >([]);
-  const [allowedLoading, setAllowedLoading] = useState(true);
+  const allowedQuery = trpc.library.listAllowedDuplicates.useQuery(
+    {libraryId: libraryId || ''},
+    {enabled: !!libraryId},
+  );
+
+  const allowedDuplicateGroups = useMemo(() => {
+    return allowedQuery.data?.allowedDuplicateGroups || [];
+  }, [allowedQuery.data]);
+
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!libraryId) return;
-
-    const allowedRef = collection(
-      db,
-      'libraries',
-      libraryId,
-      'allowedDuplicates',
-    );
-    const unregisterAllowed =
-      DebugTelemetryEngine.getInstance().registerListener(
-        'useSpruceUp:allowedDuplicates',
-        `libraries/${libraryId}/allowedDuplicates`,
-      );
-    const unsubscribeAllowed = onSnapshot(
-      allowedRef,
-      {includeMetadataChanges: true},
-      allowedSnap => {
-        const fromCache = allowedSnap.metadata.fromCache;
-        const allowed = allowedSnap.docs.map(
-          docSnap => (docSnap.data().bookIds || []) as string[],
-        );
-        const payloadBytes = calculatePayloadBytes(allowed);
-
-        DebugTelemetryEngine.getInstance().addLog(
-          'db_read',
-          `Queried allowedDuplicates (${allowedSnap.size} docs, ${(payloadBytes / 1024).toFixed(1)} KB)`,
-          {
-            path: `libraries/${libraryId}/allowedDuplicates`,
-            fromCache,
-            size: allowedSnap.size,
-            bytes: payloadBytes,
-            docCount: allowedSnap.size,
-          },
-        );
-
-        setAllowedDuplicateGroups(allowed);
-        setAllowedLoading(false);
-      },
-      error => {
-        handleFirestoreError(
-          error,
-          OperationType.GET,
-          `libraries/${libraryId}/allowedDuplicates`,
-        );
-        setAllowedLoading(false);
-      },
-    );
-
-    return () => {
-      unregisterAllowed();
-      unsubscribeAllowed();
-    };
-  }, [libraryId]);
 
   const duplicates = useMemo(() => {
     const allDuplicates = findDuplicates(books);
@@ -198,51 +135,17 @@ export function useSpruceUp(libraryId: string | undefined) {
           prev ? prev.filter(b => b.id !== id) : [],
       );
 
-      const batch = writeBatch(db);
-      batch.delete(doc(db, 'libraries', libraryId, 'books', id));
-      batch.delete(doc(db, 'libraries', libraryId, 'bookDetails', id));
-      batch.update(doc(db, 'libraries', libraryId), {
-        bookCount: increment(-1),
-        updatedAt: serverTimestamp(),
-      });
-
-      try {
-        const {getDocs} = await import('firebase/firestore');
-        const reviewsRef = collection(
-          db,
-          'libraries',
-          libraryId,
-          'books',
-          id,
-          'reviews',
-        );
-        const reviewsSnap = await getDocs(reviewsRef);
-        reviewsSnap.forEach(revDoc => {
-          batch.delete(revDoc.ref);
-        });
-      } catch (e) {
-        handleFirestoreError(
-          e,
-          OperationType.GET,
-          `libraries/${libraryId}/books/${id}/reviews`,
-        );
-      }
-
       await instrumentMutation(
         'delete',
         `libraries/${libraryId}/books/${id}`,
         {libraryId, bookId: id},
-        () => batch.commit(),
+        () => trpcVanilla.book.delete.mutate({libraryId, bookId: id}),
       );
       toast.success('Book deleted');
     } catch (error) {
       queryClient.setQueryData(['books', libraryId], originalBooks);
       toast.error('Failed to delete book');
-      handleFirestoreError(
-        error,
-        OperationType.DELETE,
-        `libraries/${libraryId}/books/${id}`,
-      );
+      console.error('Failed to delete book:', error);
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -255,36 +158,26 @@ export function useSpruceUp(libraryId: string | undefined) {
   const handleAllowDuplicateGroup = async (group: Book[]) => {
     if (!libraryId) return;
     const bookIds = group.map(b => b.id);
-    const originalAllowed = [...allowedDuplicateGroups];
     try {
-      setAllowedDuplicateGroups(prev => [...prev, bookIds]);
-      const dupPayload = {
-        bookIds,
-        createdAt: serverTimestamp(),
-      };
       await instrumentMutation(
         'create',
         `libraries/${libraryId}/allowedDuplicates`,
-        dupPayload,
+        {bookIds},
         () =>
-          addDoc(
-            collection(db, 'libraries', libraryId, 'allowedDuplicates'),
-            dupPayload,
-          ),
+          trpcVanilla.library.allowDuplicateGroup.mutate({
+            libraryId,
+            bookIds,
+          }),
       );
+      void allowedQuery.refetch();
       toast.success('Duplicate suggestion dismissed');
     } catch (error) {
-      setAllowedDuplicateGroups(originalAllowed);
       toast.error('Failed to dismiss suggestion');
-      handleFirestoreError(
-        error,
-        OperationType.CREATE,
-        `libraries/${libraryId}/allowedDuplicates`,
-      );
+      console.error('Failed to dismiss duplicate suggestion:', error);
     }
   };
 
-  const loading = booksLoading || allowedLoading;
+  const loading = booksLoading || allowedQuery.isLoading;
 
   return {
     loading,

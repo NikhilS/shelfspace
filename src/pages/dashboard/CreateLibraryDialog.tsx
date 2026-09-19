@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import {motion, AnimatePresence} from 'motion/react';
 import {Loader2} from 'lucide-react';
-import {handleFirestoreError, OperationType} from '../../firebase';
+import {toast} from 'sonner';
 import {Input} from '../../components/ui/input';
 import {Button} from '../../components/ui/button';
 
@@ -31,7 +31,9 @@ export function CreateLibraryDialog({
       onClose();
     } catch (error) {
       setName(trimmedName);
-      handleFirestoreError(error, OperationType.CREATE, 'libraries');
+      const msg =
+        error instanceof Error ? error.message : 'Failed to create collection';
+      toast.error(msg);
     }
   };
 

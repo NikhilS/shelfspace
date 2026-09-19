@@ -1,13 +1,5 @@
 import {initializeApp} from 'firebase/app';
 import {getAuth, connectAuthEmulator} from 'firebase/auth';
-import {
-  initializeFirestore,
-  getDocFromServer,
-  doc,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-  connectFirestoreEmulator,
-} from 'firebase/firestore';
 import {getStorage, connectStorageEmulator} from 'firebase/storage';
 import {toast} from 'sonner';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -16,56 +8,13 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-const firestoreCacheConfig = (() => {
-  if (typeof window === 'undefined') return {};
-  if (process.env.NODE_ENV === 'test') {
-    return {}; // Memory cache for tests
-  }
-  try {
-    // Dynamic initialization of persistent cache, catching partitioning exceptions gracefully
-    return {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
-      }),
-    };
-  } catch (e) {
-    console.warn(
-      'Storage partitioning restricted IndexedDB. Falling back to memory state.',
-      e,
-    );
-    return {};
-  }
-})();
-
-export const db = initializeFirestore(
-  app,
-  firestoreCacheConfig,
-  firebaseConfig.firestoreDatabaseId,
-);
+// Deprecated: Client-side Firestore eliminated in favor of the Unified tRPC/OpenAPI Gateway
+export const db = null as unknown;
 
 if (process.env.NODE_ENV === 'test') {
-  connectFirestoreEmulator(db, '127.0.0.1', 8080);
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', {disableWarnings: true});
   connectStorageEmulator(storage, '127.0.0.1', 9199);
 }
-
-// Validate Connection to Firestore
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.includes('the client is offline')
-    ) {
-      console.error(
-        'Please check your Firebase configuration. The client is offline.',
-      );
-    }
-    // Skip logging for other errors, as this is simply a connection test.
-  }
-}
-void testConnection();
 
 export enum OperationType {
   CREATE = 'create',

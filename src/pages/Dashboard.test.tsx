@@ -9,8 +9,32 @@ import {addDoc} from 'firebase/firestore';
 
 vi.mock('../stores/authStore');
 
+const mockCreateMutateAsync = vi.fn().mockResolvedValue({id: 'newLibId'});
+
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    library: {
+      list: {
+        useQuery: vi.fn(() => ({
+          data: [
+            {
+              id: 'lib1',
+              name: 'Test Library',
+              ownerId: 'user1',
+              ownerName: 'User One',
+              bookCount: 5,
+            },
+          ],
+          isLoading: false,
+        })),
+      },
+      create: {
+        useMutation: vi.fn(() => ({
+          mutateAsync: mockCreateMutateAsync,
+          isLoading: false,
+        })),
+      },
+    },
     gemini: {
       generateLibraryHeroImage: {
         useMutation: () => ({
@@ -138,7 +162,6 @@ describe('Dashboard', () => {
     ).mockReturnValue({
       user: {uid: 'user1', email: 'user@example.com'},
     });
-    (addDoc as import('vitest').Mock).mockResolvedValue({id: 'newLibId'});
 
     renderDashboard();
 
@@ -153,7 +176,32 @@ describe('Dashboard', () => {
     fireEvent.click(createBtn);
 
     await waitFor(() => {
-      expect(addDoc).toHaveBeenCalled();
+      expect(mockCreateMutateAsync).toHaveBeenCalled();
     });
+  });
+
+  it('safely handles non-array cached query data without crashing', async () => {
+    (
+      useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
+    ).mockReturnValue({
+      user: {uid: 'user1', email: 'user@example.com'},
+    });
+
+    // Seed queryClient with object-format data instead of raw array
+    queryClient.setQueryData(['userLibraries', 'user1'], {
+      libraries: [
+        {
+          id: 'cached-lib-1',
+          name: 'Cached Object Library',
+          ownerId: 'user1',
+          ownerName: 'User One',
+          bookCount: 12,
+        },
+      ],
+    });
+
+    renderDashboard();
+    expect(await screen.findByText('Test Library')).toBeInTheDocument();
+    expect(screen.queryByText(/Something went wrong/i)).not.toBeInTheDocument();
   });
 });

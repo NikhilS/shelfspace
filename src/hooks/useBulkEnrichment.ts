@@ -1,6 +1,4 @@
 import {useState, useEffect, useMemo, useCallback, useRef} from 'react';
-import {doc} from 'firebase/firestore';
-import {db} from '../firebase';
 import {useAuth} from '../stores/authStore';
 import {Book, BookEnrichmentStatus} from '../types';
 import {toast} from 'sonner';
@@ -264,92 +262,6 @@ export function useBulkEnrichment({
               },
             );
 
-            if (Array.isArray(data.updates) && data.updates.length > 0) {
-              try {
-                const {ClientBulkWriter} =
-                  await import('../lib/clientBulkWriter');
-                const writer = new ClientBulkWriter(db, 50);
-                for (const updateItem of data.updates) {
-                  const {bookId, payload, heavyPayload} = updateItem;
-                  if (!bookId || !payload) continue;
-
-                  // Partition heavy fields away from core book payload
-                  const heavyData: Record<string, unknown> = {
-                    ...(heavyPayload || {}),
-                  };
-                  if (payload.synopsis) heavyData.synopsis = payload.synopsis;
-                  if (payload.authorBio)
-                    heavyData.authorBio = payload.authorBio;
-                  if (payload.embedding)
-                    heavyData.embedding = payload.embedding;
-                  if (payload.clusterCoordinates)
-                    heavyData.clusterCoordinates = payload.clusterCoordinates;
-
-                  const cleanBookPayload = {...payload};
-                  delete cleanBookPayload.synopsis;
-                  delete cleanBookPayload.authorBio;
-                  delete cleanBookPayload.embedding;
-                  delete cleanBookPayload.clusterCoordinates;
-
-                  // Ensure bookDetailsMetadata is maintained on core book doc
-                  if (Object.keys(heavyData).length > 0) {
-                    const existingMeta =
-                      (cleanBookPayload.bookDetailsMetadata as
-                        Record<string, boolean> | undefined) || {};
-                    cleanBookPayload.bookDetailsMetadata = {
-                      ...existingMeta,
-                      ...(heavyData.synopsis ? {hasSynopsis: true} : {}),
-                      ...(heavyData.authorBio ? {hasAuthorBio: true} : {}),
-                      ...(heavyData.embedding ? {hasEmbedding: true} : {}),
-                    };
-                  }
-
-                  const bookDocRef = doc(
-                    db,
-                    'libraries',
-                    libraryId,
-                    'books',
-                    bookId,
-                  );
-                  writer.set(bookDocRef, cleanBookPayload, {merge: true});
-
-                  if (Object.keys(heavyData).length > 0) {
-                    const detailRef = doc(
-                      db,
-                      'libraries',
-                      libraryId,
-                      'bookDetails',
-                      bookId,
-                    );
-                    const detailPayload: Record<string, unknown> = {
-                      ...heavyData,
-                      updatedAt:
-                        (cleanBookPayload.updatedAt as string) ||
-                        new Date().toISOString(),
-                    };
-                    writer.set(detailRef, detailPayload, {merge: true});
-                  }
-                }
-                await writer.close();
-
-                DebugTelemetryEngine.getInstance().addLog(
-                  'db_write',
-                  `[BulkEnrichment DB] Committed ${data.updates.length} book updates to Firestore`,
-                  {count: data.updates.length, libraryId},
-                );
-              } catch (clientWriteErr) {
-                DebugTelemetryEngine.getInstance().addLog(
-                  'error',
-                  `[BulkEnrichment DB] Client write error writing book updates to Firestore: ${clientWriteErr}`,
-                  clientWriteErr,
-                );
-                console.warn(
-                  '[BulkEnrichment] Client write warning:',
-                  clientWriteErr,
-                );
-              }
-            }
-
             const count =
               typeof data.processedCount === 'number'
                 ? data.processedCount
@@ -366,8 +278,7 @@ export function useBulkEnrichment({
             chunk.forEach(b => {
               const update = updatesMap.get(b.id);
               const statusObj = update?.payload?.enrichmentStatus as
-                | Record<string, string>
-                | undefined;
+                Record<string, string> | undefined;
               const enrichmentStatus = statusObj?.[statusKey];
 
               if (enrichmentStatus === 'completed') {
@@ -416,7 +327,10 @@ export function useBulkEnrichment({
             DebugTelemetryEngine.getInstance().addLog(
               'error',
               `[BulkEnrichment Workers] Error processing batch of ${chunk.length} books for ${metadataField}: ${errMsg}`,
-              {error: errMsg, books: chunk.map(b => ({id: b.id, title: b.title}))},
+              {
+                error: errMsg,
+                books: chunk.map(b => ({id: b.id, title: b.title})),
+              },
             );
           }
         } finally {

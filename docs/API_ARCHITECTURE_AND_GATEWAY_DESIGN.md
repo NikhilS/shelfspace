@@ -256,40 +256,395 @@ To answer whether performance suffers, we must measure performance across four d
 
 ---
 
-## 6. Staff Recommendation & Implementation Strategy
+## 6. Detailed Investigation: The Core Questions
 
-### The Strategic Verdict
+### Q1: What client-side changes are needed to call exclusively the tRPC endpoints?
 
-For a **personal book library, reading tracker, and AI curation tool**, the requirements are:
-1. Fast local viewing and search.
-2. Rich AI enrichment (Gemini) that requires secure backend keys.
-3. Programmatic API access (`x-api-key`) for external scripts/tools.
-4. Future readiness for native iOS and Android apps.
-5. High security and clean, maintainable code.
+To eliminate the direct client Firestore SDK completely, we must audit and replace every client-side touchpoint that currently imports `firebase/firestore`.
 
-**Notice what is NOT on this list:**
-- We are *not* building a collaborative multiplayer whiteboarding app (like Figma).
-- We are *not* building a real-time messaging chat room (like Slack).
+#### Complete Client-Side Touchpoint Inventory:
 
-For this domain, **the real-time WebSocket capabilities of native Firestore are an architectural distraction** that costs you code cleanliness, creates split-brain security risks, and complicates mobile development.
+| File | Current Direct Firestore Usage | Replacement via tRPC Gateway |
+| :--- | :--- | :--- |
+| **`src/hooks/useLibraryData.ts`** | Subscribes via `onSnapshot(query(collection('books')))` and reads `getDocsFromCache`. | Replaced by `trpc.book.list.useQuery({ libraryId })`. |
+| **`src/hooks/useLibraryData.ts` (Mutations)** | Direct writes: `updateDoc(doc('books', id), changes)`, `deleteDoc(doc('books', id))`, `addDoc(...)`. | Replaced by `trpc.book.update.useMutation()`, `trpc.book.delete.useMutation()`, `trpc.book.create.useMutation()`. |
+| **`src/lib/clientBulkWriter.ts`** | Batches direct `writeBatch()` or chunked `setDoc()` directly to Firestore. | Replaced by `trpc.book.batchUpsert.useMutation({ libraryId, books })`. The server executes the batch via `adminDb.batch()`. |
+| **`src/stores/authStore.tsx`** | Reads/writes user profile to Firestore `/users/{uid}` via `getDoc()` and `setDoc()`. | Replaced by `trpc.user.getProfile.useQuery()` and `trpc.user.syncProfile.useMutation()`. |
+| **`src/hooks/useAppPermissions.ts`** | Reads allowlist document `getDoc(doc('appSettings/allowlist/users', email))`. | Replaced by `trpc.auth.getPermissions.useQuery()`, which is verified by server middleware. |
+| **`src/firebase.ts`** | Exports `export const db = getFirestore(app)`. | Removed completely! `src/firebase.ts` will **only export `auth`** for Google/Email authentication. |
 
-### The Phased Migration Plan
+#### Exact Client Setup Changes:
+1. **Already in place**:
+   - In `src/App.tsx`, `<trpc.Provider client={trpcClient} queryClient={queryClient}>` is already wrapped around the entire application.
+   - In `src/lib/trpc.ts`, `trpcClient` is already configured with `httpBatchLink({ url: '/trpc' })` and automatically injects `Authorization: Bearer <token>` from `auth.currentUser?.getIdToken()`.
+2. **Changes needed**:
+   - Refactor `useLibraryData.ts` to consume `trpc.book.list.useQuery` instead of manual snapshot listeners.
+   - Remove all `@firebase/firestore` imports across the `src/` directory.
 
-#### Phase 1: Mount OpenAPI on tRPC
-- Install `trpc-openapi`.
-- Annotate existing procedures in `src/server/trpc/routers/` with OpenAPI metadata (HTTP method, path, tags).
-- Mount the OpenAPI Express middleware at `/api/v1`.
-- Verify that external API keys (`x-api-key: lib_live_...`) authenticate cleanly against `/api/v1/libraries`.
+---
 
-#### Phase 2: Set Up Client Query Persistence (Web)
-- Configure `@tanstack/react-query-persist-client` with `idb-keyval` in the React web app.
-- Ensure the app hydrates instantly from IndexedDB on startup.
+### Q2: In your plan, when do writes migrate to the new API?
 
-#### Phase 3: Transition Client Data Fetching to tRPC
-- Migrate `useLibraryData.ts` from direct Firestore `onSnapshot` / `collection` calls to `trpc.library.getBooks.useQuery()`.
-- Add optimistic mutation handlers (`onMutate`) for status updates and edits.
+#### Strategic Sequencing: Migrate Writes FIRST (or Concurrent with Reads)
 
-#### Phase 4: Lock Down Firestore
-- Update `firestore.rules` to `allow read, write: if false;`.
-- Remove all `@firebase/firestore` imports from client bundles.
-- Generate `openapi.json` for future native iOS and Android client generation.
+A common mistake in database migrations is trying to migrate reads and writes simultaneously across the entire application. The safest, zero-downtime path is:
+
+```
+[Phase A: Write Migration]
+Client Writes  --->  [tRPC / AdminDb]  --->  [Cloud Firestore]
+                                                    |
+                                                    v (triggers)
+Client Reads   <---------------------------- [Firestore onSnapshot]
+```
+
+#### Why Migrate Writes First?
+1. **Zero State Tearing**: Because `adminDb` on the server writes directly to the same Cloud Firestore collection, the client's existing `onSnapshot` listener **still fires automatically**!
+   - When a user changes a book status from "reading" to "finished" via `trpc.book.update.useMutation()`, the server updates Firestore.
+   - The active client `onSnapshot` listener receives the change in real-time and re-renders the UI.
+2. **Validate Permissions Early**: Migrating writes first forces us to establish and test all server-side write authorization checks (`verifyLibraryWriteAccess`) while reads continue working undisturbed.
+3. **No Downtime**: Once all write paths (single edits, deletes, and bulk CSV/Goodreads imports) are 100% verified on tRPC, we flip reads from `onSnapshot` to `trpc.book.list.useQuery`.
+
+#### The 4-Step Operational Sequence:
+1. **Step 1 (API & Writes)**: Implement `trpc.book.create`, `update`, `delete`, and `batchUpsert`. Switch UI forms and actions to call these mutations.
+2. **Step 2 (Client Caching Prep)**: Mount TanStack Query IndexedDB persister at the root of the app.
+3. **Step 3 (Reads)**: Replace `useLibraryData`'s `onSnapshot` with `trpc.book.list.useQuery`.
+4. **Step 4 (Seal the Database)**: Update `firestore.rules` to `allow read, write: if false;`.
+
+---
+
+### Q3: At which step does the OAuth check move to the tRPC stack? Or is it already there?
+
+#### The Current State: **It is 80% already there, but fragmented.**
+
+Currently:
+1. **Client**: When a user logs in via Google OAuth (`signInWithPopup` in `useAuthStore.tsx`), Firebase Auth receives standard Google OAuth credentials and issues a **Firebase ID Token (JWT)**.
+2. **Client tRPC Link**: `src/lib/trpc.ts` already extracts `await auth.currentUser?.getIdToken()` and sets the `Authorization: Bearer <token>` header on every tRPC request.
+3. **Server tRPC Context**: `src/server/trpc/trpc.ts` already decodes the JWT using `admin.auth().verifyIdToken(token)` and checks the allowlist!
+
+#### Why It Feels Incomplete Today (The 20% Gap):
+- **Parallel Express REST Middleware**: `server.ts` has its own duplicate, standalone `authenticateApiToken` middleware that also verifies Firebase JWTs and API keys for `/api/v1` routes.
+- **Client Direct Bypasses**: When the client reads or writes directly to Firestore via `firebase/firestore`, it talks to Google's edge using the client Firebase auth state, bypassing the tRPC server entirely.
+- **Client Allowlist Read**: `useAppPermissions.ts` directly queries `/appSettings/allowlist/users` from the client rather than relying on the server's context.
+
+#### When Does it Move Completely?
+In **Phase 1**, when we extract the auth pipeline into a standalone, modular auth library (`src/server/auth/`), the server becomes the **sole gatekeeper**. The client does nothing with OAuth other than acquiring the token and passing it in headers.
+
+---
+
+## 7. The Modular Server Auth Architecture (`src/server/auth/`)
+
+Because authentication and authorization are mission-critical, they must not be scattered inside `server.ts` or tangled inside tRPC router definitions. We will encapsulate all auth logic into a decoupled module.
+
+### Directory Structure:
+```
+src/server/auth/
+├── index.ts               # Public exports (middleware, context types, procedures)
+├── context.ts             # Context builder (header parsing, user extraction)
+├── tokenVerifier.ts       # Firebase ID Token verification (JWT)
+├── apiKeyVerifier.ts      # Hashed API Key verification ('lib_live_...')
+├── allowlistService.ts    # Allowlist resolution with in-memory TTL caching
+├── permissions.ts         # Role definitions & RBAC checks (owner, editor, viewer)
+├── procedures.ts          # Reusable tRPC procedure builders
+└── __tests__/
+    ├── tokenVerifier.test.ts
+    ├── apiKeyVerifier.test.ts
+    ├── allowlistService.test.ts
+    └── procedures.test.ts
+```
+
+### 1. Unified Context & User Shape
+```typescript
+// src/server/auth/types.ts
+export interface AuthUser {
+  uid: string;
+  email: string;
+  authType: 'jwt' | 'api_key';
+  apiKeyId?: string;
+  isSuperAdmin: boolean;
+}
+
+export interface SecurityContext {
+  user: AuthUser | null;
+  isAppAllowed: boolean;
+  isAdmin: boolean;
+}
+```
+
+### 2. High-Level, Composable Procedure Builders
+Instead of manual `if (!user)` checks inside procedure handlers, developers use semantic, chainable procedure builders:
+
+```typescript
+// src/server/auth/procedures.ts
+import { initTRPC, TRPCError } from '@trpc/server';
+import { SecurityContext } from './types';
+import { LibraryService } from '../../services/server/libraryService';
+
+const t = initTRPC.context<SecurityContext>().create();
+
+// 1. Public (Health checks, public share links)
+export const publicProcedure = t.procedure;
+
+// 2. Authenticated + Allowlisted (General app actions)
+export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
+  if (!ctx.user) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
+  }
+  if (!ctx.isAppAllowed) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'User is not on the active allowlist' });
+  }
+  return next({ ctx: { user: ctx.user, isAppAllowed: true, isAdmin: ctx.isAdmin } });
+});
+
+// 3. Admin Only (User management, system configuration)
+export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (!ctx.isAdmin) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Administrative access required' });
+  }
+  return next({ ctx });
+});
+
+// 4. Library RBAC Procedure Factory (Auto-checks library membership!)
+export function libraryProcedure(requiredRole: 'viewer' | 'editor' | 'owner') {
+  return protectedProcedure.use(async ({ ctx, rawInput, next }) => {
+    const input = rawInput as { libraryId?: string };
+    if (!input?.libraryId) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'libraryId required' });
+    }
+
+    const hasAccess = await LibraryService.verifyLibraryAccess(
+      ctx.user.uid,
+      ctx.user.email,
+      input.libraryId,
+      requiredRole
+    );
+
+    if (!hasAccess) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: `Insufficient permissions for library (${requiredRole} required)`,
+      });
+    }
+
+    return next({ ctx: { ...ctx, libraryId: input.libraryId } });
+  });
+}
+```
+
+#### How Clean Endpoint Definitions Become:
+```typescript
+// Any new endpoint is completely protected in ONE line:
+export const bookRouter = router({
+  updateBook: libraryProcedure('editor')
+    .input(z.object({ libraryId: z.string(), bookId: z.string(), updates: BookUpdateSchema }))
+    .mutation(async ({ ctx, input }) => {
+      // Guaranteed: user is logged in, allowlisted, and has editor rights on libraryId!
+      return bookService.updateBook(input.libraryId, input.bookId, input.updates);
+    }),
+});
+```
+
+### 3. Comprehensive Test Coverage Matrix
+The `src/server/auth/__tests__/` suite will test 100% of auth states in isolation:
+
+| Test Case | Mock Condition | Expected Result |
+| :--- | :--- | :--- |
+| **Valid Bearer JWT** | `verifyIdToken` resolves user | Populates `ctx.user` with `authType: 'jwt'`. |
+| **Expired/Malformed JWT** | `verifyIdToken` rejects with `auth/id-token-expired` | Sets `ctx.user = null`; throws `UNAUTHORIZED` on protected procedure. |
+| **Valid `x-api-key`** | `ApiKeyService.validateApiKey` resolves key | Populates `ctx.user` with `authType: 'api_key'` and `apiKeyId`. |
+| **Revoked/Invalid API Key** | `ApiKeyService.validateApiKey` returns null | Sets `ctx.user = null`; returns 401. |
+| **Superadmin Email Bypass** | Email matches `SUPERADMIN_EMAIL` | Sets `isAppAllowed = true` and `isAdmin = true` with zero DB read. |
+| **Allowlist Resolution & Cache** | Admin doc exists with `role: 'admin'` | Grants access and caches in memory for 3 minutes. |
+| **Library RBAC - Viewer on Editor Action** | User has `role: 'viewer'`; procedure needs `'editor'` | Throws `FORBIDDEN` before reaching service handler. |
+| **Library RBAC - Non-Member** | User has no membership document | Throws `FORBIDDEN`. |
+
+---
+
+## 8. Cross-Cutting Client-Side Caching & Offline Architecture
+
+To make caching and offline access work **transparently across all existing and future data in the app**, we avoid writing custom caching logic for individual components. Instead, we establish a **Cross-Cutting Persistence Layer** using TanStack Query.
+
+```
++-------------------------------------------------------------------------------+
+|                            REACT APPLICATION UI                               |
+|                                                                               |
+|  [Library View]      [Timeline View]      [Constellation Map]   [Future View] |
+|         \                   |                    /                   /        |
++----------\------------------|-------------------/-------------------/---------+
+            \                 |                  /                   /
+             v                v                 v                   v
++-------------------------------------------------------------------------------+
+|                       GLOBAL TANSTACK QUERY CLIENT                            |
+|                                                                               |
+|  Query Cache:                                                                 |
+|    ['libraries']                     --> List of user libraries               |
+|    ['books', libraryId]              --> Full collection for library          |
+|    ['book', bookId]                  --> Single book metadata                 |
+|    ['enrichmentJob', jobId]          --> Background AI job status             |
+|                                                                               |
+|  Mutation Queue:                                                              |
+|    [Update Book #41]                 --> Optimistic update applied locally    |
+|    [Delete Book #89]                 --> Pauses when offline, flushes online  |
++---------------------------------------+---------------------------------------+
+                                        |
+                 +----------------------+----------------------+
+                 | (Bidirectional Sync)                        | (Network Transport)
+                 v                                             v
++-----------------------------------+         +---------------------------------+
+|       INDEXEDDB PERSISTER         |         |          tRPC CLIENT            |
+|       (via idb-keyval)            |         |     (Authorization: Bearer)     |
+|                                   |         |                                 |
+| - Synchronous cold boot restore   |         | - Online: fetches latest data   |
+| - Persists mutations across reloads|        | - Offline: pauses mutations     |
++-----------------------------------+         +---------------------------------+
+```
+
+### 1. The Global QueryClient Configuration
+Configured once at the application root (`src/lib/queryClient.ts`):
+
+```typescript
+import { QueryClient } from '@tanstack/react-query';
+import { persistQueryClient } from '@tanstack/react-query-persist-client';
+import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
+import { get, set, del } from 'idb-keyval';
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes fresh
+      gcTime: 1000 * 60 * 60 * 24 * 7, // 7 days retention in IndexedDB
+      networkMode: 'offlineFirst', // Serve from IndexedDB immediately, then fetch in background
+      refetchOnWindowFocus: false,
+      retry: 2,
+    },
+    mutations: {
+      networkMode: 'offlineFirst', // Pause and queue mutations if device is offline
+      retry: 3,
+    },
+  },
+});
+
+// Configure transparent IndexedDB backing
+const persister = createAsyncStoragePersister({
+  storage: {
+    getItem: async (key) => await get(key),
+    setItem: async (key, value) => await set(key, value),
+    removeItem: async (key) => await del(key),
+  },
+});
+
+persistQueryClient({
+  queryClient,
+  persister,
+  maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days cache validity
+  buster: 'v1.0.0', // Bump to invalidate cache on schema changes
+});
+```
+
+### 2. Standardized Hierarchical Query Keys
+Every query in the app adheres to a predictable key hierarchy:
+- `['libraries']`
+- `['libraries', libraryId]`
+- `['books', libraryId]`
+- `['books', libraryId, { genre: 'Sci-Fi' }]`
+- `['enrichmentJobs', libraryId]`
+
+**Why this is cross-cutting**: When a developer creates a new feature (e.g. `readingGoals`), they simply use `['readingGoals', libraryId]`. It **automatically** gets:
+1. IndexedDB offline persistence.
+2. Synchronous cold-boot hydration.
+3. Offline queueing if a mutation is dispatched while disconnected.
+
+### 3. Reusable Optimistic Mutation Helper
+To eliminate boilerplate across UI components, we provide a cross-cutting helper `createOptimisticMutation`:
+
+```typescript
+// src/lib/optimisticMutation.ts
+import { queryClient } from './queryClient';
+
+export function createOptimisticMutation<TData, TVariables>({
+  queryKey,
+  updateCache,
+}: {
+  queryKey: unknown[];
+  updateCache: (oldData: TData | undefined, variables: TVariables) => TData;
+}) {
+  return {
+    onMutate: async (variables: TVariables) => {
+      // 1. Cancel any outgoing refetches to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey });
+
+      // 2. Snapshot the previous cache value for rollback
+      const previousData = queryClient.getQueryData<TData>(queryKey);
+
+      // 3. Optimistically update TanStack Query cache (and trigger IndexedDB write)
+      queryClient.setQueryData<TData>(queryKey, (old) => updateCache(old, variables));
+
+      return { previousData };
+    },
+    onError: (_err: unknown, _newVal: TVariables, context?: { previousData?: TData }) => {
+      // 4. Roll back on error
+      if (context?.previousData) {
+        queryClient.setQueryData<TData>(queryKey, context.previousData);
+      }
+    },
+    onSettled: () => {
+      // 5. Invalidate to refetch authoritative state from server
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  };
+}
+```
+
+#### How Clean UI Component Mutations Look:
+```typescript
+const updateBook = trpc.book.update.useMutation({
+  ...createOptimisticMutation<Book[], { bookId: string; updates: Partial<Book> }>({
+    queryKey: ['books', libraryId],
+    updateCache: (books, { bookId, updates }) =>
+      books?.map((b) => (b.id === bookId ? { ...b, ...updates } : b)) ?? [],
+  }),
+});
+
+// Calling updateBook.mutate({ bookId: '123', updates: { status: 'finished' } })
+// -> UI updates in 0ms!
+// -> Written to IndexedDB immediately!
+// -> If offline, queued and flushes upon reconnect!
+```
+
+---
+
+## 9. Comprehensive Implementation Roadmap
+
+```
+  [Phase 1: Auth & Modular Gateway]
+  - Create src/server/auth/ module with 100% unit test coverage.
+  - Mount unified auth middleware in createContext.
+  - Extract /api/v1 routes from server.ts into src/server/api/v1/.
+  - Deprecate duplicate auth code in server.ts.
+                 |
+                 v
+  [Phase 2: Server CRUD Procedures & Write Migration]
+  - Create trpc.book.create, update, delete, batchUpsert.
+  - Add OpenAPI metadata annotations (trpc-openapi).
+  - Migrate client write touchpoints (useLibraryData, ClientBulkWriter) to tRPC mutations.
+  - Reads remain on Firestore onSnapshot (zero UI disruption).
+                 |
+                 v
+  [Phase 3: Cross-Cutting Client Cache & Read Migration]
+  - Configure @tanstack/react-query-persist-client with idb-keyval in App.tsx.
+  - Migrate useLibraryData from onSnapshot to trpc.book.list.useQuery.
+  - Verify instant <15ms cold start hydration from IndexedDB.
+                 |
+                 v
+  [Phase 4: Seal Firestore Database & Cleanup]
+  - Update firestore.rules to `allow read, write: if false;`.
+  - Remove firebase/firestore package from client bundles.
+  - Expose generated openapi.json for documentation and testing.
+```
+
+| Phase | Core Deliverable | Risk / Mitigation | Effort |
+| :--- | :--- | :--- | :--- |
+| **Phase 1** | **Modular Auth Library (`src/server/auth/`)**: Decouple token verification, API key verification, allowlist caching, and RBAC procedures with full unit test coverage. | **Low**: Existing tRPC and REST routes continue functioning; auth logic is consolidated without changing endpoints. | 1.5 days |
+| **Phase 2** | **CRUD Procedures & Write Migration**: Build `trpc.book.*` mutations. Point UI actions (`updateBook`, `deleteBook`, `bulkImport`) to tRPC. | **Low**: Reads stay on `onSnapshot`, so UI updates immediately when server writes to Firestore. | 2 days |
+| **Phase 3** | **Client Persistence & Read Migration**: Set up IndexedDB persister; switch `useLibraryData` to `trpc.book.list.useQuery`. | **Medium**: Requires testing offline cold boot and optimistic rollback behaviors. | 2 days |
+| **Phase 4** | **Database Lockdown & Bundle Optimization**: Set `firestore.rules` to deny all client access; remove `@firebase/firestore` from client bundle. | **Low**: If any client code still tries to access Firestore directly, the test suite and deny-all rule immediately catch it. | 1 day |
+

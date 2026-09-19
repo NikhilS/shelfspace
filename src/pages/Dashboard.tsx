@@ -14,6 +14,15 @@ export default function Dashboard() {
   const {libraries, isLoading, isSubmitting, createLibrary} = useLibraries();
   const [isCreating, setIsCreating] = useState(false);
 
+  const libraryList = Array.isArray(libraries)
+    ? libraries
+    : libraries &&
+        typeof libraries === 'object' &&
+        'libraries' in libraries &&
+        Array.isArray((libraries as {libraries: unknown}).libraries)
+      ? (libraries as {libraries: typeof libraries}).libraries
+      : [];
+
   if (!user) {
     return <Navigate to="/login" />;
   }
@@ -31,7 +40,7 @@ export default function Dashboard() {
           </div>
           {isLoading ? (
             <div className="h-[42px] w-36 bg-surface-variant/40 rounded-xl self-start sm:self-auto animate-pulse shrink-0" />
-          ) : libraries.length > 0 ? (
+          ) : libraryList.length > 0 ? (
             <Button
               onClick={() => setIsCreating(true)}
               className="flex items-center gap-2 min-h-[42px] px-5 bg-primary text-on-primary font-sans font-semibold rounded-xl hover:bg-primary/90 shadow-xs self-start sm:self-auto transition-all"
@@ -52,7 +61,7 @@ export default function Dashboard() {
 
           {isLoading ? (
             <LibrarySkeleton />
-          ) : libraries.length === 0 && !isCreating ? (
+          ) : libraryList.length === 0 && !isCreating ? (
             <div className="text-center py-24 px-6 bg-surface-container-low rounded-2xl border border-outline-variant/30 shadow-elevation-1">
               <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/50">
                 <LibraryIcon className="w-10 h-10 text-on-surface-variant" />
@@ -74,7 +83,7 @@ export default function Dashboard() {
             <div className="space-y-10">
               {/* Library Cards Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {libraries.map((lib, index) => (
+                {libraryList.map((lib, index) => (
                   <LibraryCard key={lib.id} lib={lib} index={index} />
                 ))}
               </div>

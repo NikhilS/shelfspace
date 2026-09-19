@@ -1,16 +1,8 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState} from 'react';
 import {Navigate} from 'react-router-dom';
 import {useAuth} from '../stores/authStore';
 import {useAppPermissions} from '../hooks/useAppPermissions';
-import {db, handleFirestoreError, OperationType} from '../firebase';
-import {
-  collection,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-} from 'firebase/firestore';
+import {trpc} from '../lib/trpc';
 import {Shield, X, PlusCircle, AlertTriangle} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -19,51 +11,33 @@ import {toast} from 'sonner';
 import {ApiKeyManagement} from '../components/ApiKeyManagement';
 import {BackToLibrary} from '../components/BackToLibrary';
 
-interface AllowlistUser {
-  email: string;
-  role: string | null;
-}
-
 export default function AdminDashboard() {
   const {user} = useAuth();
   const {isAdmin, isAppAllowed, isLoadingPermissions} = useAppPermissions();
-  const [users, setUsers] = useState<AllowlistUser[]>([]);
-  const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!isAdmin) {
-      if (!isLoadingPermissions) setLoading(false);
-      return;
-    }
+  const utils = trpc.useUtils ? trpc.useUtils() : trpc.useContext();
+  const {data, isLoading: loading} = trpc.auth.listAllowlist.useQuery(
+    undefined,
+    {
+      enabled: !!isAdmin,
+    },
+  );
 
-    const fetchUsers = async () => {
-      try {
-        const snap = await getDocs(
-          collection(db, 'appSettings/allowlist/users'),
-        );
-        const userList: AllowlistUser[] = [];
-        snap.forEach(docSnap => {
-          userList.push({
-            email: docSnap.id,
-            role: docSnap.data().role || 'user',
-          });
-        });
-        setUsers(userList);
-      } catch (error) {
-        handleFirestoreError(
-          error,
-          OperationType.LIST,
-          'appSettings/allowlist/users',
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
+  const users = data?.users || [];
 
-    void fetchUsers();
-  }, [isAdmin, isLoadingPermissions]);
+  const addMutation = trpc.auth.addAllowlistUser.useMutation({
+    onSuccess: () => {
+      void utils.auth.listAllowlist.invalidate();
+    },
+  });
+
+  const removeMutation = trpc.auth.removeAllowlistUser.useMutation({
+    onSuccess: () => {
+      void utils.auth.listAllowlist.invalidate();
+    },
+  });
 
   if (isLoadingPermissions) {
     return (
@@ -85,20 +59,11 @@ export default function AdminDashboard() {
     const email = newEmail.trim().toLowerCase();
 
     try {
-      await setDoc(doc(db, 'appSettings/allowlist/users', email), {
-        email: email,
-        addedAt: serverTimestamp(),
-      });
-
-      setUsers([...users, {email, role: 'user'}]);
+      await addMutation.mutateAsync({email, role: 'user'});
       setNewEmail('');
       toast.success(`Access granted for ${email}`);
     } catch (error) {
-      handleFirestoreError(
-        error,
-        OperationType.CREATE,
-        `appSettings/allowlist/users/${email}`,
-      );
+      console.error('Failed to add user:', error);
       toast.error('Failed to add user');
     } finally {
       setIsSubmitting(false);
@@ -112,15 +77,10 @@ export default function AdminDashboard() {
     }
 
     try {
-      await deleteDoc(doc(db, 'appSettings/allowlist/users', email));
-      setUsers(users.filter(u => u.email !== email));
+      await removeMutation.mutateAsync({email});
       toast.success('Access revoked');
     } catch (error) {
-      handleFirestoreError(
-        error,
-        OperationType.DELETE,
-        `appSettings/allowlist/users/${email}`,
-      );
+      console.error('Failed to remove user:', error);
       toast.error('Failed to remove user');
     }
   };

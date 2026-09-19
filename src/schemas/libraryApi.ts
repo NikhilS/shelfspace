@@ -21,7 +21,7 @@ export const bookListSchema = z.object({
         .optional(),
     })
     .optional(),
-  limit: z.number().int().min(1).max(250).default(50),
+  limit: z.number().int().min(1).max(250).optional().default(50),
   cursor: z.string().optional(),
 });
 
@@ -104,3 +104,5 @@ export const enrichmentTriggerSchema = z
 export type LibraryListInput = z.infer<typeof libraryListSchema>;
 export type BookListInput = z.infer<typeof bookListSchema>;
 export type EnrichmentTriggerInput = z.infer<typeof enrichmentTriggerSchema>;
+
+export * from './book';

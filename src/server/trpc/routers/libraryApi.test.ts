@@ -1,5 +1,6 @@
 import {describe, it, expect, vi} from 'vitest';
 import {libraryApiRouter, bookApiRouter} from './libraryApi';
+import {LibraryService} from '../../../services/server/libraryService';
 import {TRPCError} from '@trpc/server';
 import {SUPERADMIN_EMAIL} from '../../../constants/auth';
 
@@ -17,7 +18,7 @@ vi.mock('../../../services/server/enrichmentService', () => ({
   },
 }));
 
-describe('libraryApiRouter & bookApiRouter Phase 5 Retirements', () => {
+describe('libraryApiRouter list', () => {
   const mockCtx = {
     user: {
       uid: 'user-123',
@@ -27,29 +28,26 @@ describe('libraryApiRouter & bookApiRouter Phase 5 Retirements', () => {
     isAdmin: true,
   } as any;
 
-  it('rejects trpc.library.list with METHOD_NOT_ALLOWED', async () => {
+  it('calls LibraryService.getUserLibraries and returns libraries', async () => {
+    const mockLibraries = [
+      {
+        id: 'lib-1',
+        name: 'My Library',
+        ownerId: 'user-123',
+        callerRole: 'owner' as const,
+      },
+    ];
+    vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
+      libraries: mockLibraries as any,
+    });
+
     const caller = libraryApiRouter.createCaller(mockCtx);
+    const res = await caller.list({});
 
-    await expect(caller.list({})).rejects.toThrowError(
-      expect.objectContaining({
-        code: 'METHOD_NOT_ALLOWED',
-        message: expect.stringContaining('retired in Phase 5'),
-      }),
+    expect(LibraryService.getUserLibraries).toHaveBeenCalledWith(
+      'user-123',
+      SUPERADMIN_EMAIL,
     );
-  });
-
-  it('rejects trpc.book.list with METHOD_NOT_ALLOWED', async () => {
-    const caller = bookApiRouter.createCaller(mockCtx);
-
-    await expect(
-      caller.list({
-        libraryId: 'lib-123',
-      }),
-    ).rejects.toThrowError(
-      expect.objectContaining({
-        code: 'METHOD_NOT_ALLOWED',
-        message: expect.stringContaining('retired in Phase 5'),
-      }),
-    );
+    expect(res).toEqual({libraries: mockLibraries});
   });
 });

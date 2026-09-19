@@ -6,8 +6,7 @@ import {
   GoogleAuthProvider,
   signOut,
 } from 'firebase/auth';
-import {doc, setDoc, getDoc, serverTimestamp} from 'firebase/firestore';
-import {auth, db} from '../firebase';
+import {auth} from '../firebase';
 
 interface AuthState {
   user: User | null;
@@ -84,17 +83,13 @@ export const useAuthStore = create<AuthState>(set => ({
           if (!sessionStorage.getItem(sessionSyncKey)) {
             void (async () => {
               try {
-                const userRef = doc(db, 'users', currentUser.uid);
-                const userSnap = await getDoc(userRef);
-                if (!userSnap.exists()) {
-                  await setDoc(userRef, {
-                    uid: currentUser.uid,
-                    email: currentUser.email || '',
-                    displayName: currentUser.displayName || '',
-                    photoURL: currentUser.photoURL || '',
-                    createdAt: serverTimestamp(),
-                  });
-                }
+                const {trpcVanilla} = await import('../lib/trpc');
+                await trpcVanilla.user.syncProfile.mutate({
+                  uid: currentUser.uid,
+                  email: currentUser.email || '',
+                  displayName: currentUser.displayName || '',
+                  photoURL: currentUser.photoURL || '',
+                });
                 sessionStorage.setItem(sessionSyncKey, '1');
               } catch (error) {
                 console.warn('Background user document sync failed:', error);

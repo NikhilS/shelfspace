@@ -1,5 +1,5 @@
 import React, {Suspense, lazy} from 'react';
-import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+import {QueryClientProvider} from '@tanstack/react-query';
 import {
   BrowserRouter,
   Routes,
@@ -200,15 +200,7 @@ function AnimatedRoutes() {
 import {httpBatchLink} from '@trpc/client';
 import {trpc} from './lib/trpc';
 import {auth} from './firebase';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      gcTime: 1000 * 60 * 60, // 1 hour
-      staleTime: 1000 * 60 * 5, // 5 minutes
-    },
-  },
-});
+import {queryClient} from './lib/queryClient';
 
 const trpcClient = trpc.createClient({
   links: [

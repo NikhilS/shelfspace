@@ -17,10 +17,11 @@ if (
 import * as trpcExpress from '@trpc/server/adapters/express';
 import {appRouter} from './src/server/trpc/routers/_app';
 import {createContext} from './src/server/trpc/trpc';
-import {ApiKeyService} from './src/services/server/apiKeyService';
-import {LibraryService} from './src/services/server/libraryService';
-import {EnrichmentService} from './src/services/server/enrichmentService';
-import {enrichmentTriggerSchema} from './src/schemas/libraryApi';
+import {apiV1Router} from './src/server/api/v1';
+import type {AuthUser, AuthenticatedApiRequest} from './src/server/auth';
+
+export type ApiAuthUser = AuthUser;
+export type {AuthenticatedApiRequest};
 
 const appDirname =
   typeof import.meta !== 'undefined' && import.meta.url
@@ -54,17 +55,6 @@ if (firebaseConfig && !admin.apps.length) {
   }
 }
 
-export interface ApiAuthUser {
-  uid: string;
-  email: string;
-  authType: 'jwt' | 'api_key';
-  apiKeyId?: string;
-}
-
-export interface AuthenticatedApiRequest extends express.Request {
-  user: ApiAuthUser;
-}
-
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -86,189 +76,8 @@ async function startServer() {
     }),
   );
 
-  // Dual-mode authentication middleware (API Key + Firebase ID Token) for /api/v1 endpoints
-  const authenticateApiToken = async (
-    req: express.Request,
-    res: express.Response,
-    next: express.NextFunction,
-  ): Promise<void> => {
-    if (req.path === '/health' || req.originalUrl.includes('/api/health')) {
-      next();
-      return;
-    }
-
-    const apiKeyHeader = req.headers['x-api-key'] as string | undefined;
-    const authHeader = req.headers.authorization;
-
-    let rawApiKey: string | undefined = apiKeyHeader;
-    if (!rawApiKey && authHeader?.startsWith('Bearer lib_live_')) {
-      rawApiKey = authHeader.substring(7);
-    }
-
-    if (rawApiKey) {
-      try {
-        const validatedKey = await ApiKeyService.validateApiKey(rawApiKey);
-        if (!validatedKey) {
-          res
-            .status(401)
-            .json({error: 'Unauthorized: Invalid or revoked API key'});
-          return;
-        }
-
-        (req as AuthenticatedApiRequest).user = {
-          uid: validatedKey.uid,
-          email: validatedKey.email,
-          authType: 'api_key',
-          apiKeyId: validatedKey.apiKeyId,
-        };
-        next();
-        return;
-      } catch (err) {
-        console.error('[API Key Auth] Error validating key:', err);
-        res
-          .status(500)
-          .json({error: 'Internal server error during authentication'});
-        return;
-      }
-    }
-
-    if (authHeader?.startsWith('Bearer ')) {
-      try {
-        const token = authHeader.split(' ')[1];
-        const decodedToken = await admin.auth().verifyIdToken(token);
-
-        const email = decodedToken.email?.toLowerCase();
-        if (!email) {
-          res.status(403).json({error: 'Forbidden: No email found in token'});
-          return;
-        }
-
-        (req as AuthenticatedApiRequest).user = {
-          uid: decodedToken.uid,
-          email,
-          authType: 'jwt',
-        };
-        next();
-        return;
-      } catch (error) {
-        console.error(
-          '[Auth Middleware] JWT token verification failed:',
-          error,
-        );
-        res.status(401).json({error: 'Unauthorized: Invalid or expired token'});
-        return;
-      }
-    }
-
-    res
-      .status(401)
-      .json({error: 'Unauthorized: Missing API key or Authorization header'});
-  };
-
-  // Protect all REST Gateway endpoints
-  app.use('/api/v1', authenticateApiToken);
-
-  // --- REST Gateway Endpoints (/api/v1) ---
-
-  // GET /api/v1/libraries
-  app.get('/api/v1/libraries', async (req, res) => {
-    try {
-      const user = (req as AuthenticatedApiRequest).user;
-      const data = await LibraryService.getUserLibraries(user.uid, user.email);
-      res.json(data);
-    } catch (err: unknown) {
-      const error = err as {status?: number; message?: string};
-      console.error('Error listing libraries REST:', err);
-      res
-        .status(error?.status || 500)
-        .json({error: error?.message || 'Failed to list libraries'});
-    }
-  });
-
-  // GET /api/v1/libraries/:libraryId/books
-  app.get('/api/v1/libraries/:libraryId/books', async (req, res) => {
-    try {
-      const user = (req as AuthenticatedApiRequest).user;
-      const {libraryId} = req.params;
-
-      const missingKind = (req.query['filters[missingMetadata]'] ||
-        req.query['filters.missingMetadata'] ||
-        req.query.missingMetadata) as
-        'geo' | 'temporal' | 'genre' | 'synopsis' | 'coverImage' | undefined;
-
-      const limit = req.query.limit
-        ? parseInt(String(req.query.limit), 10)
-        : 50;
-      const cursor = req.query.cursor ? String(req.query.cursor) : undefined;
-
-      const result = await LibraryService.getFilteredBooks(
-        user.uid,
-        user.email,
-        {
-          libraryId,
-          filters: missingKind ? {missingMetadata: missingKind} : undefined,
-          limit,
-          cursor,
-        },
-      );
-
-      res.json(result);
-    } catch (err: unknown) {
-      const error = err as {code?: string; message?: string};
-      console.error('Error fetching books REST:', err);
-      const code =
-        error?.code === 'NOT_FOUND'
-          ? 404
-          : error?.code === 'FORBIDDEN'
-            ? 403
-            : 500;
-      res.status(code).json({error: error?.message || 'Failed to fetch books'});
-    }
-  });
-
-  // POST /api/v1/libraries/:libraryId/enrichment/trigger
-  app.post(
-    '/api/v1/libraries/:libraryId/enrichment/trigger',
-    async (req, res) => {
-      try {
-        const user = (req as AuthenticatedApiRequest).user;
-        const {libraryId} = req.params;
-
-        const parseResult = enrichmentTriggerSchema.safeParse({
-          ...req.body,
-          libraryId,
-        });
-
-        if (!parseResult.success) {
-          res.status(400).json({
-            error: 'Validation failed',
-            details: parseResult.error.flatten().fieldErrors,
-          });
-          return;
-        }
-
-        const result = await EnrichmentService.triggerBatchEnrichment(
-          user.uid,
-          user.email,
-          parseResult.data,
-        );
-
-        res.json(result);
-      } catch (err: unknown) {
-        const error = err as {code?: string; message?: string};
-        console.error('Error triggering enrichment REST:', err);
-        const code =
-          error?.code === 'NOT_FOUND'
-            ? 404
-            : error?.code === 'FORBIDDEN'
-              ? 403
-              : 500;
-        res
-          .status(code)
-          .json({error: error?.message || 'Failed to trigger enrichment'});
-      }
-    },
-  );
+  // Mount Unified REST Gateway (/api/v1)
+  app.use('/api/v1', apiV1Router);
 
   // Dedicated API 404 handler
   app.use('/api/*', (req, res) => {

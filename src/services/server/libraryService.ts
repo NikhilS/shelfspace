@@ -3,6 +3,7 @@ import {FieldValue} from 'firebase-admin/firestore';
 import {SUPERADMIN_EMAIL} from '../../constants/auth';
 import {TRPCError} from '@trpc/server';
 import {BookListInput} from '../../schemas/libraryApi';
+import {AllowlistService} from '../../server/auth/allowlistService';
 
 export interface LibraryApiRecord {
   id: string;
@@ -11,6 +12,7 @@ export interface LibraryApiRecord {
   ownerName?: string;
   callerRole: 'owner' | 'editor' | 'viewer';
   access?: Record<string, 'owner' | 'editor' | 'viewer'>;
+  heroImageUrl?: string | null;
   bookCount?: number;
   createdAt?: string;
   updatedAt?: string;
@@ -181,6 +183,7 @@ export class LibraryService {
               ownerName: data.ownerName || undefined,
               callerRole,
               access: accessMap,
+              heroImageUrl: data.heroImageUrl || undefined,
               bookCount:
                 typeof data.bookCount === 'number' ? data.bookCount : undefined,
               createdAt: createdAtStr,
@@ -426,6 +429,8 @@ export class LibraryService {
           embedding: FieldValue.delete(),
           clusterCoordinates: FieldValue.delete(),
           'enrichmentStatus.embedding': FieldValue.delete(),
+          'bookDetailsMetadata.hasEmbedding': false,
+          'bookDetailsMetadata.hasClusterCoordinates': false,
         };
       } else if (metadataType === 'coverImage') {
         deletePayload = {
@@ -437,6 +442,72 @@ export class LibraryService {
         deletePayload = {
           series: FieldValue.delete(),
         };
+      } else if (metadataType === 'sanitize') {
+        const batchSize = 400;
+        let batch = db.batch();
+        let count = 0;
+        let totalSanitized = 0;
+
+        for (const doc of snapshot.docs) {
+          const raw = doc.data();
+          const hasLeaks =
+            raw.synopsis !== undefined ||
+            raw.authorBio !== undefined ||
+            raw.embedding !== undefined ||
+            raw.clusterCoordinates !== undefined ||
+            raw.description !== undefined;
+
+          if (hasLeaks) {
+            const detailPayload: Record<string, unknown> = {};
+            if (raw.synopsis || raw.description) {
+              detailPayload.synopsis = raw.synopsis || raw.description;
+            }
+            if (raw.authorBio) detailPayload.authorBio = raw.authorBio;
+            if (raw.embedding) detailPayload.embedding = raw.embedding;
+            if (raw.clusterCoordinates) {
+              detailPayload.clusterCoordinates = raw.clusterCoordinates;
+            }
+
+            const detailRef = db
+              .collection('libraries')
+              .doc(libraryId)
+              .collection('bookDetails')
+              .doc(doc.id);
+            batch.set(detailRef, detailPayload, {merge: true});
+
+            const bookUpdates: Record<string, unknown> = {
+              'bookDetailsMetadata.hasSynopsis': Boolean(
+                raw.synopsis || raw.description,
+              ),
+              'bookDetailsMetadata.hasAuthorBio': Boolean(raw.authorBio),
+              'bookDetailsMetadata.hasEmbedding': Boolean(raw.embedding),
+              'bookDetailsMetadata.hasClusterCoordinates': Boolean(
+                raw.clusterCoordinates,
+              ),
+              synopsis: FieldValue.delete(),
+              authorBio: FieldValue.delete(),
+              embedding: FieldValue.delete(),
+              clusterCoordinates: FieldValue.delete(),
+              description: FieldValue.delete(),
+            };
+
+            batch.update(doc.ref, bookUpdates);
+            count += 2;
+            totalSanitized++;
+
+            if (count >= batchSize) {
+              await batch.commit();
+              batch = db.batch();
+              count = 0;
+            }
+          }
+        }
+
+        if (count > 0) {
+          await batch.commit();
+        }
+
+        return {count: totalSanitized};
       } else {
         throw new Error(`Unsupported metadata reset type: '${metadataType}'`);
       }
@@ -450,6 +521,23 @@ export class LibraryService {
         batch.update(doc.ref, deletePayload);
         count++;
         totalReset++;
+
+        if (metadataType === 'embedding') {
+          const detailRef = db
+            .collection('libraries')
+            .doc(libraryId)
+            .collection('bookDetails')
+            .doc(doc.id);
+          batch.set(
+            detailRef,
+            {
+              embedding: FieldValue.delete(),
+              clusterCoordinates: FieldValue.delete(),
+            },
+            {merge: true},
+          );
+          count++;
+        }
 
         if (count >= batchSize) {
           await batch.commit();
@@ -477,5 +565,303 @@ export class LibraryService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Retrieves a single library by ID with role metadata for caller.
+   */
+  static async getLibrary(
+    userId: string,
+    userEmail: string | undefined,
+    libraryId: string,
+  ): Promise<Record<string, unknown>> {
+    await this.verifyLibraryAccess(userId, userEmail, libraryId, 'viewer');
+
+    const db = getAdminDb();
+    const libSnap = await db.collection('libraries').doc(libraryId).get();
+    if (!libSnap.exists) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: `Library '${libraryId}' not found`,
+      });
+    }
+
+    const data = libSnap.data() || {};
+    const ownerId = data.ownerId;
+    const accessMap: Record<string, string> = data.access || {};
+
+    let callerRole: 'owner' | 'editor' | 'viewer' | null = null;
+    const normalizedEmail = userEmail?.toLowerCase().trim();
+    if (normalizedEmail === SUPERADMIN_EMAIL.toLowerCase().trim()) {
+      callerRole = 'owner';
+    } else if (ownerId === userId) {
+      callerRole = 'owner';
+    } else if (userEmail && accessMap[userEmail]) {
+      callerRole = accessMap[userEmail] as 'owner' | 'editor' | 'viewer';
+    } else if (userEmail && accessMap[userEmail.toLowerCase()]) {
+      callerRole = accessMap[userEmail.toLowerCase()] as
+        'owner' | 'editor' | 'viewer';
+    }
+
+    let createdAtStr: string | undefined;
+    let updatedAtStr: string | undefined;
+
+    if (data.createdAt?.toDate) {
+      createdAtStr = data.createdAt.toDate().toISOString();
+    } else if (typeof data.createdAt === 'string') {
+      createdAtStr = data.createdAt;
+    }
+
+    if (data.updatedAt?.toDate) {
+      updatedAtStr = data.updatedAt.toDate().toISOString();
+    } else if (typeof data.updatedAt === 'string') {
+      updatedAtStr = data.updatedAt;
+    }
+
+    return {
+      id: libSnap.id,
+      ...data,
+      callerRole,
+      isOwner: callerRole === 'owner',
+      canEdit: callerRole === 'owner' || callerRole === 'editor',
+      createdAt: createdAtStr || data.createdAt,
+      updatedAt: updatedAtStr || data.updatedAt,
+    };
+  }
+
+  /**
+   * Creates a new library record with default owner access.
+   */
+  static async createLibrary(
+    userId: string,
+    userEmail: string | undefined,
+    userName: string | undefined,
+    input: {name: string; heroImageUrl?: string | null},
+  ): Promise<{id: string; library: Record<string, unknown>}> {
+    if (!userId) {
+      throw new TRPCError({code: 'UNAUTHORIZED', message: 'Not authenticated'});
+    }
+
+    const db = getAdminDb();
+    const libRef = db.collection('libraries').doc();
+    const emailKey = userEmail?.toLowerCase().trim();
+    const access: Record<string, 'owner' | 'editor' | 'viewer'> = {};
+    if (emailKey) {
+      access[emailKey] = 'owner';
+    }
+
+    const now = FieldValue.serverTimestamp();
+    const payload = {
+      name: input.name.trim(),
+      ownerId: userId,
+      ownerName: userName || userEmail || 'Anonymous',
+      access,
+      heroImageUrl: input.heroImageUrl || null,
+      bookCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await libRef.set(payload);
+
+    return {
+      id: libRef.id,
+      library: {
+        id: libRef.id,
+        ...payload,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  /**
+   * Updates an existing library (name, heroImageUrl, access roles).
+   */
+  static async updateLibrary(
+    userId: string,
+    userEmail: string | undefined,
+    libraryId: string,
+    updates: {
+      name?: string;
+      heroImageUrl?: string | null;
+      access?: Record<string, 'owner' | 'editor' | 'viewer'>;
+    },
+  ): Promise<{success: true}> {
+    await this.verifyLibraryAccess(userId, userEmail, libraryId, 'editor');
+
+    const db = getAdminDb();
+    const libRef = db.collection('libraries').doc(libraryId);
+
+    const updatePayload: Record<string, unknown> = {
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (updates.name !== undefined) {
+      updatePayload.name = updates.name.trim();
+    }
+    if (updates.heroImageUrl !== undefined) {
+      updatePayload.heroImageUrl = updates.heroImageUrl;
+    }
+    if (updates.access !== undefined) {
+      updatePayload.access = updates.access;
+      for (const email of Object.keys(updates.access)) {
+        try {
+          await AllowlistService.addUser(email, 'user');
+        } catch (e) {
+          console.warn('Failed to auto-allowlist shared user:', e);
+        }
+      }
+    }
+
+    await libRef.update(updatePayload);
+    return {success: true};
+  }
+
+  /**
+   * Deletes a library and all contained books, details, and reviews.
+   */
+  static async deleteLibrary(
+    userId: string,
+    userEmail: string | undefined,
+    libraryId: string,
+  ): Promise<{success: true}> {
+    await this.verifyLibraryAccess(userId, userEmail, libraryId, 'owner');
+
+    const db = getAdminDb();
+    const libRef = db.collection('libraries').doc(libraryId);
+
+    // Delete all books and details
+    const booksSnap = await libRef.collection('books').get();
+    const batchSize = 400;
+    let batch = db.batch();
+    let count = 0;
+
+    for (const bookDoc of booksSnap.docs) {
+      batch.delete(bookDoc.ref);
+      batch.delete(libRef.collection('bookDetails').doc(bookDoc.id));
+      count += 2;
+      if (count >= batchSize) {
+        await batch.commit();
+        batch = db.batch();
+        count = 0;
+      }
+    }
+
+    // Delete allowedDuplicates subcollection
+    const dupSnap = await libRef.collection('allowedDuplicates').get();
+    for (const dupDoc of dupSnap.docs) {
+      batch.delete(dupDoc.ref);
+      count++;
+      if (count >= batchSize) {
+        await batch.commit();
+        batch = db.batch();
+        count = 0;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
+    }
+
+    // Delete library document itself
+    await libRef.delete();
+    return {success: true};
+  }
+
+  /**
+   * Resolves caller's role on library without throwing FORBIDDEN.
+   */
+  static async getUserRole(
+    userId: string,
+    userEmail: string | undefined,
+    libraryId: string,
+  ): Promise<{
+    role: 'owner' | 'editor' | 'viewer' | null;
+    isOwner: boolean;
+    canEdit: boolean;
+  }> {
+    if (!userId) {
+      return {role: null, isOwner: false, canEdit: false};
+    }
+
+    const normalizedEmail = userEmail?.toLowerCase().trim();
+    if (normalizedEmail === SUPERADMIN_EMAIL.toLowerCase().trim()) {
+      return {role: 'owner', isOwner: true, canEdit: true};
+    }
+
+    try {
+      const db = getAdminDb();
+      const libSnap = await db.collection('libraries').doc(libraryId).get();
+      if (!libSnap.exists) {
+        return {role: null, isOwner: false, canEdit: false};
+      }
+
+      const data = libSnap.data() || {};
+      const ownerId = data.ownerId;
+      const accessMap: Record<string, string> = data.access || {};
+
+      let role: 'owner' | 'editor' | 'viewer' | null = null;
+      if (ownerId === userId) {
+        role = 'owner';
+      } else if (userEmail && accessMap[userEmail]) {
+        role = accessMap[userEmail] as 'owner' | 'editor' | 'viewer';
+      } else if (userEmail && accessMap[userEmail.toLowerCase()]) {
+        role = accessMap[userEmail.toLowerCase()] as
+          'owner' | 'editor' | 'viewer';
+      }
+
+      const isOwner = role === 'owner';
+      const canEdit = role === 'owner' || role === 'editor';
+      return {role, isOwner, canEdit};
+    } catch {
+      return {role: null, isOwner: false, canEdit: false};
+    }
+  }
+
+  /**
+   * Lists allowed duplicate groups.
+   */
+  static async listAllowedDuplicates(
+    libraryId: string,
+  ): Promise<{allowedDuplicateGroups: string[][]}> {
+    try {
+      const db = getAdminDb();
+      const snap = await db
+        .collection('libraries')
+        .doc(libraryId)
+        .collection('allowedDuplicates')
+        .get();
+
+      const groups = snap.docs
+        .map(d => d.data()?.bookIds as string[] | undefined)
+        .filter((g): g is string[] => Array.isArray(g));
+
+      return {allowedDuplicateGroups: groups};
+    } catch {
+      return {allowedDuplicateGroups: []};
+    }
+  }
+
+  /**
+   * Records a dismissed duplicate group.
+   */
+  static async allowDuplicateGroup(
+    libraryId: string,
+    bookIds: string[],
+  ): Promise<{success: true; id: string}> {
+    const db = getAdminDb();
+    const ref = db
+      .collection('libraries')
+      .doc(libraryId)
+      .collection('allowedDuplicates')
+      .doc();
+
+    await ref.set({
+      bookIds,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    return {success: true, id: ref.id};
   }
 }

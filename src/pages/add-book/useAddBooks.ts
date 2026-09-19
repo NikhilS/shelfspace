@@ -1,67 +1,25 @@
 import {trpcVanilla} from '../../lib/trpc';
 import {useState} from 'react';
-import {collection, doc, serverTimestamp} from 'firebase/firestore';
-import {db, auth} from '../../firebase';
+import {useQueryClient} from '@tanstack/react-query';
 import {uploadBase64Image} from '../../services/db/storage';
 import {BookDetails} from '../../services/bookApi';
 import {useAuth} from '../../stores/authStore';
 import {logger} from '../../stores/debugStore';
 import {toast} from 'sonner';
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
-  };
-}
-
-function handleFirestoreError(
-  error: unknown,
-  operationType: OperationType,
-  path: string | null,
-): never {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo:
-        auth.currentUser?.providerData?.map(provider => ({
-          providerId: provider.providerId,
-          email: provider.email,
-        })) || [],
-    },
-    operationType,
-    path,
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID().replace(/-/g, '').slice(0, 20);
+  }
+  return (
+    Math.random().toString(36).substring(2, 12) +
+    Math.random().toString(36).substring(2, 12)
+  );
 }
 
 export function useAddBooks(libraryId?: string) {
   const {user} = useAuth();
+  const queryClient = useQueryClient();
   const [isAddingAll, setIsAddingAll] = useState(false);
 
   const addBooks = async (books: BookDetails[]) => {
@@ -84,7 +42,7 @@ export function useAddBooks(libraryId?: string) {
     try {
       // 1. Give each new book an ID first so we can map results back correctly
       const booksWithIds = books.map(b => ({
-        id: doc(collection(db, 'libraries', libraryId, 'books')).id,
+        id: generateId(),
         ...b,
       }));
 
@@ -110,10 +68,7 @@ export function useAddBooks(libraryId?: string) {
         logger.error(`[useAddBooks] Failed to fetch enrich-create: ${err}`);
       }
 
-      const {ClientBulkWriter} = await import('../../lib/clientBulkWriter');
-      const writer = new ClientBulkWriter(db, 50); // Safe batchSize
-
-      let addedCount = 0;
+      const booksToUpsert: Array<Record<string, unknown>> = [];
 
       for (let i = 0; i < booksWithIds.length; i++) {
         const book = booksWithIds[i];
@@ -132,7 +87,6 @@ export function useAddBooks(libraryId?: string) {
         ) as Record<string, string | string[] | undefined>;
 
         const bookId = book.id;
-        const newDocRef = doc(db, 'libraries', libraryId, 'books', bookId);
 
         if (typeof cleanBook.title === 'string')
           cleanBook.title = cleanBook.title.slice(0, 500);
@@ -199,7 +153,6 @@ export function useAddBooks(libraryId?: string) {
             hasClusterCoordinates: hasCluster,
           },
           addedBy: user.uid,
-          addedAt: serverTimestamp(),
           format: lightweightData.format || 'physical',
         };
 
@@ -213,13 +166,13 @@ export function useAddBooks(libraryId?: string) {
           Object.entries(heavyData).filter(([, v]) => v !== undefined),
         );
 
-        writer.addBook(
-          libraryId,
-          newDocRef.id,
-          coreBookData,
-          Object.keys(cleanHeavy).length > 0 ? cleanHeavy : undefined,
-        );
-        addedCount++;
+        booksToUpsert.push({
+          id: bookId,
+          action: 'create',
+          ...coreBookData,
+          heavyDetails:
+            Object.keys(cleanHeavy).length > 0 ? cleanHeavy : undefined,
+        });
       }
 
       toast.loading(
@@ -231,9 +184,13 @@ export function useAddBooks(libraryId?: string) {
       );
 
       logger.info(
-        `[useAddBooks] Committing additions for ${addedCount} books via ClientBulkWriter...`,
+        `[useAddBooks] Committing additions for ${booksToUpsert.length} books via tRPC batchUpsert...`,
       );
-      await writer.close();
+      await trpcVanilla.book.batchUpsert.mutate({
+        libraryId,
+        books: booksToUpsert,
+      });
+      void queryClient.invalidateQueries({queryKey: ['books', libraryId]});
       logger.info('[useAddBooks] Batch commit successful.');
 
       const successTitle =
@@ -260,11 +217,7 @@ export function useAddBooks(libraryId?: string) {
         id: toastId,
         description: err instanceof Error ? err.message : String(err),
       });
-      handleFirestoreError(
-        err,
-        OperationType.WRITE,
-        `libraries/${libraryId}/books`,
-      );
+      throw err;
     } finally {
       setIsAddingAll(false);
     }

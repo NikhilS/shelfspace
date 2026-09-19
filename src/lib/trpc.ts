@@ -10,7 +10,7 @@ export const trpcVanilla = createTRPCClient<AppRouter>({
     httpBatchLink({
       url: '/trpc',
       async headers() {
-        const token = await auth.currentUser?.getIdToken();
+        const token = await auth?.currentUser?.getIdToken?.();
         return {
           Authorization: token ? `Bearer ${token}` : '',
         };

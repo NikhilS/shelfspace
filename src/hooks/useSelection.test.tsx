@@ -1,29 +1,28 @@
 import {renderHook, act} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {useSelection} from './useSelection';
-import {updateDoc} from 'firebase/firestore';
 import {toast} from 'sonner';
 import React from 'react';
 import {Book} from '../types';
+import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+import {trpcVanilla} from '../lib/trpc';
 
-// Mock dependencies
-const mockBatch = {
-  update: vi.fn(),
-  commit: vi.fn(() => Promise.resolve()),
-};
+const mockBatchUpsert = vi.fn().mockResolvedValue({
+  createdCount: 0,
+  updatedCount: 2,
+  deletedCount: 0,
+  totalOperations: 2,
+});
 
-vi.mock('firebase/firestore', () => ({
-  doc: vi.fn(),
-  updateDoc: vi.fn(() => Promise.resolve()),
-  writeBatch: vi.fn(() => mockBatch),
-}));
-
-vi.mock('../firebase', () => ({
-  db: {},
-  handleFirestoreError: vi.fn(),
-  OperationType: {
-    UPDATE: 'update',
+vi.mock('../lib/trpc', () => ({
+  trpcVanilla: {
+    book: {
+      batchUpsert: {
+        mutate: vi.fn((...args) => mockBatchUpsert(...args)),
+      },
+    },
   },
+  trpc: {},
 }));
 
 vi.mock('sonner', () => ({
@@ -32,6 +31,17 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {retry: false},
+    },
+  });
+  return ({children}: {children: React.ReactNode}) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
 
 describe('useSelection', () => {
   const libraryId = 'lib123';
@@ -42,7 +52,9 @@ describe('useSelection', () => {
   });
 
   it('toggles book selection', () => {
-    const {result} = renderHook(() => useSelection(libraryId, userId));
+    const {result} = renderHook(() => useSelection(libraryId, userId), {
+      wrapper: createWrapper(),
+    });
     const mockEvent = {stopPropagation: vi.fn()} as unknown as React.MouseEvent;
 
     act(() => {
@@ -57,7 +69,9 @@ describe('useSelection', () => {
   });
 
   it('selects and deselects all books', () => {
-    const {result} = renderHook(() => useSelection(libraryId, userId));
+    const {result} = renderHook(() => useSelection(libraryId, userId), {
+      wrapper: createWrapper(),
+    });
     const books = [
       {id: 'book1'} as unknown as Book,
       {id: 'book2'} as unknown as Book,
@@ -75,7 +89,9 @@ describe('useSelection', () => {
   });
 
   it('clears selection', () => {
-    const {result} = renderHook(() => useSelection(libraryId, userId));
+    const {result} = renderHook(() => useSelection(libraryId, userId), {
+      wrapper: createWrapper(),
+    });
     const mockEvent = {stopPropagation: vi.fn()} as unknown as React.MouseEvent;
 
     act(() => {
@@ -90,7 +106,9 @@ describe('useSelection', () => {
   });
 
   it('handles bulk status change', async () => {
-    const {result} = renderHook(() => useSelection(libraryId, userId));
+    const {result} = renderHook(() => useSelection(libraryId, userId), {
+      wrapper: createWrapper(),
+    });
     const mockEvent = {stopPropagation: vi.fn()} as unknown as React.MouseEvent;
 
     act(() => {
@@ -102,7 +120,7 @@ describe('useSelection', () => {
       await result.current.handleBulkStatusChange('reading');
     });
 
-    expect(mockBatch.update).toHaveBeenCalledTimes(2);
+    expect(trpcVanilla.book.batchUpsert.mutate).toHaveBeenCalledTimes(1);
     expect(toast.success).toHaveBeenCalledWith('Updated status for 2 books');
     expect(result.current.selectedBooks.size).toBe(0);
   });

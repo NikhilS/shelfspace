@@ -25,14 +25,9 @@ import {
   Database,
 } from 'lucide-react';
 import {toast} from 'sonner';
-import {collection, doc, getDocs, deleteField} from 'firebase/firestore';
-import {db, handleFirestoreError, OperationType} from '../../firebase';
-import {ClientBulkWriter} from '../../lib/clientBulkWriter';
+import {trpcVanilla} from '../../lib/trpc';
 import {Book} from '../../types';
-import {
-  sanitizeBookStorage,
-  hasHeavyLeaks,
-} from '../../services/db/sanitizeStorage';
+import {hasHeavyLeaks} from '../../services/db/sanitizeStorage';
 
 interface ResetMetadataSectionProps {
   libraryId: string;
@@ -88,76 +83,6 @@ const RESETTABLE_METADATA_OPTIONS = [
   },
 ];
 
-function buildDeletePayload(
-  book: Record<string, unknown>,
-  metadataType: string,
-): Record<string, unknown> | null {
-  const payload: Record<string, unknown> = {};
-  const enrichmentStatus = book.enrichmentStatus as
-    Record<string, unknown> | undefined;
-
-  if (metadataType === 'genre' || metadataType === 'primaryGenre') {
-    if (book.primaryGenre !== undefined) payload.primaryGenre = deleteField();
-    if (book.subgenres !== undefined) payload.subgenres = deleteField();
-    if (book.isCustomPrimary !== undefined) {
-      payload.isCustomPrimary = deleteField();
-    }
-    if (enrichmentStatus?.genre !== undefined) {
-      payload['enrichmentStatus.genre'] = deleteField();
-    }
-  } else if (metadataType === 'geo') {
-    if (book.geoMetadata !== undefined) payload.geoMetadata = deleteField();
-    if (enrichmentStatus?.geo !== undefined) {
-      payload['enrichmentStatus.geo'] = deleteField();
-    }
-  } else if (metadataType === 'temporal') {
-    if (book.temporalMetadata !== undefined) {
-      payload.temporalMetadata = deleteField();
-    }
-    if (enrichmentStatus?.temporal !== undefined) {
-      payload['enrichmentStatus.temporal'] = deleteField();
-    }
-  } else if (metadataType === 'synopsis') {
-    if (book.bookDetailsMetadata?.hasSynopsis) {
-      payload['bookDetailsMetadata.hasSynopsis'] = false;
-    }
-    if ((book as Record<string, unknown>).synopsis !== undefined) {
-      payload.synopsis = deleteField();
-    }
-    if (enrichmentStatus?.synopsis !== undefined) {
-      payload['enrichmentStatus.synopsis'] = deleteField();
-    }
-  } else if (metadataType === 'authorBio') {
-    if (book.bookDetailsMetadata?.hasAuthorBio) {
-      payload['bookDetailsMetadata.hasAuthorBio'] = false;
-    }
-    if ((book as Record<string, unknown>).authorBio !== undefined) {
-      payload.authorBio = deleteField();
-    }
-    if (enrichmentStatus?.authorBio !== undefined) {
-      payload['enrichmentStatus.authorBio'] = deleteField();
-    }
-  } else if (metadataType === 'embedding') {
-    if ((book as Record<string, unknown>).embedding !== undefined) {
-      payload.embedding = deleteField();
-    }
-    if ((book as Record<string, unknown>).clusterCoordinates !== undefined) {
-      payload.clusterCoordinates = deleteField();
-    }
-    if (book.bookDetailsMetadata?.hasEmbedding) {
-      payload['bookDetailsMetadata.hasEmbedding'] = false;
-    }
-    if (book.bookDetailsMetadata?.hasClusterCoordinates) {
-      payload['bookDetailsMetadata.hasClusterCoordinates'] = false;
-    }
-    if (enrichmentStatus?.embedding !== undefined) {
-      payload['enrichmentStatus.embedding'] = deleteField();
-    }
-  }
-
-  return Object.keys(payload).length > 0 ? payload : null;
-}
-
 export function ResetMetadataSection({
   libraryId,
   books,
@@ -197,24 +122,22 @@ export function ResetMetadataSection({
   const handleConfirmSanitize = async () => {
     setIsSanitizing(true);
     try {
-      const res = await sanitizeBookStorage(libraryId, books, progress => {
-        setSanitizeProgress(progress);
+      const res = await trpcVanilla.library.resetMetadata.mutate({
+        libraryId,
+        metadataType: 'sanitize',
       });
       setLastSanitizeResult({
-        scanned: res.scannedCount,
-        sanitized: res.sanitizedCount,
-        purged: res.purgedFieldsCount,
+        scanned: books?.length || 0,
+        sanitized: res.count,
+        purged: res.count,
       });
       toast.success(
-        `Sanitized ${res.sanitizedCount} books. Relocated heavy payloads to bookDetails and purged leaked root fields.`,
+        `Sanitized ${res.count} books. Relocated heavy payloads to bookDetails and purged leaked root fields.`,
       );
       setIsSanitizeDialogOpen(false);
     } catch (err: unknown) {
-      handleFirestoreError(
-        err,
-        OperationType.UPDATE,
-        `libraries/${libraryId}/books`,
-      );
+      console.error('Failed to sanitize books:', err);
+      toast.error('Failed to sanitize storage');
     } finally {
       setIsSanitizing(false);
       setSanitizeProgress(null);
@@ -224,71 +147,20 @@ export function ResetMetadataSection({
   const handleConfirmReset = async () => {
     setIsResetting(true);
     try {
-      let booksToInspect = books && books.length > 0 ? books : [];
-      if (booksToInspect.length === 0) {
-        const booksSnap = await getDocs(
-          collection(db, 'libraries', libraryId, 'books'),
-        );
-        booksToInspect = booksSnap.docs.map(
-          d => ({...d.data(), id: d.id}) as Book,
-        );
-      }
-
-      const writer = new ClientBulkWriter(db, 100);
-      let count = 0;
-
-      for (const book of booksToInspect) {
-        const payload = buildDeletePayload(book, selectedType);
-        if (payload) {
-          const bookRef = doc(db, 'libraries', libraryId, 'books', book.id);
-          writer.update(bookRef, payload);
-
-          if (
-            selectedType === 'synopsis' ||
-            selectedType === 'authorBio' ||
-            selectedType === 'embedding'
-          ) {
-            const detailRef = doc(
-              db,
-              'libraries',
-              libraryId,
-              'bookDetails',
-              book.id,
-            );
-            const detailPayload: Record<string, unknown> = {};
-            if (selectedType === 'synopsis') {
-              detailPayload.synopsis = deleteField();
-            }
-            if (selectedType === 'authorBio') {
-              detailPayload.authorBio = deleteField();
-            }
-            if (selectedType === 'embedding') {
-              detailPayload.embedding = deleteField();
-              detailPayload.clusterCoordinates = deleteField();
-            }
-            if (Object.keys(detailPayload).length > 0) {
-              writer.set(detailRef, detailPayload, {merge: true});
-            }
-          }
-
-          count++;
-        }
-      }
-
-      await writer.close();
+      const res = await trpcVanilla.library.resetMetadata.mutate({
+        libraryId,
+        metadataType: selectedType,
+      });
 
       toast.success(
-        `Successfully reset ${currentOption.shortLabel} across ${count} book${count === 1 ? '' : 's'}.`,
+        `Successfully reset ${currentOption.shortLabel} across ${res.count} book${res.count === 1 ? '' : 's'}.`,
       );
 
-      setLastResetInfo({label: currentOption.shortLabel, count});
+      setLastResetInfo({label: currentOption.shortLabel, count: res.count});
       setIsDialogOpen(false);
     } catch (err: unknown) {
-      handleFirestoreError(
-        err,
-        OperationType.UPDATE,
-        `libraries/${libraryId}/books`,
-      );
+      console.error('Failed to reset metadata:', err);
+      toast.error('Failed to reset metadata');
     } finally {
       setIsResetting(false);
     }
