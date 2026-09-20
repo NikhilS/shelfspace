@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useState, useEffect} from 'react';
 import {useAuth} from '../../stores/authStore';
 import {uploadBase64Image} from '../../services/db/storage';
 import {useQueryClient} from '@tanstack/react-query';
@@ -51,22 +51,24 @@ export function useLibraries() {
   const libraries = normalizeLibraries(rawData);
 
   // Pre-seed individual library caches for instant navigation
-  if (libraries.length > 0) {
-    const payloadBytes = calculatePayloadBytes(libraries);
-    DebugTelemetryEngine.getInstance().addLog(
-      'db_read',
-      `Loaded ${libraries.length} user libraries via tRPC (${(payloadBytes / 1024).toFixed(1)} KB)`,
-      {
-        path: 'trpc.library.list',
-        size: libraries.length,
-        bytes: payloadBytes,
-      },
-    );
+  useEffect(() => {
+    if (libraries.length > 0) {
+      const payloadBytes = calculatePayloadBytes(libraries);
+      DebugTelemetryEngine.getInstance().addLog(
+        'db_read',
+        `Loaded ${libraries.length} user libraries via tRPC (${(payloadBytes / 1024).toFixed(1)} KB)`,
+        {
+          path: 'trpc.library.list',
+          size: libraries.length,
+          bytes: payloadBytes,
+        },
+      );
 
-    libraries.forEach(lib => {
-      queryClient.setQueryData(['library', lib.id], lib);
-    });
-  }
+      libraries.forEach(lib => {
+        queryClient.setQueryData(['library', lib.id], lib);
+      });
+    }
+  }, [libraries, queryClient]);
 
   const createLibrary = async (name: string) => {
     if (!name.trim() || !user || isSubmitting) return;

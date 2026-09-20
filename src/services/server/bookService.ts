@@ -1,6 +1,7 @@
 import {getAdminDb} from './firebaseAdmin';
 import {FieldValue} from 'firebase-admin/firestore';
 import {TRPCError} from '@trpc/server';
+import {LibraryService} from './libraryService';
 import type {
   BookCreateInput,
   BookUpdateInput,
