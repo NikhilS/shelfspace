@@ -676,13 +676,13 @@ export default function WorldMap() {
                             id={cluster.id}
                           >
                             <div
-                              className={`absolute ${outerSize} bg-secondary-container/40 rounded-full group-hover:scale-125 transition-transform`}
+                              className={`absolute ${outerSize} bg-primary/20 rounded-full group-hover:scale-125 transition-transform`}
                             />
                             <div
-                              className={`absolute ${middleSize} bg-secondary-container/60 rounded-full transition-transform`}
+                              className={`absolute ${middleSize} bg-primary/40 rounded-full transition-transform`}
                             />
                             <div
-                              className={`${innerSize} bg-secondary-container rounded-full border-2 border-background shadow-md shadow-secondary-container/50`}
+                              className={`${innerSize} bg-primary rounded-full border-2 border-background shadow-md shadow-primary/30`}
                             />
                           </div>
                         </AdvancedMarker>

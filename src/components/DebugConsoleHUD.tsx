@@ -46,7 +46,13 @@ const HEIGHT_CLASSES: Record<HeightPreset, string> = {
 };
 
 export const DebugConsoleHUD: React.FC = () => {
-  const {isDebugMode, debugData, debugTitle} = useDebug();
+  const {
+    isDebugMode,
+    debugData,
+    debugTitle,
+    profilingLevel,
+    setProfilingLevel,
+  } = useDebug();
   const [isExpanded, setIsExpanded] = useState(false);
   const [heightPreset, setHeightPreset] = useState<HeightPreset>('medium');
   const [activeTab, setActiveTab] = useState<string>('logs');
@@ -377,6 +383,48 @@ export const DebugConsoleHUD: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-1.5">
+                {/* Profiling Level Selector */}
+                <div
+                  className="flex items-center gap-0.5 bg-slate-900 border border-slate-800 rounded-md p-0.5"
+                  title="Telemetry Profiling Level"
+                >
+                  <button
+                    onClick={() => setProfilingLevel('off')}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      profilingLevel === 'off'
+                        ? 'bg-slate-700 text-slate-100 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                    title="Off: Zero telemetry & byte counting overhead"
+                  >
+                    Off
+                  </button>
+                  <button
+                    onClick={() => setProfilingLevel('basic')}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      profilingLevel === 'basic'
+                        ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                    title="Basic: Fast O(1) sampling (<0.05ms execution)"
+                  >
+                    Basic
+                  </button>
+                  <button
+                    onClick={() => setProfilingLevel('high_fidelity')}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      profilingLevel === 'high_fidelity'
+                        ? 'bg-amber-950 text-amber-300 border border-amber-800/60 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                    title="Deep: Exact JSON & byte calculation"
+                  >
+                    Deep
+                  </button>
+                </div>
+
+                <div className="h-3 w-px bg-slate-800"></div>
+
                 <button
                   onClick={cycleHeight}
                   className="text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 px-2 py-0.5 rounded-md transition-colors font-label-caps-xs text-label-caps-xs flex items-center gap-1 border border-slate-800/80"
@@ -667,7 +715,7 @@ export const DebugConsoleHUD: React.FC = () => {
                           prefix = '[FIRESTORE_WRITE]';
                         } else if (log.type === 'api_res') {
                           colorClass =
-                            'text-indigo-400/95 border-l border-indigo-600/50 pl-2';
+                            'text-slate-300 border-l border-slate-600/50 pl-2';
                           prefix = '[API]';
                         } else if (log.type === 'gen_ai') {
                           colorClass =
@@ -743,7 +791,7 @@ export const DebugConsoleHUD: React.FC = () => {
                       <span className="font-label-caps-xs text-label-caps-xs text-slate-500">
                         AVG REQUEST TIME
                       </span>
-                      <strong className="text-sm text-indigo-400">
+                      <strong className="text-sm text-slate-200">
                         {metrics.averageApiLatency}ms
                       </strong>
                     </div>
@@ -808,7 +856,7 @@ export const DebugConsoleHUD: React.FC = () => {
 
                               {log.type === 'api_res' && (
                                 <div className="flex items-center gap-1.5 w-full">
-                                  <span className="text-indigo-400 font-semibold shrink-0">
+                                  <span className="text-slate-300 font-semibold shrink-0">
                                     FETCH:
                                   </span>
                                   <span className="text-slate-300 break-all select-all flex-1">
@@ -1021,7 +1069,7 @@ export const DebugConsoleHUD: React.FC = () => {
                         <span className="text-slate-500">
                           Average Outbound Latency
                         </span>
-                        <span className="text-indigo-400 font-bold">
+                        <span className="text-slate-200 font-bold">
                           {metrics.averageApiLatency} ms
                         </span>
                       </div>

@@ -38,10 +38,24 @@ describe('AppLayout', () => {
     expect(screen.getByTestId('child-content')).toBeInTheDocument();
   });
 
-  it('renders navigation links and user info', () => {
+  it('renders navigation links and user info with vertically centered layout', () => {
     renderAppLayout();
-    // book(ish) header/brand
-    expect(screen.getAllByText('book(ish)').length).toBeGreaterThan(0);
+    // book(ish) brandmark
+    const brand = screen.getByText('book(ish)');
+    expect(brand).toBeInTheDocument();
+    expect(brand).toHaveClass('leading-none');
+
+    // Modern Archivist subtitle
+    const archivist = screen.getByText('Modern Archivist');
+    expect(archivist).toBeInTheDocument();
+    expect(archivist).toHaveClass('leading-none');
+    expect(archivist).toHaveClass('items-center');
+
+    // User name
+    const userName = screen.getByText('test');
+    expect(userName).toBeInTheDocument();
+    expect(userName).toHaveClass('leading-normal');
+
     // User placeholder icon "T" since email is "test@example.com"
     expect(screen.getAllByText('T').length).toBeGreaterThan(0);
   });

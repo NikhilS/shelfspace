@@ -27,8 +27,21 @@ apiV1Router.use(authenticateApiRequest({requireAllowlist: true}));
 // GET /api/v1/libraries
 apiV1Router.get('/libraries', async (req, res) => {
   try {
-    const user = (req as AuthenticatedApiRequest).user;
-    const data = await LibraryService.getUserLibraries(user.uid, user.email);
+    const authedReq = req as AuthenticatedApiRequest;
+    const user = authedReq.user;
+    const scopesQuery = req.query.scopes;
+    let scopes: Array<'owned' | 'shared' | 'all'> | undefined;
+    if (typeof scopesQuery === 'string') {
+      scopes = scopesQuery.split(',') as Array<'owned' | 'shared' | 'all'>;
+    } else if (Array.isArray(scopesQuery)) {
+      scopes = scopesQuery as Array<'owned' | 'shared' | 'all'>;
+    }
+    const data = await LibraryService.getUserLibraries(
+      user.uid,
+      user.email,
+      scopes,
+      authedReq.isAdmin,
+    );
     res.json(data);
   } catch (err: unknown) {
     const error = err as {status?: number; message?: string};

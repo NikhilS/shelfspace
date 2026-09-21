@@ -90,7 +90,7 @@ export default function BookCard({
           <div className="absolute inset-0 p-4 pl-6 flex flex-col justify-between text-on-surface bg-surface-variant border-l-4 border-primary/20">
             <div className="space-y-2 max-h-[80%] overflow-hidden">
               <div className="w-8 h-[2px] bg-primary/30 mb-2" />
-              <h3 className="font-serif font-bold text-sm sm:text-base leading-snug tracking-tight text-primary">
+              <h3 className="font-sans font-bold text-sm sm:text-base leading-snug tracking-tight text-primary">
                 {toTitleCase(book.title)}
               </h3>
               <p className="font-sans text-xs sm:text-sm text-on-surface-variant font-medium tracking-wide uppercase mt-1">
@@ -110,7 +110,7 @@ export default function BookCard({
 
       {/* Book Metadata */}
       <div className="mt-auto pl-1 pr-1">
-        <h3 className="font-headline-md text-base leading-tight text-on-surface line-clamp-1 tracking-tight">
+        <h3 className="font-sans font-bold text-base leading-tight text-on-surface line-clamp-1 tracking-tight">
           {toTitleCase(book.title)}
         </h3>
         <p className="font-body-md text-sm text-on-surface-variant line-clamp-1 mt-1">

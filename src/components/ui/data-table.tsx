@@ -421,8 +421,8 @@ export function BookTitleCell({
 
   const titleSizes = {
     sm: 'text-sm font-medium text-on-surface leading-tight',
-    md: 'font-serif text-base sm:text-lg font-medium text-on-surface leading-snug',
-    lg: 'font-serif text-lg sm:text-xl font-medium text-on-surface leading-snug',
+    md: 'font-sans text-base sm:text-lg font-semibold text-on-surface leading-snug',
+    lg: 'font-sans text-lg sm:text-xl font-bold text-on-surface leading-snug',
   };
 
   const defaultMaxWidths = {

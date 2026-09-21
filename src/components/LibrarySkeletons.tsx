@@ -87,7 +87,7 @@ export function LibraryOverviewSkeleton() {
           <div className="md:col-span-8 bg-surface p-5 sm:p-6 rounded-2xl border border-outline-variant/30 flex flex-col sm:flex-row gap-5 min-h-[220px]">
             <div className="w-24 sm:w-28 h-36 sm:h-40 bg-surface-container-high rounded-lg shadow-sm shrink-0" />
             <div className="flex-1 space-y-3 pt-1">
-              <div className="h-3 w-20 bg-secondary/20 rounded" />
+              <div className="h-3 w-20 bg-surface-container-high rounded" />
               <div className="h-6 w-3/4 bg-surface-variant/40 rounded" />
               <div className="h-4 w-1/3 bg-surface-variant/30 rounded" />
               <div className="space-y-1.5 pt-2">

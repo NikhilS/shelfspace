@@ -1,6 +1,14 @@
 import {z} from 'zod';
 
-export const libraryListSchema = z.object({}).optional().default({});
+export const libraryScopeSchema = z.enum(['owned', 'shared', 'all']);
+export type LibraryScope = z.infer<typeof libraryScopeSchema>;
+
+export const libraryListSchema = z
+  .object({
+    scopes: z.array(libraryScopeSchema).optional().default(['owned', 'shared']),
+  })
+  .optional()
+  .default({scopes: ['owned', 'shared']});
 
 export const bookListSchema = z.object({
   libraryId: z

@@ -18,21 +18,46 @@ export class SynopsisMetadataProvider implements IMetadataProvider<string> {
     }
 
     if (book.isbn) {
-      const bookData = await searchBookByIsbn(book.isbn);
-      if (bookData?.synopsis) return bookData.synopsis;
+      try {
+        const bookData = await searchBookByIsbn(book.isbn);
+        if (bookData?.synopsis) return bookData.synopsis;
+      } catch (err) {
+        console.warn(
+          `[SynopsisProvider] ISBN search failed for ${book.isbn}:`,
+          err,
+        );
+      }
     }
 
-    const booksData = await searchBookByTitleAndAuthor(book.title, book.author);
-    if (booksData && booksData.length > 0 && booksData[0].synopsis) {
-      return booksData[0].synopsis;
+    try {
+      const booksData = await searchBookByTitleAndAuthor(
+        book.title,
+        book.author,
+      );
+      if (booksData && booksData.length > 0 && booksData[0].synopsis) {
+        return booksData[0].synopsis;
+      }
+    } catch (err) {
+      console.warn(
+        `[SynopsisProvider] Title/Author search failed for ${book.title}:`,
+        err,
+      );
     }
 
-    const synopsis = await generateBookInsights(
-      book.title,
-      book.author,
-      'synopsis',
-    );
-    return synopsis || '';
+    try {
+      const synopsis = await generateBookInsights(
+        book.title,
+        book.author,
+        'synopsis',
+      );
+      return synopsis || '';
+    } catch (err) {
+      console.warn(
+        `[SynopsisProvider] AI fallback failed for ${book.title}:`,
+        err,
+      );
+      return '';
+    }
   }
 
   async bulkFetch(books: CoreBookData[]): Promise<Record<string, string>> {

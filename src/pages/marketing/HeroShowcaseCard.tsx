@@ -137,7 +137,7 @@ export function HeroShowcaseCard() {
                 </div>
 
                 <div className="mt-4 w-full flex items-center gap-2 p-2.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-xs text-on-surface-variant">
-                  <Bookmark className="w-3.5 h-3.5 text-secondary shrink-0" />
+                  <Bookmark className="w-3.5 h-3.5 text-primary shrink-0" />
                   <span className="truncate font-sans font-medium">
                     {book.shelf}
                   </span>
@@ -150,8 +150,8 @@ export function HeroShowcaseCard() {
                   {/* Category Pills & Era */}
                   <div className="flex flex-wrap items-center gap-2 mb-3">
                     <Badge
-                      variant="secondary"
-                      className="bg-secondary/10 text-secondary border-secondary/20 font-sans text-xs font-semibold px-2.5 py-0.5"
+                      variant="outline"
+                      className="bg-surface-container text-on-surface-variant border-outline-variant/40 font-sans text-xs font-semibold px-2.5 py-0.5"
                     >
                       {book.genres[0]}
                     </Badge>
@@ -163,17 +163,17 @@ export function HeroShowcaseCard() {
                     </span>
                   </div>
 
-                  <h3 className="font-serif text-3xl sm:text-4xl font-bold text-primary tracking-tight mb-1">
+                  <h3 className="font-sans text-3xl sm:text-4xl font-extrabold text-primary tracking-tight mb-1">
                     {book.title}
                   </h3>
-                  <p className="font-serif text-lg text-secondary italic mb-6">
+                  <p className="font-sans text-lg text-on-surface-variant font-medium mb-6">
                     by {book.author}
                   </p>
 
                   {/* Dimension Micro-Chips */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
                     <div className="flex items-start gap-2.5 p-3 rounded-xl bg-surface-container-low border border-outline-variant/30">
-                      <MapPin className="w-4 h-4 text-secondary mt-0.5 shrink-0" />
+                      <MapPin className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                       <div>
                         <div className="font-label-caps-xs text-[10px] text-on-surface-variant/70 uppercase tracking-wider font-bold">
                           Setting Geography
@@ -188,7 +188,7 @@ export function HeroShowcaseCard() {
                     </div>
 
                     <div className="flex items-start gap-2.5 p-3 rounded-xl bg-surface-container-low border border-outline-variant/30">
-                      <Calendar className="w-4 h-4 text-secondary mt-0.5 shrink-0" />
+                      <Calendar className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                       <div>
                         <div className="font-label-caps-xs text-[10px] text-on-surface-variant/70 uppercase tracking-wider font-bold">
                           Narrative Epoch
@@ -206,7 +206,7 @@ export function HeroShowcaseCard() {
                   {/* Thematic DNA Tags */}
                   <div className="mb-6">
                     <div className="flex items-center gap-1.5 font-label-caps-xs text-[10px] text-on-surface-variant/70 uppercase tracking-wider font-bold mb-2">
-                      <Layers className="w-3 h-3 text-secondary" />
+                      <Layers className="w-3 h-3 text-primary" />
                       Thematic Kinship DNA
                     </div>
                     <div className="flex flex-wrap gap-1.5">
@@ -225,12 +225,12 @@ export function HeroShowcaseCard() {
                 {/* Curator Sommelier Note */}
                 <div className="p-4 rounded-2xl bg-surface-container-high/60 border border-outline-variant/40 relative">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-secondary" />
-                    <span className="font-label-caps-sm text-[10px] text-secondary font-bold uppercase tracking-wider">
+                    <Sparkles className="w-3.5 h-3.5 text-primary" />
+                    <span className="font-label-caps-sm text-[10px] text-primary font-bold uppercase tracking-wider">
                       Archival Curator Dispatch
                     </span>
                   </div>
-                  <p className="font-serif italic text-xs sm:text-sm text-primary leading-relaxed">
+                  <p className="font-sans text-xs sm:text-sm text-primary leading-relaxed">
                     "{book.curatorNote}"
                   </p>
                 </div>
@@ -247,7 +247,7 @@ export function HeroShowcaseCard() {
               Continuous Camera Vision
             </span>
             <span className="hidden sm:flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary/70" />
               1-Click Barcode Ingestion
             </span>
             <span className="hidden md:flex items-center gap-1.5">
@@ -256,7 +256,7 @@ export function HeroShowcaseCard() {
             </span>
           </div>
 
-          <div className="flex items-center gap-1 font-label-caps-sm text-xs font-bold text-secondary uppercase tracking-wider">
+          <div className="flex items-center gap-1 font-label-caps-sm text-xs font-bold text-primary uppercase tracking-wider">
             <span>Explore The 3D Graph</span>
             <ArrowUpRight className="w-3.5 h-3.5" />
           </div>

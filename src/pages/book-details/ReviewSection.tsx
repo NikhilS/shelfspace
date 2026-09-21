@@ -70,7 +70,7 @@ export function ReviewSection({
 
   return (
     <section className="mt-8 border-t border-surface-dim pt-12">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-6 sm:mb-8">
         <h3 className="font-headline-md text-headline-md text-primary">
           Reviews
         </h3>

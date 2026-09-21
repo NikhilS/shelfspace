@@ -50,13 +50,13 @@ export function BulkEnrichmentBanner({
     },
     indigo: {
       container:
-        'bg-indigo-50 dark:bg-indigo-950/20 border-indigo-500 dark:border-indigo-900/50',
-      icon: 'text-indigo-600 dark:text-indigo-400',
-      title: 'text-indigo-900 dark:text-indigo-200',
-      subtitle: 'text-indigo-700 dark:text-indigo-300',
-      progressBg: 'bg-indigo-200/50 dark:bg-indigo-900/40',
-      progressBar: 'bg-indigo-600 dark:bg-indigo-400',
-      errorText: 'text-red-600 dark:text-red-400',
+        'bg-surface-container border-primary/50 dark:border-primary/40',
+      icon: 'text-primary',
+      title: 'text-on-surface font-semibold',
+      subtitle: 'text-on-surface-variant',
+      progressBg: 'bg-surface-container-highest',
+      progressBar: 'bg-primary',
+      errorText: 'text-error',
     },
   };
 

@@ -33,6 +33,24 @@ vi.mock('../firebase', () => ({
 
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    useUtils: () => ({
+      book: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+      library: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+    }),
+    gemini: {
+      generateBookInsights: {
+        useMutation: vi.fn(() => ({
+          mutateAsync: vi.fn(),
+          isLoading: false,
+        })),
+      },
+    },
     library: {
       get: {
         useQuery: vi.fn(() => ({

@@ -12,6 +12,13 @@ export type LogLevel =
 export type MutationType =
   'setDoc' | 'updateDoc' | 'deleteDoc' | 'writeBatch' | 'addDoc';
 
+export type TelemetryProfilingLevel = 'off' | 'basic' | 'high_fidelity';
+
+export interface SizingOptions {
+  level?: TelemetryProfilingLevel;
+  maxSamples?: number;
+}
+
 export interface MutationTelemetryPayload {
   mutationType: MutationType;
   path: string;
@@ -88,19 +95,91 @@ export interface TelemetryPlugin {
   onLog?: (entry: TelemetryLog, engine: DebugTelemetryEngine) => void;
   renderTab: (ctx: TelemetryPluginContext) => React.ReactNode;
   getMetrics?: () => Record<string, unknown>;
+  onMetricUpdate?: (metrics: TelemetryMetrics) => void;
 }
 
 /**
- * Safely calculates the byte size of any data object / payload in UTF-8.
+ * Calculates UTF-8 string byte size quickly without allocating Blob instances.
  */
-export function calculatePayloadBytes(data: unknown): number {
-  if (data === undefined || data === null) return 0;
-  try {
-    if (typeof data === 'string') {
-      return new Blob([data]).size;
+export function estimateStringBytes(str: string): number {
+  let bytes = 0;
+  const len = str.length;
+  for (let i = 0; i < len; i++) {
+    const codePoint = str.charCodeAt(i);
+    if (codePoint < 0x80) {
+      bytes += 1;
+    } else if (codePoint < 0x800) {
+      bytes += 2;
+    } else if (codePoint >= 0xd800 && codePoint <= 0xdbff) {
+      bytes += 4;
+      i++; // Skip surrogate pair continuation
+    } else {
+      bytes += 3;
     }
+  }
+  return bytes;
+}
+
+/**
+ * Estimates byte size of an individual object or primitive.
+ */
+function estimateSingleObjectBytes(obj: unknown): number {
+  if (obj === null || obj === undefined) return 0;
+  if (typeof obj === 'string') return estimateStringBytes(obj);
+  if (typeof obj === 'number') return 8;
+  if (typeof obj === 'boolean') return 4;
+  try {
+    const json = JSON.stringify(obj);
+    return estimateStringBytes(json);
+  } catch {
+    return 64; // Fallback heuristic for cyclic or unserializable structures
+  }
+}
+
+/**
+ * Fast, multi-tiered payload byte estimation.
+ * - 'off': Returns 0 immediately with zero memory allocations.
+ * - 'basic': Statistical O(1) sampling for arrays and fast string byte calculation (<0.05ms).
+ * - 'high_fidelity': Full deep serialization and exact measurement.
+ */
+export function calculatePayloadBytes(
+  data: unknown,
+  options?: SizingOptions,
+): number {
+  const level = options?.level ?? DebugTelemetryEngine.getProfilingLevel();
+  if (level === 'off' || data === undefined || data === null) {
+    return 0;
+  }
+
+  if (typeof data === 'string') {
+    return estimateStringBytes(data);
+  }
+  if (typeof data === 'number') return 8;
+  if (typeof data === 'boolean') return 4;
+
+  if (Array.isArray(data)) {
+    if (data.length === 0) return 2; // "[]"
+    if (level === 'basic') {
+      const sampleCount = Math.min(data.length, options?.maxSamples ?? 5);
+      let sampleBytes = 0;
+      for (let i = 0; i < sampleCount; i++) {
+        sampleBytes += estimateSingleObjectBytes(data[i]);
+      }
+      const avgBytesPerItem = sampleBytes / sampleCount;
+      return Math.round(
+        avgBytesPerItem * data.length + Math.max(0, data.length - 1) + 2,
+      );
+    }
+  }
+
+  if (level === 'basic') {
+    return estimateSingleObjectBytes(data);
+  }
+
+  // High-fidelity fallback (exact measurement)
+  try {
     const json = JSON.stringify(data);
-    return new Blob([json]).size;
+    return estimateStringBytes(json);
   } catch {
     return 0;
   }
@@ -108,6 +187,18 @@ export function calculatePayloadBytes(data: unknown): number {
 
 export class DebugTelemetryEngine {
   private static instance: DebugTelemetryEngine | null = null;
+  private static globalProfilingLevel: TelemetryProfilingLevel =
+    typeof window !== 'undefined' &&
+    (localStorage.getItem(
+      'bibliophile_profiling_level',
+    ) as TelemetryProfilingLevel)
+      ? (localStorage.getItem(
+          'bibliophile_profiling_level',
+        ) as TelemetryProfilingLevel)
+      : 'basic';
+
+  private profilingLevel: TelemetryProfilingLevel =
+    DebugTelemetryEngine.globalProfilingLevel;
   private logs: TelemetryLog[] = [];
   private maxLogs = 200;
   private subscribers: Set<() => void> = new Set();
@@ -115,6 +206,7 @@ export class DebugTelemetryEngine {
   private activeListeners: Map<string, ActiveListenerInfo> = new Map();
   private baseline: TelemetryBaseline | null = null;
   private bookDocByteSamples: number[] = [];
+  private notifyScheduled = false;
 
   private metrics: TelemetryMetrics = {
     totalApiRequests: 0,
@@ -153,6 +245,29 @@ export class DebugTelemetryEngine {
 
   public static resetInstance(): void {
     this.instance = null;
+  }
+
+  public static getProfilingLevel(): TelemetryProfilingLevel {
+    return DebugTelemetryEngine.globalProfilingLevel;
+  }
+
+  public static setProfilingLevel(level: TelemetryProfilingLevel): void {
+    DebugTelemetryEngine.globalProfilingLevel = level;
+    if (DebugTelemetryEngine.instance) {
+      DebugTelemetryEngine.instance.profilingLevel = level;
+      DebugTelemetryEngine.instance.notifySubscribers();
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bibliophile_profiling_level', level);
+    }
+  }
+
+  public getProfilingLevel(): TelemetryProfilingLevel {
+    return this.profilingLevel;
+  }
+
+  public setProfilingLevel(level: TelemetryProfilingLevel): void {
+    DebugTelemetryEngine.setProfilingLevel(level);
   }
 
   // Register and track active Firestore onSnapshot listeners
@@ -485,6 +600,10 @@ export class DebugTelemetryEngine {
   // Safe payload copy utility preventing circular JSON reference crashes
   private safeClone(val: unknown): unknown {
     if (val === undefined || val === null) return val;
+    if (this.profilingLevel === 'off') {
+      if (typeof val !== 'object') return val;
+      return Array.isArray(val) ? `[Array(${val.length})]` : '[Object]';
+    }
     try {
       return JSON.parse(JSON.stringify(val));
     } catch {
@@ -626,10 +745,11 @@ export async function instrumentMutation<T>(
   options?: {
     operationCount?: number;
     optimisticLatencyMs?: number;
+    level?: TelemetryProfilingLevel;
   },
 ): Promise<T> {
   const start = performance.now();
-  const bytes = calculatePayloadBytes(payload);
+  const bytes = calculatePayloadBytes(payload, {level: options?.level});
   try {
     const result = await mutationFn();
     const commitDurationMs = Math.max(1, Math.round(performance.now() - start));

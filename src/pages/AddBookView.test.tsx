@@ -12,6 +12,15 @@ const mockBatchUpsertMutate = vi.fn().mockResolvedValue({success: true});
 
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    useUtils: () => ({
+      book: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+      library: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+    }),
     book: {
       list: {
         useQuery: vi.fn(() => ({

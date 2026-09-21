@@ -35,12 +35,12 @@ export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
             <Badge variant="default" size="default" className="font-bold">
               {selectedCount}
             </Badge>
-            <span className="font-headline-md text-sm text-on-surface whitespace-nowrap">
+            <span className="font-sans text-sm font-medium text-on-surface whitespace-nowrap">
               selected
             </span>
           </div>
           <div className="flex items-center gap-3 border-l border-outline-variant/30 pl-6">
-            <span className="text-sm font-label-caps text-on-surface-variant uppercase tracking-wider hidden sm:inline">
+            <span className="text-sm font-label-caps text-on-surface-variant hidden sm:inline">
               Set Status
             </span>
             <Select onValueChange={onStatusChange} value="">

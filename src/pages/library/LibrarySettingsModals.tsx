@@ -4,8 +4,6 @@ import {zodResolver} from '@hookform/resolvers/zod';
 import {z} from 'zod';
 import {X, Share2, Settings, Download, Trash2, Shield} from 'lucide-react';
 import {Library} from '../../types';
-import {useDebugMode} from '../../hooks/useDebugMode';
-import {Bug} from 'lucide-react';
 import {Dialog, DialogContent, DialogTitle} from '@/components/ui/dialog';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -62,7 +60,6 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
   handleDeleteLibrary,
   confirmDeleteLibrary,
 }) => {
-  const {isDebugMode, toggleDebugMode} = useDebugMode();
   const [isSharing, setIsSharing] = React.useState(false);
 
   const {
@@ -112,7 +109,7 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
           className="w-full max-w-md bg-surface p-8 rounded-[32px] shadow-xl border border-outline-variant/30 gap-0"
         >
           <div className="flex items-center justify-between mb-8">
-            <DialogTitle className="text-2xl font-serif font-medium flex items-center gap-3 text-on-surface">
+            <DialogTitle className="text-2xl font-sans font-bold flex items-center gap-3 text-on-surface">
               <div className="w-10 h-10 bg-surface-container rounded-full flex items-center justify-center text-primary border border-outline-variant/30">
                 <Share2 size={20} />
               </div>
@@ -241,7 +238,7 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
           className="w-full max-w-md bg-surface p-8 rounded-[32px] shadow-xl border border-outline-variant/30 gap-0"
         >
           <div className="flex items-center justify-between mb-8">
-            <DialogTitle className="text-2xl font-serif font-medium flex items-center gap-3 text-on-surface">
+            <DialogTitle className="text-2xl font-sans font-bold flex items-center gap-3 text-on-surface">
               <div className="w-10 h-10 bg-surface-container rounded-full flex items-center justify-center text-primary border border-outline-variant/30">
                 <Settings size={20} />
               </div>
@@ -275,20 +272,6 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
             </p>
           </div>
 
-          <div className="mb-10">
-            <h4 className="text-sm font-medium text-on-surface-variant mb-4 uppercase tracking-wider">
-              Developer Tools
-            </h4>
-            <Button
-              variant={isDebugMode ? 'default' : 'outline'}
-              onClick={toggleDebugMode}
-              className="w-full flex items-center justify-center gap-2"
-            >
-              <Bug size={18} />{' '}
-              {isDebugMode ? 'Disable Debug Mode' : 'Enable Debug Mode'}
-            </Button>
-          </div>
-
           {isOwner && (
             <div className="pt-8 border-t border-outline-variant/30">
               <h4 className="text-sm font-medium text-error mb-4 uppercase tracking-wider">
@@ -315,7 +298,7 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
           className="bg-surface rounded-[32px] p-8 max-w-md w-full shadow-xl border border-outline-variant/30 gap-0"
         >
           <div className="flex items-center justify-between mb-8">
-            <DialogTitle className="text-2xl font-serif font-medium flex items-center gap-3 text-on-surface tracking-tight">
+            <DialogTitle className="text-2xl font-sans font-bold flex items-center gap-3 text-on-surface tracking-tight">
               <div className="w-10 h-10 bg-error-container rounded-full flex items-center justify-center text-error border border-error-container/50">
                 <Trash2 size={20} />
               </div>

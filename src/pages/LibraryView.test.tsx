@@ -33,6 +33,15 @@ vi.mock('../firebase', () => ({
 
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    useUtils: () => ({
+      book: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+      library: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+    }),
     library: {
       get: {
         useQuery: () => ({
@@ -69,6 +78,12 @@ vi.mock('../lib/trpc', () => ({
       },
     },
     book: {
+      batchUpsert: {
+        useMutation: () => ({
+          mutateAsync: vi.fn().mockResolvedValue({}),
+          isPending: false,
+        }),
+      },
       list: {
         useQuery: () => ({
           data: {

@@ -134,7 +134,9 @@ export async function searchBookByIsbn(
   let result: BookDetails | null = null;
 
   try {
-    let response = await fetch(getGoogleBooksUrl(`isbn:${isbn}`), {signal});
+    let response = await fetchWithTimeout(getGoogleBooksUrl(`isbn:${isbn}`), {
+      signal,
+    });
 
     if (response.status === 429) {
       throw new Error('Google Books API rate limit (429) on ISBN search.');
@@ -145,7 +147,7 @@ export async function searchBookByIsbn(
 
       // Fallback to general search if isbn: prefix fails
       if (!data.items || data.items.length === 0) {
-        response = await fetch(getGoogleBooksUrl(isbn), {signal});
+        response = await fetchWithTimeout(getGoogleBooksUrl(isbn), {signal});
         if (response.status === 429) {
           throw new Error(
             'Google Books API rate limit (429) on ISBN general search.',
@@ -263,9 +265,12 @@ export async function searchBookByTitleAndAuthor(
     const q = encodeURIComponent(
       `intitle:"${title || ''}"+inauthor:"${author || ''}"`,
     );
-    const response = await fetch(getGoogleBooksUrl(`${q}&maxResults=5`), {
-      signal,
-    });
+    const response = await fetchWithTimeout(
+      getGoogleBooksUrl(`${q}&maxResults=5`),
+      {
+        signal,
+      },
+    );
     if (response.status === 429) {
       throw new Error(
         'Google Books API rate limit (429) on title & author search.',
@@ -316,7 +321,7 @@ export async function searchBookByTitle(
 
   try {
     const q = `intitle:${encodeURIComponent(query)}&maxResults=10`;
-    const response = await fetch(getGoogleBooksUrl(q), {signal});
+    const response = await fetchWithTimeout(getGoogleBooksUrl(q), {signal});
     if (response.status === 429) {
       throw new Error('Google Books API rate limit (429) on title search.');
     }
@@ -349,7 +354,7 @@ export async function searchBookByTitle(
 
     // If intitle: yields nothing or few results, fallback to general search
     if (results.length < 5) {
-      const fallbackResponse = await fetch(
+      const fallbackResponse = await fetchWithTimeout(
         getGoogleBooksUrl(`${encodeURIComponent(query)}&maxResults=10`),
         {signal},
       );

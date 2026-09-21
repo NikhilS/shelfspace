@@ -50,12 +50,12 @@ export function IngestionRibbon() {
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Zap className="w-4 h-4 text-secondary" />
-              <span className="font-label-caps-sm text-[11px] text-secondary font-bold uppercase tracking-widest">
+              <Zap className="w-4 h-4 text-primary" />
+              <span className="font-label-caps-sm text-[11px] text-on-surface-variant font-bold uppercase tracking-widest">
                 Frictionless Physical Ingestion
               </span>
             </div>
-            <h2 className="font-serif text-3xl sm:text-4xl font-bold text-primary tracking-tight">
+            <h2 className="font-sans text-3xl sm:text-4xl font-extrabold text-primary tracking-tight">
               Catalog an entire 500-book shelf{' '}
               <br className="hidden sm:inline" />
               before your coffee cools.
@@ -78,15 +78,15 @@ export function IngestionRibbon() {
               >
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-secondary/10 border border-secondary/20 flex items-center justify-center text-secondary group-hover:scale-105 transition-transform">
+                    <div className="w-10 h-10 rounded-xl bg-surface-container border border-outline-variant/40 flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
                       <Icon className="w-5 h-5" />
                     </div>
-                    <span className="font-label-caps-xs text-[9px] font-bold text-secondary uppercase tracking-widest px-2 py-0.5 rounded-md bg-secondary/5 border border-secondary/15">
+                    <span className="font-label-caps-xs text-[9px] font-bold text-on-surface-variant uppercase tracking-widest px-2 py-0.5 rounded-md bg-surface-container border border-outline-variant/30">
                       {ch.badge}
                     </span>
                   </div>
 
-                  <h3 className="font-serif text-lg font-bold text-primary mb-2 tracking-tight">
+                  <h3 className="font-sans text-lg font-bold text-primary mb-2 tracking-tight">
                     {ch.title}
                   </h3>
 

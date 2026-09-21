@@ -60,12 +60,12 @@ export const BookHeader = memo(
               </Badge>
             )}
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
             <div className="min-w-0 w-full break-words">
               <h1 className="font-headline-xl text-headline-xl text-primary mb-2">
                 {toTitleCase(book.title)}
               </h1>
-              <h2 className="font-headline-md text-headline-md text-secondary mb-6 line-clamp-3">
+              <h2 className="font-headline-md text-headline-md text-secondary mb-1 sm:mb-2 line-clamp-3">
                 by {toTitleCase(book.author)}
               </h2>
             </div>
@@ -82,7 +82,7 @@ export const BookHeader = memo(
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-6 text-on-surface-variant text-sm font-body-md border-b border-surface-dim pb-6">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-on-surface-variant text-sm font-body-md border-b border-surface-dim pb-6">
             <div className="flex flex-col">
               <span className="font-label-caps text-label-caps text-on-surface-variant mb-1">
                 Published

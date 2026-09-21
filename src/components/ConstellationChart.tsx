@@ -181,13 +181,13 @@ export default function ConstellationChart({
         >
           {gesturesActive ? (
             <>
-              <Move className="w-3.5 h-3.5 text-secondary" />
+              <Move className="w-3.5 h-3.5 text-primary" />
               <span className="hidden xs:inline">3D Pan Active</span>
               <span className="xs:hidden">Pan On</span>
             </>
           ) : (
             <>
-              <Hand className="w-3.5 h-3.5 text-secondary" />
+              <Hand className="w-3.5 h-3.5 text-primary" />
               <span className="hidden xs:inline">Page Scroll Mode</span>
               <span className="xs:hidden">Scroll Mode</span>
             </>
@@ -248,7 +248,7 @@ export default function ConstellationChart({
                   loading="lazy"
                 />
               )}
-              <p className="font-serif text-on-surface text-sm font-semibold tracking-tight leading-tight mb-1">
+              <p className="font-sans text-on-surface text-sm font-bold tracking-tight leading-tight mb-1">
                 {hoveredNode.data.book.title}
               </p>
               <p className="text-on-surface-variant text-xs mb-2">
@@ -256,7 +256,7 @@ export default function ConstellationChart({
               </p>
               <div className="flex flex-wrap gap-1 items-center mt-1">
                 {hoveredNode.data.book.primaryGenre && (
-                  <span className="inline-block px-1.5 py-0.5 rounded-md font-label-caps-xs text-label-caps-xs font-sans font-medium bg-secondary/10 text-secondary">
+                  <span className="inline-block px-1.5 py-0.5 rounded-md font-label-caps-xs text-label-caps-xs font-sans font-medium bg-surface-container text-on-surface-variant border border-outline-variant/30">
                     {hoveredNode.data.book.primaryGenre}
                   </span>
                 )}

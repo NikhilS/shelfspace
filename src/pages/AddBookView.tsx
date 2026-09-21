@@ -1,11 +1,19 @@
 import React, {useState, Suspense, lazy} from 'react';
-import {Camera, FileText, Plus, ScanBarcode, Search} from 'lucide-react';
+import {
+  Camera,
+  FileText,
+  Plus,
+  ScanBarcode,
+  Search,
+  WifiOff,
+} from 'lucide-react';
 import {BookDetails} from '../services/bookApi';
 import {toast} from 'sonner';
 import {useParams} from 'react-router-dom';
 import {BackToLibrary} from '../components/BackToLibrary';
 import {useAddBooks} from './add-book/useAddBooks';
 import {useExistingBooks} from './add-book/useExistingBooks';
+import {useOnlineStatus} from '../hooks/useOnlineStatus';
 import {Checkbox} from '../components/ui/checkbox';
 import {isDuplicateBook, normalizeBookDetails} from '../lib/utils';
 import {BookLoader} from '../components/BookLoader';
@@ -28,6 +36,7 @@ type TabId = 'scan' | 'search' | 'camera' | 'csv' | 'manual';
 
 export default function AddBookView() {
   const {id: libraryId} = useParams<{id: string}>();
+  const isOnline = useOnlineStatus();
 
   const [activeTab, setActiveTab] = useState<TabId>('scan');
   const [allowDuplicates, setAllowDuplicates] = useState(true);
@@ -36,6 +45,11 @@ export default function AddBookView() {
   const {addBooks, isAddingAll} = useAddBooks(libraryId);
 
   const handleAdd = async (book: BookDetails) => {
+    if (!isOnline) {
+      toast.error('Network required: Connect to the internet to add books.');
+      return;
+    }
+
     const bookToAdd = normalizeBookDetails(book);
 
     if (!allowDuplicates && isDuplicateBook(bookToAdd, existingBooks)) {
@@ -63,6 +77,20 @@ export default function AddBookView() {
             </p>
           </div>
         </div>
+
+        {!isOnline && (
+          <div
+            role="status"
+            className="mb-4 bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 px-4 py-3 rounded-xl flex items-center gap-3 text-xs font-medium"
+            data-testid="add-book-offline-notice"
+          >
+            <WifiOff className="w-4 h-4 shrink-0 text-amber-700 dark:text-amber-300" />
+            <span>
+              Working offline. Adding books, barcode lookup, and shelf scanning
+              require an active network connection.
+            </span>
+          </div>
+        )}
 
         <div className="bg-surface rounded-2xl sm:rounded-[32px] w-full flex flex-col overflow-hidden shadow-sm border border-outline-variant/30 relative">
           <div className="px-4 sm:px-6 py-4 sm:py-5 bg-surface-container-lowest border-b border-outline-variant/30 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 w-full">

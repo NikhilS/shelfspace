@@ -47,7 +47,25 @@ describe('libraryApiRouter list', () => {
     expect(LibraryService.getUserLibraries).toHaveBeenCalledWith(
       'user-123',
       SUPERADMIN_EMAIL,
+      ['owned', 'shared'],
+      true,
     );
     expect(res).toEqual({libraries: mockLibraries});
+  });
+
+  it('passes specific scopes to LibraryService.getUserLibraries', async () => {
+    vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
+      libraries: [],
+    });
+
+    const caller = libraryApiRouter.createCaller(mockCtx);
+    await caller.list({scopes: ['all']});
+
+    expect(LibraryService.getUserLibraries).toHaveBeenCalledWith(
+      'user-123',
+      SUPERADMIN_EMAIL,
+      ['all'],
+      true,
+    );
   });
 });

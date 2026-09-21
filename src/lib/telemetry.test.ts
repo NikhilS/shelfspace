@@ -3,6 +3,7 @@ import {
   DebugTelemetryEngine,
   instrumentMutation,
   calculatePayloadBytes,
+  estimateStringBytes,
   TelemetryPlugin,
 } from './telemetry';
 import {PersistenceTelemetryPlugin} from './telemetry/PersistenceTelemetryPlugin';
@@ -12,6 +13,7 @@ import {RenderPerformancePlugin} from './telemetry/RenderPerformancePlugin';
 describe('Phase 4: Telemetry Bus & Pluggable Architecture', () => {
   beforeEach(() => {
     DebugTelemetryEngine.resetInstance();
+    DebugTelemetryEngine.setProfilingLevel('basic');
   });
 
   it('initializes the telemetry engine singleton', () => {
@@ -140,6 +142,70 @@ describe('Phase 4: Telemetry Bus & Pluggable Architecture', () => {
     const cyclicObj: Record<string, unknown> = {title: 'Cycle'};
     cyclicObj.self = cyclicObj;
     expect(() => calculatePayloadBytes(cyclicObj)).not.toThrow();
+  });
+
+  it('correctly calculates string bytes across ASCII and UTF-8 code points', () => {
+    expect(estimateStringBytes('')).toBe(0);
+    expect(estimateStringBytes('abc')).toBe(3);
+    expect(estimateStringBytes('Café')).toBe(5); // 'é' is 2 bytes in UTF-8
+    expect(estimateStringBytes('📚')).toBe(4); // Emoji is 4 bytes in UTF-8
+  });
+
+  it('respects profiling levels (off, basic, high_fidelity)', () => {
+    const sampleData = {
+      books: Array.from({length: 100}, (_, i) => ({
+        id: `book-${i}`,
+        title: `Book Title ${i}`,
+        pages: 200 + i,
+      })),
+    };
+
+    // 'off' mode: returns 0 instantly
+    expect(calculatePayloadBytes(sampleData, {level: 'off'})).toBe(0);
+
+    // 'basic' mode: returns positive estimation
+    const basicBytes = calculatePayloadBytes(sampleData, {level: 'basic'});
+    expect(basicBytes).toBeGreaterThan(0);
+
+    // 'high_fidelity' mode: returns exact serialized byte length
+    const exactBytes = calculatePayloadBytes(sampleData, {
+      level: 'high_fidelity',
+    });
+    expect(exactBytes).toBeGreaterThan(0);
+
+    // Basic estimation should be within reasonable margin of exact bytes
+    expect(basicBytes).toBeGreaterThan(100);
+  });
+
+  it('accurately samples array payload sizes in basic mode', () => {
+    const bookList = Array.from({length: 500}, (_, i) => ({
+      id: `id-${i}`,
+      title: `Sample Book Title ${i}`,
+      description: 'A brief description of this book in the library collection',
+      author: 'Author Name',
+      rating: 4.5,
+    }));
+
+    const exactBytes = calculatePayloadBytes(bookList, {
+      level: 'high_fidelity',
+    });
+    const estimatedBytes = calculatePayloadBytes(bookList, {level: 'basic'});
+
+    // Estimated size of homogeneous array should be within ±15% of exact
+    const diffRatio = Math.abs(estimatedBytes - exactBytes) / exactBytes;
+    expect(diffRatio).toBeLessThan(0.15);
+  });
+
+  it('supports updating and querying global profiling level', () => {
+    DebugTelemetryEngine.setProfilingLevel('off');
+    expect(DebugTelemetryEngine.getProfilingLevel()).toBe('off');
+
+    const sample = {title: 'Test'};
+    expect(calculatePayloadBytes(sample)).toBe(0);
+
+    DebugTelemetryEngine.setProfilingLevel('high_fidelity');
+    expect(DebugTelemetryEngine.getProfilingLevel()).toBe('high_fidelity');
+    expect(calculatePayloadBytes(sample)).toBeGreaterThan(0);
   });
 
   it('supports registering the core plugins (Persistence, Gemini, RenderPerformance)', () => {

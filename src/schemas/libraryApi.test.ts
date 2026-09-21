@@ -7,9 +7,13 @@ import {
 
 describe('Library API Zod Validation Schemas', () => {
   describe('libraryListSchema', () => {
-    it('accepts empty object or undefined', () => {
-      expect(libraryListSchema.parse({})).toEqual({});
-      expect(libraryListSchema.parse(undefined)).toEqual({});
+    it('accepts empty object or undefined and applies default scopes', () => {
+      expect(libraryListSchema.parse({})).toEqual({
+        scopes: ['owned', 'shared'],
+      });
+      expect(libraryListSchema.parse(undefined)).toEqual({
+        scopes: ['owned', 'shared'],
+      });
     });
   });
 

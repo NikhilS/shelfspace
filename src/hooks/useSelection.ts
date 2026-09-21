@@ -1,21 +1,29 @@
+import React from 'react';
 import {Book} from '../types';
 import {toast} from 'sonner';
 import {useUIStore} from '../stores/uiStore';
 import {instrumentMutation} from '../lib/telemetry';
-import {trpcVanilla} from '../lib/trpc';
-import {useQueryClient} from '@tanstack/react-query';
+import {trpc} from '../lib/trpc';
 
 export function useSelection(
   libraryId: string | undefined,
   userId: string | undefined,
 ) {
-  const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
   const {
     selectedBookIds: selectedBooks,
     toggleBookSelection: toggleStoreBook,
     toggleAllBooks: toggleStoreAll,
     clearSelection,
   } = useUIStore();
+
+  const batchUpsertMutation = trpc.book.batchUpsert.useMutation({
+    onSuccess: () => {
+      if (libraryId) {
+        void utils.book.list.invalidate({libraryId});
+      }
+    },
+  });
 
   const toggleBookSelection = (e: React.MouseEvent, bookId: string) => {
     e.stopPropagation();
@@ -27,6 +35,17 @@ export function useSelection(
     toggleStoreAll(listIds);
   };
 
+  const pruneSelection = (activeBooks: Book[]) => {
+    const activeIds = new Set(activeBooks.map(b => b.id));
+    const currentSelected = Array.from(selectedBooks);
+    const orphanIds = currentSelected.filter(id => !activeIds.has(id));
+    if (orphanIds.length > 0) {
+      orphanIds.forEach(id => {
+        toggleStoreBook(id);
+      });
+    }
+  };
+
   const handleBulkStatusChange = async (newStatus: string) => {
     if (selectedBooks.size === 0 || !userId || !libraryId) return;
     try {
@@ -36,7 +55,7 @@ export function useSelection(
         `libraries/${libraryId}/books(bulk-status)`,
         {count: booksArray.length, status: newStatus},
         async () => {
-          await trpcVanilla.book.batchUpsert.mutate({
+          await batchUpsertMutation.mutateAsync({
             libraryId,
             operations: booksArray.map(bookId => ({
               type: 'update',
@@ -46,7 +65,6 @@ export function useSelection(
               },
             })),
           });
-          void queryClient.invalidateQueries({queryKey: ['books', libraryId]});
         },
       );
       toast.success(`Updated status for ${selectedBooks.size} books`);
@@ -67,14 +85,13 @@ export function useSelection(
         `libraries/${libraryId}/books(bulk-delete)`,
         {count},
         async () => {
-          await trpcVanilla.book.batchUpsert.mutate({
+          await batchUpsertMutation.mutateAsync({
             libraryId,
             operations: booksArray.map(bookId => ({
               type: 'delete',
               bookId,
             })),
           });
-          void queryClient.invalidateQueries({queryKey: ['books', libraryId]});
         },
       );
       toast.success(`Deleted ${count} books`);
@@ -90,7 +107,9 @@ export function useSelection(
     toggleBookSelection,
     toggleAllBooks,
     clearSelection,
+    pruneSelection,
     handleBulkStatusChange,
     handleBulkDelete,
+    isProcessing: batchUpsertMutation.isPending,
   };
 }

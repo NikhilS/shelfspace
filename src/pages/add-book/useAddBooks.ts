@@ -1,6 +1,5 @@
-import {trpcVanilla} from '../../lib/trpc';
+import {trpc, trpcVanilla} from '../../lib/trpc';
 import {useState} from 'react';
-import {useQueryClient} from '@tanstack/react-query';
 import {uploadBase64Image} from '../../services/db/storage';
 import {BookDetails} from '../../services/bookApi';
 import {useAuth} from '../../stores/authStore';
@@ -19,7 +18,7 @@ function generateId(): string {
 
 export function useAddBooks(libraryId?: string) {
   const {user} = useAuth();
-  const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
   const [isAddingAll, setIsAddingAll] = useState(false);
 
   const addBooks = async (books: BookDetails[]) => {
@@ -190,7 +189,7 @@ export function useAddBooks(libraryId?: string) {
         libraryId,
         books: booksToUpsert,
       });
-      void queryClient.invalidateQueries({queryKey: ['books', libraryId]});
+      void utils.book.list.invalidate({libraryId});
       logger.info('[useAddBooks] Batch commit successful.');
 
       const successTitle =

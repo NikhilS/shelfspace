@@ -13,6 +13,20 @@ const mockCreateMutateAsync = vi.fn().mockResolvedValue({id: 'newLibId'});
 
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    useUtils: vi.fn(() => ({
+      library: {
+        list: {invalidate: vi.fn()},
+        get: {setData: vi.fn()},
+      },
+    })),
+    auth: {
+      getPermissions: {
+        useQuery: vi.fn(() => ({
+          data: {isAllowed: true, role: 'user'},
+          isLoading: false,
+        })),
+      },
+    },
     library: {
       list: {
         useQuery: vi.fn(() => ({
@@ -43,7 +57,13 @@ vi.mock('../lib/trpc', () => ({
       },
     },
   },
-  trpcVanilla: {},
+  trpcVanilla: {
+    library: {
+      update: {
+        mutate: vi.fn().mockResolvedValue({}),
+      },
+    },
+  },
 }));
 
 const mockNavigate = vi.fn();

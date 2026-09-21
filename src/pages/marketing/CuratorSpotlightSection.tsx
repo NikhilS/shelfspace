@@ -9,14 +9,14 @@ export function CuratorSpotlightSection() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
           {/* Left Column: The Editorial Philosophy */}
           <div className="lg:col-span-6 flex flex-col items-start">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 mb-6">
-              <Sparkles className="w-3.5 h-3.5 text-secondary" />
-              <span className="font-label-caps-sm text-[11px] text-secondary font-bold uppercase tracking-widest">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container border border-outline-variant/40 mb-6">
+              <Sparkles className="w-3.5 h-3.5 text-primary" />
+              <span className="font-label-caps-sm text-[11px] text-on-surface-variant font-bold uppercase tracking-widest">
                 The Resident Sommelier
               </span>
             </div>
 
-            <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-primary tracking-tight leading-[1.15] mb-6">
+            <h2 className="font-sans text-3xl sm:text-4xl lg:text-5xl font-extrabold text-primary tracking-tight leading-[1.15] mb-6">
               Never stare blankly at your bookshelves again.
             </h2>
 
@@ -35,8 +35,8 @@ export function CuratorSpotlightSection() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
               <div className="p-4 rounded-2xl bg-surface-container-lowest border border-outline-variant/30">
-                <Compass className="w-5 h-5 text-secondary mb-2" />
-                <h4 className="font-serif text-sm font-bold text-primary mb-1">
+                <Compass className="w-5 h-5 text-primary mb-2" />
+                <h4 className="font-sans text-sm font-bold text-primary mb-1">
                   Shelf-Aware Geography
                 </h4>
                 <p className="font-sans text-xs text-on-surface-variant leading-relaxed">
@@ -46,8 +46,8 @@ export function CuratorSpotlightSection() {
               </div>
 
               <div className="p-4 rounded-2xl bg-surface-container-lowest border border-outline-variant/30">
-                <BookMarked className="w-5 h-5 text-secondary mb-2" />
-                <h4 className="font-serif text-sm font-bold text-primary mb-1">
+                <BookMarked className="w-5 h-5 text-primary mb-2" />
+                <h4 className="font-sans text-sm font-bold text-primary mb-1">
                   Uncanny Tonal Pairing
                 </h4>
                 <p className="font-sans text-xs text-on-surface-variant leading-relaxed">
@@ -67,7 +67,7 @@ export function CuratorSpotlightSection() {
                   <div className="font-mono text-[10px] tracking-widest text-[#78512F] uppercase font-bold">
                     Archival Dispatch • Daily Pick
                   </div>
-                  <div className="font-serif text-xs italic text-[#5C574F]">
+                  <div className="font-sans text-xs text-[#5C574F]">
                     Curator Slip #4,192
                   </div>
                 </div>
@@ -81,7 +81,7 @@ export function CuratorSpotlightSection() {
 
               {/* Book Info */}
               <div className="mb-6">
-                <div className="font-label-caps-xs text-[10px] text-[#78512F] uppercase tracking-wider font-bold mb-1">
+                <div className="font-label-caps-xs text-[10px] text-[#78512F] mb-1">
                   Physical Shelf Location
                 </div>
                 <div className="font-sans text-xs font-semibold text-[#1c1c18] mb-4 flex items-center gap-1.5">
@@ -89,10 +89,10 @@ export function CuratorSpotlightSection() {
                   East Wing Library • Oak Stack 3, Shelf B
                 </div>
 
-                <h3 className="font-serif text-2xl sm:text-3xl font-bold text-[#14263E] leading-tight">
+                <h3 className="font-sans text-2xl sm:text-3xl font-extrabold text-primary leading-tight">
                   The Left Hand of Darkness
                 </h3>
-                <div className="font-serif italic text-sm text-[#78512F] mt-1">
+                <div className="font-sans font-medium text-sm text-[#78512F] mt-1">
                   Ursula K. Le Guin (1969)
                 </div>
               </div>
@@ -100,10 +100,10 @@ export function CuratorSpotlightSection() {
               {/* Rationale Quote */}
               <div className="p-4 rounded-2xl bg-[#F0E9DA] border border-[#DCD2C0] relative mb-6">
                 <Quote className="w-4 h-4 text-[#78512F]/40 absolute top-3 right-3" />
-                <div className="font-label-caps-xs text-[9px] uppercase tracking-wider text-[#78512F] font-bold mb-2">
+                <div className="font-label-caps-xs text-[10px] text-[#78512F] mb-2">
                   Curator Rationale
                 </div>
-                <p className="font-serif italic text-xs sm:text-sm text-[#2D2A26] leading-relaxed">
+                <p className="font-sans text-xs sm:text-sm text-on-surface leading-relaxed">
                   "Because you recently logged Dune, this colder, more intimate
                   anthropological work provides a profound philosophical
                   counterbalance. Swap desert messianism for frostbound
@@ -124,7 +124,7 @@ export function CuratorSpotlightSection() {
               {/* Bottom Stamp */}
               <div className="mt-8 pt-4 border-t border-[#D8CFBF] flex items-center justify-between text-[11px] font-mono text-[#78512F]/80">
                 <span>Verified in Personal Vault</span>
-                <span className="font-bold text-[#14263E]">Ready on Shelf</span>
+                <span className="font-bold text-primary">Ready on Shelf</span>
               </div>
             </div>
           </div>

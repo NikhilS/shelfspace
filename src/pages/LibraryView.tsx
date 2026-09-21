@@ -21,7 +21,7 @@ import {instrumentMutation} from '../lib/telemetry';
 
 // Hooks
 import {useLibraryData} from '../hooks/useLibraryData';
-import {getAccessFromLibrary} from '../hooks/useLibraryAccess';
+import {getAccessFromLibrary} from '../lib/permissions';
 import {useBookFilters} from '../hooks/useBookFilters';
 import {useSelection} from '../hooks/useSelection';
 import {usePickOfTheDay} from '../hooks/usePickOfTheDay';
@@ -249,26 +249,94 @@ export default function LibraryView() {
       'ISBN',
       'Primary Genre',
       'Subgenres',
+      'Format',
+      'Timeline Era / Setting',
+      'Geographic Settings',
+      'Cover Image URL',
       'Published Date',
       'Added Date',
     ];
-    const escapeCSV = (str: string | undefined) => {
+    const escapeCSV = (str: string | undefined | null) => {
       if (!str) return '""';
       const escaped = String(str).replace(/"/g, '""');
       return `"${escaped}"`;
     };
+
+    const formatYear = (year: number) => {
+      if (year < 0) {
+        return `${Math.abs(year)} BCE`;
+      }
+      return `${year}`;
+    };
+
     const rows = books.map(book => {
       let addedDateStr = '';
       if (book.addedAt) {
         const time = getFirestoreTime(book.addedAt);
         if (time > 0) addedDateStr = format(new Date(time), 'PPpp');
       }
+
+      // Format
+      const formatStr = book.format ? toTitleCase(book.format) : 'Physical';
+
+      // Timeline Era / Setting
+      let eraSetting = '';
+      if (book.temporalMetadata) {
+        const {isNonHistorical, eraName, startYear, endYear} =
+          book.temporalMetadata;
+        if (isNonHistorical) {
+          eraSetting = 'Non-Historical / Secondary World';
+        } else if (
+          eraName &&
+          startYear !== undefined &&
+          endYear !== undefined
+        ) {
+          const yearSpan =
+            startYear === endYear
+              ? formatYear(startYear)
+              : `${formatYear(startYear)} – ${formatYear(endYear)}`;
+          eraSetting = `${eraName} (${yearSpan})`;
+        } else if (eraName) {
+          eraSetting = eraName;
+        } else if (startYear !== undefined && endYear !== undefined) {
+          eraSetting =
+            startYear === endYear
+              ? formatYear(startYear)
+              : `${formatYear(startYear)} – ${formatYear(endYear)}`;
+        } else if (startYear !== undefined) {
+          eraSetting = `Circa ${formatYear(startYear)}`;
+        }
+      }
+
+      // Geographic Settings
+      let geoSettings = '';
+      if (book.geoMetadata) {
+        if (book.geoMetadata.isNonEarth) {
+          geoSettings = 'Non-Earth / Fantasy Setting';
+        } else if (
+          book.geoMetadata.locations &&
+          book.geoMetadata.locations.length > 0
+        ) {
+          geoSettings = book.geoMetadata.locations
+            .map(l => l.name)
+            .filter(Boolean)
+            .join('; ');
+        }
+      }
+
+      // Cover Image URL
+      const coverUrl = book.coverUrl || book.coverUrlRaw || '';
+
       return [
         escapeCSV(book.title),
         escapeCSV(book.author),
         escapeCSV(book.isbn),
         escapeCSV(book.primaryGenre || ''),
         escapeCSV(book.subgenres?.join(', ') || ''),
+        escapeCSV(formatStr),
+        escapeCSV(eraSetting),
+        escapeCSV(geoSettings),
+        escapeCSV(coverUrl),
         escapeCSV(book.publishedDate),
         escapeCSV(addedDateStr),
       ].join(',');

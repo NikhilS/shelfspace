@@ -23,7 +23,7 @@ export function getAccessFromLibrary(
     };
   }
 
-  // Check new ABAC map first
+  // Check ABAC map first
   let role: 'owner' | 'editor' | 'viewer' | null = null;
   if (library.ownerId === userId) {
     role = 'owner';

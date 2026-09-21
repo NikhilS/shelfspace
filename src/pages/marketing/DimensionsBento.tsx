@@ -19,13 +19,13 @@ export function DimensionsBento() {
       <div className="max-w-[1200px] mx-auto px-6 sm:px-12">
         {/* Section Header */}
         <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 mb-4">
-            <Sparkles className="w-3.5 h-3.5 text-secondary" />
-            <span className="font-label-caps-sm text-[11px] text-secondary font-bold uppercase tracking-widest">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container border border-outline-variant/40 mb-4">
+            <Sparkles className="w-3.5 h-3.5 text-primary" />
+            <span className="font-label-caps-sm text-[11px] text-on-surface-variant font-bold uppercase tracking-widest">
               Four Spatial Dimensions
             </span>
           </div>
-          <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-primary tracking-tight mb-4">
+          <h2 className="font-sans text-3xl sm:text-4xl lg:text-5xl font-extrabold text-primary tracking-tight mb-4">
             Not just shelves. Dimensions.
           </h2>
           <p className="font-sans text-base sm:text-lg text-on-surface-variant leading-relaxed">
@@ -155,7 +155,7 @@ export function DimensionsBento() {
                 </Badge>
               </div>
 
-              <h3 className="font-serif text-2xl sm:text-3xl font-bold tracking-tight text-white mb-3">
+              <h3 className="font-sans text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-3">
                 Semantic Constellations
               </h3>
               <p className="font-sans text-sm sm:text-base text-white/80 max-w-xl leading-relaxed">
@@ -172,7 +172,7 @@ export function DimensionsBento() {
                 <span>• Genre Orbit Clustered</span>
                 <span>• Cross-Era Bridges</span>
               </div>
-              <span className="text-secondary-container font-semibold flex items-center gap-1">
+              <span className="text-primary font-semibold flex items-center gap-1">
                 Explore The Galaxy <ArrowRight className="w-3 h-3" />
               </span>
             </div>
@@ -182,7 +182,7 @@ export function DimensionsBento() {
           <div className="md:col-span-4 rounded-3xl bg-surface-container-lowest border border-outline-variant/40 p-8 flex flex-col justify-between shadow-elevation-1 hover:shadow-elevation-2 transition-all">
             <div>
               <div className="flex items-center justify-between gap-2 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-secondary/10 border border-secondary/20 flex items-center justify-center text-secondary">
+                <div className="w-12 h-12 rounded-2xl bg-surface-container border border-outline-variant/40 flex items-center justify-center text-primary">
                   <Sparkles className="w-6 h-6" />
                 </div>
                 {/* Before / After Switcher */}
@@ -203,7 +203,7 @@ export function DimensionsBento() {
                     onClick={() => setSpruceMode('after')}
                     className={`px-2.5 py-1 rounded-md transition-all ${
                       spruceMode === 'after'
-                        ? 'bg-secondary text-on-secondary font-bold shadow-xs'
+                        ? 'bg-primary text-on-primary font-bold shadow-xs'
                         : 'text-on-surface-variant hover:text-on-surface'
                     }`}
                   >
@@ -212,7 +212,7 @@ export function DimensionsBento() {
                 </div>
               </div>
 
-              <h3 className="font-serif text-2xl font-bold text-primary tracking-tight mb-2">
+              <h3 className="font-sans text-2xl font-bold text-primary tracking-tight mb-2">
                 Self-Healing Spruce-Up
               </h3>
               <p className="font-sans text-xs sm:text-sm text-on-surface-variant leading-relaxed mb-6">
@@ -257,7 +257,7 @@ export function DimensionsBento() {
 
             <div className="pt-6 border-t border-outline-variant/20 mt-6 flex items-center justify-between text-xs text-on-surface-variant">
               <span>Autonomous Gemini Engine</span>
-              <span className="font-semibold text-secondary">
+              <span className="font-semibold text-primary">
                 Zero Manual Cleanup
               </span>
             </div>
@@ -278,7 +278,7 @@ export function DimensionsBento() {
                 </Badge>
               </div>
 
-              <h3 className="font-serif text-2xl font-bold text-primary tracking-tight mb-2">
+              <h3 className="font-sans text-2xl font-bold text-primary tracking-tight mb-2">
                 Narrative Geography
               </h3>
               <p className="font-sans text-sm text-on-surface-variant leading-relaxed mb-6">
@@ -290,19 +290,19 @@ export function DimensionsBento() {
               {/* World Map Pin Mock */}
               <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/30 grid grid-cols-2 gap-3">
                 <div className="flex items-center gap-2 text-xs font-sans text-on-surface">
-                  <MapPin className="w-3.5 h-3.5 text-secondary shrink-0" />
+                  <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
                   <span className="font-medium">London, UK (34 books)</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs font-sans text-on-surface">
-                  <MapPin className="w-3.5 h-3.5 text-secondary shrink-0" />
+                  <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
                   <span className="font-medium">Kyoto, Japan (18 books)</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs font-sans text-on-surface">
-                  <MapPin className="w-3.5 h-3.5 text-secondary shrink-0" />
+                  <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
                   <span className="font-medium">Buenos Aires (9 books)</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs font-sans text-on-surface">
-                  <MapPin className="w-3.5 h-3.5 text-secondary shrink-0" />
+                  <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
                   <span className="font-medium">Cairo, Egypt (12 books)</span>
                 </div>
               </div>
@@ -320,18 +320,18 @@ export function DimensionsBento() {
           <div className="md:col-span-6 rounded-3xl bg-surface-container-lowest border border-outline-variant/40 p-8 sm:p-10 flex flex-col justify-between shadow-elevation-1 hover:shadow-elevation-2 transition-all">
             <div>
               <div className="flex items-center justify-between gap-2 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-secondary/10 border border-secondary/20 flex items-center justify-center text-secondary">
+                <div className="w-12 h-12 rounded-2xl bg-surface-container border border-outline-variant/40 flex items-center justify-center text-primary">
                   <Clock className="w-6 h-6" />
                 </div>
                 <Badge
                   variant="outline"
-                  className="bg-secondary/5 text-secondary border-secondary/20 font-label-caps-xs uppercase tracking-wider text-[10px]"
+                  className="bg-surface-container text-on-surface-variant border-outline-variant/30 font-label-caps-xs uppercase tracking-wider text-[10px]"
                 >
                   Epoch Traversal
                 </Badge>
               </div>
 
-              <h3 className="font-serif text-2xl font-bold text-primary tracking-tight mb-2">
+              <h3 className="font-sans text-2xl font-bold text-primary tracking-tight mb-2">
                 Deep-Time Timeline
               </h3>
               <p className="font-sans text-sm text-on-surface-variant leading-relaxed mb-6">
@@ -343,7 +343,7 @@ export function DimensionsBento() {
               {/* Timeline Track Mock */}
               <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/30 space-y-3">
                 <div className="w-full h-1.5 bg-outline-variant/40 relative rounded-full my-4">
-                  <div className="absolute top-1/2 left-[10%] w-3.5 h-3.5 bg-secondary rounded-full transform -translate-y-1/2 border-2 border-surface" />
+                  <div className="absolute top-1/2 left-[10%] w-3.5 h-3.5 bg-primary/70 rounded-full transform -translate-y-1/2 border-2 border-surface" />
                   <div className="absolute top-1/2 left-[45%] w-3.5 h-3.5 bg-primary rounded-full transform -translate-y-1/2 border-2 border-surface" />
                   <div className="absolute top-1/2 left-[90%] w-3.5 h-3.5 bg-emerald-600 rounded-full transform -translate-y-1/2 border-2 border-surface" />
                 </div>
@@ -357,7 +357,7 @@ export function DimensionsBento() {
 
             <div className="pt-6 border-t border-outline-variant/20 mt-6 flex items-center justify-between text-xs text-on-surface-variant">
               <span>Narrative setting alignment</span>
-              <span className="font-semibold text-secondary">
+              <span className="font-semibold text-primary">
                 Temporal Synchrony
               </span>
             </div>

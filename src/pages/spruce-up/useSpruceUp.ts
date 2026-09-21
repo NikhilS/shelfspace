@@ -1,11 +1,10 @@
 import {useMemo, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {useQueryClient} from '@tanstack/react-query';
 import {Book} from '../../types';
 import {toast} from 'sonner';
 import {useAuth} from '../../stores/authStore';
 import {useLibraryData} from '../../hooks/useLibraryData';
-import {trpc, trpcVanilla} from '../../lib/trpc';
+import {trpc} from '../../lib/trpc';
 import {instrumentMutation} from '../../lib/telemetry';
 
 const getFingerprints = (b: Book) => {
@@ -92,9 +91,9 @@ function findDuplicates(books: Book[]): Book[][] {
 export function useSpruceUp(libraryId: string | undefined) {
   const {user} = useAuth();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
 
-  // Consume the canonical ['books', libraryId] query provided by useLibraryData
+  // Consume declarative query provided by useLibraryData
   const {books, isBooksLoading: booksLoading} = useLibraryData(
     libraryId,
     user?.uid,
@@ -105,6 +104,23 @@ export function useSpruceUp(libraryId: string | undefined) {
     {libraryId: libraryId || ''},
     {enabled: !!libraryId},
   );
+
+  const deleteBookMutation = trpc.book.delete.useMutation({
+    onSuccess: () => {
+      if (libraryId) {
+        void utils.book.list.invalidate({libraryId});
+      }
+    },
+  });
+
+  const allowDuplicateGroupMutation =
+    trpc.library.allowDuplicateGroup.useMutation({
+      onSuccess: () => {
+        if (libraryId) {
+          void allowedQuery.refetch();
+        }
+      },
+    });
 
   const allowedDuplicateGroups = useMemo(() => {
     return allowedQuery.data?.allowedDuplicateGroups || [];
@@ -126,24 +142,29 @@ export function useSpruceUp(libraryId: string | undefined) {
 
   const handleDelete = async (id: string) => {
     if (!libraryId) return;
-    const originalBooks = [...books];
+    const originalData = utils.book.list.getData({libraryId});
     setProcessingIds(prev => new Set(prev).add(id));
     try {
-      queryClient.setQueryData(
-        ['books', libraryId],
-        (prev: Book[] | undefined) =>
-          prev ? prev.filter(b => b.id !== id) : [],
-      );
+      utils.book.list.setData({libraryId}, old => {
+        if (!old) return {books: []};
+        const oldBooks = Array.isArray(old)
+          ? (old as Book[])
+          : (old as {books?: Book[]}).books || [];
+        const updated = oldBooks.filter((b: Book) => b.id !== id);
+        return Array.isArray(old) ? updated : {...old, books: updated};
+      });
 
       await instrumentMutation(
         'delete',
         `libraries/${libraryId}/books/${id}`,
         {libraryId, bookId: id},
-        () => trpcVanilla.book.delete.mutate({libraryId, bookId: id}),
+        () => deleteBookMutation.mutateAsync({libraryId, bookId: id}),
       );
       toast.success('Book deleted');
     } catch (error) {
-      queryClient.setQueryData(['books', libraryId], originalBooks);
+      if (originalData) {
+        utils.book.list.setData({libraryId}, originalData);
+      }
       toast.error('Failed to delete book');
       console.error('Failed to delete book:', error);
     } finally {
@@ -164,12 +185,11 @@ export function useSpruceUp(libraryId: string | undefined) {
         `libraries/${libraryId}/allowedDuplicates`,
         {bookIds},
         () =>
-          trpcVanilla.library.allowDuplicateGroup.mutate({
+          allowDuplicateGroupMutation.mutateAsync({
             libraryId,
             bookIds,
           }),
       );
-      void allowedQuery.refetch();
       toast.success('Duplicate suggestion dismissed');
     } catch (error) {
       toast.error('Failed to dismiss suggestion');

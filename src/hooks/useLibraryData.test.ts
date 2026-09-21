@@ -1,9 +1,8 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {renderHook, waitFor, act} from '@testing-library/react';
+import {renderHook, waitFor} from '@testing-library/react';
 import React from 'react';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {useLibraryData, mapDocToBook} from './useLibraryData';
-import {DebugTelemetryEngine} from '../lib/telemetry';
 
 // Mock authStore
 vi.mock('../stores/authStore', () => ({
@@ -20,21 +19,8 @@ vi.mock('sonner', () => ({
   },
 }));
 
-// Mock firebase
-vi.mock('../firebase', () => ({
-  db: {},
-  auth: {
-    currentUser: {
-      getIdToken: vi.fn().mockResolvedValue('mock-token'),
-      uid: 'user123',
-    },
-  },
-  handleFirestoreError: vi.fn(),
-  OperationType: {GET: 'GET', LIST: 'LIST'},
-}));
-
 const mockTrpcLibraryQuery = vi.fn();
-const mockTrpcUseQuery = vi.fn();
+const mockTrpcBooksQuery = vi.fn();
 
 vi.mock('../lib/trpc', () => ({
   trpc: {
@@ -45,7 +31,7 @@ vi.mock('../lib/trpc', () => ({
     },
     book: {
       list: {
-        useQuery: (...args: unknown[]) => mockTrpcUseQuery(...args),
+        useQuery: (...args: unknown[]) => mockTrpcBooksQuery(...args),
       },
     },
   },
@@ -58,29 +44,7 @@ vi.mock('../lib/trpc', () => ({
   },
 }));
 
-let mockGetDocFromCache: ReturnType<typeof vi.fn>;
-let mockGetDocsFromCache: ReturnType<typeof vi.fn>;
-let mockOnSnapshot: ReturnType<typeof vi.fn>;
-let mockUpdateDoc: ReturnType<typeof vi.fn>;
-
-vi.mock('firebase/firestore', () => {
-  return {
-    doc: vi.fn((_db, ...parts) => ({
-      path: parts.join('/'),
-      id: parts[parts.length - 1],
-    })),
-    collection: vi.fn((_db, ...parts) => ({path: parts.join('/')})),
-    query: vi.fn(ref => ref),
-    orderBy: vi.fn(),
-    serverTimestamp: vi.fn(() => 'MOCK_TIMESTAMP'),
-    updateDoc: vi.fn((...args) => mockUpdateDoc(...args)),
-    getDocFromCache: vi.fn((...args) => mockGetDocFromCache(...args)),
-    getDocsFromCache: vi.fn((...args) => mockGetDocsFromCache(...args)),
-    onSnapshot: vi.fn((...args) => mockOnSnapshot(...args)),
-  };
-});
-
-describe('Phase 4: Zero-Latency Offline-First Hydration (useLibraryData)', () => {
+describe('Declarative TanStack React Query (useLibraryData)', () => {
   let queryClient: QueryClient;
   const navigate = vi.fn();
 
@@ -96,22 +60,39 @@ describe('Phase 4: Zero-Latency Offline-First Hydration (useLibraryData)', () =>
       },
     });
 
-    mockUpdateDoc = vi.fn().mockResolvedValue(undefined);
-    mockGetDocFromCache = vi.fn().mockRejectedValue(new Error('Cache miss'));
-    mockGetDocsFromCache = vi.fn().mockRejectedValue(new Error('Cache miss'));
-    mockOnSnapshot = vi.fn(() => () => {});
-
-    mockTrpcLibraryQuery.mockImplementation((input: {libraryId?: string}) => ({
-      data: input?.libraryId
-        ? {
-            id: input.libraryId,
-            name: 'Test Library',
-            ownerId: 'user123',
-            callerRole: 'owner',
-          }
-        : null,
+    mockTrpcLibraryQuery.mockReturnValue({
+      data: {
+        id: 'lib-1',
+        name: 'Test Library',
+        ownerId: 'user123',
+        callerRole: 'owner',
+      },
       isLoading: false,
-    }));
+      isFetching: false,
+      isStale: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn().mockResolvedValue({}),
+    });
+
+    mockTrpcBooksQuery.mockReturnValue({
+      data: {
+        books: [
+          {
+            id: 'book-1',
+            title: 'Dune',
+            author: 'Frank Herbert',
+            primaryGenre: 'Science Fiction',
+          },
+        ],
+      },
+      isLoading: false,
+      isFetching: false,
+      isStale: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn().mockResolvedValue({}),
+    });
   });
 
   const createWrapper = () => {
@@ -160,217 +141,142 @@ describe('Phase 4: Zero-Latency Offline-First Hydration (useLibraryData)', () =>
     });
   });
 
-  describe('Stage 1: Synchronous / Immediate IndexedDB Cache Paint', () => {
-    it('hydrates library and books immediately from cache before network responds', async () => {
-      const cachedLibData = {
-        name: 'Sci-Fi Collection',
-        ownerId: 'user123',
-        bookCount: 1,
-      };
-
-      const cachedBookData = {
-        id: 'book-42',
-        title: 'Neuromancer',
-        author: 'William Gibson',
-        primaryGenre: 'Cyberpunk',
-        addedAt: '2024-01-01',
-      };
-
-      queryClient.setQueryData(['library', 'lib-42'], {
-        id: 'lib-42',
-        ...cachedLibData,
-      });
-      queryClient.setQueryData(['books', 'lib-42'], [cachedBookData]);
-
-      mockGetDocFromCache.mockResolvedValueOnce({
-        id: 'lib-42',
-        exists: () => true,
-        data: () => cachedLibData,
-      });
-
-      mockTrpcLibraryQuery.mockReturnValue({
-        data: {
-          id: 'lib-42',
-          ...cachedLibData,
-        },
-        isLoading: false,
-        isFetching: false,
-        isStale: false,
-      });
-
-      mockTrpcUseQuery.mockReturnValue({
-        data: {books: [cachedBookData]},
-        isLoading: false,
-        isFetching: false,
-        isStale: false,
-      });
-
+  describe('Declarative Data Loading', () => {
+    it('returns normalized library and book data directly from declarative queries', async () => {
       const {result} = renderHook(
-        () => useLibraryData('lib-42', 'user123', navigate),
+        () => useLibraryData('lib-1', 'user123', navigate),
         {wrapper: createWrapper()},
       );
 
-      // Verify Stage 1 hydration
       await waitFor(() => {
         expect(result.current.library).toEqual({
-          id: 'lib-42',
-          ...cachedLibData,
+          id: 'lib-1',
+          name: 'Test Library',
+          ownerId: 'user123',
+          callerRole: 'owner',
         });
         expect(result.current.books).toHaveLength(1);
-        expect(result.current.books[0].title).toBe('Neuromancer');
-        expect(result.current.isCachedFirstPaint).toBe(true);
+        expect(result.current.books[0].title).toBe('Dune');
         expect(result.current.isLoading).toBe(false);
         expect(result.current.isBooksLoading).toBe(false);
+        expect(result.current.isCachedFirstPaint).toBe(true);
       });
-
-      // Verify queryClient cache was seeded
-      expect(queryClient.getQueryData(['library', 'lib-42'])).toBeDefined();
-      expect(queryClient.getQueryData(['books', 'lib-42'])).toHaveLength(1);
     });
 
-    it('falls back smoothly to network when cache misses', async () => {
-      mockGetDocFromCache.mockRejectedValueOnce(new Error('IndexedDB miss'));
-
-      let libListenerCb: ((snap: unknown) => void) | null = null;
-
-      mockOnSnapshot.mockImplementation((_ref, opts, cb) => {
-        const callback = typeof opts === 'function' ? opts : cb;
-        libListenerCb = callback;
-        return () => {};
+    it('handles raw array books format as well as {books: []} wrapper', async () => {
+      mockTrpcBooksQuery.mockReturnValue({
+        data: [
+          {
+            id: 'book-2',
+            title: 'Hyperion',
+            author: 'Dan Simmons',
+          },
+        ],
+        isLoading: false,
+        isFetching: false,
+        isStale: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
       });
 
+      const {result} = renderHook(
+        () => useLibraryData('lib-1', 'user123', navigate),
+        {wrapper: createWrapper()},
+      );
+
+      await waitFor(() => {
+        expect(result.current.books).toHaveLength(1);
+        expect(result.current.books[0].title).toBe('Hyperion');
+      });
+    });
+
+    it('accurately represents loading and syncing states', () => {
       mockTrpcLibraryQuery.mockReturnValue({
         data: undefined,
         isLoading: true,
         isFetching: true,
         isStale: true,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
       });
 
-      mockTrpcUseQuery.mockReturnValue({
+      mockTrpcBooksQuery.mockReturnValue({
         data: undefined,
         isLoading: true,
         isFetching: true,
         isStale: true,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
       });
 
-      const {result, rerender} = renderHook(
-        () => useLibraryData('lib-miss', 'user123', navigate),
+      const {result} = renderHook(
+        () => useLibraryData('lib-1', 'user123', navigate),
         {wrapper: createWrapper()},
       );
 
       expect(result.current.isLoading).toBe(true);
       expect(result.current.isBooksLoading).toBe(true);
+      expect(result.current.isSyncing).toBe(false);
+      expect(result.current.library).toBeNull();
+      expect(result.current.books).toEqual([]);
+    });
 
-      // Network arrives
-      act(() => {
-        if (libListenerCb) {
-          libListenerCb({
-            id: 'lib-miss',
-            exists: () => true,
-            data: () => ({
-              name: 'Network Library',
-              ownerId: 'user123',
-              bookCount: 0,
-            }),
-            metadata: {fromCache: false},
-          });
-        }
-      });
-
+    it('navigates away when library query encounters an error', async () => {
       mockTrpcLibraryQuery.mockReturnValue({
-        data: {
-          id: 'lib-miss',
-          name: 'Network Library',
-          ownerId: 'user123',
-          bookCount: 0,
-        },
-        isLoading: false,
-        isFetching: false,
-        isStale: false,
-      });
-
-      mockTrpcUseQuery.mockReturnValue({
-        data: {
-          books: [],
-        },
-        isLoading: false,
-        isFetching: false,
-        isStale: false,
-      });
-
-      rerender();
-
-      await waitFor(() => {
-        expect(result.current.library?.name).toBe('Network Library');
-        expect(result.current.isLoading).toBe(false);
-        expect(result.current.isBooksLoading).toBe(false);
-      });
-    });
-  });
-
-  describe('Stage 2: Network Delta Reconciliation', () => {
-    it('seamlessly updates cached data when tRPC query updates', async () => {
-      mockTrpcUseQuery.mockReturnValue({
-        data: {
-          books: [
-            {
-              id: 'b1',
-              title: 'Book 1 Updated from Server',
-            },
-            {
-              id: 'b2',
-              title: 'Book 2 New from Server',
-            },
-          ],
-        },
-        isLoading: false,
-        isFetching: false,
-        isStale: false,
-      });
-
-      const {result} = renderHook(
-        () => useLibraryData('lib-swr', 'user123', navigate),
-        {wrapper: createWrapper()},
-      );
-
-      await waitFor(() => {
-        expect(result.current.books).toHaveLength(2);
-        expect(result.current.books[0].title).toBe(
-          'Book 1 Updated from Server',
-        );
-        expect(result.current.books[1].title).toBe('Book 2 New from Server');
-      });
-    });
-
-    it('derives books from queryClient cache when tRPC is loading or returns undefined', async () => {
-      const cachedBook = {
-        id: 'book-cache-1',
-        title: 'Foundation',
-        author: 'Isaac Asimov',
-        primaryGenre: 'Sci-Fi',
-      };
-      queryClient.setQueryData(['books', 'lib-live'], [cachedBook]);
-
-      mockTrpcUseQuery.mockReturnValue({
         data: undefined,
         isLoading: false,
         isFetching: false,
         isStale: false,
+        isError: true,
+        error: new Error('Unauthorized'),
+        refetch: vi.fn(),
+      });
+
+      renderHook(() => useLibraryData('lib-err', 'user123', navigate), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(navigate).toHaveBeenCalledWith('/');
+      });
+    });
+
+    it('provides a unified refetch function', async () => {
+      const mockLibRefetch = vi.fn().mockResolvedValue({});
+      const mockBooksRefetch = vi.fn().mockResolvedValue({});
+
+      mockTrpcLibraryQuery.mockReturnValue({
+        data: {id: 'lib-1', name: 'Test'},
+        isLoading: false,
+        isFetching: false,
+        isStale: false,
+        isError: false,
+        error: null,
+        refetch: mockLibRefetch,
+      });
+
+      mockTrpcBooksQuery.mockReturnValue({
+        data: {books: []},
+        isLoading: false,
+        isFetching: false,
+        isStale: false,
+        isError: false,
+        error: null,
+        refetch: mockBooksRefetch,
       });
 
       const {result} = renderHook(
-        () => useLibraryData('lib-live', 'user123', navigate),
+        () => useLibraryData('lib-1', 'user123', navigate),
         {wrapper: createWrapper()},
       );
 
-      await waitFor(() => {
-        expect(result.current.books).toHaveLength(1);
-        expect(result.current.books[0].id).toBe('book-cache-1');
-        expect(result.current.books[0].title).toBe('Foundation');
-        expect(result.current.isBooksLoading).toBe(false);
-      });
+      await result.current.refetch();
 
-      expect(queryClient.getQueryData(['books', 'lib-live'])).toHaveLength(1);
+      expect(mockLibRefetch).toHaveBeenCalled();
+      expect(mockBooksRefetch).toHaveBeenCalled();
     });
   });
 });

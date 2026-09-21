@@ -119,18 +119,18 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
       {books.length === 0 ? (
         /* Empty State */
         <div className="max-w-xl mx-auto py-16 px-8 text-center flex flex-col items-center gap-8 bg-surface-container-lowest border border-outline-variant/30 rounded-2xl shadow-elevation-2 mt-4">
-          <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-secondary-container/15 text-secondary">
-            <BookIcon className="w-9 h-9 text-secondary" />
+          <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-surface-container text-primary">
+            <BookIcon className="w-9 h-9 text-primary" />
             <motion.div
               animate={{rotate: 360}}
               transition={{repeat: Infinity, duration: 24, ease: 'linear'}}
-              className="absolute inset-0 border border-dashed border-secondary/30 rounded-full"
+              className="absolute inset-0 border border-dashed border-outline-variant rounded-full"
             />
-            <Sparkles className="absolute -top-1 -right-1 w-5 h-5 text-secondary animate-pulse" />
+            <Sparkles className="absolute -top-1 -right-1 w-5 h-5 text-primary animate-pulse" />
           </div>
 
           <div className="space-y-3">
-            <h2 className="font-serif text-3xl font-bold tracking-tight text-primary">
+            <h2 className="font-sans text-3xl font-extrabold tracking-tight text-primary">
               Your Library is a Blank Page
             </h2>
             <p className="font-sans text-sm text-on-surface-variant max-w-md mx-auto leading-relaxed">
@@ -233,17 +233,17 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                               }}
                             >
                               <div className="flex items-center justify-between text-xs">
-                                <span className="font-sans font-semibold text-primary group-hover:text-secondary transition-colors truncate pr-2">
+                                <span className="font-sans font-semibold text-primary group-hover:text-primary transition-colors truncate pr-2">
                                   {category.name || 'Uncategorized'}
                                 </span>
-                                <span className="font-sans font-bold text-on-surface-variant group-hover:text-secondary transition-colors uppercase tracking-wider flex-shrink-0 font-label-caps-xs text-label-caps-xs">
+                                <span className="font-sans font-bold text-on-surface-variant group-hover:text-primary transition-colors uppercase tracking-wider flex-shrink-0 font-label-caps-xs text-label-caps-xs">
                                   {category.value}{' '}
                                   {category.value === 1 ? 'vol' : 'vols'}
                                 </span>
                               </div>
                               <div className="w-full h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-secondary/40 group-hover:bg-secondary transition-colors duration-300"
+                                  className="h-full bg-primary/40 group-hover:bg-primary transition-colors duration-300"
                                   style={{width: `${widthPercent}%`}}
                                 />
                               </div>
@@ -292,17 +292,17 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                           />
                         ) : (
                           <div className="relative w-full h-36 bg-surface-variant rounded-sm shadow-md border border-outline-variant/20 z-10 flex items-center justify-center p-2 text-center">
-                            <span className="font-serif text-xs font-bold text-on-surface-variant">
+                            <span className="font-sans text-xs font-bold text-on-surface-variant">
                               {book.title}
                             </span>
                           </div>
                         )}
                       </div>
                       <div className="flex-grow min-w-0 w-full text-center sm:text-left break-words">
-                        <span className="font-label-caps-sm text-label-caps-sm font-sans font-semibold tracking-wider uppercase text-secondary/90 block">
+                        <span className="font-label-caps-sm text-label-caps-sm font-sans font-semibold tracking-wider uppercase text-on-surface-variant block">
                           Currently Reading
                         </span>
-                        <h3 className="font-serif text-lg sm:text-xl font-bold tracking-tight text-primary mt-1 mb-0.5 line-clamp-2">
+                        <h3 className="font-sans text-lg sm:text-xl font-bold tracking-tight text-primary mt-1 mb-0.5 line-clamp-2">
                           {toTitleCase(book.title)}
                         </h3>
                         <p className="font-sans text-xs sm:text-sm text-on-surface-variant mb-4">
@@ -333,7 +333,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
 
                 {/* AI Curator's Pick */}
                 <div className="bg-gradient-to-br from-surface-container-low to-surface border border-outline-variant/30 p-5 sm:p-6 rounded-2xl relative overflow-hidden min-h-[160px] flex items-center shadow-xs">
-                  <div className="absolute top-4 right-4 text-secondary/30 pointer-events-none">
+                  <div className="absolute top-4 right-4 text-primary/20 pointer-events-none">
                     <Sparkles size={24} />
                   </div>
                   <Button
@@ -364,23 +364,23 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                             loading="lazy"
                           />
                         ) : (
-                          <div className="w-full h-28 bg-surface-variant rounded-sm shadow-md border border-outline-variant/20 flex items-center justify-center p-2 text-center font-serif text-xs text-on-surface-variant">
+                          <div className="w-full h-28 bg-surface-variant rounded-sm shadow-md border border-outline-variant/20 flex items-center justify-center p-2 text-center font-sans text-xs font-bold text-on-surface-variant">
                             {pickOfTheDay.title}
                           </div>
                         )}
                       </div>
                       <div className="flex flex-col justify-center flex-1 min-w-0 text-center sm:text-left break-words">
-                        <span className="font-label-caps-sm text-label-caps-sm font-sans font-semibold tracking-wider uppercase text-secondary/90 flex items-center justify-center sm:justify-start gap-1 mb-1">
-                          <Sparkles size={13} className="text-secondary/80" />
+                        <span className="font-label-caps-sm text-label-caps-sm font-sans font-semibold tracking-wider uppercase text-on-surface-variant flex items-center justify-center sm:justify-start gap-1 mb-1">
+                          <Sparkles size={13} className="text-primary" />
                           Curator's Recommendation
                         </span>
-                        <h3 className="font-serif text-base sm:text-lg font-bold tracking-tight text-primary line-clamp-1">
+                        <h3 className="font-sans text-base sm:text-lg font-bold tracking-tight text-primary line-clamp-1">
                           {toTitleCase(pickOfTheDay.title)}
                         </h3>
                         <p className="font-sans text-xs text-on-surface-variant mb-2">
                           {toTitleCase(pickOfTheDay.author)}
                         </p>
-                        <div className="border-l-2 border-secondary/30 pl-3 py-0.5 text-left">
+                        <div className="border-l-2 border-primary/30 pl-3 py-0.5 text-left">
                           <p className="font-sans text-xs text-on-surface leading-relaxed italic">
                             "{pickOfTheDay.reason}"
                           </p>
@@ -389,7 +389,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                     </div>
                   ) : pickError ? (
                     <div className="w-full flex flex-col items-center justify-center gap-3 py-6 text-center z-10 relative px-4">
-                      <p className="font-serif text-sm font-bold text-accent">
+                      <p className="font-sans text-sm font-bold text-accent">
                         AI Curator Unavailable
                       </p>
                       <p className="font-sans text-xs text-on-surface-variant max-w-sm">
@@ -411,7 +411,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                     </div>
                   ) : (
                     <div className="w-full flex flex-col items-center justify-center gap-2.5 py-6 text-center z-10 relative px-4">
-                      <p className="font-serif text-base font-bold text-primary">
+                      <p className="font-sans text-base font-bold text-primary">
                         Curator's Pick
                       </p>
                       <p className="font-sans text-xs text-on-surface-variant max-w-sm">
@@ -424,7 +424,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         size="sm"
                         className="gap-2 bg-surface hover:bg-surface-container min-h-[38px] px-4 rounded-xl text-xs font-semibold"
                       >
-                        <Sparkles className="w-3.5 h-3.5 text-secondary" />
+                        <Sparkles className="w-3.5 h-3.5 text-primary" />
                         Surprise Me
                       </Button>
                     </div>
@@ -481,7 +481,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         />
                       ) : (
                         <div className="w-full h-full p-2 flex flex-col justify-between text-center bg-surface-variant">
-                          <span className="font-serif text-xs font-bold text-on-surface-variant line-clamp-3">
+                          <span className="font-sans text-xs font-bold text-on-surface-variant line-clamp-3">
                             {book.title}
                           </span>
                           <span className="font-label-caps-xs text-label-caps-xs text-on-surface-variant/70 truncate">
@@ -506,7 +506,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
           <section aria-label="Explore Collection Visualizers">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-3.5">
               <div className="flex items-center gap-2">
-                <Compass className="w-4 h-4 text-secondary stroke-[2.2]" />
+                <Compass className="w-4 h-4 text-primary stroke-[2.2]" />
                 <h2 className="section-heading">Explore The Collection</h2>
                 <Badge
                   variant="outline"
@@ -525,11 +525,11 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
               {/* Option 1: Timeline */}
               <Link
                 to={`/library/${library.id}/timeline`}
-                className="group relative flex flex-col justify-between p-4 rounded-xl bg-gradient-to-br from-surface-container-lowest to-[#fbf8f2] dark:from-surface-container-low dark:to-[#221e17] border border-outline-variant/30 hover:border-secondary/50 shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
+                className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
               >
                 {/* Visual Watermark: Chronological axis with milestone ticks */}
                 <svg
-                  className="absolute -right-2 -bottom-2 w-36 h-20 text-secondary/10 dark:text-secondary/15 pointer-events-none group-hover:text-secondary/20 transition-colors"
+                  className="absolute -right-2 -bottom-2 w-36 h-20 text-outline-variant/30 pointer-events-none group-hover:text-outline-variant/50 transition-colors"
                   viewBox="0 0 144 80"
                   fill="none"
                   stroke="currentColor"
@@ -579,17 +579,17 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                 <div className="relative z-10">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-secondary/15 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
                         <Clock className="w-4 h-4" />
                       </div>
-                      <h3 className="font-serif text-sm sm:text-base font-bold text-on-surface group-hover:text-secondary transition-colors truncate">
+                      <h3 className="font-sans text-sm sm:text-base font-bold text-on-surface group-hover:text-primary transition-colors truncate">
                         Historical Timeline
                       </h3>
                     </div>
                     <Badge
-                      variant="secondary"
+                      variant="outline"
                       size="sm"
-                      className="font-medium text-secondary/90 bg-secondary/10 border-secondary/20 flex-shrink-0 whitespace-nowrap"
+                      className="font-medium text-on-surface-variant bg-surface-container border-outline-variant/40 flex-shrink-0 whitespace-nowrap"
                     >
                       {temporalBooksCount > 0
                         ? `${temporalBooksCount} Charted`
@@ -601,7 +601,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                   </p>
                 </div>
 
-                <div className="relative z-10 mt-3 pt-2.5 border-t border-outline-variant/15 flex items-center justify-between text-xs font-sans font-medium text-secondary">
+                <div className="relative z-10 mt-3 pt-2.5 border-t border-outline-variant/15 flex items-center justify-between text-xs font-sans font-medium text-primary">
                   <span className="group-hover:underline">Launch Timeline</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </div>
@@ -610,11 +610,11 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
               {/* Option 2: World Map */}
               <Link
                 to={`/library/${library.id}/map`}
-                className="group relative flex flex-col justify-between p-4 rounded-xl bg-gradient-to-br from-surface-container-lowest to-[#f3f7f5] dark:from-surface-container-low dark:to-[#17241e] border border-outline-variant/30 hover:border-tertiary-container-on/50 shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
+                className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
               >
                 {/* Visual Watermark: Cartographic coordinate arcs and globe curves */}
                 <svg
-                  className="absolute -right-2 -bottom-2 w-36 h-20 text-tertiary-container-on/15 dark:text-tertiary-fixed-base/15 pointer-events-none group-hover:text-tertiary-container-on/25 transition-colors"
+                  className="absolute -right-2 -bottom-2 w-36 h-20 text-outline-variant/30 pointer-events-none group-hover:text-outline-variant/50 transition-colors"
                   viewBox="0 0 144 80"
                   fill="none"
                   stroke="currentColor"
@@ -660,17 +660,17 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                 <div className="relative z-10">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-tertiary-container/25 text-tertiary-container-on dark:text-tertiary-fixed-base flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
                         <Globe className="w-4 h-4" />
                       </div>
-                      <h3 className="font-serif text-sm sm:text-base font-bold text-on-surface group-hover:text-primary transition-colors truncate">
+                      <h3 className="font-sans text-sm sm:text-base font-bold text-on-surface group-hover:text-primary transition-colors truncate">
                         Literary World Map
                       </h3>
                     </div>
                     <Badge
                       variant="outline"
                       size="sm"
-                      className="font-medium text-tertiary-fixed-variant-on dark:text-tertiary-fixed-base bg-tertiary-fixed-base/30 border-tertiary-fixed-dim-base/40 flex-shrink-0 whitespace-nowrap"
+                      className="font-medium text-on-surface-variant bg-surface-container border-outline-variant/40 flex-shrink-0 whitespace-nowrap"
                     >
                       {geoLocationsCount > 0
                         ? `${geoLocationsCount} Places`
@@ -691,11 +691,11 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
               {/* Option 3: Constellation Map */}
               <Link
                 to={`/library/${library.id}/constellation`}
-                className="group relative flex flex-col justify-between p-4 rounded-xl bg-gradient-to-br from-surface-container-lowest to-[#f1f4fb] dark:from-surface-container-low dark:to-[#171f2b] border border-outline-variant/30 hover:border-primary/50 shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
+                className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
               >
                 {/* Visual Watermark: Stellar cluster with connected nodes & orbital arc */}
                 <svg
-                  className="absolute -right-2 -bottom-2 w-36 h-20 text-primary/15 dark:text-primary-inverse/20 pointer-events-none group-hover:text-primary/25 transition-colors"
+                  className="absolute -right-2 -bottom-2 w-36 h-20 text-outline-variant/30 pointer-events-none group-hover:text-outline-variant/50 transition-colors"
                   viewBox="0 0 144 80"
                   fill="none"
                   stroke="currentColor"
@@ -736,17 +736,17 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                 <div className="relative z-10">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
                         <Sparkles className="w-4 h-4" />
                       </div>
-                      <h3 className="font-serif text-sm sm:text-base font-bold text-on-surface group-hover:text-primary transition-colors truncate">
+                      <h3 className="font-sans text-sm sm:text-base font-bold text-on-surface group-hover:text-primary transition-colors truncate">
                         Thematic Constellations
                       </h3>
                     </div>
                     <Badge
-                      variant="default"
+                      variant="outline"
                       size="sm"
-                      className="font-medium text-primary bg-primary/10 border-primary/20 flex-shrink-0 whitespace-nowrap"
+                      className="font-medium text-on-surface-variant bg-surface-container border-outline-variant/40 flex-shrink-0 whitespace-nowrap"
                     >
                       {topCategories.length > 0
                         ? `${topCategories.length} Genres`

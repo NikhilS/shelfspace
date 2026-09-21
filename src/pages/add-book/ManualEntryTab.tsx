@@ -23,6 +23,7 @@ import {
   normalizeBookDetails,
 } from '../../lib/utils';
 import {GenreSelect} from '../../components/GenreSelect';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 
 interface ManualEntryTabProps {
   existingBooks: BookDetails[];
@@ -50,6 +51,7 @@ export function ManualEntryTab({
   allowDuplicates,
   addBooks,
 }: ManualEntryTabProps) {
+  const isOnline = useOnlineStatus();
   const [coverUrl, setCoverUrl] = useState<string>('');
   const [isCoverCameraActive, setIsCoverCameraActive] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -91,6 +93,11 @@ export function ManualEntryTab({
   const formatValue = watch('format');
 
   const onSubmit = async (data: ManualEntryFormValues) => {
+    if (!isOnline) {
+      toast.error('Network required: Connect to the internet to add books.');
+      return;
+    }
+
     const newBook = normalizeBookDetails({
       ...data,
       coverUrl,
@@ -309,7 +316,8 @@ export function ManualEntryTab({
 
         <Button
           type="submit"
-          disabled={!isValid || isAdding}
+          disabled={!isValid || isAdding || !isOnline}
+          title={!isOnline ? 'Cannot add book while offline' : undefined}
           className="w-full rounded-full h-14 text-base font-bold shadow-elevation-2 hover:shadow-lg hover:-translate-y-0.5 mt-8 disabled:opacity-50"
         >
           {isAdding ? (
@@ -319,7 +327,11 @@ export function ManualEntryTab({
               strokeWidth={2.5}
             />
           ) : null}
-          {isAdding ? 'Adding Book...' : 'Add Book to Library'}
+          {isAdding
+            ? 'Adding Book...'
+            : !isOnline
+              ? 'Add Book (Offline - Connect to Save)'
+              : 'Add Book to Library'}
         </Button>
       </form>
     </div>

@@ -23,6 +23,29 @@ const mockClose = vi.fn().mockResolvedValue(undefined);
 const mockUpdate = vi.fn();
 const mockSet = vi.fn();
 
+const mockResetMetadata = vi.fn().mockImplementation(({metadataType}) => {
+  if (metadataType === 'genre') {
+    return Promise.resolve({success: true, count: 1});
+  }
+  if (metadataType === 'geo') {
+    return Promise.resolve({success: true, count: 1});
+  }
+  if (metadataType === 'sanitize') {
+    return Promise.resolve({success: true, count: 1});
+  }
+  return Promise.resolve({success: true, count: 0});
+});
+
+vi.mock('../../lib/trpc', () => ({
+  trpcVanilla: {
+    library: {
+      resetMetadata: {
+        mutate: vi.fn((...args) => mockResetMetadata(...args)),
+      },
+    },
+  },
+}));
+
 vi.mock('../../lib/clientBulkWriter', () => {
   return {
     ClientBulkWriter: class {
@@ -95,8 +118,10 @@ describe('ResetMetadataSection', () => {
     fireEvent.click(confirmBtns[confirmBtns.length - 1]);
 
     await waitFor(() => {
-      expect(mockUpdate).toHaveBeenCalledTimes(1);
-      expect(mockClose).toHaveBeenCalledTimes(1);
+      expect(mockResetMetadata).toHaveBeenCalledWith({
+        libraryId: 'lib-123',
+        metadataType: 'genre',
+      });
       expect(toast.success).toHaveBeenCalledWith(
         'Successfully reset Taxonomy Genres across 1 book.',
       );
@@ -109,6 +134,7 @@ describe('ResetMetadataSection', () => {
   });
 
   it('handles resetting when 0 books require the reset', async () => {
+    mockResetMetadata.mockResolvedValueOnce({success: true, count: 0});
     // Only books with no genre metadata
     const booksWithoutGenre = [mockBooks[1]];
     render(
@@ -126,8 +152,10 @@ describe('ResetMetadataSection', () => {
     fireEvent.click(confirmBtns[confirmBtns.length - 1]);
 
     await waitFor(() => {
-      expect(mockUpdate).not.toHaveBeenCalled();
-      expect(mockClose).toHaveBeenCalledTimes(1);
+      expect(mockResetMetadata).toHaveBeenCalledWith({
+        libraryId: 'lib-123',
+        metadataType: 'genre',
+      });
       expect(toast.success).toHaveBeenCalledWith(
         'Successfully reset Taxonomy Genres across 0 books.',
       );
@@ -171,8 +199,10 @@ describe('ResetMetadataSection', () => {
     fireEvent.click(confirmBtns[confirmBtns.length - 1]);
 
     await waitFor(() => {
-      expect(mockUpdate).toHaveBeenCalledTimes(1);
-      expect(mockClose).toHaveBeenCalledTimes(1);
+      expect(mockResetMetadata).toHaveBeenCalledWith({
+        libraryId: 'lib-123',
+        metadataType: 'geo',
+      });
       expect(toast.success).toHaveBeenCalledWith(
         'Successfully reset Settings & Places across 1 book.',
       );
@@ -208,9 +238,10 @@ describe('ResetMetadataSection', () => {
     );
 
     await waitFor(() => {
-      expect(mockSet).toHaveBeenCalledTimes(1);
-      expect(mockUpdate).toHaveBeenCalledTimes(1);
-      expect(mockClose).toHaveBeenCalledTimes(1);
+      expect(mockResetMetadata).toHaveBeenCalledWith({
+        libraryId: 'lib-123',
+        metadataType: 'sanitize',
+      });
       expect(toast.success).toHaveBeenCalledWith(
         expect.stringContaining('Sanitized 1 books'),
       );

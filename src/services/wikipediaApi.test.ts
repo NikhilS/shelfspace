@@ -38,6 +38,9 @@ describe('wikipediaApi', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining('George%20Orwell'),
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -74,6 +77,58 @@ describe('wikipediaApi', () => {
     );
 
     const result = await fetchAuthorBioFromWikipedia('Error Author');
+    expect(result).toBeNull();
+  });
+
+  it('falls back to primary author when multi-author string fails first lookup', async () => {
+    // First call with full string "Neil Gaiman, Terry Pratchett" fails (pageId -1)
+    (global.fetch as import('vitest').Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          query: {
+            pages: {
+              '-1': {title: 'Neil Gaiman, Terry Pratchett'},
+            },
+          },
+        }),
+      })
+      // Second call with "Neil Gaiman" succeeds
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          query: {
+            pages: {
+              '456': {
+                extract: 'Neil Richard MacKinnon Gaiman is an English author.',
+              },
+            },
+          },
+        }),
+      });
+
+    const result = await fetchAuthorBioFromWikipedia(
+      'Neil Gaiman, Terry Pratchett',
+    );
+    expect(result).toBe('Neil Richard MacKinnon Gaiman is an English author.');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns null if extract is a disambiguation page', async () => {
+    (global.fetch as import('vitest').Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        query: {
+          pages: {
+            '789': {
+              extract: 'John Smith may refer to: ...',
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await fetchAuthorBioFromWikipedia('John Smith');
     expect(result).toBeNull();
   });
 });

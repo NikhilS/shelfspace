@@ -8,6 +8,11 @@ import {
   Outlet,
   useLocation,
 } from 'react-router-dom';
+import {httpBatchLink} from '@trpc/client';
+import {trpc} from './lib/trpc';
+import {auth} from './firebase';
+import {queryClient} from './lib/queryClient';
+import {initAuthListener} from './services/authListener';
 import {useAuthStore} from './stores/authStore';
 import {useAppStore} from './stores/appStore';
 import {useAppPermissions} from './hooks/useAppPermissions';
@@ -25,6 +30,23 @@ import {
 } from './components/LibrarySkeletons';
 import {useDebug} from './stores/debugStore';
 import {Button} from './components/ui/button';
+
+// Initialize Auth
+initAuthListener();
+
+const trpcClient = trpc.createClient({
+  links: [
+    httpBatchLink({
+      url: '/trpc',
+      async headers() {
+        const token = await auth.currentUser?.getIdToken();
+        return {
+          Authorization: token ? `Bearer ${token}` : '',
+        };
+      },
+    }),
+  ],
+});
 
 // Eagerly prefetch the primary Dashboard chunk while auth initializes
 const dashboardPromise = import('./pages/Dashboard');
@@ -197,28 +219,6 @@ function AnimatedRoutes() {
   );
 }
 
-import {httpBatchLink} from '@trpc/client';
-import {trpc} from './lib/trpc';
-import {auth} from './firebase';
-import {queryClient} from './lib/queryClient';
-
-const trpcClient = trpc.createClient({
-  links: [
-    httpBatchLink({
-      url: '/trpc',
-      async headers() {
-        const token = await auth.currentUser?.getIdToken();
-        return {
-          Authorization: token ? `Bearer ${token}` : '',
-        };
-      },
-    }),
-  ],
-});
-
-// Initialize Auth
-useAuthStore.getState()._initialize();
-
 function AuthGuard({children}: {children: React.ReactNode}) {
   const {user, isAuthReady, authError, logOut} = useAuthStore();
   const {isAppAllowed, isLoadingPermissions} = useAppPermissions();
@@ -245,7 +245,9 @@ function AuthGuard({children}: {children: React.ReactNode}) {
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           </div>
-          <h1 className="text-3xl font-serif text-on-surface">Access Denied</h1>
+          <h1 className="text-3xl font-sans font-bold text-on-surface">
+            Access Denied
+          </h1>
           <p className="text-on-surface-variant leading-relaxed">
             It looks like {user.email} doesn't have access to this application
             yet. Please contact the administrator to be added to the allowlist.
@@ -287,7 +289,9 @@ function AuthGuard({children}: {children: React.ReactNode}) {
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           </div>
-          <h1 className="text-3xl font-serif text-on-surface">Access Denied</h1>
+          <h1 className="text-3xl font-sans font-bold text-on-surface">
+            Access Denied
+          </h1>
           <p className="text-on-surface-variant leading-relaxed">{authError}</p>
           <div className="pt-4">
             <Button

@@ -8,8 +8,10 @@ import {
   Link,
   AlertTriangle,
   BookOpen,
+  WifiOff,
 } from 'lucide-react';
 import {toast} from 'sonner';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {Book, BookDetailsPayload} from '../../types';
 import {useForm} from 'react-hook-form';
 import {zodResolver} from '@hookform/resolvers/zod';
@@ -83,6 +85,7 @@ export function EditBookForm({
   onClose,
   onDelete,
 }: EditBookFormProps) {
+  const isOnline = useOnlineStatus();
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [isDeletingInProgress, setIsDeletingInProgress] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
@@ -213,6 +216,13 @@ export function EditBookForm({
   const onSubmit = async (data: EditBookFormValues) => {
     if (!book || !libraryId) return;
 
+    if (!isOnline) {
+      toast.error(
+        'Network required: Connect to the internet to save book details.',
+      );
+      return;
+    }
+
     const originalBookBase = bookBase ? {...bookBase} : null;
     const originalBookDetails = bookDetails ? {...bookDetails} : null;
 
@@ -256,6 +266,12 @@ export function EditBookForm({
 
   const handleDeleteConfirm = async () => {
     if (!onDelete) return;
+
+    if (!isOnline) {
+      toast.error('Network required: Connect to the internet to delete books.');
+      return;
+    }
+
     setIsDeletingInProgress(true);
     try {
       await onDelete();
@@ -274,7 +290,7 @@ export function EditBookForm({
             <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mb-6 border border-error/20">
               <AlertTriangle size={32} />
             </div>
-            <h3 className="font-serif text-2xl font-medium tracking-tight mb-3">
+            <h3 className="font-sans text-2xl font-bold tracking-tight mb-3">
               Delete "{toSentenceCase(book.title)}"
             </h3>
             <p className="text-on-surface-variant max-w-md text-sm leading-relaxed mb-8">
@@ -311,7 +327,7 @@ export function EditBookForm({
           <>
             <DialogHeader className="px-6 py-4.5 border-b border-outline-variant/25 shrink-0 flex flex-row items-center justify-between">
               <div className="space-y-0.5">
-                <DialogTitle className="text-xl font-serif font-medium text-ink leading-tight tracking-tight">
+                <DialogTitle className="text-xl font-sans font-bold text-ink leading-tight tracking-tight">
                   Edit Book Details
                 </DialogTitle>
                 <p className="text-xs text-on-surface-variant">
@@ -319,6 +335,20 @@ export function EditBookForm({
                 </p>
               </div>
             </DialogHeader>
+
+            {!isOnline && (
+              <div
+                role="status"
+                className="bg-amber-500/10 border-b border-amber-500/30 text-amber-900 dark:text-amber-200 px-6 py-2.5 text-xs font-medium flex items-center gap-2"
+                data-testid="edit-book-offline-notice"
+              >
+                <WifiOff className="w-4 h-4 shrink-0 text-amber-700 dark:text-amber-300" />
+                <span>
+                  Working offline. Modifications and deletions are disabled
+                  until connectivity is restored.
+                </span>
+              </div>
+            )}
 
             <form
               onSubmit={handleSubmit(onSubmit)}
@@ -590,11 +620,17 @@ export function EditBookForm({
                     <Button
                       type="button"
                       variant="outline"
-                      className="text-error hover:bg-error/5 hover:text-error border-error-container/40 outline-none flex items-center gap-1.5 h-10 select-none"
+                      disabled={!isOnline}
+                      title={
+                        !isOnline
+                          ? 'Cannot delete book while offline'
+                          : undefined
+                      }
+                      className="text-error hover:bg-error/5 hover:text-error border-error-container/40 outline-none flex items-center gap-1.5 h-10 select-none disabled:opacity-50"
                       onClick={() => setShowDeleteConfirmation(true)}
                     >
                       <Trash2 size={15} />
-                      Delete Book
+                      Delete Book {!isOnline && '(Offline)'}
                     </Button>
                   </div>
                 )}
@@ -611,15 +647,18 @@ export function EditBookForm({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isSavingDetails}
-                  className="h-10 shadow-sm px-5 flex items-center gap-1.5"
+                  disabled={isSavingDetails || !isOnline}
+                  title={
+                    !isOnline ? 'Cannot save changes while offline' : undefined
+                  }
+                  className="h-10 shadow-sm px-5 flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {isSavingDetails ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <Save className="w-4 h-4" />
                   )}
-                  Save Changes
+                  {isOnline ? 'Save Changes' : 'Offline (Read Only)'}
                 </Button>
               </DialogFooter>
             </form>

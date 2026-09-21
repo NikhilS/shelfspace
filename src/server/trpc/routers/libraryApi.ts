@@ -19,9 +19,16 @@ export const libraryApiRouter = router({
   /**
    * Retrieves all libraries accessible to the authenticated user.
    */
-  list: protectedProcedure.input(libraryListSchema).query(async ({ctx}) => {
-    return LibraryService.getUserLibraries(ctx.user.uid, ctx.user.email);
-  }),
+  list: protectedProcedure
+    .input(libraryListSchema)
+    .query(async ({input, ctx}) => {
+      return LibraryService.getUserLibraries(
+        ctx.user.uid,
+        ctx.user.email,
+        input?.scopes,
+        ctx.isAdmin,
+      );
+    }),
 
   /**
    * Retrieves a single library by ID.

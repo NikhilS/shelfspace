@@ -192,7 +192,7 @@ export default function ExtractedBooksTable({
     <div className="w-full space-y-4">
       <div className="flex flex-col gap-2 sticky top-16 bg-surface/80 backdrop-blur-xl py-3 px-2 z-10 border-b border-outline-variant/40 mb-2 rounded-t-xl -mx-2">
         <div className="flex items-center justify-between">
-          <h3 className="font-serif text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
+          <h3 className="font-sans text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
             Found {extractedBooks.length} Books
           </h3>
           <div className="flex gap-2 sm:gap-4 items-center">
@@ -280,7 +280,7 @@ export default function ExtractedBooksTable({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <h4
-                    className="font-serif font-bold text-sm sm:text-lg text-on-surface truncate tracking-tight"
+                    className="font-sans font-bold text-sm sm:text-lg text-on-surface truncate tracking-tight"
                     title={book.title}
                   >
                     {toTitleCase(book.title)}

@@ -1,6 +1,7 @@
 import React from 'react';
 import {useParams} from 'react-router-dom';
 import {motion} from 'motion/react';
+import {WifiOff} from 'lucide-react';
 import {ErrorBoundary} from '../components/ErrorBoundary';
 import {useSpruceUp} from './spruce-up/useSpruceUp';
 import {DuplicateSection} from './spruce-up/DuplicateSection';
@@ -8,9 +9,11 @@ import {ManualEnrichmentSection} from './spruce-up/ManualEnrichmentSection';
 import {ResetMetadataSection} from './spruce-up/ResetMetadataSection';
 import {PageLoading} from '../components/PageLoading';
 import {BackToLibrary} from '../components/BackToLibrary';
+import {useOnlineStatus} from '../hooks/useOnlineStatus';
 
 export default function SpruceUpView() {
   const {id: libraryId} = useParams<{id: string}>();
+  const isOnline = useOnlineStatus();
   const {
     loading,
     books,
@@ -43,6 +46,20 @@ export default function SpruceUpView() {
           </div>
         </div>
 
+        {!isOnline && (
+          <div
+            role="status"
+            className="mb-8 bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 px-4 py-3 rounded-xl flex items-center gap-3 text-xs font-medium"
+            data-testid="spruce-up-offline-notice"
+          >
+            <WifiOff className="w-4 h-4 shrink-0 text-amber-700 dark:text-amber-300" />
+            <span>
+              Working offline. Duplicate pruning and metadata enrichment require
+              an active network connection.
+            </span>
+          </div>
+        )}
+
         <ErrorBoundary name="Spruce Up View Workspace">
           <motion.div
             initial={{opacity: 0, y: 12}}
@@ -60,7 +77,7 @@ export default function SpruceUpView() {
                 />
               ) : (
                 <div className="bg-surface-container-low p-8 rounded-2xl border border-outline-variant/30 text-center">
-                  <h3 className="font-serif text-xl font-bold text-primary mb-2">
+                  <h3 className="font-sans text-xl font-bold text-primary mb-2">
                     No Duplicates Found
                   </h3>
                   <p className="font-sans text-sm text-on-surface-variant">

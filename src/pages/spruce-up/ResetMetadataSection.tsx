@@ -178,7 +178,7 @@ export function ResetMetadataSection({
               <Database className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-serif text-xl font-bold text-on-surface">
+              <h3 className="font-sans text-xl font-bold text-on-surface">
                 Hardened Storage Sanitization
               </h3>
               <p className="text-sm text-on-surface-variant font-sans">
@@ -311,7 +311,7 @@ export function ResetMetadataSection({
                 <RotateCcw className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-serif text-xl font-bold text-on-surface">
+                <h3 className="font-sans text-xl font-bold text-on-surface">
                   Reset Metadata & Purge Obsolete Fields
                 </h3>
                 <p className="text-sm text-on-surface-variant font-sans">
@@ -394,7 +394,7 @@ export function ResetMetadataSection({
               <div className="w-12 h-12 rounded-full bg-error/10 text-error flex items-center justify-center mb-3">
                 <AlertTriangle className="w-6 h-6" />
               </div>
-              <DialogTitle className="font-serif text-xl">
+              <DialogTitle className="font-sans text-xl font-bold">
                 Confirm Metadata Reset
               </DialogTitle>
               <DialogDescription asChild>
@@ -444,7 +444,7 @@ export function ResetMetadataSection({
               <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3">
                 <Database className="w-6 h-6" />
               </div>
-              <DialogTitle className="font-serif text-xl">
+              <DialogTitle className="font-sans text-xl font-bold">
                 Purge Heavy Data Leaks
               </DialogTitle>
               <DialogDescription asChild>

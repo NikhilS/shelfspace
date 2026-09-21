@@ -22,7 +22,31 @@ vi.mock('../lib/trpc', () => ({
       },
     },
   },
-  trpc: {},
+  trpc: {
+    useUtils: () => ({
+      book: {
+        list: {
+          invalidate: vi.fn(),
+        },
+      },
+    }),
+    book: {
+      batchUpsert: {
+        useMutation: (options?: {onSuccess?: () => void}) => ({
+          mutate: vi.fn((vars: unknown) => {
+            mockBatchUpsert(vars);
+            options?.onSuccess?.();
+          }),
+          mutateAsync: vi.fn(async (vars: unknown) => {
+            const res = await mockBatchUpsert(vars);
+            options?.onSuccess?.();
+            return res;
+          }),
+          isPending: false,
+        }),
+      },
+    },
+  },
 }));
 
 vi.mock('sonner', () => ({
@@ -120,7 +144,7 @@ describe('useSelection', () => {
       await result.current.handleBulkStatusChange('reading');
     });
 
-    expect(trpcVanilla.book.batchUpsert.mutate).toHaveBeenCalledTimes(1);
+    expect(mockBatchUpsert).toHaveBeenCalledTimes(1);
     expect(toast.success).toHaveBeenCalledWith('Updated status for 2 books');
     expect(result.current.selectedBooks.size).toBe(0);
   });

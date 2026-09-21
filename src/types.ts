@@ -14,9 +14,11 @@ export interface Library {
   ownerId: string;
   ownerName: string;
   access?: Record<string, 'owner' | 'editor' | 'viewer'>;
-  createdAt: Timestamp;
+  createdAt: Timestamp | string;
   heroImageUrl?: string;
   bookCount?: number;
+  callerRole?: 'owner' | 'editor' | 'viewer' | 'admin';
+  ownershipType?: 'owned' | 'shared' | 'global_admin';
 }
 
 export interface UserStatuses {

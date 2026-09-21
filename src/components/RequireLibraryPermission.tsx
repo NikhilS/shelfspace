@@ -41,7 +41,9 @@ export function RequireLibraryPermission({
           <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="w-8 h-8" />
           </div>
-          <h1 className="text-3xl font-serif text-on-surface">Access Denied</h1>
+          <h1 className="text-3xl font-sans font-bold text-on-surface">
+            Access Denied
+          </h1>
           <p className="text-on-surface-variant leading-relaxed">
             You don't have the necessary permissions ({requires}) to view this
             page.

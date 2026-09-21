@@ -9,7 +9,7 @@ const buttonVariants = cva(
       variant: {
         default: 'bg-primary text-primary-foreground hover:bg-primary/90',
         editorial:
-          'bg-primary text-primary-foreground font-serif tracking-wide shadow-sm hover:bg-primary/90 active:scale-[0.98]',
+          'bg-primary text-primary-foreground font-sans font-semibold tracking-wide shadow-sm hover:bg-primary/90 active:scale-[0.98]',
         outline:
           'border-input bg-background hover:bg-accent hover:text-accent-foreground',
         secondary:

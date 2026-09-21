@@ -167,7 +167,7 @@ export default function BookSearch({
                 </span>
               </div>
               <div className="flex-1 min-w-0 py-1">
-                <h3 className="font-serif font-bold text-lg sm:text-2xl text-on-surface mb-1 truncate tracking-tight pr-4">
+                <h3 className="font-sans font-bold text-lg sm:text-2xl text-on-surface mb-1 truncate tracking-tight pr-4">
                   {toTitleCase(book.title)}
                 </h3>
                 {book.author && (

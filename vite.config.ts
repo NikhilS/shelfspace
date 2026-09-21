@@ -14,6 +14,10 @@ export default defineConfig(({mode}) => {
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['icon.png'],
+        devOptions: {
+          enabled: true,
+          type: 'module',
+        },
         workbox: {
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
@@ -60,9 +64,40 @@ export default defineConfig(({mode}) => {
                 },
               },
             },
+            {
+              urlPattern: /^https:\/\/covers\.openlibrary\.org\/.*/i,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'openlibrary-covers',
+                expiration: {
+                  maxEntries: 100,
+                  maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/upload\.wikimedia\.org\/.*/i,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'wikimedia-covers',
+                expiration: {
+                  maxEntries: 100,
+                  maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
           ],
         },
         manifest: {
+          id: '/',
+          start_url: '/',
+          scope: '/',
           name: 'book(ish) Library',
           short_name: 'book(ish)',
           description: 'Modern Archivist Personal Library Catalog',
@@ -74,17 +109,19 @@ export default defineConfig(({mode}) => {
               src: 'icon.png',
               sizes: '192x192',
               type: 'image/png',
+              purpose: 'any',
             },
             {
               src: 'icon.png',
               sizes: '512x512',
               type: 'image/png',
+              purpose: 'any',
             },
             {
               src: 'icon.png',
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any maskable',
+              purpose: 'maskable',
             },
           ],
         },

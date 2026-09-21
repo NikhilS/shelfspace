@@ -219,7 +219,7 @@ export default function CameraScanner({
           />
           <Sparkles className="animate-pulse" size={40} strokeWidth={1.5} />
         </div>
-        <h3 className="font-serif font-bold text-2xl text-on-surface tracking-tight mb-2">
+        <h3 className="font-sans font-bold text-2xl text-on-surface tracking-tight mb-2">
           Analyzing bookshelf...
         </h3>
         <p className="text-on-surface-variant font-medium text-center max-w-xs">

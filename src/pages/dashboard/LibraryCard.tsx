@@ -1,11 +1,12 @@
 import React, {useCallback} from 'react';
 import {Link} from 'react-router-dom';
-import {Book} from 'lucide-react';
+import {Book, User, Users, Shield} from 'lucide-react';
 import {motion} from 'motion/react';
 import {Library} from '../../types';
 import {toTitleCase} from '../../lib/utils';
 import {useAuth} from '../../stores/authStore';
 import {useQueryClient} from '@tanstack/react-query';
+import {trpc} from '../../lib/trpc';
 
 interface LibraryCardProps {
   lib: Library;
@@ -15,24 +16,39 @@ interface LibraryCardProps {
 export function LibraryCard({lib, index}: LibraryCardProps) {
   const {user} = useAuth();
   const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
 
   const handleWarmup = useCallback(() => {
-    // Pre-seed TanStack Query cache for instant access check and header rendering
-    queryClient.setQueryData(['library', lib.id], lib);
+    // Pre-seed tRPC Query cache for instant access check and header rendering
+    if (lib.id) {
+      utils.library.get.setData(
+        {libraryId: lib.id},
+        lib as unknown as NonNullable<
+          ReturnType<typeof utils.library.get.getData>
+        >,
+      );
+    }
     if (user) {
       const email = user.email?.toLowerCase();
       const role =
-        lib.ownerId === user.uid
+        lib.callerRole ||
+        (lib.ownerId === user.uid
           ? 'owner'
           : (email && lib.access?.[email]) ||
             (email && lib.access?.[user.email || '']) ||
-            'viewer';
+            'viewer');
       queryClient.setQueryData(
         ['libraryPermissions', lib.id, user.uid, email],
         role,
       );
     }
-  }, [lib, user, queryClient]);
+  }, [lib, user, utils, queryClient]);
+
+  const isOwner = lib.ownershipType === 'owned' || lib.ownerId === user?.uid;
+  const isGlobalAdmin =
+    lib.ownershipType === 'global_admin' ||
+    (!isOwner && lib.callerRole === 'admin');
+  const isShared = !isOwner && !isGlobalAdmin;
 
   return (
     <motion.div
@@ -67,6 +83,28 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
               </div>
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-primary/10 to-transparent mix-blend-multiply opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+            {/* Top Badge */}
+            <div className="absolute top-3 right-3 flex items-center gap-1.5 shadow-sm">
+              {isOwner && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-primary/90 text-on-primary backdrop-blur-md border border-primary/20">
+                  <User className="w-3 h-3" />
+                  Owner
+                </span>
+              )}
+              {isShared && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-surface-container-highest/95 text-on-surface backdrop-blur-md border border-outline-variant/40">
+                  <Users className="w-3 h-3 text-primary" />
+                  Shared ({toTitleCase(lib.callerRole || 'viewer')})
+                </span>
+              )}
+              {isGlobalAdmin && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-500/90 text-white backdrop-blur-md border border-amber-600/30">
+                  <Shield className="w-3 h-3" />
+                  Admin View
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="p-6 flex flex-col flex-grow justify-between bg-surface-container-lowest">
@@ -84,9 +122,9 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
                 </span>
               </div>
 
-              {lib.ownerId !== user?.uid && (
-                <div className="text-xs font-label-caps uppercase tracking-wider text-on-surface-variant px-2 py-1 bg-surface-container rounded-sm border border-outline-variant/50 truncate max-w-[120px]">
-                  By {toTitleCase(lib.ownerName)}
+              {!isOwner && (
+                <div className="text-xs font-label-caps uppercase tracking-wider text-on-surface-variant px-2 py-1 bg-surface-container rounded-sm border border-outline-variant/50 truncate max-w-[130px]">
+                  By {toTitleCase(lib.ownerName || 'User')}
                 </div>
               )}
             </div>

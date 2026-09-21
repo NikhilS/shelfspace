@@ -201,7 +201,7 @@ export const ApiKeyManagement: React.FC = () => {
         onOpenChange={() => setCreatedRawKey(null)}
       >
         <DialogContent className="max-w-lg bg-surface-container-lowest border border-outline-variant">
-          <DialogTitle className="text-xl font-serif text-primary flex items-center gap-2">
+          <DialogTitle className="text-xl font-sans font-bold text-primary flex items-center gap-2">
             <Key className="w-5 h-5 text-primary" />
             API Key Created Successfully
           </DialogTitle>
@@ -246,7 +246,7 @@ export const ApiKeyManagement: React.FC = () => {
       {/* Revoke Confirmation Modal */}
       <Dialog open={!!keyToRevoke} onOpenChange={() => setKeyToRevoke(null)}>
         <DialogContent className="max-w-md bg-surface-container-lowest border border-outline-variant">
-          <DialogTitle className="text-lg font-serif text-error flex items-center gap-2">
+          <DialogTitle className="text-lg font-sans font-bold text-error flex items-center gap-2">
             <AlertTriangle className="w-5 h-5" />
             Revoke API Key?
           </DialogTitle>

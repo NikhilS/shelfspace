@@ -11,6 +11,7 @@ import {
   Settings,
   Library as LibraryIcon,
   Check,
+  Bug,
 } from 'lucide-react';
 import {
   Dialog,
@@ -24,6 +25,7 @@ import {Badge} from '@/components/ui/badge';
 import {useAuth} from '../stores/authStore';
 import {useAppStore} from '../stores/appStore';
 import {useAppPermissions} from '../hooks/useAppPermissions';
+import {useDebugMode} from '../hooks/useDebugMode';
 import {toast} from 'sonner';
 
 interface UserProfileDialogProps {
@@ -40,6 +42,8 @@ export function UserProfileDialog({
   const {user, logOut} = useAuth();
   const {isAdmin} = useAppPermissions();
   const {theme, setTheme} = useAppStore();
+  const {isDebugMode, toggleDebugMode} = useDebugMode();
+  const hasDebugAccess = isAdmin || isDebugMode;
   const navigate = useNavigate();
   const location = useLocation();
   const [copied, setCopied] = useState(false);
@@ -98,10 +102,13 @@ export function UserProfileDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
-      <DialogContent className="max-w-md p-0 overflow-hidden bg-surface border border-outline-variant/30 shadow-elevation-3 rounded-2xl sm:rounded-3xl">
+      <DialogContent
+        className="max-w-md p-0 overflow-hidden bg-surface border border-outline-variant/30 shadow-elevation-3 rounded-2xl sm:rounded-3xl"
+        onOpenAutoFocus={e => e.preventDefault()}
+      >
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-outline-variant/20 bg-surface-container-lowest">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-primary font-serif font-bold text-lg overflow-hidden border border-outline-variant/40 shrink-0 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-primary font-sans font-bold text-lg overflow-hidden border border-outline-variant/40 shrink-0 shadow-xs">
               {user?.photoURL ? (
                 <img
                   src={user.photoURL}
@@ -116,7 +123,7 @@ export function UserProfileDialog({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <DialogTitle className="font-serif text-lg font-bold text-on-surface truncate leading-tight">
+              <DialogTitle className="font-sans text-lg font-bold text-on-surface truncate leading-tight">
                 {user?.displayName || 'Curator'}
               </DialogTitle>
               <DialogDescription className="font-sans text-xs text-on-surface-variant truncate mt-0.5">
@@ -134,9 +141,9 @@ export function UserProfileDialog({
                   </Badge>
                 ) : (
                   <Badge
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
-                    className="inline-flex items-center gap-1 font-label-caps-xs text-label-caps-xs bg-secondary/10 text-secondary border-secondary/20"
+                    className="inline-flex items-center gap-1 font-label-caps-xs text-label-caps-xs bg-surface-container text-on-surface-variant border-outline-variant/40"
                   >
                     Curator
                   </Badge>
@@ -147,6 +154,65 @@ export function UserProfileDialog({
         </DialogHeader>
 
         <div className="p-6 space-y-6">
+          {/* Top-Level Option: Debug Console HUD */}
+          {hasDebugAccess && (
+            <div>
+              <div className="metadata-eyebrow text-on-surface-variant mb-2.5">
+                Developer Options
+              </div>
+              <div
+                id="toggle-debug-console-card"
+                className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all text-left ${
+                  isDebugMode
+                    ? 'bg-surface-container border-outline shadow-xs'
+                    : 'bg-surface-container-low border-outline-variant/30 hover:border-outline-variant/60'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0 pr-2">
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                      isDebugMode
+                        ? 'bg-primary text-on-primary shadow-xs'
+                        : 'bg-surface-container text-primary'
+                    }`}
+                  >
+                    <Bug className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-sans font-medium text-on-surface flex items-center gap-2">
+                      <span>Debug Console HUD</span>
+                      {isDebugMode && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-primary/15 text-primary border border-primary/20">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-on-surface-variant truncate">
+                      Real-time telemetry, query traces & diagnostics HUD
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  id="toggle-debug-console-btn"
+                  variant={isDebugMode ? 'default' : 'outline'}
+                  onClick={() => {
+                    toggleDebugMode();
+                    toast.success(
+                      isDebugMode
+                        ? 'Debug Console disabled'
+                        : 'Debug Console HUD enabled',
+                    );
+                  }}
+                  className="shrink-0 h-8 px-3 text-xs font-sans font-medium min-w-[76px]"
+                >
+                  {isDebugMode ? 'Disable' : 'Enable'}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Appearance / Theme Selector */}
           <div>
             <div className="metadata-eyebrow text-on-surface-variant mb-2.5">
@@ -246,7 +312,7 @@ export function UserProfileDialog({
                 className="w-full flex items-center justify-between p-2.5 rounded-xl text-left hover:bg-surface-container-low text-on-surface transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary">
+                  <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant">
                     <Share2 className="w-4 h-4" />
                   </div>
                   <div>
@@ -260,9 +326,7 @@ export function UserProfileDialog({
                     </div>
                   </div>
                 </div>
-                {copied && (
-                  <Check className="w-4 h-4 text-secondary shrink-0" />
-                )}
+                {copied && <Check className="w-4 h-4 text-primary shrink-0" />}
               </button>
 
               {isAdmin && (

@@ -43,15 +43,15 @@ export default function Login() {
   }
 
   return (
-    <div className="bg-background text-on-background antialiased selection:bg-secondary/20 selection:text-secondary min-h-screen flex flex-col overflow-x-hidden">
+    <div className="bg-background text-on-background antialiased selection:bg-primary/20 selection:text-primary min-h-screen flex flex-col overflow-x-hidden">
       {/* Navigation */}
       <nav className="bg-surface/90 backdrop-blur-md text-on-surface w-full top-0 sticky border-b border-outline-variant/30 z-50 flex justify-between items-center px-6 sm:px-12 py-4 transition-all">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-secondary/10 border border-secondary/20 flex items-center justify-center text-secondary">
+          <div className="w-9 h-9 rounded-xl bg-surface-container border border-outline-variant/50 flex items-center justify-center text-primary">
             <BookOpen className="w-5 h-5" />
           </div>
           <div className="flex flex-col">
-            <span className="font-serif text-2xl font-bold tracking-tight text-primary leading-none">
+            <span className="font-sans text-2xl font-extrabold tracking-tight text-primary leading-none">
               book(ish)
             </span>
             <span className="font-label-caps-xs text-[9px] text-on-surface-variant/70 uppercase tracking-widest font-semibold mt-0.5">
@@ -90,7 +90,7 @@ export default function Login() {
           </Button>
           <Button
             onClick={signIn}
-            className="bg-secondary hover:bg-secondary/90 text-on-secondary font-label-caps-sm text-label-caps-sm font-bold uppercase tracking-wider px-5 sm:px-6 shadow-elevation-1 hover:shadow-elevation-2 transition-all rounded-full"
+            className="bg-primary hover:bg-primary/90 text-on-primary font-label-caps-sm text-label-caps-sm font-bold uppercase tracking-wider px-5 sm:px-6 shadow-elevation-1 hover:shadow-elevation-2 transition-all rounded-full"
           >
             Get Started
             <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -108,17 +108,17 @@ export default function Login() {
             className="flex flex-col items-center w-full"
           >
             {/* Archival Eyebrow */}
-            <div className="inline-flex items-center gap-2 bg-secondary/10 border border-secondary/20 px-4 py-1.5 rounded-full mb-8">
-              <Sparkles className="w-3.5 h-3.5 text-secondary" />
-              <span className="font-label-caps-sm text-[11px] text-secondary font-bold uppercase tracking-widest">
+            <div className="inline-flex items-center gap-2 bg-surface-container border border-outline-variant/60 px-4 py-1.5 rounded-full mb-8">
+              <Sparkles className="w-3.5 h-3.5 text-primary" />
+              <span className="font-label-caps-sm text-[11px] text-on-surface-variant font-bold uppercase tracking-widest">
                 Archival Intelligence for Physical Collectors
               </span>
             </div>
 
             {/* Display Headline */}
-            <h1 className="font-serif text-4xl sm:text-6xl lg:text-7xl font-bold text-primary leading-[1.08] tracking-tight max-w-4xl">
+            <h1 className="font-sans text-4xl sm:text-6xl lg:text-7xl font-extrabold text-primary leading-[1.08] tracking-tight max-w-4xl">
               The digital ledger your <br className="hidden sm:block" />
-              <span className="italic font-serif font-semibold text-secondary">
+              <span className="font-sans font-extrabold text-primary">
                 physical library deserves
               </span>
               .
@@ -135,9 +135,9 @@ export default function Login() {
             <div className="flex flex-col sm:flex-row items-center gap-4 mt-10 w-full sm:w-auto">
               <Button
                 onClick={signIn}
-                className="bg-secondary hover:bg-secondary/90 text-on-secondary h-14 px-8 sm:px-10 rounded-full font-label-caps font-bold uppercase tracking-wider flex items-center justify-center gap-3 shadow-elevation-2 hover:-translate-y-0.5 transition-all w-full sm:w-auto"
+                className="bg-primary hover:bg-primary/90 text-on-primary h-14 px-8 sm:px-10 rounded-full font-label-caps font-bold uppercase tracking-wider flex items-center justify-center gap-3 shadow-elevation-2 hover:-translate-y-0.5 transition-all w-full sm:w-auto"
               >
-                <Database className="w-5 h-5 text-on-secondary/80" />
+                <Database className="w-5 h-5 text-on-primary/80" />
                 Open Your Vault
               </Button>
             </div>
@@ -186,11 +186,11 @@ export default function Login() {
         {/* FINAL CONVERSION SECTION */}
         <section className="w-full py-28 sm:py-36 bg-surface-container-low/40 border-t border-outline-variant/30 relative overflow-hidden">
           <div className="max-w-[800px] mx-auto px-6 text-center relative z-10 flex flex-col items-center">
-            <div className="w-16 h-16 bg-surface-container-lowest rounded-3xl flex items-center justify-center mb-8 border border-outline-variant/40 shadow-elevation-1 text-secondary">
+            <div className="w-16 h-16 bg-surface-container-lowest rounded-3xl flex items-center justify-center mb-8 border border-outline-variant/40 shadow-elevation-1 text-primary">
               <ScanBarcode className="w-8 h-8" />
             </div>
 
-            <h2 className="font-serif text-4xl sm:text-5xl font-bold text-primary max-w-2xl mx-auto leading-[1.15] tracking-tight">
+            <h2 className="font-sans text-4xl sm:text-5xl font-extrabold text-primary max-w-2xl mx-auto leading-[1.15] tracking-tight">
               Give your physical library the home it deserves.
             </h2>
 
@@ -202,7 +202,7 @@ export default function Login() {
             <div className="pt-10 flex flex-col items-center gap-4">
               <Button
                 onClick={signIn}
-                className="bg-secondary hover:bg-secondary/90 text-on-secondary font-label-caps font-bold uppercase tracking-wider h-14 px-10 rounded-full shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 transition-all flex items-center gap-3"
+                className="bg-primary hover:bg-primary/90 text-on-primary font-label-caps font-bold uppercase tracking-wider h-14 px-10 rounded-full shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 transition-all flex items-center gap-3"
               >
                 Sign In & Start Scanning
                 <ArrowRight className="w-4 h-4 ml-1" />
@@ -219,10 +219,10 @@ export default function Login() {
       <footer className="bg-surface-container py-12 border-t border-outline-variant/30">
         <div className="max-w-[1200px] mx-auto px-6 sm:px-12 flex flex-col sm:flex-row items-center justify-between gap-6 text-center sm:text-left">
           <div className="flex items-center gap-3 justify-center sm:justify-start">
-            <div className="w-7 h-7 rounded-lg bg-secondary/10 border border-secondary/20 flex items-center justify-center text-secondary">
+            <div className="w-7 h-7 rounded-lg bg-surface-container-high border border-outline-variant/50 flex items-center justify-center text-primary">
               <BookOpen className="w-4 h-4" />
             </div>
-            <span className="font-serif text-xl font-bold text-primary">
+            <span className="font-sans text-xl font-extrabold text-primary">
               book(ish)
             </span>
             <span className="font-label-caps-xs text-[10px] text-on-surface-variant/70 uppercase tracking-widest font-semibold ml-3 border-l border-outline-variant/40 pl-3">

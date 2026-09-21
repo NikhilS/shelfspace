@@ -9,16 +9,42 @@ interface AiInsightsPanelProps {
   libraryId: string;
   book: Book;
   canEdit: boolean;
+  activeInsight?: 'catchup' | 'similar' | null;
+  insightContent?: string | null;
+  isGeneratingInsight?: boolean;
+  handleGenerateInsight?: (type: 'catchup' | 'similar') => void;
 }
 
 export const AiInsightsPanel = memo(
-  ({libraryId, book, canEdit}: AiInsightsPanelProps) => {
-    const {
-      activeInsight,
-      insightContent,
-      isGeneratingInsight,
-      handleGenerateInsight,
-    } = useBookInsights(libraryId, book, canEdit);
+  ({
+    libraryId,
+    book,
+    canEdit,
+    activeInsight: passedActiveInsight,
+    insightContent: passedInsightContent,
+    isGeneratingInsight: passedIsGenerating,
+    handleGenerateInsight: passedHandleGenerate,
+  }: AiInsightsPanelProps) => {
+    const internalInsights = useBookInsights(
+      libraryId,
+      book,
+      passedHandleGenerate ? false : canEdit,
+    );
+
+    const activeInsight =
+      passedActiveInsight !== undefined
+        ? passedActiveInsight
+        : internalInsights.activeInsight;
+    const insightContent =
+      passedInsightContent !== undefined
+        ? passedInsightContent
+        : internalInsights.insightContent;
+    const isGeneratingInsight =
+      passedIsGenerating !== undefined
+        ? passedIsGenerating
+        : internalInsights.isGeneratingInsight;
+    const handleGenerateInsight =
+      passedHandleGenerate || internalInsights.handleGenerateInsight;
 
     return (
       <section className="mt-8">

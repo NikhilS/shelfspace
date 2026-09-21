@@ -14,7 +14,7 @@ export function PageLoading({
     <div className="flex-grow flex flex-col items-center justify-center min-h-[80vh] w-full bg-background relative overflow-hidden">
       <div className="flex flex-col items-center justify-center p-12 max-w-sm text-center">
         <BookLoader size="lg" className="mb-8" />
-        <h2 className="font-serif text-2xl font-medium text-primary mb-2 italic tracking-tight">
+        <h2 className="font-sans text-2xl font-bold text-primary mb-2 tracking-tight">
           {title}
         </h2>
         <p className="font-body-md text-on-surface-variant text-sm max-w-xs leading-relaxed">

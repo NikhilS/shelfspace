@@ -23,16 +23,20 @@ export default function AppLayout({children}: AppLayoutProps) {
       <header className="sticky top-0 w-full z-30 bg-background/90 backdrop-blur-xl border-b border-outline-variant/20 shadow-xs font-body-md text-on-background transition-all">
         <div className="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto">
           {/* Brand / Logo */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center">
             <Link
               to="/"
-              className="flex items-center gap-2.5 group transition-opacity hover:opacity-90"
+              className="flex items-center gap-3 group transition-opacity hover:opacity-90"
               aria-label="book(ish) Home"
             >
-              <span className="font-headline-lg text-headline-lg text-primary tracking-tight italic font-serif">
+              <span className="font-brand italic text-2xl sm:text-[28px] font-bold tracking-tight text-primary leading-none select-none inline-flex items-center">
                 book(ish)
               </span>
-              <span className="hidden sm:inline-block font-label-caps-sm text-label-caps-sm font-sans font-medium uppercase tracking-widest text-on-surface-variant opacity-80 pl-2 border-l border-outline-variant/40">
+              <span
+                className="hidden sm:inline-block h-4 w-px bg-outline-variant/40 shrink-0 self-center"
+                aria-hidden="true"
+              />
+              <span className="hidden sm:inline-flex items-center font-sans font-medium text-xs tracking-widest uppercase text-on-surface-variant/80 select-none leading-none">
                 Modern Archivist
               </span>
             </Link>
@@ -48,7 +52,7 @@ export default function AppLayout({children}: AppLayoutProps) {
               title="Account & Settings"
               aria-label="Open profile and settings"
             >
-              <span className="hidden md:inline-block text-xs font-sans font-medium text-on-surface-variant group-hover:text-primary transition-colors max-w-[140px] truncate">
+              <span className="hidden md:inline-block text-xs font-sans font-medium text-on-surface-variant group-hover:text-primary transition-colors max-w-[140px] truncate leading-normal self-center">
                 {user?.displayName ||
                   user?.email?.split('@')[0] ||
                   'My Account'}
@@ -62,7 +66,7 @@ export default function AppLayout({children}: AppLayoutProps) {
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="text-primary font-serif font-bold text-sm">
+                  <div className="text-primary font-sans font-bold text-sm leading-none flex items-center justify-center">
                     {user?.email?.[0]?.toUpperCase() || 'U'}
                   </div>
                 )}

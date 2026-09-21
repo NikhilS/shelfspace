@@ -1,7 +1,7 @@
 import {create} from 'zustand';
-import {DebugTelemetryEngine} from '../lib/telemetry';
+import {DebugTelemetryEngine, TelemetryProfilingLevel} from '../lib/telemetry';
 
-interface DebugLog {
+export interface DebugLog {
   id: string;
   timestamp: Date;
   message: string;
@@ -9,12 +9,14 @@ interface DebugLog {
   payload?: unknown;
 }
 
-interface DebugState {
+export interface DebugState {
   isDebugMode: boolean;
+  profilingLevel: TelemetryProfilingLevel;
   logs: DebugLog[];
   debugData: unknown;
   debugTitle: string;
   toggleDebugMode: () => void;
+  setProfilingLevel: (level: TelemetryProfilingLevel) => void;
   addLog: (
     message: string,
     level?: DebugLog['level'],
@@ -30,8 +32,11 @@ export const useDebugStore = create<DebugState>(set => {
       ? localStorage.getItem('debugMode') === 'true'
       : false;
 
+  const profilingLevel = DebugTelemetryEngine.getProfilingLevel();
+
   return {
     isDebugMode,
+    profilingLevel,
     logs: [],
     debugData: null,
     debugTitle: 'Debug Data',
@@ -39,9 +44,16 @@ export const useDebugStore = create<DebugState>(set => {
     toggleDebugMode: () =>
       set(state => {
         const next = !state.isDebugMode;
-        localStorage.setItem('debugMode', String(next));
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('debugMode', String(next));
+        }
         return {isDebugMode: next};
       }),
+
+    setProfilingLevel: (level: TelemetryProfilingLevel) => {
+      DebugTelemetryEngine.setProfilingLevel(level);
+      set({profilingLevel: level});
+    },
 
     addLog: (message, level = 'info', payload?: unknown) =>
       set(state => {

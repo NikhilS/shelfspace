@@ -400,7 +400,7 @@ export default function TimelineView() {
                                       {formatYear(cluster.key)}
                                     </Badge>
                                   </div>
-                                  <h3 className="font-serif font-semibold text-on-surface text-lg text-balance line-clamp-2">
+                                  <h3 className="font-sans font-bold text-on-surface text-lg text-balance line-clamp-2">
                                     {cluster.label}
                                   </h3>
                                   <p className="text-xs text-on-surface-variant mt-1.5">
@@ -420,7 +420,7 @@ export default function TimelineView() {
                       <div className="w-16 h-16 bg-surface-variant/40 rounded-full flex items-center justify-center text-on-surface-variant/50 mb-4 animate-[pulse_4s_infinite]">
                         <Clock className="w-8 h-8" />
                       </div>
-                      <h3 className="text-lg font-serif font-medium text-on-surface">
+                      <h3 className="text-lg font-sans font-bold text-on-surface">
                         No Historical Settings Found
                       </h3>
                       <p className="text-sm text-on-surface-variant mt-2 max-w-sm">
@@ -444,8 +444,8 @@ export default function TimelineView() {
                           id="toggle-non-historical-settings"
                         >
                           <div className="flex items-center gap-2">
-                            <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                            <h2 className="font-serif font-semibold text-lg text-on-surface group-hover:text-primary transition-colors">
+                            <BookOpen className="w-5 h-5 text-primary" />
+                            <h2 className="font-sans font-bold text-lg text-on-surface group-hover:text-primary transition-colors">
                               Non-Historical Settings (
                               {filteredNonHistorical.length})
                             </h2>
@@ -529,7 +529,7 @@ export default function TimelineView() {
               >
                 <div className="p-6 border-b border-outline-variant/20 flex items-center justify-between">
                   <div>
-                    <h3 className="font-serif font-semibold text-on-surface text-lg">
+                    <h3 className="font-sans font-bold text-on-surface text-lg">
                       {selectedCluster.label}
                     </h3>
                     <div className="mt-1">
@@ -564,14 +564,14 @@ export default function TimelineView() {
                             />
                           </div>
                         ) : (
-                          <div className="w-14 h-20 rounded-lg bg-surface-variant/40 flex items-center justify-center text-primary/60 font-serif font-semibold text-lg shrink-0 border border-outline-variant/10 shadow-sm">
+                          <div className="w-14 h-20 rounded-lg bg-surface-variant/40 flex items-center justify-center text-primary/60 font-sans font-bold text-lg shrink-0 border border-outline-variant/10 shadow-sm">
                             {b.title[0]?.toUpperCase()}
                           </div>
                         )}
                         <div className="min-w-0">
                           <Link
                             to={`/library/${libraryId}/book/${b.id}`}
-                            className="font-serif font-medium text-on-surface text-sm line-clamp-2 hover:text-primary transition-colors"
+                            className="font-sans font-semibold text-on-surface text-sm line-clamp-2 hover:text-primary transition-colors"
                           >
                             {b.title}
                           </Link>

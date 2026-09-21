@@ -26,25 +26,25 @@ All colors are chosen to mimic natural elements—vellum, parchment, oxford clot
 
 ---
 
-## II. Typography & Literary Contrast
+## II. Typography & Hierarchy
 
-book(ish) leverages high-contrast pairing between literary serif and crisp, modern geometric sans-serif to create rhythm.
+book(ish) features a Sleek & Ultra-Modern aesthetic powered uniformly by **Manrope**, using geometric precision, optical hierarchy, and contrasting font weights (extrabold titles, semibold accents, and clean medium body text).
 
 ```
 +-------------------------------------------------------------------+
-|  NEWSREADER (Serif)                                                |
+|  MANROPE (Display & Headings - Bold / Extrabold)                  |
 |  - Used for Display, Titles, and Section Headings                 |
-|  - "The literary voice of the collection"                          |
+|  - "The architectural, ultra-modern identity of the collection"   |
 +-------------------------------------------------------------------+
-|  MANROPE (Sans-Serif)                                             |
+|  MANROPE (UI & Body - Regular / Medium / Semibold)                |
 |  - Used for Functional UI, Forms, Metadata Labels, and Metrics     |
 |  - "The clean, metadata index cards of the archivist"             |
 +-------------------------------------------------------------------+
 ```
 
 ### A. Headings Configuration
-- **Library names, book titles:** `font-serif font-headline-lg font-bold text-primary`
-- **Section Headers:** `font-serif text-2xl font-bold text-primary`
+- **Library names, book titles:** `font-sans font-headline-lg font-extrabold text-primary tracking-tight`
+- **Section Headers:** `font-sans text-2xl font-bold text-primary tracking-tight`
 
 ### B. Functional Labels
 - **Metadata fields, tags, counts:** `font-sans text-xs font-bold tracking-[0.1em] text-on-surface-variant uppercase`

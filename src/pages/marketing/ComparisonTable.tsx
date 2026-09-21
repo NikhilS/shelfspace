@@ -52,13 +52,13 @@ export function ComparisonTable() {
       <div className="max-w-[1200px] mx-auto px-6 sm:px-12">
         {/* Section Header */}
         <div className="text-center max-w-2xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 mb-4">
-            <Sparkles className="w-3.5 h-3.5 text-secondary" />
-            <span className="font-label-caps-sm text-[11px] text-secondary font-bold uppercase tracking-widest">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container border border-outline-variant/40 mb-4">
+            <Sparkles className="w-3.5 h-3.5 text-primary" />
+            <span className="font-label-caps-sm text-[11px] text-on-surface-variant font-bold uppercase tracking-widest">
               Purpose-Built For Physical Books
             </span>
           </div>
-          <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-primary tracking-tight mb-4">
+          <h2 className="font-sans text-3xl sm:text-4xl lg:text-5xl font-extrabold text-primary tracking-tight mb-4">
             Built for book lovers, not social feeds.
           </h2>
           <p className="font-sans text-base sm:text-lg text-on-surface-variant leading-relaxed">
@@ -73,21 +73,21 @@ export function ComparisonTable() {
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
                 <tr className="border-b border-outline-variant/30 bg-surface-container-low/60">
-                  <th className="p-5 sm:p-6 font-serif text-sm sm:text-base font-bold text-on-surface w-2/5">
+                  <th className="p-5 sm:p-6 font-sans text-sm sm:text-base font-bold text-on-surface w-2/5">
                     Cataloging Capability
                   </th>
-                  <th className="p-5 sm:p-6 font-serif text-base sm:text-lg font-bold text-primary bg-secondary/10 border-x border-secondary/20 w-1/4">
+                  <th className="p-5 sm:p-6 font-sans text-base sm:text-lg font-bold text-primary bg-surface-container border-x border-outline-variant/40 w-1/4">
                     <div className="flex items-center gap-2">
                       <span>book(ish)</span>
-                      <span className="px-2 py-0.5 rounded-full bg-secondary text-on-secondary text-[10px] font-sans font-bold uppercase tracking-wider">
+                      <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary text-[10px] font-sans font-bold uppercase tracking-wider">
                         Vault
                       </span>
                     </div>
                   </th>
-                  <th className="p-5 sm:p-6 font-serif text-sm sm:text-base font-medium text-on-surface-variant w-1/5">
+                  <th className="p-5 sm:p-6 font-sans text-sm sm:text-base font-semibold text-on-surface-variant w-1/5">
                     Goodreads / Amazon
                   </th>
-                  <th className="p-5 sm:p-6 font-serif text-sm sm:text-base font-medium text-on-surface-variant w-1/5">
+                  <th className="p-5 sm:p-6 font-sans text-sm sm:text-base font-semibold text-on-surface-variant w-1/5">
                     Spreadsheets / Notion
                   </th>
                 </tr>
@@ -101,7 +101,7 @@ export function ComparisonTable() {
                     <td className="p-5 sm:p-6 font-medium text-on-surface">
                       {row.feature}
                     </td>
-                    <td className="p-5 sm:p-6 bg-secondary/5 border-x border-secondary/20 font-semibold text-primary">
+                    <td className="p-5 sm:p-6 bg-surface-container-low/50 border-x border-outline-variant/30 font-semibold text-primary">
                       <div className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
                         <span>{row.bookish}</span>

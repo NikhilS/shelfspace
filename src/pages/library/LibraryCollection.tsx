@@ -169,9 +169,9 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
               <span className="sm:hidden">Filters</span>
               {activeFilterCount > 0 && (
                 <Badge
-                  variant="secondary"
+                  variant="default"
                   size="sm"
-                  className="ml-0.5 px-1.5 py-0 font-label-caps-xs text-label-caps-xs font-bold bg-secondary text-on-secondary"
+                  className="ml-0.5 px-1.5 py-0 font-label-caps-xs text-label-caps-xs font-bold bg-primary text-on-primary"
                 >
                   {activeFilterCount}
                 </Badge>
@@ -261,12 +261,12 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
             </span>
             <Button
               type="button"
-              variant={!filterSubgenre ? 'secondary' : 'outline'}
+              variant={!filterSubgenre ? 'default' : 'outline'}
               size="sm"
               onClick={() => setFilterSubgenre?.('')}
               className={`font-label-caps-xs text-label-caps-xs px-2.5 h-6 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
                 !filterSubgenre
-                  ? 'bg-secondary text-on-secondary font-semibold shadow-xs'
+                  ? 'bg-primary text-on-primary font-semibold shadow-xs'
                   : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border-transparent'
               }`}
             >
@@ -279,12 +279,12 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
                 <Button
                   key={name}
                   type="button"
-                  variant={isSelected ? 'secondary' : 'outline'}
+                  variant={isSelected ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setFilterSubgenre?.(isSelected ? '' : name)}
                   className={`font-label-caps-xs text-label-caps-xs px-2.5 h-6 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
                     isSelected
-                      ? 'bg-secondary text-on-secondary font-semibold shadow-xs'
+                      ? 'bg-primary text-on-primary font-semibold shadow-xs'
                       : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border-transparent'
                   }`}
                 >

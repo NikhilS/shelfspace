@@ -220,7 +220,7 @@ export function ManualEnrichmentSection({
               <LibraryBig className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-serif text-xl font-bold text-on-surface">
+              <h3 className="font-sans text-xl font-bold text-on-surface">
                 Complete Book Details
               </h3>
               <p className="text-sm text-on-surface-variant font-sans">

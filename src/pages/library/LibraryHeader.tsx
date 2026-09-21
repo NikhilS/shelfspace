@@ -91,9 +91,9 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
             </p>
             {isSyncing && (
               <Badge
-                variant="secondary"
+                variant="outline"
                 size="sm"
-                className="flex items-center gap-1.5 text-secondary bg-surface/10 border-white/10 backdrop-blur-sm font-label-caps"
+                className="flex items-center gap-1.5 text-white bg-white/20 border-white/20 backdrop-blur-sm font-label-caps"
               >
                 <CloudUpload className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 Syncing

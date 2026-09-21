@@ -1,9 +1,20 @@
-import {useEffect, useState, useMemo} from 'react';
+import {useEffect, useMemo} from 'react';
 import {Library, Book} from '../types';
 import {toast} from 'sonner';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../lib/telemetry';
-import {useQueryClient} from '@tanstack/react-query';
 import {trpc} from '../lib/trpc';
+
+export interface UseLibraryDataResult {
+  library: Library | null;
+  books: Book[];
+  isLoading: boolean;
+  isBooksLoading: boolean;
+  isSyncing: boolean;
+  isCachedFirstPaint: boolean;
+  isError: boolean;
+  error: unknown;
+  refetch: () => Promise<void>;
+}
 
 export function mapDocToBook(docSnap: {
   id: string;
@@ -44,116 +55,129 @@ export function mapDocToBook(docSnap: {
 export function useLibraryData(
   libraryId: string | undefined,
   userId: string | undefined,
-  navigate: (path: string) => void,
-) {
-  const queryClient = useQueryClient();
+  navigate?: (path: string) => void,
+): UseLibraryDataResult {
+  const isEnabled = Boolean(libraryId && userId);
 
-  const [isCachedFirstPaint] = useState(() => {
-    const existing = queryClient.getQueryData<Book[]>(['books', libraryId]);
-    return Boolean(existing && existing.length > 0);
-  });
-
-  // Fetch library document via tRPC gateway
-  const trpcLibraryQuery = trpc.library.get.useQuery(
+  // 1. Declarative Library Query
+  const libraryQuery = trpc.library.get.useQuery(
     {libraryId: libraryId || ''},
     {
-      enabled: Boolean(libraryId && userId),
-      staleTime: 1000 * 60 * 5,
+      enabled: isEnabled,
+      staleTime: 1000 * 60 * 5, // 5 minutes fresh
+      gcTime: 1000 * 60 * 60 * 24, // 24 hours in memory
     },
   );
 
-  // Books fetched solely through trpc.book.list
-  const trpcBooksQuery = trpc.book.list.useQuery(
+  // 2. Declarative Books Collection Query
+  const booksQuery = trpc.book.list.useQuery(
     {libraryId: libraryId || ''},
     {
-      enabled: Boolean(libraryId && userId),
-      initialData: () => {
-        const cached = queryClient.getQueryData<Book[]>(['books', libraryId]);
-        return cached ? {books: cached} : undefined;
-      },
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      enabled: isEnabled,
+      staleTime: 1000 * 60 * 5,
       gcTime: 1000 * 60 * 60 * 24 * 7, // 7 days IndexedDB retention
       networkMode: 'offlineFirst',
-      retry: false,
+      retry: 2,
     },
   );
 
-  // Synchronize tRPC library result with the canonical ['library', libraryId] cache key
-  useEffect(() => {
-    if (!libraryId || !trpcLibraryQuery.data) return;
-    const libData = trpcLibraryQuery.data as unknown as Library;
-    queryClient.setQueryData(['library', libraryId], libData);
-
-    const libBytes = calculatePayloadBytes(libData);
-    DebugTelemetryEngine.getInstance().addLog(
-      'api_request',
-      `Queried library document via tRPC: "libraries/${libraryId}" (${(libBytes / 1024).toFixed(1)} KB)`,
-      {
-        path: `libraries/${libraryId}`,
-        fromCache: trpcLibraryQuery.isStale === false,
-        size: 1,
-        bytes: libBytes,
-        docCount: 1,
-      },
-    );
-  }, [libraryId, trpcLibraryQuery.data, trpcLibraryQuery.isStale, queryClient]);
-
-  // Handle library error
-  useEffect(() => {
-    if (trpcLibraryQuery.error) {
-      toast.error('Library not found or access denied');
-      navigate('/');
-    }
-  }, [trpcLibraryQuery.error, navigate]);
-
-  // Synchronize tRPC book results with the canonical ['books', libraryId] cache key
-  useEffect(() => {
-    if (!libraryId || !trpcBooksQuery?.data) return;
-    const rawData = trpcBooksQuery.data;
-    const bookList = (
-      Array.isArray(rawData)
-        ? (rawData as Book[])
-        : (rawData as {books?: Book[]}).books || []
-    ) as Book[];
-
-    queryClient.setQueryData(['books', libraryId], bookList);
-
-    const payloadBytes = calculatePayloadBytes(bookList);
-    DebugTelemetryEngine.getInstance().addLog(
-      'api_request',
-      `Queried books collection via tRPC (${bookList.length} docs, ${(payloadBytes / 1024).toFixed(1)} KB)`,
-      {
-        path: `libraries/${libraryId}/books`,
-        fromCache: trpcBooksQuery.isStale === false,
-        size: bookList.length,
-        bytes: payloadBytes,
-        docCount: bookList.length,
-      },
-    );
-  }, [libraryId, trpcBooksQuery?.data, trpcBooksQuery?.isStale, queryClient]);
-
-  const library =
-    (trpcLibraryQuery.data as unknown as Library) ||
-    queryClient.getQueryData<Library>(['library', libraryId]) ||
-    null;
+  // 3. Normalized Data Derivation
+  const library = useMemo(() => {
+    return (libraryQuery.data as unknown as Library) ?? null;
+  }, [libraryQuery.data]);
 
   const books = useMemo(() => {
-    if (trpcBooksQuery?.data) {
-      const raw = trpcBooksQuery.data;
-      return (
-        Array.isArray(raw) ? raw : (raw as {books?: Book[]}).books || []
-      ) as Book[];
+    if (!booksQuery.data) return [];
+    const raw = booksQuery.data;
+    if (Array.isArray(raw)) return raw as Book[];
+    if ('books' in raw && Array.isArray((raw as {books: unknown}).books)) {
+      return (raw as {books: Book[]}).books;
     }
-    return queryClient.getQueryData<Book[]>(['books', libraryId]) || [];
-  }, [trpcBooksQuery?.data, queryClient, libraryId]);
+    return [];
+  }, [booksQuery.data]);
 
-  const isLoading = trpcLibraryQuery.isLoading && !library;
-  const isBooksLoading =
-    Boolean(trpcBooksQuery?.isLoading) && books.length === 0;
+  // 4. Telemetry Logging (Deferred execution to avoid blocking critical render frame)
+  useEffect(() => {
+    if (library && libraryId) {
+      const schedule =
+        typeof window !== 'undefined' && 'requestIdleCallback' in window
+          ? window.requestIdleCallback
+          : (cb: () => void) => setTimeout(cb, 10);
+      const cancel =
+        typeof window !== 'undefined' && 'cancelIdleCallback' in window
+          ? window.cancelIdleCallback
+          : (id: number) => clearTimeout(id);
 
-  const isSyncing = Boolean(
-    trpcBooksQuery?.isFetching && !trpcBooksQuery?.isLoading,
-  );
+      const handle = schedule(() => {
+        const bytes = calculatePayloadBytes(library);
+        DebugTelemetryEngine.getInstance().addLog(
+          'api_res',
+          `Loaded library "${library.name}" via tRPC (${(bytes / 1024).toFixed(1)} KB)`,
+          {
+            path: `libraries/${libraryId}`,
+            size: 1,
+            bytes,
+            fromCache: !libraryQuery.isStale,
+          },
+        );
+      });
+
+      return () => {
+        cancel(handle as number);
+      };
+    }
+  }, [library, libraryId, libraryQuery.isStale]);
+
+  useEffect(() => {
+    if (books.length > 0 && libraryId) {
+      const schedule =
+        typeof window !== 'undefined' && 'requestIdleCallback' in window
+          ? window.requestIdleCallback
+          : (cb: () => void) => setTimeout(cb, 10);
+      const cancel =
+        typeof window !== 'undefined' && 'cancelIdleCallback' in window
+          ? window.cancelIdleCallback
+          : (id: number) => clearTimeout(id);
+
+      const handle = schedule(() => {
+        const bytes = calculatePayloadBytes(books);
+        DebugTelemetryEngine.getInstance().addLog(
+          'api_res',
+          `Loaded ${books.length} books via tRPC (${(bytes / 1024).toFixed(1)} KB)`,
+          {
+            path: `libraries/${libraryId}/books`,
+            size: books.length,
+            bytes,
+            fromCache: !booksQuery.isStale,
+          },
+        );
+      });
+
+      return () => {
+        cancel(handle as number);
+      };
+    }
+  }, [books, libraryId, booksQuery.isStale]);
+
+  // 5. Navigation Guard on Fatal Error
+  useEffect(() => {
+    if (libraryQuery.isError) {
+      toast.error('Library not found or access denied');
+      if (navigate) {
+        navigate('/');
+      }
+    }
+  }, [libraryQuery.isError, navigate]);
+
+  // 6. Granular State Derivation directly from TanStack Query
+  const isLoading = libraryQuery.isLoading;
+  const isBooksLoading = booksQuery.isLoading;
+  const isSyncing = booksQuery.isFetching && !booksQuery.isLoading;
+  const isCachedFirstPaint = !booksQuery.isLoading && books.length > 0;
+
+  const refetch = async () => {
+    await Promise.all([libraryQuery.refetch(), booksQuery.refetch()]);
+  };
 
   return {
     library,
@@ -162,5 +186,8 @@ export function useLibraryData(
     isBooksLoading,
     isSyncing,
     isCachedFirstPaint,
+    isError: libraryQuery.isError || booksQuery.isError,
+    error: libraryQuery.error || booksQuery.error,
+    refetch,
   };
 }

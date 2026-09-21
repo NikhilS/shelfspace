@@ -1,8 +1,8 @@
-import {useState, useEffect} from 'react';
+import {useState, useEffect, useCallback} from 'react';
 import {useAuth} from '../../stores/authStore';
 import {uploadBase64Image} from '../../services/db/storage';
-import {useQueryClient} from '@tanstack/react-query';
 import {Library} from '../../types';
+import {LibraryScope} from '../../schemas/libraryApi';
 import {toast} from 'sonner';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../../lib/telemetry';
@@ -23,24 +23,50 @@ function normalizeLibraries(data: unknown): Library[] {
   return [];
 }
 
-export function useLibraries() {
+export function useLibraries(
+  initialScopes: LibraryScope[] = ['owned', 'shared'],
+) {
   const {user} = useAuth();
-  const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [scopes, setScopes] = useState<LibraryScope[]>(initialScopes);
 
   const librariesQuery = trpc.library.list.useQuery(
-    {},
+    {scopes},
     {
       enabled: Boolean(user),
       staleTime: 1000 * 60 * 5,
     },
   );
 
+  const toggleScope = useCallback((scope: LibraryScope) => {
+    setScopes(prev => {
+      if (scope === 'all') {
+        if (prev.includes('all')) {
+          return ['owned', 'shared'];
+        }
+        return ['all'];
+      }
+
+      // If 'all' was active, switch to specific filters
+      const withoutAll = prev.filter(s => s !== 'all');
+      const isCurrentlySelected = withoutAll.includes(scope);
+
+      if (isCurrentlySelected) {
+        // Prevent deselecting if it's the only active filter
+        if (withoutAll.length === 1) {
+          return withoutAll;
+        }
+        return withoutAll.filter(s => s !== scope);
+      } else {
+        return [...withoutAll, scope];
+      }
+    });
+  }, []);
+
   const createLibraryMutation = trpc.library.create.useMutation({
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: [['library', 'list']],
-      });
+      void utils.library.list.invalidate();
     },
   });
 
@@ -53,22 +79,45 @@ export function useLibraries() {
   // Pre-seed individual library caches for instant navigation
   useEffect(() => {
     if (libraries.length > 0) {
-      const payloadBytes = calculatePayloadBytes(libraries);
-      DebugTelemetryEngine.getInstance().addLog(
-        'db_read',
-        `Loaded ${libraries.length} user libraries via tRPC (${(payloadBytes / 1024).toFixed(1)} KB)`,
-        {
-          path: 'trpc.library.list',
-          size: libraries.length,
-          bytes: payloadBytes,
-        },
-      );
+      const schedule =
+        typeof window !== 'undefined' && 'requestIdleCallback' in window
+          ? window.requestIdleCallback
+          : (cb: () => void) => setTimeout(cb, 10);
+      const cancel =
+        typeof window !== 'undefined' && 'cancelIdleCallback' in window
+          ? window.cancelIdleCallback
+          : (id: number) => clearTimeout(id);
+
+      const handle = schedule(() => {
+        const payloadBytes = calculatePayloadBytes(libraries);
+        DebugTelemetryEngine.getInstance().addLog(
+          'db_read',
+          `Loaded ${libraries.length} libraries via tRPC (scopes: ${scopes.join(', ')}) (${(payloadBytes / 1024).toFixed(1)} KB)`,
+          {
+            path: 'trpc.library.list',
+            scopes,
+            size: libraries.length,
+            bytes: payloadBytes,
+          },
+        );
+      });
 
       libraries.forEach(lib => {
-        queryClient.setQueryData(['library', lib.id], lib);
+        if (lib.id) {
+          utils.library.get.setData(
+            {libraryId: lib.id},
+            lib as unknown as NonNullable<
+              ReturnType<typeof utils.library.get.getData>
+            >,
+          );
+        }
       });
+
+      return () => {
+        cancel(handle as number);
+      };
     }
-  }, [libraries, queryClient]);
+  }, [libraries, scopes, utils]);
 
   const createLibrary = async (name: string) => {
     if (!name.trim() || !user || isSubmitting) return;
@@ -96,9 +145,7 @@ export function useLibraries() {
                 libraryId: createdId,
                 heroImageUrl: storageUrl,
               });
-              void queryClient.invalidateQueries({
-                queryKey: [['library', 'list']],
-              });
+              void utils.library.list.invalidate();
             } catch (e) {
               console.error('Failed to save hero image', e);
             }
@@ -118,5 +165,8 @@ export function useLibraries() {
     isLoading: librariesQuery.isLoading,
     isSubmitting,
     createLibrary,
+    scopes,
+    setScopes,
+    toggleScope,
   };
 }

@@ -23,8 +23,8 @@ export function DuplicateSection({
   return (
     <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center gap-2 mb-6 border-b border-outline-variant/30 pb-3">
-        <Layers className="w-5 h-5 text-secondary flex-shrink-0" />
-        <h2 className="text-xl font-serif font-bold text-on-surface">
+        <Layers className="w-5 h-5 text-primary flex-shrink-0" />
+        <h2 className="text-xl font-sans font-bold text-on-surface">
           Potentially Duplicate Books{' '}
           <span className="text-on-surface-variant font-sans text-sm font-normal tracking-wide ml-2">
             ({duplicates.length} groups found)
@@ -44,21 +44,21 @@ export function DuplicateSection({
           {duplicates.map((group, idx) => (
             <div
               key={idx}
-              className="bg-auth-card border border-outline-variant/50 rounded-2xl p-6 shadow-elevation-3 border-l-4 border-l-secondary transition-all"
+              className="bg-auth-card border border-outline-variant/50 rounded-2xl p-6 shadow-elevation-3 border-l-4 border-l-primary/60 transition-all"
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 pb-3 border-b border-outline-variant/30">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-4 border-b border-outline-variant/30">
                 <div className="min-w-0">
                   <span className="sr-only">
                     Group {idx + 1}: {group[0].title}
                   </span>
                   <span
-                    className="metadata-eyebrow text-secondary block mb-1"
+                    className="metadata-eyebrow text-on-surface-variant block mb-1"
                     aria-hidden="true"
                   >
                     Group {idx + 1} • Duplicate Check
                   </span>
                   <h3
-                    className="font-serif text-lg font-bold text-primary truncate leading-tight"
+                    className="font-sans text-lg font-bold text-primary truncate leading-tight"
                     aria-hidden="true"
                   >
                     {group[0].title}
@@ -67,7 +67,7 @@ export function DuplicateSection({
                 <Button
                   variant="outline"
                   onClick={() => handleAllowDuplicateGroup(group)}
-                  className="flex items-center justify-center gap-1.5 w-full sm:w-auto border-secondary/20 text-secondary hover:bg-secondary-fixed-dim/10 hover:text-secondary font-bold text-xs"
+                  className="flex items-center justify-center gap-1.5 w-full sm:w-auto border-outline-variant/60 text-on-surface hover:bg-surface-container font-bold text-xs"
                 >
                   <EyeOff className="w-3.5 h-3.5" />
                   Mark as Unique
@@ -82,7 +82,7 @@ export function DuplicateSection({
                     className="bg-surface border border-outline-variant/40 hover:border-outline-variant/70 p-5 rounded-xl flex flex-col justify-between hover:shadow-elevation-2 transition-all duration-300"
                   >
                     <div>
-                      <h4 className="font-serif font-semi-bold text-primary leading-tight text-base mb-1">
+                      <h4 className="font-sans font-bold text-primary leading-tight text-base mb-1">
                         {b.title}
                       </h4>
                       <p className="text-xs font-semibold font-sans text-on-surface-variant mb-4">

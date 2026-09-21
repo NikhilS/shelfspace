@@ -4,7 +4,6 @@ import {BookContent} from './book-details/BookContent';
 import {Swiper, SwiperSlide} from 'swiper/react';
 import {Virtual} from 'swiper/modules';
 import type {Swiper as SwiperClass} from 'swiper';
-import {useQueryClient} from '@tanstack/react-query';
 import {useLibraryPermissions} from '../hooks/useLibraryPermissions';
 import {useAuth} from '../stores/authStore';
 import {PrefetchAdjacentBooks} from '../components/PrefetchAdjacentBooks';
@@ -12,6 +11,7 @@ import {ChevronLeft, ChevronRight} from 'lucide-react';
 import {BackToLibrary} from '../components/BackToLibrary';
 import {Button} from '@/components/ui/button';
 import {Book} from '../types';
+import {trpc} from '../lib/trpc';
 
 import 'swiper/css';
 import 'swiper/css/virtual';
@@ -20,7 +20,7 @@ export default function BookDetailsView() {
   const {libraryId, bookId} = useParams<{libraryId: string; bookId: string}>();
   const navigate = useNavigate();
   const location = useLocation();
-  const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
 
   const {user} = useAuth();
 
@@ -29,10 +29,14 @@ export default function BookDetailsView() {
   // Fetch only library permissions for canEdit; do NOT subscribe to the entire books collection
   const {canEdit} = useLibraryPermissions(libraryId, user?.uid);
 
-  // Check TanStack Query cache for existing books (present if navigated from bookshelf)
-  const cachedBooks = libraryId
-    ? queryClient.getQueryData<Book[]>(['books', libraryId])
+  // Check tRPC Query cache for existing books (present if navigated from bookshelf)
+  const cachedData = libraryId
+    ? utils.book.list.getData({libraryId})
     : undefined;
+
+  const cachedBooks = Array.isArray(cachedData)
+    ? (cachedData as Book[])
+    : (cachedData as {books?: Book[]})?.books;
 
   // Single-subscriber pattern:
   // If navigated with state.bookList, use it.
@@ -123,7 +127,9 @@ export default function BookDetailsView() {
           </div>
         </div>
         <div className="layout-page-content flex flex-col items-center justify-center min-h-[40vh] text-center">
-          <p className="font-serif text-xl text-primary mb-2">Book Not Found</p>
+          <p className="font-sans font-bold text-xl text-primary mb-2">
+            Book Not Found
+          </p>
           <p className="text-sm text-on-surface-variant mb-6">
             This volume could not be loaded or the library contains no books.
           </p>

@@ -26,7 +26,15 @@ export class AuthorBioMetadataProvider implements IMetadataProvider<string> {
     }
 
     if (!bio || bio.includes('may refer to:')) {
-      bio = await generateBookInsights(book.title, book.author, 'author_bio');
+      try {
+        bio = await generateBookInsights(book.title, book.author, 'author_bio');
+      } catch (err) {
+        console.warn(
+          `[AuthorBioProvider] AI fallback failed for ${book.author}:`,
+          err,
+        );
+        bio = null;
+      }
     }
 
     return bio || '';

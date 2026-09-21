@@ -68,7 +68,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="w-16 h-16 bg-error-container rounded-full flex items-center justify-center mb-6">
             <AlertCircle size={32} className="text-error" />
           </div>
-          <h2 className="font-serif text-2xl font-bold text-primary mb-3">
+          <h2 className="font-sans text-2xl font-bold text-primary mb-3">
             Something went wrong
           </h2>
           <p className="font-body-md text-on-surface-variant max-w-md mb-8 leading-relaxed">

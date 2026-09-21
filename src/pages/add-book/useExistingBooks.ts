@@ -1,14 +1,17 @@
-import {useQueryClient} from '@tanstack/react-query';
 import {BookDetails} from '../../services/bookApi';
 import {Book} from '../../types';
 import {trpc} from '../../lib/trpc';
 
 export function useExistingBooks(libraryId?: string) {
-  const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
 
-  const cachedBooks = libraryId
-    ? queryClient.getQueryData<Book[]>(['books', libraryId])
+  const cachedData = libraryId
+    ? utils.book.list.getData({libraryId})
     : undefined;
+
+  const cachedBooks = Array.isArray(cachedData)
+    ? (cachedData as Book[])
+    : (cachedData as {books?: Book[]})?.books;
 
   const bookListQuery = trpc.book.list.useQuery(
     {libraryId: libraryId || ''},
@@ -18,10 +21,12 @@ export function useExistingBooks(libraryId?: string) {
     },
   );
 
+  const queryBooks = Array.isArray(bookListQuery.data)
+    ? (bookListQuery.data as unknown as BookDetails[])
+    : (bookListQuery.data?.books as unknown as BookDetails[]);
+
   const existingBooks =
-    (cachedBooks as unknown as BookDetails[]) ||
-    (bookListQuery.data?.books as unknown as BookDetails[]) ||
-    [];
+    (cachedBooks as unknown as BookDetails[]) || queryBooks || [];
 
   return {existingBooks};
 }

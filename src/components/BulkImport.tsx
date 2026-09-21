@@ -1,10 +1,11 @@
 import React, {useRef, useState} from 'react';
-import {UploadCloud, Loader2, FileText} from 'lucide-react';
+import {UploadCloud, Loader2, FileText, WifiOff} from 'lucide-react';
 import {toast} from 'sonner';
 import {logger} from '../stores/debugStore';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {trpc} from '../lib/trpc';
+import {useOnlineStatus} from '../hooks/useOnlineStatus';
 
 import {
   Select,
@@ -37,6 +38,7 @@ export default function BulkImport({
   csvFormat,
   setCsvFormat,
 }: BulkImportProps) {
+  const isOnline = useOnlineStatus();
   const [extractionStatus, setExtractionStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -46,6 +48,13 @@ export default function BulkImport({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!isOnline) {
+      toast.error(
+        'Network required: Connect to the internet to analyze and import CSV files.',
+      );
+      return;
+    }
 
     logger.info(
       `Starting CSV file upload: ${file.name} (${Math.round(file.size / 1024)} KB)`,
@@ -133,13 +142,18 @@ export default function BulkImport({
 
       <Button
         onClick={() => fileInputRef.current?.click()}
-        disabled={isExtracting}
-        className="rounded-full shadow-elevation-2 hover:shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-3 px-8 py-6"
+        disabled={isExtracting || !isOnline}
+        title={!isOnline ? 'Cannot import CSV while offline' : undefined}
+        className="rounded-full shadow-elevation-2 hover:shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-3 px-8 py-6 disabled:opacity-50"
       >
         {isExtracting ? (
           <>
             <Loader2 className="animate-spin" size={20} strokeWidth={2.5} />{' '}
             {extractionStatus || 'Processing CSV...'}
+          </>
+        ) : !isOnline ? (
+          <>
+            <WifiOff size={20} strokeWidth={2} /> Offline (Import Disabled)
           </>
         ) : (
           <>

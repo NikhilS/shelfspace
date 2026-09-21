@@ -2,7 +2,7 @@ import {getAdminDb} from './firebaseAdmin';
 import {FieldValue} from 'firebase-admin/firestore';
 import {SUPERADMIN_EMAIL} from '../../constants/auth';
 import {TRPCError} from '@trpc/server';
-import {BookListInput} from '../../schemas/libraryApi';
+import {BookListInput, LibraryScope} from '../../schemas/libraryApi';
 import {AllowlistService} from '../../server/auth/allowlistService';
 
 export interface LibraryApiRecord {
@@ -10,7 +10,8 @@ export interface LibraryApiRecord {
   name: string;
   ownerId: string;
   ownerName?: string;
-  callerRole: 'owner' | 'editor' | 'viewer';
+  callerRole: 'owner' | 'editor' | 'viewer' | 'admin';
+  ownershipType?: 'owned' | 'shared' | 'global_admin';
   access?: Record<string, 'owner' | 'editor' | 'viewer'>;
   heroImageUrl?: string | null;
   bookCount?: number;
@@ -99,40 +100,58 @@ export class LibraryService {
   }
 
   /**
-   * Lists all libraries accessible to the caller.
-   * @deprecated Retired in Phase 5: Real-time queries now execute natively on client Firestore SDK.
+   * Lists all libraries accessible to the caller based on requested scopes.
+   * If caller is an admin and 'all' is requested, returns the full system catalog.
    */
   static async getUserLibraries(
     userId: string,
     userEmail?: string,
+    scopes: LibraryScope[] = ['owned', 'shared'],
+    isAdmin: boolean = false,
   ): Promise<{libraries: LibraryApiRecord[]}> {
     try {
       const db = getAdminDb();
       const librariesRef = db.collection('libraries');
+      const normalizedEmail = userEmail?.trim().toLowerCase();
+      const isCallerAdmin =
+        isAdmin ||
+        (normalizedEmail !== undefined &&
+          normalizedEmail === SUPERADMIN_EMAIL.toLowerCase().trim());
+
+      const activeScopes =
+        scopes && scopes.length > 0
+          ? scopes
+          : (['owned', 'shared'] as LibraryScope[]);
 
       const queries: Promise<FirebaseFirestore.QuerySnapshot>[] = [];
-      if (userId) {
-        queries.push(librariesRef.where('ownerId', '==', userId).get());
-      }
 
-      if (userEmail) {
-        const email = userEmail.trim();
-        const lowerEmail = email.toLowerCase();
-        queries.push(
-          librariesRef
-            .where(`access.${email}`, 'in', ['owner', 'editor', 'viewer'])
-            .get(),
-        );
-        if (lowerEmail !== email) {
+      // If 'all' is requested and caller is an administrator, fetch entire catalog
+      if (activeScopes.includes('all') && isCallerAdmin) {
+        queries.push(librariesRef.get());
+      } else {
+        if (activeScopes.includes('owned') && userId) {
+          queries.push(librariesRef.where('ownerId', '==', userId).get());
+        }
+
+        if (activeScopes.includes('shared') && userEmail) {
+          const email = userEmail.trim();
+          const lowerEmail = email.toLowerCase();
           queries.push(
             librariesRef
-              .where(`access.${lowerEmail}`, 'in', [
-                'owner',
-                'editor',
-                'viewer',
-              ])
+              .where(`access.${email}`, 'in', ['owner', 'editor', 'viewer'])
               .get(),
           );
+          if (lowerEmail !== email) {
+            queries.push(
+              librariesRef
+                .where(`access.${lowerEmail}`, 'in', [
+                  'owner',
+                  'editor',
+                  'viewer',
+                ])
+                .get(),
+            );
+          }
         }
       }
 
@@ -150,14 +169,24 @@ export class LibraryService {
           const accessMap: Record<string, 'owner' | 'editor' | 'viewer'> =
             data.access || {};
 
-          let callerRole: 'owner' | 'editor' | 'viewer' | null = null;
+          let callerRole: 'owner' | 'editor' | 'viewer' | 'admin' | null = null;
+          let ownershipType: 'owned' | 'shared' | 'global_admin' = 'owned';
 
           if (ownerId === userId) {
             callerRole = 'owner';
-          } else if (userEmail && accessMap[userEmail]) {
-            callerRole = accessMap[userEmail];
-          } else if (userEmail && accessMap[userEmail.toLowerCase()]) {
-            callerRole = accessMap[userEmail.toLowerCase()];
+            ownershipType = 'owned';
+          } else if (
+            userEmail &&
+            (accessMap[userEmail] ||
+              (normalizedEmail && accessMap[normalizedEmail]))
+          ) {
+            callerRole =
+              accessMap[userEmail] ||
+              (normalizedEmail ? accessMap[normalizedEmail] : 'viewer');
+            ownershipType = 'shared';
+          } else if (isCallerAdmin) {
+            callerRole = 'admin';
+            ownershipType = 'global_admin';
           }
 
           if (callerRole) {
@@ -182,6 +211,7 @@ export class LibraryService {
               ownerId: ownerId || userId,
               ownerName: data.ownerName || undefined,
               callerRole,
+              ownershipType,
               access: accessMap,
               heroImageUrl: data.heroImageUrl || undefined,
               bookCount:

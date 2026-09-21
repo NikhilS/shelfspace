@@ -25,6 +25,7 @@ export function useBook(
 ) {
   const {user} = useAuth();
   const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
   const [canEditLocal, setCanEditLocal] = useState(false);
 
   const canEdit = passedCanEdit !== undefined ? passedCanEdit : canEditLocal;
@@ -62,9 +63,12 @@ export function useBook(
           bookId,
         ]);
         if (cached) return cached;
-        const cachedBooks = libraryId
-          ? queryClient.getQueryData<Book[]>(['books', libraryId])
+        const cachedData = libraryId
+          ? utils.book.list.getData({libraryId})
           : undefined;
+        const cachedBooks = Array.isArray(cachedData)
+          ? (cachedData as Book[])
+          : (cachedData as {books?: Book[]})?.books;
         return cachedBooks?.find(b => b.id === bookId);
       },
       staleTime: 1000 * 60 * 5,
@@ -153,9 +157,9 @@ export function useBook(
     onSuccess: () => {
       queryClient.setQueryData(['bookBase', libraryId, bookId], null);
       queryClient.setQueryData(['bookDetails', libraryId, bookId], null);
-      void queryClient.invalidateQueries({
-        queryKey: ['books', libraryId],
-      });
+      if (libraryId) {
+        void utils.book.list.invalidate({libraryId});
+      }
     },
   });
 

@@ -247,8 +247,49 @@ describe('LibraryService', () => {
       expect(result.libraries.length).toBe(2);
       expect(result.libraries[0].id).toBe('lib_owned');
       expect(result.libraries[0].callerRole).toBe('owner');
+      expect(result.libraries[0].ownershipType).toBe('owned');
       expect(result.libraries[1].id).toBe('lib_shared');
       expect(result.libraries[1].callerRole).toBe('editor');
+      expect(result.libraries[1].ownershipType).toBe('shared');
+    });
+
+    it('returns all system libraries with global_admin type for super admin with scope all', async () => {
+      const mockDocs = [
+        {
+          id: 'lib_owned',
+          data: () => ({
+            name: 'Owned Library',
+            ownerId: 'superadmin_id',
+            access: {},
+          }),
+        },
+        {
+          id: 'lib_other',
+          data: () => ({
+            name: 'Other User Library',
+            ownerId: 'stranger_id',
+            access: {},
+          }),
+        },
+      ];
+
+      mockLibGet.mockResolvedValueOnce({
+        forEach: (cb: (doc: unknown) => void) => mockDocs.forEach(cb),
+      });
+
+      const result = await LibraryService.getUserLibraries(
+        'superadmin_id',
+        'nikhil.singhal@gmail.com',
+        ['all'],
+        true,
+      );
+
+      expect(result.libraries.length).toBe(2);
+      expect(result.libraries[0].id).toBe('lib_owned');
+      expect(result.libraries[0].ownershipType).toBe('owned');
+      expect(result.libraries[1].id).toBe('lib_other');
+      expect(result.libraries[1].callerRole).toBe('admin');
+      expect(result.libraries[1].ownershipType).toBe('global_admin');
     });
   });
 

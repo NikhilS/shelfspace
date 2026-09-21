@@ -1,50 +1,55 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500;1,6..72,600&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@1,500;1,600;1,700;1,800&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import '@fontsource-variable/geist';
 @import './theme.css';
 
 @custom-variant dark (&:is(.dark *));
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
-  --font-serif: 'Newsreader', ui-serif, Georgia, serif;
+  --font-brand: 'Playfair Display', Georgia, serif;
+  --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  --font-headline-2xl: 'Newsreader';
-  --font-headline-xl: 'Newsreader';
-  --font-headline-lg: 'Newsreader';
-  --font-headline-md: 'Newsreader';
-  --font-title-lg: 'Newsreader';
-  --font-title-md: 'Newsreader';
-  --font-title-sm: 'Newsreader';
-  --font-title-xs: 'Newsreader';
-  --font-body-lg: 'Manrope';
-  --font-body-md: 'Manrope';
-  --font-body-sm: 'Manrope';
-  --font-body-xs: 'Manrope';
-  --font-label-caps: 'Manrope';
-  --font-label-caps-sm: 'Manrope';
-  --font-label-caps-xs: 'Manrope';
+  --font-headline-2xl: 'Manrope', sans-serif;
+  --font-headline-xl: 'Manrope', sans-serif;
+  --font-headline-lg: 'Manrope', sans-serif;
+  --font-headline-md: 'Manrope', sans-serif;
+  --font-headline-sm: 'Manrope', sans-serif;
+  --font-title-lg: 'Manrope', sans-serif;
+  --font-title-md: 'Manrope', sans-serif;
+  --font-title-sm: 'Manrope', sans-serif;
+  --font-title-xs: 'Manrope', sans-serif;
+  --font-body-lg: 'Manrope', sans-serif;
+  --font-body-md: 'Manrope', sans-serif;
+  --font-body-sm: 'Manrope', sans-serif;
+  --font-body-xs: 'Manrope', sans-serif;
+  --font-label-caps: 'Manrope', sans-serif;
+  --font-label-caps-sm: 'Manrope', sans-serif;
+  --font-label-caps-xs: 'Manrope', sans-serif;
 
-  --text-headline-2xl: 64px;
-  --text-headline-2xl--line-height: 1.25;
+  --text-headline-2xl: 56px;
+  --text-headline-2xl--line-height: 1.15;
   --text-headline-2xl--letter-spacing: -0.03em;
   --text-headline-2xl--font-weight: 600;
 
-  --text-headline-xl: 48px;
-  --text-headline-xl--line-height: 1.25;
-  --text-headline-xl--letter-spacing: -0.02em;
+  --text-headline-xl: 40px;
+  --text-headline-xl--line-height: 1.2;
+  --text-headline-xl--letter-spacing: -0.025em;
   --text-headline-xl--font-weight: 600;
 
-  --text-headline-lg: 32px;
-  --text-headline-lg--line-height: 1.3;
-  --text-headline-lg--font-weight: 500;
+  --text-headline-lg: 30px;
+  --text-headline-lg--line-height: 1.25;
+  --text-headline-lg--font-weight: 600;
 
   --text-headline-md: 24px;
-  --text-headline-md--line-height: 1.35;
+  --text-headline-md--line-height: 1.3;
   --text-headline-md--font-weight: 600;
+
+  --text-headline-sm: 22px;
+  --text-headline-sm--line-height: 1.3;
+  --text-headline-sm--font-weight: 600;
 
   --text-title-lg: 20px;
   --text-title-lg--line-height: 1.35;
@@ -64,15 +69,15 @@
   --text-title-xs--line-height: 1.4;
   --text-title-xs--font-weight: 600;
 
-  --text-body-lg: 18px;
+  --text-body-lg: 17px;
   --text-body-lg--line-height: 1.6;
   --text-body-lg--font-weight: 400;
 
-  --text-body-md: 16px;
+  --text-body-md: 15px;
   --text-body-md--line-height: 1.5;
   --text-body-md--font-weight: 400;
 
-  --text-body-sm: 14px;
+  --text-body-sm: 13px;
   --text-body-sm--line-height: 1.5;
   --text-body-sm--font-weight: 400;
 
@@ -80,32 +85,36 @@
   --text-body-xs--line-height: 1.4;
   --text-body-xs--font-weight: 400;
 
-  --text-label-caps: 12px;
+  --text-label-caps: 11px;
   --text-label-caps--line-height: 1.2;
-  --text-label-caps--letter-spacing: 0.1em;
-  --text-label-caps--font-weight: 700;
+  --text-label-caps--letter-spacing: 0.06em;
+  --text-label-caps--font-weight: 600;
   --text-label-caps--text-transform: uppercase;
 
   --text-label-caps-sm: 10px;
   --text-label-caps-sm--line-height: 1.2;
-  --text-label-caps-sm--letter-spacing: 0.1em;
-  --text-label-caps-sm--font-weight: 700;
+  --text-label-caps-sm--letter-spacing: 0.06em;
+  --text-label-caps-sm--font-weight: 600;
   --text-label-caps-sm--text-transform: uppercase;
 
   --text-label-caps-xs: 9px;
   --text-label-caps-xs--line-height: 1.2;
-  --text-label-caps-xs--letter-spacing: 0.1em;
-  --text-label-caps-xs--font-weight: 700;
+  --text-label-caps-xs--letter-spacing: 0.06em;
+  --text-label-caps-xs--font-weight: 600;
   --text-label-caps-xs--text-transform: uppercase;
 
-  --radius-sm: 0.125rem;
-  --radius-DEFAULT: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-DEFAULT: 0.5rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+  --radius-full: 9999px;
 
   --spacing-unit: 8px;
-  --spacing-container-max: 1200px;
+  --spacing-container-max: 1280px;
   --spacing-gutter: 24px;
   --spacing-margin-mobile: 16px;
   --spacing-margin-desktop: 48px;
@@ -121,40 +130,44 @@ body {
 
 @layer components {
   .sidebar-nav-item {
-    @apply flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-left font-serif text-lg tracking-tight cursor-pointer;
+    @apply flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all duration-200 w-full text-left font-sans text-sm font-medium tracking-normal cursor-pointer;
   }
   .sidebar-nav-item:not(.active):not(.active-sub) {
-    @apply text-on-surface hover:text-primary hover:bg-surface-container;
+    @apply text-on-surface-variant hover:text-on-surface hover:bg-surface-container;
   }
   .sidebar-nav-item.active {
-    @apply text-primary font-bold bg-primary/5 shadow-sm;
+    @apply text-primary font-semibold bg-surface-container-high shadow-xs;
   }
   .sidebar-nav-item.active-sub {
-    @apply text-primary bg-surface-container shadow-sm;
+    @apply text-primary font-semibold bg-surface-container;
+  }
+
+  .font-brand {
+    font-family: 'Playfair Display', Georgia, serif;
   }
 
   .layout-container {
-    @apply w-full max-w-[1200px] mx-auto px-4 sm:px-8 lg:px-12;
+    @apply w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8;
   }
 
   .layout-page-content {
-    @apply flex-1 py-6 sm:py-8 min-w-0 w-full max-w-[1200px] mx-auto px-4 sm:px-8 lg:px-12;
+    @apply flex-1 py-6 sm:py-8 min-w-0 w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8;
   }
 
   .layout-header {
-    @apply mb-6 sm:mb-8 flex flex-col gap-4 border-b border-surface-variant pb-6 sm:pb-8;
+    @apply mb-6 sm:mb-8 flex flex-col gap-4 border-b border-outline-variant pb-6 sm:pb-8;
   }
   
   .layout-header-title {
-    @apply font-headline-lg sm:font-headline-xl text-headline-lg sm:text-headline-xl text-primary-container mb-2 sm:mb-4;
+    @apply font-sans text-3xl sm:text-4xl font-bold tracking-tight text-on-surface mb-2;
   }
 
   .layout-header-subtitle {
-    @apply font-body-md sm:font-body-lg text-body-md sm:text-body-lg text-on-surface-variant max-w-2xl;
+    @apply font-sans text-sm sm:text-base text-on-surface-variant max-w-2xl leading-relaxed;
   }
 
   .section-heading {
-    @apply font-serif text-xl sm:text-2xl font-bold tracking-tight text-on-surface;
+    @apply font-sans text-xl sm:text-2xl font-bold tracking-tight text-on-surface;
   }
 
   .section-subheading {
@@ -162,11 +175,11 @@ body {
   }
 
   .card-title-editorial {
-    @apply font-serif font-bold text-sm sm:text-base leading-snug tracking-tight text-on-surface;
+    @apply font-sans font-semibold text-base sm:text-lg leading-snug tracking-tight text-on-surface;
   }
 
   .empty-state-title {
-    @apply font-serif text-2xl sm:text-3xl font-bold tracking-tight text-primary mb-3;
+    @apply font-sans text-2xl sm:text-3xl font-bold tracking-tight text-on-surface mb-3;
   }
 
   .empty-state-description {
@@ -174,15 +187,15 @@ body {
   }
 
   .metadata-label {
-    @apply font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider;
+    @apply font-sans text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider;
   }
 
   .metadata-eyebrow {
-    @apply font-label-caps-sm text-label-caps-sm text-secondary uppercase tracking-widest font-bold;
+    @apply font-sans text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider;
   }
 
   .dialog-title-editorial {
-    @apply font-serif text-xl sm:text-2xl font-semibold tracking-tight text-on-surface;
+    @apply font-sans text-xl sm:text-2xl font-bold tracking-tight text-on-surface;
   }
 }
 
@@ -200,12 +213,20 @@ body {
   }
 
   .text-shadow-sm {
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   }
+
   .architectural-shadow {
     box-shadow:
-      0 10px 30px -10px rgba(26, 47, 75, 0.08),
-      0 4px 6px -4px rgba(26, 47, 75, 0.04);
+      0 1px 3px rgba(0, 0, 0, 0.04),
+      0 8px 24px -4px rgba(15, 23, 42, 0.06);
+  }
+
+  .glass-panel {
+    background: color-mix(in srgb, var(--color-surface) 85%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--color-outline-variant);
   }
 
   .hide-scrollbar {
@@ -236,8 +257,8 @@ body {
   .markdown-body h4,
   .markdown-body h5,
   .markdown-body h6 {
-    font-family: var(--font-serif);
-    color: var(--color-primary);
+    font-family: var(--font-sans);
+    color: var(--color-on-surface);
     margin-top: 1.5em;
     margin-bottom: 0.5em;
     font-weight: 600;
@@ -261,7 +282,7 @@ body {
   }
 
   .markdown-body a {
-    color: var(--color-outline);
+    color: var(--color-primary);
     text-decoration: underline;
   }
 
