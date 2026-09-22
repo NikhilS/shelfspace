@@ -8,6 +8,8 @@ export interface AuthUser {
   authType: 'jwt' | 'api_key';
   apiKeyId?: string;
   isSuperAdmin?: boolean;
+  displayName?: string;
+  photoURL?: string;
 }
 
 export interface SecurityPermissions {

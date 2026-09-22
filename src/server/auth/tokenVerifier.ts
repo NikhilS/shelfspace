@@ -42,6 +42,8 @@ export class TokenVerifier {
         uid: decoded.uid,
         email: decoded.email.toLowerCase(),
         authType: 'jwt',
+        displayName: (decoded.name as string | undefined) || undefined,
+        photoURL: (decoded.picture as string | undefined) || undefined,
       };
     } catch (err) {
       console.error('Error verifying JWT token in TRPC context', err);

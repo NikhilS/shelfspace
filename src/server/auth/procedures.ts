@@ -18,6 +18,25 @@ export const middleware = t.middleware;
 export const publicProcedure = t.procedure;
 
 /**
+ * Authenticated procedure - requires authenticated caller (Firebase JWT or API key),
+ * regardless of whether they are on the active allowlist yet.
+ */
+export const authenticatedProcedure = t.procedure.use(({ctx, next}) => {
+  if (!ctx.user) {
+    throw new TRPCError({
+      code: 'UNAUTHORIZED',
+      message: 'Not authenticated',
+    });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      user: ctx.user as AuthUser,
+    },
+  });
+});
+
+/**
  * Protected procedure - requires authenticated caller on the active allowlist.
  */
 export const protectedProcedure = t.procedure.use(({ctx, next}) => {

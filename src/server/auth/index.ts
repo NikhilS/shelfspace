@@ -1,5 +1,6 @@
 export * from './types';
 export * from './allowlistService';
+export * from './waitlistService';
 export * from './apiKeyVerifier';
 export * from './tokenVerifier';
 export * from './context';

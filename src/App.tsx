@@ -30,6 +30,7 @@ import {
 } from './components/LibrarySkeletons';
 import {useDebug} from './stores/debugStore';
 import {Button} from './components/ui/button';
+import {WaitlistScreen} from './components/WaitlistScreen';
 
 // Initialize Auth
 initAuthListener();
@@ -221,49 +222,20 @@ function AnimatedRoutes() {
 
 function AuthGuard({children}: {children: React.ReactNode}) {
   const {user, isAuthReady, authError, logOut} = useAuthStore();
-  const {isAppAllowed, isLoadingPermissions} = useAppPermissions();
+  const {isAppAllowed, isLoadingPermissions, refetchPermissions} =
+    useAppPermissions();
 
   if (isAuthReady && user && !isLoadingPermissions && !isAppAllowed) {
     return (
-      <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-6 text-center text-on-surface">
-        <div className="max-w-md w-full bg-surface-variant/30 border border-outline-variant/30 rounded-2xl p-8 space-y-6">
-          <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="w-8 h-8"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-sans font-bold text-on-surface">
-            Access Denied
-          </h1>
-          <p className="text-on-surface-variant leading-relaxed">
-            It looks like {user.email} doesn't have access to this application
-            yet. Please contact the administrator to be added to the allowlist.
-          </p>
-          <div className="pt-4">
-            <Button
-              type="button"
-              variant="default"
-              onClick={logOut}
-              className="w-full"
-            >
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </div>
+      <WaitlistScreen
+        user={{
+          email: user.email || '',
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+        }}
+        onRefetchPermissions={refetchPermissions}
+        onSignOut={logOut}
+      />
     );
   }
 
@@ -384,8 +356,8 @@ export default function App() {
                 <DebugDataClearer />
                 <TelemetryHUD />
               </BrowserRouter>
-              <Toaster position="bottom-right" />
             </AuthGuard>
+            <Toaster position="bottom-right" />
           </ThemeProvider>
         </ErrorBoundary>
       </QueryClientProvider>

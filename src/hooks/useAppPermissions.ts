@@ -7,16 +7,20 @@ export function useAppPermissions() {
   const email = user?.email?.toLowerCase().trim();
   const isSuperAdmin = email === SUPERADMIN_EMAIL.toLowerCase().trim();
 
-  const {data, isLoading} = trpc.auth.getPermissions.useQuery(undefined, {
-    enabled: Boolean(isAuthReady && email && !isSuperAdmin),
-    staleTime: 1000 * 60 * 5,
-  });
+  const {data, isLoading, refetch} = trpc.auth.getPermissions.useQuery(
+    undefined,
+    {
+      enabled: Boolean(isAuthReady && email && !isSuperAdmin),
+      staleTime: 1000 * 60 * 5,
+    },
+  );
 
   if (isSuperAdmin) {
     return {
       isAppAllowed: true,
       isAdmin: true,
       isLoadingPermissions: false,
+      refetchPermissions: async () => {},
     };
   }
 
@@ -24,5 +28,6 @@ export function useAppPermissions() {
     isAppAllowed: data?.isAppAllowed ?? false,
     isAdmin: data?.isAdmin ?? false,
     isLoadingPermissions: Boolean(isAuthReady && email && isLoading),
+    refetchPermissions: refetch,
   };
 }

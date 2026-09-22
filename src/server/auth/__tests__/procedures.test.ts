@@ -2,6 +2,7 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {
   router,
   publicProcedure,
+  authenticatedProcedure,
   protectedProcedure,
   adminProcedure,
   libraryProcedure,
@@ -19,6 +20,9 @@ vi.mock('../permissions', () => ({
 describe('tRPC Auth Procedures', () => {
   const testRouter = router({
     publicHello: publicProcedure.query(() => 'hello public'),
+    authOnly: authenticatedProcedure.query(
+      ({ctx}) => `hello auth ${ctx.user.email}`,
+    ),
     protectedData: protectedProcedure.query(
       ({ctx}) => `hello ${ctx.user.email}`,
     ),
@@ -40,6 +44,30 @@ describe('tRPC Auth Procedures', () => {
       const api = caller({user: null, isAppAllowed: false, isAdmin: false});
       const res = await api.publicHello();
       expect(res).toBe('hello public');
+    });
+  });
+
+  describe('authenticatedProcedure', () => {
+    it('throws UNAUTHORIZED if caller is not logged in', async () => {
+      const api = caller({user: null, isAppAllowed: false, isAdmin: false});
+      await expect(api.authOnly()).rejects.toThrow(TRPCError);
+      await expect(api.authOnly()).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+      });
+    });
+
+    it('succeeds for authenticated caller even if not on allowlist', async () => {
+      const api = caller({
+        user: {
+          uid: 'u_unenrolled',
+          email: 'unenrolled@example.com',
+          authType: 'jwt',
+        },
+        isAppAllowed: false,
+        isAdmin: false,
+      });
+      const res = await api.authOnly();
+      expect(res).toBe('hello auth unenrolled@example.com');
     });
   });
 

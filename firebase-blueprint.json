@@ -164,6 +164,21 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["locationName", "coordinates", "createdAt"]
+    },
+    "WaitlistEntry": {
+      "title": "WaitlistEntry",
+      "description": "An applicant on the access invite waitlist.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "requestedAt": { "type": "string", "format": "date-time" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "reviewedBy": { "type": "string", "format": "email" }
+      },
+      "required": ["email", "status", "requestedAt"]
     }
   },
   "firestore": {
@@ -198,6 +213,10 @@
     "/geolocationCache/{locationKey}": {
       "schema": { "$ref": "#/entities/GeolocationCache" },
       "description": "Global geolocation cache mapped by SHA256 of location name."
+    },
+    "/appSettings/waitlist/entries/{email}": {
+      "schema": { "$ref": "#/entities/WaitlistEntry" },
+      "description": "Submissions to the invite waitlist."
     }
   }
 }
