@@ -420,9 +420,9 @@ export function BookTitleCell({
   };
 
   const titleSizes = {
-    sm: 'text-sm font-medium text-on-surface leading-tight',
-    md: 'font-sans text-base sm:text-lg font-semibold text-on-surface leading-snug',
-    lg: 'font-sans text-lg sm:text-xl font-bold text-on-surface leading-snug',
+    sm: 'font-serif text-sm font-semibold text-on-surface leading-tight',
+    md: 'font-serif text-base sm:text-lg font-semibold text-on-surface leading-snug',
+    lg: 'font-serif text-lg sm:text-xl font-bold text-on-surface leading-snug',
   };
 
   const defaultMaxWidths = {
@@ -464,7 +464,7 @@ export function BookTitleCell({
         <div
           className={cn(
             coverSizes[size],
-            'flex-shrink-0 relative overflow-hidden cursor-pointer shadow-xs border border-outline-variant/30',
+            'flex-shrink-0 relative overflow-hidden cursor-pointer shadow-xs border border-outline-variant/50',
           )}
           onClick={e => {
             if (onToggleSelect) {
@@ -603,7 +603,7 @@ export function BookDateCell({
   return (
     <span
       className={cn(
-        'font-body-md text-outline whitespace-nowrap text-sm',
+        'font-mono tabular-nums text-on-surface-variant whitespace-nowrap text-xs',
         className,
       )}
     >

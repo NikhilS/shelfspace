@@ -28,7 +28,14 @@ export const bookCreateSchema = z
     synopsis: z.string().optional(),
     authorBio: z.string().optional(),
     embedding: z.array(z.number()).optional(),
-    clusterCoordinates: z.object({x: z.number(), y: z.number()}).optional(),
+    clusterCoordinates: z
+      .object({
+        x: z.number(),
+        y: z.number(),
+        clusterId: z.number().optional(),
+        clusterName: z.string().optional(),
+      })
+      .optional(),
     geoMetadata: z.any().optional(),
     temporalMetadata: z.any().optional(),
     bookDetailsMetadata: z.any().optional(),
@@ -37,7 +44,14 @@ export const bookCreateSchema = z
         synopsis: z.string().optional(),
         authorBio: z.string().optional(),
         embedding: z.array(z.number()).optional(),
-        clusterCoordinates: z.object({x: z.number(), y: z.number()}).optional(),
+        clusterCoordinates: z
+          .object({
+            x: z.number(),
+            y: z.number(),
+            clusterId: z.number().optional(),
+            clusterName: z.string().optional(),
+          })
+          .optional(),
         description: z.string().optional(),
       })
       .optional(),
@@ -113,8 +127,8 @@ export const bookListSchema = z.object({
   cursor: z.string().optional(),
 });
 
-export type BookCreateInput = z.infer<typeof bookCreateSchema>;
+export type BookCreateInput = z.input<typeof bookCreateSchema>;
 export type BookUpdateInput = z.infer<typeof bookUpdateSchema>;
 export type BookDeleteInput = z.infer<typeof bookDeleteSchema>;
 export type BookBatchUpsertInput = z.infer<typeof bookBatchUpsertSchema>;
-export type BookListInput = z.infer<typeof bookListSchema>;
+export type BookListInput = z.input<typeof bookListSchema>;

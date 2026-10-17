@@ -42,9 +42,9 @@ import {
   normalizeIsbn,
   normalizeText,
 } from '../../lib/utils';
-import CoverCamera from '../../components/CoverCamera';
+import CoverCamera from '../../components/import/CoverCamera';
 import {applyNanobananaFlash} from '../../lib/nanobanana';
-import {GenreSelect} from '../../components/GenreSelect';
+import {GenreSelect} from '../../components/book/GenreSelect';
 
 interface EditBookFormProps {
   libraryId: string;

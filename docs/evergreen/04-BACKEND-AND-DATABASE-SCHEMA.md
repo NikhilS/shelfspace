@@ -21,32 +21,49 @@ The database follows a hierarchical subcollection structure designed to guarante
 /libraries/{libraryId}
   ├── id: string
   ├── name: string
-  ├── description: string
   ├── ownerId: string (UID of owner)
-  ├── sharedWith: string[] (List of user emails with editor/viewer access)
-  ├── isPublic: boolean
+  ├── ownerName: string
+  ├── access: { [email: string]: "owner" | "editor" | "viewer" }
+  ├── heroImageUrl: string | null
   ├── bookCount: number
-  ├── createdAt: Timestamp
-  ├── updatedAt: Timestamp
+  ├── createdAt: Timestamp / ISO date string
+  ├── updatedAt: Timestamp / ISO date string
   │
-  └── /books/{bookId} (Subcollection)
-        ├── id: string
-        ├── title: string
-        ├── author: string
-        ├── isbn: string (10 or 13 digits)
-        ├── publicationYear: number
-        ├── pageCount: number
-        ├── coverUrl: string
-        ├── genre: string
-        ├── subgenres: string[]
-        ├── readingStatus: "unread" | "reading" | "read" | "abandoned"
-        ├── rating: number (1-5)
-        ├── summary: string
-        ├── spatialMetadata: { locations: [{ name, lat, lng, type }] }
-        ├── temporalMetadata: { eraName, startYear, endYear }
-        ├── embedding: number[] (768-dim vector for semantic clustering)
-        ├── addedAt: Timestamp
-        └── updatedAt: Timestamp
+  ├── /books/{bookId} (Subcollection - Lightweight catalog metadata)
+  │     ├── id: string
+  │     ├── title: string
+  │     ├── author: string
+  │     ├── isbn: string (10 or 13 digits)
+  │     ├── publishedDate: string
+  │     ├── coverUrl: string
+  │     ├── primaryGenre: string
+  │     ├── subgenres: string[]
+  │     ├── isCustomPrimary: boolean
+  │     ├── series: string
+  │     ├── format: "physical" | "digital"
+  │     ├── userStatuses: { [userId]: "unset" | "reading" | "finished" | "abandoned" }
+  │     ├── geoMetadata: { isNonEarth, lastSyncedAt, locations: [{ name, adminLevel, rationale, coordinates }] }
+  │     ├── addedAt: Timestamp / ISO date string
+  │     ├── addedBy: string (UID)
+  │     └── /reviews/{reviewId} (Subcollection: user book reviews)
+  │
+  ├── /bookDetails/{bookId} (Subcollection - Heavy semantic data split 1-to-1 with Book)
+  │     ├── synopsis: string (Full descriptive text, up to 32KB)
+  │     ├── authorBio: string
+  │     ├── clusterCoordinates: { x: number, y: number }
+  │     └── embedding: number[] (Semantic vector embedding for clustering)
+  │
+  ├── /allowedDuplicates/{allowedId} (Subcollection: dismissed duplicate book groupings)
+  └── /jobs/{jobId} (Subcollection: background processing task progress)
+
+/geolocationCache/{locationKey}
+  ├── locationName: string
+  ├── coordinates: { lat: number, lng: number }
+  └── createdAt: Timestamp / ISO date string
+
+/appSettings
+  ├── /allowlist/users/{email}: { email, grantedAt, grantedBy }
+  └── /waitlist/entries/{email}: { email, displayName, photoURL, status: "pending" | "approved" | "rejected", requestedAt }
 
 /apiKeys/{keyId}
   ├── id: string

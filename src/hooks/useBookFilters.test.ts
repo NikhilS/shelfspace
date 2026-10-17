@@ -2,7 +2,6 @@ import {renderHook, act} from '@testing-library/react';
 import {useBookFilters} from './useBookFilters';
 import {BrowserRouter} from 'react-router-dom';
 import {Book} from '../types';
-import {Timestamp} from 'firebase/firestore';
 import {describe, it, expect, beforeEach} from 'vitest';
 
 const mockBooks: Book[] = [
@@ -10,23 +9,23 @@ const mockBooks: Book[] = [
     id: '1',
     title: 'Zebra',
     author: 'Author Z',
-    addedAt: Timestamp.fromMillis(100),
+    addedAt: {toMillis: () => 100},
     addedBy: 'test-user',
-  } as Book,
+  } as unknown as Book,
   {
     id: '2',
     title: 'Apple',
     author: 'Author A',
-    addedAt: Timestamp.fromMillis(200),
+    addedAt: {toMillis: () => 200},
     addedBy: 'test-user',
-  } as Book,
+  } as unknown as Book,
   {
     id: '3',
     title: 'Banana',
     author: 'Author B',
-    addedAt: Timestamp.fromMillis(300),
+    addedAt: {toMillis: () => 300},
     addedBy: 'test-user',
-  } as Book,
+  } as unknown as Book,
 ];
 
 describe('useBookFilters', () => {
@@ -101,7 +100,7 @@ describe('useBookFilters', () => {
         author: 'Frank Herbert',
         primaryGenre: 'Science Fiction',
         subgenres: ['Space Opera'],
-        addedAt: Timestamp.fromMillis(100),
+        addedAt: 100,
       } as Book,
       {
         id: '11',
@@ -109,7 +108,7 @@ describe('useBookFilters', () => {
         author: 'William Gibson',
         primaryGenre: 'Science Fiction',
         subgenres: ['Cyberpunk'],
-        addedAt: Timestamp.fromMillis(200),
+        addedAt: 200,
       } as Book,
       {
         id: '12',
@@ -117,7 +116,7 @@ describe('useBookFilters', () => {
         author: 'Jane Austen',
         primaryGenre: 'Romance',
         subgenres: ['Historical Romance', 'Regency Romance'],
-        addedAt: Timestamp.fromMillis(300),
+        addedAt: 300,
       } as Book,
       {
         id: '13',
@@ -126,7 +125,7 @@ describe('useBookFilters', () => {
         primaryGenre: 'Cyberpunk Noir',
         isCustomPrimary: true,
         subgenres: ['Grimdark'],
-        addedAt: Timestamp.fromMillis(400),
+        addedAt: 400,
       } as Book,
     ];
 

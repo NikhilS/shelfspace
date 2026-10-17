@@ -4,7 +4,20 @@ import {useBulkEnrichment} from './useBulkEnrichment';
 import {Book} from '../types';
 import {trpcVanilla} from '../lib/trpc';
 
+const mockBookListSetData = vi.fn();
+const mockBookListInvalidate = vi.fn();
+
 vi.mock('../lib/trpc', () => ({
+  trpc: {
+    useUtils: () => ({
+      book: {
+        list: {
+          setData: mockBookListSetData,
+          invalidate: mockBookListInvalidate,
+        },
+      },
+    }),
+  },
   trpcVanilla: {
     enrichment: {
       trigger: {
@@ -148,6 +161,11 @@ describe('useBulkEnrichment', () => {
         overwrite: false,
       }),
     );
+    expect(mockBookListSetData).toHaveBeenCalledWith(
+      {libraryId: 'lib1'},
+      expect.any(Function),
+    );
+    expect(mockBookListInvalidate).toHaveBeenCalledWith({libraryId: 'lib1'});
   });
 
   it('correctly maps primaryGenre to genre and calls trpc enrichment mutation', async () => {

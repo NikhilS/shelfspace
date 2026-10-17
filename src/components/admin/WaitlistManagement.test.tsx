@@ -130,10 +130,12 @@ describe('WaitlistManagement', () => {
     const {container} = render(<WaitlistManagement />);
 
     expect(screen.getByText('Total In Queue')).toBeInTheDocument();
-    expect(container.querySelector('#waitlist-stat-all')).toHaveTextContent('4');
-    expect(
-      container.querySelector('#waitlist-stat-pending'),
-    ).toHaveTextContent('2');
+    expect(container.querySelector('#waitlist-stat-all')).toHaveTextContent(
+      '4',
+    );
+    expect(container.querySelector('#waitlist-stat-pending')).toHaveTextContent(
+      '2',
+    );
     expect(
       container.querySelector('#waitlist-stat-approved'),
     ).toHaveTextContent('1');

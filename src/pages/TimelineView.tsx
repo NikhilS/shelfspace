@@ -1,95 +1,78 @@
-import React, {useState, useMemo, useCallback, useEffect} from 'react';
+import React, {useState, useMemo, useCallback, useEffect, useRef} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
+import {Clock, Waves} from 'lucide-react';
 import {useAuth} from '../stores/authStore';
 import {useLibraryData} from '../hooks/useLibraryData';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
-import {BulkEnrichmentBanner} from '../components/BulkEnrichmentBanner';
+import {BulkEnrichmentBanner} from '../components/import/BulkEnrichmentBanner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
-import {BackToLibrary} from '../components/BackToLibrary';
-import {
-  Clock,
-  Search,
-  BookOpen,
-  Sparkles,
-  Sliders,
-  Calendar,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react';
-import {BookLoader} from '../components/BookLoader';
-import {Input} from '@/components/ui/input';
-import {Badge} from '@/components/ui/badge';
+import {BackToLibrary} from '../components/layout/BackToLibrary';
+import {BookLoader} from '../components/book/BookLoader';
 import {Book} from '../types';
-import {motion, AnimatePresence} from 'motion/react';
+import {
+  PRESETS,
+  formatYear,
+  TimelineCluster,
+  TimelinePresetControls,
+  TimelineScrubber,
+} from './timeline/TimelineControls';
+import {
+  computeRiverGeometry,
+  TimelineEraMarker,
+} from './timeline/TimelineEraMarker';
+import {
+  TimelineDesktopEpochDrawer,
+  TimelineMobileEpochSheet,
+  TimelineNonHistoricalAnnex,
+} from './timeline/TimelineBookList';
 
-const PRESETS = [
-  {
-    id: 'all',
-    label: 'All-Time Focus',
-    zoom: 1,
-    text: "A bird's-eye view of your entire collections.",
-  },
-  {
-    id: 'bce',
-    label: 'Ancient & BCE Era',
-    zoom: 5,
-    yearLimit: 0,
-    text: 'Isolate historical epics of Antiquity.',
-  },
-  {
-    id: 'modern',
-    label: 'Century Highlights',
-    zoom: 20,
-    text: 'Decompose modern times into decades.',
-  },
-];
-
-function getCircleSizeClasses(uniqueBookCount: number) {
-  if (uniqueBookCount > 100)
-    return {outer: 'w-44 h-44', middle: 'w-28 h-28', inner: 'w-10 h-10'};
-  if (uniqueBookCount > 20)
-    return {outer: 'w-32 h-32', middle: 'w-20 h-20', inner: 'w-8 h-8'};
-  if (uniqueBookCount > 5)
-    return {outer: 'w-24 h-24', middle: 'w-16 h-16', inner: 'w-6 h-6'};
-  if (uniqueBookCount > 1)
-    return {outer: 'w-16 h-16', middle: 'w-10 h-10', inner: 'w-5 h-5'};
-  return {outer: 'w-12 h-12', middle: 'w-8 h-8', inner: 'w-4 h-4'};
-}
-
-const formatYear = (year: number) => {
-  if (year < 0) return `${Math.abs(year)} BCE`;
-  return `${year} CE`;
-};
-
-interface Cluster {
-  key: number;
-  label: string;
-  books: Book[];
-}
+export {formatYear};
 
 export default function TimelineView() {
   const {id: libraryId} = useParams<{id: string}>();
   const navigate = useNavigate();
   const {user} = useAuth();
 
-  // Load parent library data using existing custom hook
   const {books, isBooksLoading} = useLibraryData(
     libraryId,
     user?.uid,
     navigate,
   );
 
-  // States
   const [zoomLevel, setZoomLevel] = useState<1 | 5 | 20>(1);
   const [selectedPreset, setSelectedPreset] = useState<string>('all');
   const [selectedClusterKey, setSelectedClusterKey] = useState<number | null>(
     null,
   );
+  const [hoveredClusterKey, setHoveredClusterKey] = useState<number | null>(
+    null,
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [isNonHistoricalCollapsed, setIsNonHistoricalCollapsed] =
     useState(true);
+  const [stageWidth, setStageWidth] = useState<number>(920);
 
-  // 2. Scan and check for books needing automated backfill enrichment via our unified hook
+  const stageContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = stageContainerRef.current;
+    if (!el) return;
+
+    const updateWidth = () => {
+      if (el.clientWidth && el.clientWidth > 200) {
+        setStageWidth(el.clientWidth);
+      }
+    };
+    updateWidth();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateWidth);
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
+    return undefined;
+  }, [books.length]);
+
   const filterTemporalPredicate = useCallback(
     (b: Book) => !b.temporalMetadata,
     [],
@@ -110,7 +93,6 @@ export default function TimelineView() {
     errorToastMessage: 'Analysis backfill failed',
   });
 
-  // Telemetry logs for integration with the Debug Console
   useEffect(() => {
     DebugTelemetryEngine.getInstance().addLog(
       'info',
@@ -135,17 +117,15 @@ export default function TimelineView() {
     );
   }, [searchQuery]);
 
-  // Preset configuration mapper
   const handlePresetSelect = (presetId: string) => {
     setSelectedPreset(presetId);
     setSelectedClusterKey(null);
     const preset = PRESETS.find(p => p.id === presetId);
     if (preset) {
-      setZoomLevel(preset.zoom as 1 | 5 | 20);
+      setZoomLevel(preset.zoom);
     }
   };
 
-  // Partition raw books
   const historicalBooks = useMemo(() => {
     return books.filter(
       b => b.temporalMetadata && !b.temporalMetadata.isNonHistorical,
@@ -156,7 +136,6 @@ export default function TimelineView() {
     return books.filter(b => b.temporalMetadata?.isNonHistorical === true);
   }, [books]);
 
-  // Dynamic Mathematical Clustering
   const getClusterKey = (startYear: number, zoom: 1 | 5 | 20) => {
     let interval = 500;
     if (zoom === 5) interval = 100;
@@ -170,7 +149,6 @@ export default function TimelineView() {
     historicalBooks.forEach(b => {
       const year = b.temporalMetadata?.startYear;
       if (year !== undefined && year !== null) {
-        // Filter out if currently viewing ancient preset limit
         if (selectedPreset === 'bce' && year > 0) return;
 
         const k = getClusterKey(year, zoomLevel);
@@ -179,12 +157,15 @@ export default function TimelineView() {
       }
     });
 
-    const list: Cluster[] = Object.keys(map)
+    const list: TimelineCluster[] = Object.keys(map)
       .map(Number)
       .map(key => {
-        const cBooks = map[key];
+        const cBooks = [...map[key]].sort(
+          (a, b) =>
+            (a.temporalMetadata?.startYear ?? 0) -
+            (b.temporalMetadata?.startYear ?? 0),
+        );
 
-        // Find most frequent eraName in cluster for high-fidelity titles
         const eraNames = cBooks
           .map(b => b.temporalMetadata?.eraName)
           .filter(Boolean) as string[];
@@ -207,27 +188,90 @@ export default function TimelineView() {
           if (zoomLevel === 20) {
             eraLabel = `${formatYear(key)}s Era`;
           } else {
-            eraLabel = `${formatYear(key)} - ${formatYear(key + interval - 1)}`;
+            eraLabel = `${formatYear(key)} – ${formatYear(key + interval - 1)}`;
           }
         }
+
+        const startYears = cBooks.map(
+          b => b.temporalMetadata?.startYear ?? key,
+        );
+        const endYears = cBooks.map(
+          b =>
+            b.temporalMetadata?.endYear ?? b.temporalMetadata?.startYear ?? key,
+        );
+        const minYear = Math.min(...startYears);
+        const maxYear = Math.max(...endYears);
+
+        const channelWidth = Math.min(
+          96,
+          Math.max(36, Math.round(32 + Math.log2(cBooks.length + 1) * 18)),
+        );
+
+        const spanningBooks = cBooks.filter(b => {
+          const s = b.temporalMetadata?.startYear;
+          const e = b.temporalMetadata?.endYear;
+          return s !== undefined && e !== undefined && e - s >= 15;
+        });
 
         return {
           key,
           label: eraLabel,
           books: cBooks,
+          minYear,
+          maxYear,
+          channelWidth,
+          spanningBooks,
         };
       });
 
     return list.sort((a, b) => a.key - b.key);
   }, [historicalBooks, zoomLevel, selectedPreset]);
 
-  // Selected details calculations
+  const timelineStats = useMemo(() => {
+    if (clusters.length === 0) {
+      return {
+        totalHistorical: 0,
+        earliestYear: null as number | null,
+        latestYear: null as number | null,
+        totalSpanning: 0,
+      };
+    }
+    const earliestYear = Math.min(...clusters.map(c => c.minYear));
+    const latestYear = Math.max(...clusters.map(c => c.maxYear));
+    const totalHistorical = clusters.reduce(
+      (acc, c) => acc + c.books.length,
+      0,
+    );
+    const totalSpanning = clusters.reduce(
+      (acc, c) => acc + c.spanningBooks.length,
+      0,
+    );
+    return {
+      totalHistorical,
+      earliestYear,
+      latestYear,
+      totalSpanning,
+    };
+  }, [clusters]);
+
+  const riverGeometry = useMemo(
+    () => computeRiverGeometry(clusters, stageWidth),
+    [clusters, stageWidth],
+  );
+
   const selectedCluster = useMemo(() => {
     if (selectedClusterKey === null) return null;
     return clusters.find(c => c.key === selectedClusterKey) || null;
   }, [clusters, selectedClusterKey]);
 
-  // Search filtered books inside selected/sidebar lists
+  const handleJumpToCluster = (clusterKey: number) => {
+    setSelectedClusterKey(clusterKey);
+    const el = document.getElementById(`river-dock-${clusterKey}`);
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({behavior: 'smooth', block: 'center'});
+    }
+  };
+
   const filteredNonHistorical = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) return nonHistoricalBooks;
@@ -238,402 +282,506 @@ export default function TimelineView() {
     );
   }, [nonHistoricalBooks, searchQuery]);
 
+  const maxClusterCount = useMemo(() => {
+    if (clusters.length === 0) return 1;
+    return Math.max(1, ...clusters.map(c => c.books.length));
+  }, [clusters]);
+
   return (
-    <>
-      <div className="layout-page-content" id="timeline-layout">
-        {/* Dynamic header information block */}
-        <div className="layout-header border-none flex flex-col md:flex-row md:justify-between md:items-start gap-4">
-          <div>
-            <BackToLibrary
-              libraryId={libraryId}
-              label="Back to Library Overview"
-              className="mb-2"
-            />
-            <h1 className="layout-header-title">
-              Historical Temporal Timeline
-            </h1>
-            <p className="layout-header-subtitle max-w-3xl">
-              Mapping the chronological coverage and literature setting eras of
-              your library. Grouped dynamically into era epochs and zoomed
-              across history.
-            </p>
-          </div>
+    <div className="layout-page-content" id="timeline-layout">
+      {/* 1. Cartographic Header & Controls Bar */}
+      <div className="layout-header border-none flex flex-col lg:flex-row lg:justify-between lg:items-end gap-6 pb-2">
+        <div>
+          <BackToLibrary
+            libraryId={libraryId}
+            label="Back to Library Overview"
+            className="mb-2"
+          />
+          <h1 className="layout-header-title text-balance">
+            Historical Temporal Timeline
+          </h1>
+          <p className="layout-header-subtitle max-w-2xl">
+            A hydrographic survey of your library across time. Narrow riffles
+            widen into alluvial pools and river islands at each historical bend,
+            while tributary arcs trace narratives across centuries.
+          </p>
 
-          {/* Presentation and Slider controls / Range presets */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Presets buttons */}
-            <div className="bg-surface-variant p-1 rounded-full flex border border-outline-variant font-label-caps-sm text-label-caps-sm font-semibold">
-              {PRESETS.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => handlePresetSelect(p.id)}
-                  className={`py-1.5 px-3 rounded-full transition-all cursor-pointer ${
-                    selectedPreset === p.id
-                      ? 'bg-primary text-on-primary shadow-sm font-semibold'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                  title={p.text}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Slider controls */}
-            <div className="flex items-center gap-2 px-3.5 py-1.5 bg-surface-container rounded-full border border-outline-variant">
-              <Sliders className="w-4 h-4 text-on-surface-variant shrink-0" />
-              <span className="text-xs font-mono font-semibold select-none text-on-surface-variant pr-1">
-                Zoom: {zoomLevel}x
+          {/* Unboxed Archival Metrics Strip (Zero-Pill Discipline) */}
+          {!isBooksLoading && timelineStats.totalHistorical > 0 && (
+            <div className="mt-4 pt-3 border-t border-outline-variant/40 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-variant font-sans">
+              <span>
+                <strong className="font-mono tabular-nums text-on-surface font-semibold">
+                  {timelineStats.totalHistorical}
+                </strong>{' '}
+                Historical Volumes
               </span>
-              <input
-                type="range"
-                min="1"
-                max="3"
-                step="1"
-                value={zoomLevel === 1 ? 1 : zoomLevel === 5 ? 2 : 3}
-                onChange={e => {
-                  const val = Number(e.target.value);
-                  const z = val === 1 ? 1 : val === 2 ? 5 : 20;
-                  setZoomLevel(z);
-                  setSelectedClusterKey(null);
-                }}
-                className="w-20 accent-primary h-1 bg-outline-variant/50 rounded-lg cursor-pointer focus:outline-none"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Backfilling and Sync progress loader indicator */}
-        <BulkEnrichmentBanner
-          isBackfilling={isBackfilling}
-          completed={backfillProgress.completed}
-          failed={backfillProgress.failed}
-          total={backfillProgress.total}
-          title="Scanning Literary Chronologies"
-          description="Mapping historical eras..."
-          colorTheme="indigo"
-          className="ml-1 mb-5"
-          inFlightCount={inFlightCount}
-        />
-
-        {/* Primary Interactive Timeline & Drawer Area */}
-        <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Main Timeline Card Stage */}
-          <div
-            className={`transition-all duration-300 ${
-              selectedCluster ? 'lg:col-span-8' : 'lg:col-span-12'
-            }`}
-          >
-            <div className="bg-surface-variant/10 rounded-3xl p-6 sm:p-8 border border-outline-variant/20 min-h-[500px] relative">
-              {isBooksLoading ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-background/50 rounded-3xl">
-                  <BookLoader size="lg" className="mb-4" />
-                  <p className="text-on-surface-variant text-sm font-medium">
-                    Assembling chronological assets...
-                  </p>
-                </div>
-              ) : (
-                <div className="max-w-2xl mx-auto relative py-6">
-                  {/* Historical Timeline block if clusters exist */}
-                  {clusters.length > 0 ? (
-                    <div className="relative pl-12 sm:pl-0 sm:flex sm:flex-col sm:items-center pb-12">
-                      {/* Central line track */}
-                      <div className="absolute left-8 sm:left-1/2 top-0 bottom-0 w-0.5 bg-outline-variant/30 -translate-x-1/2" />
-
-                      <div className="space-y-16 w-full relative">
-                        {clusters.map((cluster, idx) => {
-                          const isLeft = idx % 2 === 0;
-                          const isSelected = selectedClusterKey === cluster.key;
-                          const circleSizes = getCircleSizeClasses(
-                            cluster.books.length,
-                          );
-
-                          return (
-                            <motion.div
-                              layout
-                              initial={{opacity: 0, y: 15}}
-                              animate={{opacity: 1, y: 0}}
-                              key={cluster.key}
-                              className={`relative flex flex-col sm:flex-row items-center w-full ${isLeft ? 'sm:justify-start' : 'sm:justify-end'}`}
-                            >
-                              {/* Timeline Node core */}
-                              <div
-                                onClick={() =>
-                                  setSelectedClusterKey(
-                                    isSelected ? null : cluster.key,
-                                  )
-                                }
-                                className="absolute left-8 sm:left-1/2 -translate-x-1/2 top-1.5 sm:top-auto cursor-pointer z-10 group"
-                              >
-                                <div className="relative flex items-center justify-center">
-                                  {/* Halo ripple glow */}
-                                  <div
-                                    className={`absolute rounded-full border border-primary/20 bg-primary/2 transition-all duration-500 ease-in-out group-hover:scale-110 group-hover:bg-primary/5 ${circleSizes.outer} ${isSelected ? 'scale-110 border-primary/40 bg-primary/8' : 'animate-[pulse_3s_infinite]'}`}
-                                  />
-                                  <div
-                                    className={`absolute rounded-full border border-primary/30 bg-primary/5 transition-all duration-300 group-hover:scale-105 ${circleSizes.middle} ${isSelected ? 'scale-105 border-primary/50' : ''}`}
-                                  />
-                                  <div
-                                    className={`absolute rounded-full bg-primary flex items-center justify-center text-primary-foreground font-mono font-semibold text-xs transition-colors shadow-md ${circleSizes.inner} ${isSelected ? 'bg-primary-hover' : ''}`}
-                                  >
-                                    {cluster.books.length}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Interactive Epoch Card text wrapper */}
-                              <motion.div
-                                layout
-                                className={`w-full sm:w-[calc(50%-2.5rem)] ml-16 sm:ml-0 overflow-hidden ${isLeft ? 'sm:pr-4 sm:text-right' : 'sm:pl-4 sm:text-left'}`}
-                              >
-                                <div
-                                  onClick={() =>
-                                    setSelectedClusterKey(
-                                      isSelected ? null : cluster.key,
-                                    )
-                                  }
-                                  className={`p-5 rounded-2xl border transition-all duration-300 text-left ${isSelected ? 'bg-surface-container-high border-primary/50 shadow-md ring-1 ring-primary/20' : 'bg-surface-container-low border-outline-variant/20 shadow-sm hover:border-primary/20 hover:bg-surface-container-high cursor-pointer'}`}
-                                >
-                                  <div className="flex items-center gap-1.5 mb-2">
-                                    <Calendar className="w-3.5 h-3.5 text-primary" />
-                                    <Badge variant="temporal">
-                                      {formatYear(cluster.key)}
-                                    </Badge>
-                                  </div>
-                                  <h3 className="font-sans font-bold text-on-surface text-lg text-balance line-clamp-2">
-                                    {cluster.label}
-                                  </h3>
-                                  <p className="text-xs text-on-surface-variant mt-1.5">
-                                    {cluster.books.length} volume
-                                    {cluster.books.length > 1 ? 's' : ''} set
-                                    here
-                                  </p>
-                                </div>
-                              </motion.div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center text-center py-16 px-6">
-                      <div className="w-16 h-16 bg-surface-variant/40 rounded-full flex items-center justify-center text-on-surface-variant/50 mb-4 animate-[pulse_4s_infinite]">
-                        <Clock className="w-8 h-8" />
-                      </div>
-                      <h3 className="text-lg font-sans font-bold text-on-surface">
-                        No Historical Settings Found
-                      </h3>
-                      <p className="text-sm text-on-surface-variant mt-2 max-w-sm">
-                        Add more historical literature, biographies, or
-                        narrative settings to mapping your timeline grid.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Non-Historical Settings Panel (Below the timeline!) */}
-                  {filteredNonHistorical.length > 0 && (
-                    <div className="mt-12 pt-10 border-t border-outline-variant/20">
-                      <div className="flex flex-col gap-4">
-                        <button
-                          onClick={() =>
-                            setIsNonHistoricalCollapsed(
-                              !isNonHistoricalCollapsed,
-                            )
-                          }
-                          className="flex items-center justify-between w-full text-left focus:outline-none group cursor-pointer"
-                          id="toggle-non-historical-settings"
-                        >
-                          <div className="flex items-center gap-2">
-                            <BookOpen className="w-5 h-5 text-primary" />
-                            <h2 className="font-sans font-bold text-lg text-on-surface group-hover:text-primary transition-colors">
-                              Non-Historical Settings (
-                              {filteredNonHistorical.length})
-                            </h2>
-                          </div>
-                          {isNonHistoricalCollapsed ? (
-                            <ChevronDown className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
-                          ) : (
-                            <ChevronUp className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
-                          )}
-                        </button>
-
-                        {!isNonHistoricalCollapsed && (
-                          <motion.div
-                            initial={{opacity: 0, height: 0}}
-                            animate={{opacity: 1, height: 'auto'}}
-                            exit={{opacity: 0, height: 0}}
-                            transition={{duration: 0.2}}
-                            className="flex flex-col gap-4 overflow-hidden"
-                          >
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                              <p className="text-xs text-on-surface-variant leading-relaxed max-w-lg">
-                                {
-                                  'These companion records and backlog books are set in abstract lore environments, modern scratchpads, or timeless settings without discrete temporal bounds.'
-                                }
-                              </p>
-                              {/* Search input for nonhistorical list */}
-                              <div className="relative w-full sm:w-64">
-                                <Search className="w-3.5 h-3.5 text-on-surface-variant absolute left-3 top-2.5 z-10 pointer-events-none" />
-                                <Input
-                                  type="text"
-                                  placeholder="Search non-historical..."
-                                  value={searchQuery}
-                                  onChange={e => setSearchQuery(e.target.value)}
-                                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface-container rounded-lg border-outline-variant/30 text-on-surface h-8"
-                                />
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-                              {filteredNonHistorical.map(b => (
-                                <div
-                                  key={b.id}
-                                  className="p-4 bg-surface-container-low border border-outline-variant/10 rounded-2xl flex flex-col gap-2 shadow-sm text-sm"
-                                >
-                                  <div>
-                                    <div className="font-medium text-on-surface/90 truncate">
-                                      {b.title}
-                                    </div>
-                                    <div className="text-xs text-on-surface-variant truncate">
-                                      {b.author || 'Unknown'}
-                                    </div>
-                                  </div>
-                                  {b.temporalMetadata?.rationale && (
-                                    <p className="text-xs text-on-surface-variant italic line-clamp-3 mt-1 leading-relaxed">
-                                      &ldquo;{b.temporalMetadata.rationale}
-                                      &rdquo;
-                                    </p>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </motion.div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+              <span aria-hidden="true" className="text-outline-variant">
+                ·
+              </span>
+              <span>
+                Headwaters:{' '}
+                <strong className="font-mono tabular-nums text-on-surface font-semibold">
+                  {timelineStats.earliestYear !== null
+                    ? formatYear(timelineStats.earliestYear)
+                    : '—'}
+                </strong>
+              </span>
+              <span aria-hidden="true" className="text-outline-variant">
+                ·
+              </span>
+              <span>
+                Delta:{' '}
+                <strong className="font-mono tabular-nums text-on-surface font-semibold">
+                  {timelineStats.latestYear !== null
+                    ? formatYear(timelineStats.latestYear)
+                    : '—'}
+                </strong>
+              </span>
+              <span aria-hidden="true" className="text-outline-variant">
+                ·
+              </span>
+              <span>
+                <strong className="font-mono tabular-nums text-on-surface font-semibold">
+                  {clusters.length}
+                </strong>{' '}
+                {clusters.length === 1 ? 'Epoch Bend' : 'Epoch Bends'}
+              </span>
+              {timelineStats.totalSpanning > 0 && (
+                <>
+                  <span aria-hidden="true" className="text-outline-variant">
+                    ·
+                  </span>
+                  <span>
+                    <strong className="font-mono tabular-nums text-primary font-semibold">
+                      {timelineStats.totalSpanning}
+                    </strong>{' '}
+                    Multi-Era Span{' '}
+                    {timelineStats.totalSpanning === 1 ? 'Arc' : 'Arcs'}
+                  </span>
+                </>
               )}
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* Selected Epoch Details Panel: Sidebar popout */}
-          <AnimatePresence>
-            {selectedCluster && (
-              <motion.div
-                key={`selected-cluster-${selectedCluster.key}`}
-                initial={{opacity: 0, scale: 0.95, y: 15}}
-                animate={{opacity: 1, scale: 1, y: 0}}
-                exit={{opacity: 0, scale: 0.95, y: 15}}
-                className="lg:col-span-4 bg-surface-container-low border border-outline-variant/30 rounded-3xl flex flex-col overflow-hidden shadow-md"
-              >
-                <div className="p-6 border-b border-outline-variant/20 flex items-center justify-between">
-                  <div>
-                    <h3 className="font-sans font-bold text-on-surface text-lg">
-                      {selectedCluster.label}
-                    </h3>
-                    <div className="mt-1">
-                      <Badge variant="temporal">
-                        {formatYear(selectedCluster.key)} Epoch
-                      </Badge>
+        <TimelinePresetControls
+          selectedPreset={selectedPreset}
+          zoomLevel={zoomLevel}
+          onPresetSelect={handlePresetSelect}
+          onZoomChange={z => {
+            setZoomLevel(z);
+            setSelectedClusterKey(null);
+          }}
+        />
+      </div>
+
+      {/* Backfilling and Sync progress loader indicator */}
+      <BulkEnrichmentBanner
+        isBackfilling={isBackfilling}
+        completed={backfillProgress.completed}
+        failed={backfillProgress.failed}
+        total={backfillProgress.total}
+        title="Scanning Literary Chronologies"
+        description="Mapping historical eras..."
+        colorTheme="indigo"
+        className="ml-1 mb-5"
+        inFlightCount={inFlightCount}
+      />
+
+      {/* 2. Interactive Century Scrubber & Hydrographic Minimap Bar */}
+      {!isBooksLoading && (
+        <TimelineScrubber
+          clusters={clusters}
+          selectedClusterKey={selectedClusterKey}
+          hoveredClusterKey={hoveredClusterKey}
+          maxClusterCount={maxClusterCount}
+          onJumpToCluster={handleJumpToCluster}
+          onHoverCluster={setHoveredClusterKey}
+        />
+      )}
+
+      {/* 3. Primary Interactive Meandering River Stage & Epoch Curatorial Drawer */}
+      <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div
+          className={`transition-all duration-300 ${
+            selectedCluster ? 'lg:col-span-8' : 'lg:col-span-12'
+          }`}
+        >
+          <div className="bg-surface-container-lowest rounded-3xl p-3 sm:p-8 border border-outline-variant/40 min-h-[540px] relative overflow-hidden">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 opacity-25"
+              style={{
+                backgroundImage:
+                  'linear-gradient(to right, color-mix(in srgb, var(--color-outline-variant) 26%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--color-outline-variant) 26%, transparent) 1px, transparent 1px)',
+                backgroundSize: '72px 72px',
+              }}
+            />
+
+            {isBooksLoading ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-background/60 rounded-3xl z-20">
+                <BookLoader size="lg" className="mb-4" />
+                <p className="text-on-surface-variant text-sm font-medium">
+                  Charting chronological river bends...
+                </p>
+              </div>
+            ) : (
+              <div className="relative z-10">
+                {clusters.length > 0 ? (
+                  <div className="relative w-full">
+                    <div className="flex items-center justify-between text-xs font-mono tabular-nums text-on-surface-variant pb-4 mb-2 border-b border-outline-variant/30">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Waves className="w-3.5 h-3.5 text-[#2d6d82] dark:text-[#6ab0c7]" />
+                        <span>
+                          HEADWATERS · {formatYear(clusters[0].minYear)}
+                        </span>
+                      </span>
+                      <span className="hidden sm:inline">
+                        ALLUVIAL SHOALS &amp; THALWEG BATHYMETRY
+                      </span>
+                      <span>
+                        SCALE ·{' '}
+                        {zoomLevel === 1
+                          ? '500 YR / BEND'
+                          : zoomLevel === 5
+                            ? '100 YR / BEND'
+                            : '10 YR / BEND'}
+                      </span>
+                    </div>
+
+                    <div
+                      ref={stageContainerRef}
+                      className="relative w-full"
+                      style={{height: `${riverGeometry.totalHeight}px`}}
+                    >
+                      <svg
+                        viewBox={`0 0 ${riverGeometry.W} ${riverGeometry.totalHeight}`}
+                        className="block absolute inset-0 w-full h-full pointer-events-none select-none"
+                        aria-hidden="true"
+                      >
+                        <defs>
+                          <linearGradient
+                            id="alluvialValleyGrad"
+                            x1="0%"
+                            y1="0%"
+                            x2="100%"
+                            y2="100%"
+                          >
+                            <stop
+                              offset="0%"
+                              stopColor="#8ab0a6"
+                              stopOpacity="0.09"
+                            />
+                            <stop
+                              offset="50%"
+                              stopColor="#a8c3b8"
+                              stopOpacity="0.13"
+                            />
+                            <stop
+                              offset="100%"
+                              stopColor="#7da39b"
+                              stopOpacity="0.11"
+                            />
+                          </linearGradient>
+
+                          <linearGradient
+                            id="shallowShoalGrad"
+                            x1="0%"
+                            y1="0%"
+                            x2="0%"
+                            y2="100%"
+                          >
+                            <stop
+                              offset="0%"
+                              stopColor="#7fb8c9"
+                              stopOpacity="0.28"
+                            />
+                            <stop
+                              offset="50%"
+                              stopColor="#64a6ba"
+                              stopOpacity="0.34"
+                            />
+                            <stop
+                              offset="100%"
+                              stopColor="#5295ab"
+                              stopOpacity="0.38"
+                            />
+                          </linearGradient>
+
+                          <linearGradient
+                            id="midChannelGrad"
+                            x1="0%"
+                            y1="0%"
+                            x2="0%"
+                            y2="100%"
+                          >
+                            <stop
+                              offset="0%"
+                              stopColor="#488ea5"
+                              stopOpacity="0.32"
+                            />
+                            <stop
+                              offset="50%"
+                              stopColor="#367c94"
+                              stopOpacity="0.38"
+                            />
+                            <stop
+                              offset="100%"
+                              stopColor="#296b82"
+                              stopOpacity="0.44"
+                            />
+                          </linearGradient>
+
+                          <linearGradient
+                            id="deepThalwegGrad"
+                            x1="0%"
+                            y1="0%"
+                            x2="0%"
+                            y2="100%"
+                          >
+                            <stop
+                              offset="0%"
+                              stopColor="#1f5d73"
+                              stopOpacity="0.26"
+                            />
+                            <stop
+                              offset="100%"
+                              stopColor="#16495c"
+                              stopOpacity="0.35"
+                            />
+                          </linearGradient>
+                        </defs>
+
+                        <path
+                          d={riverGeometry.alluvialValleyPath}
+                          fill="url(#alluvialValleyGrad)"
+                          stroke="#7aa198"
+                          strokeOpacity="0.22"
+                          strokeWidth="1"
+                        />
+
+                        <path
+                          d={riverGeometry.riparianMarshPath}
+                          fill="#9cc2b8"
+                          fillOpacity="0.11"
+                          stroke="#68968d"
+                          strokeOpacity="0.24"
+                          strokeWidth="0.9"
+                        />
+
+                        {riverGeometry.tributaries.map(creek => {
+                          const isHighlighted =
+                            selectedClusterKey === creek.clusterKey ||
+                            hoveredClusterKey === creek.clusterKey;
+                          return (
+                            <g key={creek.id}>
+                              <path
+                                d={creek.ribbonPath}
+                                fill="url(#shallowShoalGrad)"
+                                stroke="#3b7e94"
+                                strokeOpacity={isHighlighted ? '0.55' : '0.32'}
+                                strokeWidth="1"
+                              />
+                              <path
+                                d={creek.waterLinePath}
+                                fill="none"
+                                stroke="#296b82"
+                                strokeOpacity={isHighlighted ? '0.45' : '0.22'}
+                                strokeWidth="0.8"
+                              />
+                            </g>
+                          );
+                        })}
+
+                        <path
+                          d={riverGeometry.shallowShoalPath}
+                          fill="url(#shallowShoalGrad)"
+                          stroke="#387b91"
+                          strokeOpacity="0.52"
+                          strokeWidth="1.25"
+                        />
+
+                        <path
+                          d={riverGeometry.waterLinePortPath}
+                          fill="none"
+                          stroke="#2d6d82"
+                          strokeOpacity="0.24"
+                          strokeWidth="0.75"
+                        />
+                        <path
+                          d={riverGeometry.waterLineStarboardPath}
+                          fill="none"
+                          stroke="#2d6d82"
+                          strokeOpacity="0.24"
+                          strokeWidth="0.75"
+                        />
+
+                        <path
+                          d={riverGeometry.midChannelPath}
+                          fill="url(#midChannelGrad)"
+                        />
+
+                        <path
+                          d={riverGeometry.deepThalwegPath}
+                          fill="url(#deepThalwegGrad)"
+                        />
+
+                        {riverGeometry.islands.map(island => (
+                          <g key={island.id}>
+                            <path
+                              d={island.outerPath}
+                              fill="var(--color-surface-container-low)"
+                              fillOpacity="0.92"
+                              stroke="#387b91"
+                              strokeOpacity="0.45"
+                              strokeWidth="1"
+                            />
+                            <path
+                              d={island.innerVegPath}
+                              fill="#8cb3a3"
+                              fillOpacity="0.35"
+                              stroke="#5c8a79"
+                              strokeOpacity="0.35"
+                              strokeWidth="0.75"
+                            />
+                          </g>
+                        ))}
+
+                        {riverGeometry.spanArcs.map(arc => {
+                          const parentCluster = clusters[arc.fromClusterIndex];
+                          const isHighlighted =
+                            parentCluster &&
+                            (selectedClusterKey === parentCluster.key ||
+                              hoveredClusterKey === parentCluster.key);
+
+                          return (
+                            <g key={arc.id}>
+                              <path
+                                d={arc.pathD}
+                                fill="none"
+                                stroke="#2d6d82"
+                                strokeOpacity={isHighlighted ? '0.75' : '0.32'}
+                                strokeWidth={isHighlighted ? '1.8' : '1.15'}
+                                strokeDasharray="3 4"
+                              />
+                              <circle
+                                cx={arc.midX}
+                                cy={arc.midY}
+                                r={isHighlighted ? 4 : 2.8}
+                                fill="#2d6d82"
+                                fillOpacity={isHighlighted ? '0.85' : '0.45'}
+                              />
+                            </g>
+                          );
+                        })}
+
+                        {riverGeometry.bendNodes.map(node => {
+                          const isSelected =
+                            selectedClusterKey === node.cluster.key;
+                          const isHovered =
+                            hoveredClusterKey === node.cluster.key;
+                          const active = isSelected || isHovered;
+                          const dockAnchorX = node.isRightApex
+                            ? riverGeometry.W * 0.56
+                            : riverGeometry.W * 0.44;
+
+                          return (
+                            <g key={`svg-bend-${node.cluster.key}`}>
+                              <circle
+                                cx={node.x}
+                                cy={node.y}
+                                r={node.width * 0.48}
+                                fill="none"
+                                stroke="#296b82"
+                                strokeOpacity={active ? '0.52' : '0.22'}
+                                strokeWidth={active ? '1.4' : '0.9'}
+                              />
+                              <line
+                                x1={node.x}
+                                y1={node.y}
+                                x2={dockAnchorX}
+                                y2={node.y}
+                                stroke="#2d6d82"
+                                strokeOpacity={active ? '0.55' : '0.25'}
+                                strokeWidth={active ? '1.5' : '1'}
+                              />
+                            </g>
+                          );
+                        })}
+                      </svg>
+
+                      {riverGeometry.bendNodes.map(node => (
+                        <TimelineEraMarker
+                          key={node.cluster.key}
+                          node={node}
+                          stageWidth={riverGeometry.W}
+                          selectedClusterKey={selectedClusterKey}
+                          hoveredClusterKey={hoveredClusterKey}
+                          onSelectCluster={setSelectedClusterKey}
+                          onHoverCluster={setHoveredClusterKey}
+                        />
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs font-mono tabular-nums text-on-surface-variant pt-4 mt-2 border-t border-outline-variant/30">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Waves className="w-3.5 h-3.5 text-[#2d6d82] dark:text-[#6ab0c7]" />
+                        <span>
+                          CONTEMPORARY DELTA ·{' '}
+                          {formatYear(
+                            clusters[clusters.length - 1]?.maxYear ?? 2025,
+                          )}
+                        </span>
+                      </span>
+                      <span>
+                        {timelineStats.totalHistorical} VOLUMES CHARTED
+                      </span>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setSelectedClusterKey(null)}
-                    className="p-1.5 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors cursor-pointer"
-                  >
-                    <XIcon className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <div className="flex-grow overflow-y-auto p-4 space-y-4 max-h-[calc(100vh-14rem)]">
-                  {selectedCluster.books.map(b => (
-                    <div
-                      key={b.id}
-                      className="p-4 bg-surface-container border border-outline-variant/30 rounded-2xl flex flex-col gap-3 group hover:border-primary/20 transition-all shadow-sm"
-                    >
-                      <div className="flex gap-3">
-                        {b.coverUrl ? (
-                          <div className="w-14 h-20 rounded-lg overflow-hidden border border-outline-variant/20 bg-surface-variant shrink-0 shadow-sm">
-                            <img
-                              src={b.coverUrl}
-                              alt={b.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              referrerPolicy="no-referrer"
-                              loading="lazy"
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-14 h-20 rounded-lg bg-surface-variant/40 flex items-center justify-center text-primary/60 font-sans font-bold text-lg shrink-0 border border-outline-variant/10 shadow-sm">
-                            {b.title[0]?.toUpperCase()}
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <Link
-                            to={`/library/${libraryId}/book/${b.id}`}
-                            className="font-sans font-semibold text-on-surface text-sm line-clamp-2 hover:text-primary transition-colors"
-                          >
-                            {b.title}
-                          </Link>
-                          <div className="text-xs text-on-surface-variant truncate mt-0.5">
-                            by {b.author || 'Unknown Author'}
-                          </div>
-                          {b.publishedDate && (
-                            <div className="mt-1">
-                              <Badge variant="format" size="sm">
-                                Published: {b.publishedDate}
-                              </Badge>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-outline-variant/10 text-xs text-on-surface-variant">
-                        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                          <Sparkles className="w-3.5 h-3.5 text-primary shrink-0" />
-                          <span className="text-primary font-mono font-label-caps-xs text-label-caps-xs font-semibold uppercase tracking-wider">
-                            Analysis
-                          </span>
-                          <Badge variant="temporal" size="sm">
-                            {b.temporalMetadata?.startYear !== undefined &&
-                            b.temporalMetadata?.endYear !== undefined
-                              ? `${formatYear(b.temporalMetadata.startYear)} – ${formatYear(b.temporalMetadata.endYear)}`
-                              : b.temporalMetadata?.startYear !== undefined
-                                ? `Circa ${formatYear(b.temporalMetadata.startYear)}`
-                                : 'Historical Epoch'}
-                          </Badge>
-                        </div>
-                        <p className="italic line-clamp-3">
-                          &ldquo;{b.temporalMetadata?.rationale}&rdquo;
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-24 text-center">
+                    <Clock className="w-12 h-12 text-outline mb-3 stroke-1" />
+                    <h4 className="text-base font-serif font-semibold text-on-surface">
+                      No historical timelines mapped
+                    </h4>
+                    <p className="text-xs text-on-surface-variant max-w-sm mt-1">
+                      {selectedPreset === 'bce'
+                        ? 'No books in this library are set in the Ancient or BCE era.'
+                        : 'Wait for the chronological background scanner to finish analyzing your library or add historical books.'}
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
-          </AnimatePresence>
+          </div>
         </div>
-      </div>
-    </>
-  );
-}
 
-function XIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={2}
-      stroke="currentColor"
-      className={props.className}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M6 18 18 6M6 6l12 12"
+        <TimelineDesktopEpochDrawer
+          libraryId={libraryId}
+          selectedCluster={selectedCluster}
+          onClose={() => setSelectedClusterKey(null)}
+        />
+      </div>
+
+      <TimelineMobileEpochSheet
+        libraryId={libraryId}
+        selectedCluster={selectedCluster}
+        onClose={() => setSelectedClusterKey(null)}
       />
-    </svg>
+
+      {!isBooksLoading && (
+        <TimelineNonHistoricalAnnex
+          libraryId={libraryId}
+          nonHistoricalBooks={nonHistoricalBooks}
+          filteredNonHistorical={filteredNonHistorical}
+          isCollapsed={isNonHistoricalCollapsed}
+          onToggleCollapse={() =>
+            setIsNonHistoricalCollapsed(!isNonHistoricalCollapsed)
+          }
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+        />
+      )}
+    </div>
   );
 }

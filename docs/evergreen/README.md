@@ -14,8 +14,8 @@ Every technical, typographic, and architectural decision in this repository must
 
 1. **Craftsmanship over Clutter:**
    We strictly reject modern "AI slop"—arbitrary glassmorphism, heavy saturated purple-to-blue gradients, glowing drop shadows, and unsolicited widgets. Visual depth comes from **tonal layering**, crisp geometric typography, and generous negative space.
-2. **Unified Data Authority:**
-   We maintain a single, sealed data plane. The Cloud Firestore database is completely closed to direct browser manipulation (`firestore.rules: allow read, write: if false;`). All client applications (Web, future Mobile, and programmatic CLI/API clients) read and mutate state through a single, type-safe API Gateway (tRPC + OpenAPI REST v1).
+2. **Unified Data Authority & Gateway Architecture:**
+   We maintain a unified data plane where 100% of data queries and mutations route through a single, type-safe API Gateway (tRPC + OpenAPI REST v1) backed by `firebase-admin/firestore` on the server. The browser client application never imports or directly invokes the Firestore client SDK, and `firestore.rules` is permanently sealed (`allow read, write: if false;`).
 3. **Deterministic Performance & Zero-Cost Observability:**
    Telemetry and debugging HUDs must never degrade user-perceived performance. Heavy operations (UMAP vector dimensionality reduction, image processing) execute off the main thread in Web Workers. Synchronous serialization and memory allocations are banned on critical render paths.
 
@@ -27,7 +27,7 @@ These rules apply to every pull request, feature branch, and refactor:
 
 | Domain | Invariant Rule |
 | :--- | :--- |
-| **Security** | **Direct client Firestore writes are strictly forbidden.** Never re-open `firestore.rules` for client writes. All mutations pass through server procedures with runtime Zod validation and ABAC checks. |
+| **Security** | **Direct client Firestore Web SDK usage is strictly forbidden.** Never re-introduce `firebase/firestore` into client bundles, and keep `firestore.rules` locked to `if false`. All client reads and mutations pass through server procedures with runtime Zod validation, RBAC/ABAC checks, and `firebase-admin/firestore`. |
 | **Typography** | **Manrope is universal; Playfair Display Italic is reserved.** All UI, forms, tables, buttons, headers, and metadata use Manrope. Playfair Display (Italic) is strictly reserved for the top bar wordmark `book(ish)`. |
 | **Aesthetics** | **No Pill Buttons for Actions.** Action buttons and tags must use rectilinear corners (`rounded` 4px or `rounded-lg` 8px) to respect the rectangular proportions of books and catalog cards. |
 | **State** | **No `skipToken` React Query Abuses.** TanStack Query must never be used as a manual key-value store. It is reserved for declarative queries and optimistic mutations. Ephemeral UI state belongs in Zustand; URL parameters govern filterable views. |
@@ -59,9 +59,10 @@ The complete engineering standard is partitioned into specialized, domain-focuse
 ---
 
 ## IV. Living Architecture Changelog
-
+ 
 When architectural conventions evolve, update the relevant evergreen document and record the strategic rationale here:
 
-* **2026-09:** Database access plane fully unified behind tRPC and OpenAPI v1. Direct client Firestore rules closed (`if false;`).
+* **2026-10:** Eliminated `FirestoreRestService` and dual-mode fallbacks in favor of a single unified server authority (`tRPC` + `firebase-admin/firestore`) with `firestore.rules` permanently sealed (`allow read, write: if false;`) and zero `firebase/firestore` client SDK imports.
+* **2026-09:** Database access plane fully unified behind tRPC and OpenAPI v1.
 * **2026-09:** Typography stack streamlined to Manrope for all UI hierarchies, pairing with Playfair Display (Italic) solely for the brand wordmark.
 * **2026-09:** Telemetry engine decoupled from the critical render loop via idle-deferred dispatch and heuristic byte calculation.

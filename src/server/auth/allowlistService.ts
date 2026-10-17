@@ -1,5 +1,4 @@
-import admin from 'firebase-admin';
-import {getAdminDb} from '../../services/server/firebaseAdmin';
+import {getAdminDb, FieldValue} from '../services/firebaseAdmin';
 import {SUPERADMIN_EMAIL} from '../../constants/auth';
 import type {SecurityPermissions} from './types';
 
@@ -40,22 +39,12 @@ export class AllowlistService {
       return cached.perms;
     }
 
-    // Query Firestore
+    // Query Firestore via firebase-admin
     try {
-      let db:
-        | FirebaseFirestore.Firestore
-        | {doc: (path: string) => {get: () => Promise<unknown>}};
-      try {
-        db = getAdminDb();
-      } catch {
-        db = admin.firestore();
-      }
-
-      const docSnap = await (
-        db.doc(`appSettings/allowlist/users/${normalizedEmail}`) as unknown as {
-          get: () => Promise<FirebaseFirestore.DocumentSnapshot>;
-        }
-      ).get();
+      const db = getAdminDb();
+      const docSnap = await db
+        .doc(`appSettings/allowlist/users/${normalizedEmail}`)
+        .get();
 
       let result: SecurityPermissions = {isAppAllowed: false, isAdmin: false};
       if (docSnap && docSnap.exists) {
@@ -72,11 +61,12 @@ export class AllowlistService {
       });
 
       return result;
-    } catch (err) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       console.error(
         '[AllowlistService] Error querying allowlist for email:',
         normalizedEmail,
-        err,
+        errMsg,
       );
       return {isAppAllowed: false, isAdmin: false};
     }
@@ -108,12 +98,7 @@ export class AllowlistService {
    * Lists all allowlisted users for admin dashboard.
    */
   static async listUsers(): Promise<Array<{email: string; role: string}>> {
-    let db: FirebaseFirestore.Firestore;
-    try {
-      db = getAdminDb();
-    } catch {
-      db = admin.firestore();
-    }
+    const db = getAdminDb();
     const snap = await db.collection('appSettings/allowlist/users').get();
     return snap.docs.map(doc => ({
       email: doc.id,
@@ -126,17 +111,12 @@ export class AllowlistService {
    */
   static async addUser(email: string, role: string = 'user'): Promise<void> {
     const normalized = email.toLowerCase().trim();
-    let db: FirebaseFirestore.Firestore;
-    try {
-      db = getAdminDb();
-    } catch {
-      db = admin.firestore();
-    }
+    const db = getAdminDb();
     await db.collection('appSettings/allowlist/users').doc(normalized).set(
       {
         email: normalized,
         role,
-        addedAt: admin.firestore.FieldValue.serverTimestamp(),
+        addedAt: FieldValue.serverTimestamp(),
       },
       {merge: true},
     );
@@ -148,12 +128,7 @@ export class AllowlistService {
    */
   static async removeUser(email: string): Promise<void> {
     const normalized = email.toLowerCase().trim();
-    let db: FirebaseFirestore.Firestore;
-    try {
-      db = getAdminDb();
-    } catch {
-      db = admin.firestore();
-    }
+    const db = getAdminDb();
     await db.collection('appSettings/allowlist/users').doc(normalized).delete();
     this.cache.delete(normalized);
   }

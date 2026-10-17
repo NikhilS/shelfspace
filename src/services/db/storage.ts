@@ -1,9 +1,9 @@
-import {ref, uploadString, getDownloadURL} from 'firebase/storage';
-import {storage} from '../../firebase';
+import {trpcVanilla} from '../../lib/trpc';
 import {toast} from 'sonner';
 
 /**
- * Uploads a base64 image data URL (e.g. data:image/png;base64,...) to Cloud Storage.
+ * Uploads a base64 image data URL (e.g. data:image/png;base64,...) to Cloud Storage
+ * via the server-authoritative tRPC Gateway (firebase-admin/storage).
  * @param base64Data The base64 data string.
  * @param path The path in Firebase Storage (e.g. 'libraries/123/hero.png')
  */
@@ -16,20 +16,30 @@ export async function uploadBase64Image(
     return base64Data;
   }
 
+  const match = path.match(/^libraries\/([^/]+)\//);
+  const libraryId = match?.[1] || '';
+
+  if (!libraryId) {
+    throw new Error(`Invalid storage path '${path}': missing libraryId prefix`);
+  }
+
   try {
-    const storageRef = ref(storage, path);
-    await uploadString(storageRef, base64Data, 'data_url');
-    return await getDownloadURL(storageRef);
+    const res = await trpcVanilla.library.uploadImage.mutate({
+      libraryId,
+      path,
+      base64Data,
+    });
+    return res.url;
   } catch (error: unknown) {
     if (String(error).includes('retry-limit-exceeded')) {
-      console.error('Firebase Storage CORS or Setup Error:', error);
+      console.error('Firebase Storage Setup Error:', error);
       toast.error('Storage Upload Failed', {
         description:
-          'Firebase Storage requires setup. Please ensure Cloud Storage is enabled in your Firebase Console and CORS is configured.',
+          'Firebase Storage requires setup. Please ensure Cloud Storage is enabled in your Firebase Console.',
         duration: 8000,
       });
     } else {
-      console.error('Firebase Storage Upload Error:', error);
+      console.error('Server Storage Upload Error:', error);
     }
     throw error;
   }

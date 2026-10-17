@@ -5,23 +5,12 @@ import {ResetMetadataSection} from './ResetMetadataSection';
 import {toast} from 'sonner';
 import {Book} from '../../types';
 
-vi.mock('firebase/firestore', () => ({
-  doc: vi.fn((_db, ...path) => ({path: path.join('/')})),
-  collection: vi.fn((_db, ...path) => ({path: path.join('/')})),
-  getDocs: vi.fn(),
-  deleteField: vi.fn(() => '__DELETE__'),
-}));
-
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
   },
 }));
-
-const mockClose = vi.fn().mockResolvedValue(undefined);
-const mockUpdate = vi.fn();
-const mockSet = vi.fn();
 
 const mockResetMetadata = vi.fn().mockImplementation(({metadataType}) => {
   if (metadataType === 'genre') {
@@ -44,22 +33,6 @@ vi.mock('../../lib/trpc', () => ({
       },
     },
   },
-}));
-
-vi.mock('../../lib/clientBulkWriter', () => {
-  return {
-    ClientBulkWriter: class {
-      close = mockClose;
-      update = mockUpdate;
-      set = mockSet;
-    },
-  };
-});
-
-vi.mock('../../firebase', () => ({
-  db: {},
-  handleFirestoreError: vi.fn(),
-  OperationType: {UPDATE: 'update'},
 }));
 
 describe('ResetMetadataSection', () => {

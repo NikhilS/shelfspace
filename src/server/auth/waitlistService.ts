@@ -1,15 +1,6 @@
-import admin from 'firebase-admin';
-import {getAdminDb} from '../../services/server/firebaseAdmin';
+import {getAdminDb} from '../services/firebaseAdmin';
 import {AllowlistService} from './allowlistService';
 import type {WaitlistEntry, WaitlistStatus} from '../../schemas/waitlist';
-
-function getDb(): FirebaseFirestore.Firestore {
-  try {
-    return getAdminDb();
-  } catch {
-    return admin.firestore();
-  }
-}
 
 export class WaitlistService {
   /**
@@ -36,12 +27,10 @@ export class WaitlistService {
     }
 
     try {
-      const db = getDb();
-      const docSnap = await (
-        db.doc(`appSettings/waitlist/entries/${normalized}`) as unknown as {
-          get: () => Promise<FirebaseFirestore.DocumentSnapshot>;
-        }
-      ).get();
+      const db = getAdminDb();
+      const docSnap = await db
+        .doc(`appSettings/waitlist/entries/${normalized}`)
+        .get();
 
       if (!docSnap || !docSnap.exists) {
         return {status: 'not_requested'};
@@ -82,16 +71,12 @@ export class WaitlistService {
     photoURL?: string | null;
   }): Promise<WaitlistEntry> {
     const normalized = params.email.toLowerCase().trim();
-    const db = getDb();
+    const db = getAdminDb();
     const docRef = db
       .collection('appSettings/waitlist/entries')
       .doc(normalized);
 
-    const existingSnap = await (
-      docRef as unknown as {
-        get: () => Promise<FirebaseFirestore.DocumentSnapshot>;
-      }
-    ).get();
+    const existingSnap = await docRef.get();
 
     const now = new Date().toISOString();
     let entry: WaitlistEntry;
@@ -133,7 +118,7 @@ export class WaitlistService {
   static async list(
     filter?: 'pending' | 'approved' | 'rejected' | 'all',
   ): Promise<WaitlistEntry[]> {
-    const db = getDb();
+    const db = getAdminDb();
     const snap = await db.collection('appSettings/waitlist/entries').get();
 
     const entries: WaitlistEntry[] = snap.docs.map(doc => {
@@ -172,7 +157,7 @@ export class WaitlistService {
     adminEmail: string;
   }): Promise<{success: boolean; status: 'approved' | 'rejected'}> {
     const normalized = params.email.toLowerCase().trim();
-    const db = getDb();
+    const db = getAdminDb();
     const reviewedAt = new Date().toISOString();
     const reviewedBy = params.adminEmail.toLowerCase().trim();
     const newStatus: 'approved' | 'rejected' =

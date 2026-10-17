@@ -1,6 +1,6 @@
 import React, {useState, useRef, useMemo} from 'react';
 import {BookDetails, searchBookByIsbn} from '../../services/bookApi';
-import BarcodeScanner from '../../components/BarcodeScanner';
+import BarcodeScanner from '../../components/import/BarcodeScanner';
 import {Loader2, X, BookPlus} from 'lucide-react';
 import {toast} from 'sonner';
 import {triggerHaptics, normalizeBookDetails} from '../../lib/utils';

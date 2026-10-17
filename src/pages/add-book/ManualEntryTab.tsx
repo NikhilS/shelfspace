@@ -1,6 +1,6 @@
 import React, {useState} from 'react';
 import {BookDetails} from '../../services/bookApi';
-import CoverCamera from '../../components/CoverCamera';
+import CoverCamera from '../../components/import/CoverCamera';
 import {Camera, X, Loader2} from 'lucide-react';
 import {toast} from 'sonner';
 import {useForm} from 'react-hook-form';
@@ -22,7 +22,7 @@ import {
   isDuplicateBook,
   normalizeBookDetails,
 } from '../../lib/utils';
-import {GenreSelect} from '../../components/GenreSelect';
+import {GenreSelect} from '../../components/book/GenreSelect';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 
 interface ManualEntryTabProps {

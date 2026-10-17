@@ -1,110 +1,51 @@
-# Design System & UI Architecture: The Modern Archivist
+# 01. Design System, Typography & UI Architecture
 
-> **Document Status:** Authoritative Design System Specification  
-> **Target Path:** `/docs/evergreen/01-DESIGN-SYSTEM-AND-UI.md`
+## 1. Visual Identity & Aesthetic Philosophy: "Warm Archival Studio"
+`book(ish)` embodies the **Warm Archival Studio** aesthetic—inspired by museum exhibition catalogs, architectural monographs, and independent literary presses. It blends the intellectual warmth of archival paper and deep literary ink with the crisp precision of a modern curatorial studio.
 
----
-
-## 1. Visual Foundation & The Natural Materials Palette
-
-The aesthetic of **book(ish)** is rooted in the tactile qualities of physical library heritage: acid-free heavy parchment, dark woodland inks, cloth-bound spines, burnished leather, and warm archival brass.
-
-### Color Tokens & Semantic Mappings
-
-| Color Role | Hex / Token | Tailwind Class | Semantic Purpose |
-| :--- | :--- | :--- | :--- |
-| **Cream Vellum** | `#fcf9f3` | `bg-background` | Primary application canvas. Warm off-white that eliminates sterile screen glare. |
-| **Acid-Free Parchment** | `#f0eee8` | `bg-surface-container` | Secondary container fill for cards, search bars, and subtle groupings. |
-| **Crisp Archival Card** | `#ffffff` | `bg-surface-container-lowest` | Elevated surface for high-contrast index cards, modals, and dropdown panels. |
-| **Oxford Blue (Ink)** | `#021a35` | `text-primary` | Deep rich ink used for authoritative headings, primary buttons, and key icons. |
-| **Burnt Walnut** | `#7d5633` | `text-secondary` / `border-secondary` | Warm leather tone for active highlights, focus rings, and accent tags. |
-| **Library Green** | `#001f14` | `text-accent` | Traditional desk-lamp emerald used for verified statuses, active reads, and success badges. |
-| **Archival Ledger Rule** | `rgba(2,26,53,0.12)` | `border-outline-variant/30` | Ultra-thin 1px ruling simulating classic archival ledgers and card catalogs. |
+* **60-30-10 Color Discipline:**
+  * **60% Dominant Warm Paper Canvas:** Alabaster Paper (`#FAF7F2`) and Parchment Surface (`#FFFFFF`) in Light Mode; Deep Espresso Obsidian (`#12100E`) and Warm Charcoal (`#1C1917`) in Dark Mode.
+  * **30% Structural Surfaces & Ink Typography:** Warm Limestone containers (`#F4EFE6`, `#ECE5D8`), delicate 1px hairline borders (`#E4DDD0`), and high-contrast Antique Charcoal Ink (`#1C1917`) paired with Warm Stone muted text (`#686259`).
+  * **10% Curatorial Accent Budget:** Deep Archival Ink primary actions, Terracotta Bronze (`#9A3412` / `#EA580C`) curatorial highlights, and Forest Ink (`#047857` / `#34D399`) completion states.
+* **Single-Elevation Depth & Hairline Architecture:** Avoid nesting "cards within cards" or placing thick left accent bars (`border-l-4`) on callouts. Surfaces are separated by generous negative space, crisp `1px solid` warm stone hairlines (`border-outline-variant/60`), and subtle multi-stop ambient diffusion shadows (`--shadow-elevation-1` through `--shadow-elevation-3`).
+* **Zero-Pill Metadata Discipline:** Static metadata (publication years, volume counts, author bylines, inline taxonomy) is rendered as clean, unboxed typography with subtle separators (`·`) or structured `rounded-md` archival tags, while interactive filters and segmented controls use tactile `rounded-lg` button affordances.
 
 ---
 
-## 2. Typography & Optical Hierarchy
+## 2. Typography Hierarchy (The 2+1 Editorial Font Rule)
+`book(ish)` uses a strict **2+1 font pairing** that keeps page headings, book titles, UI controls, and dense tables crisp and modern while reserving classical serif flair exclusively for the brand mark:
 
-### Font Family Allocation
-
-```
-+-------------------------------------------------------------------------+
-| PLAYFAIR DISPLAY (Italic, Bold / Semibold)                              |
-| - Strictly reserved for the top bar brandmark: "book(ish)"             |
-| - Expressive, playful, and charming literary masthead                   |
-+-------------------------------------------------------------------------+
-| MANROPE (Geometric Sans-Serif: Regular, Medium, Semibold, Extrabold)     |
-| - Universal typeface for all UI, headings, labels, buttons, tables,     |
-|   forms, modal dialogs, and metadata fields                             |
-| - Clean, architectural, highly legible at both 11px and 48px            |
-+-------------------------------------------------------------------------+
-```
-
-### Typographic Scales & Rules
-
-1. **Brand Wordmark:**
-   - Classes: `font-brand italic text-2xl sm:text-[28px] font-bold tracking-tight text-primary leading-none select-none`
-   - Never apply `font-brand` to body paragraphs, section titles, or button labels.
-2. **Page & Section Headings:**
-   - Library Title / Primary Hero: `font-sans font-headline-lg font-extrabold text-primary tracking-tight`
-   - Section Headers: `font-sans text-xl sm:text-2xl font-bold tracking-tight text-on-surface`
-   - Subheadings / Card Headers: `font-sans text-base sm:text-lg font-semibold tracking-tight text-on-surface`
-3. **Archival Metadata & Functional Labels:**
-   - Uppercase Metadata Badges: `font-sans text-xs font-bold tracking-widest text-on-surface-variant uppercase`
-   - Category / Genre Chips: `font-sans text-xs font-semibold tracking-wide text-on-surface-variant`
-   - Baseline Body Text: `font-sans text-sm sm:text-base text-on-surface/90 font-normal leading-relaxed`
+1. **Crisp Display & Heading Sans (`--font-editorial` / `--font-serif` — `'Plus Jakarta Sans', 'Manrope', sans-serif`, with `'Playfair Display'` Italic reserved strictly for `--font-brand`):**
+   * `Plus Jakarta Sans` (with tight `-0.02em` to `-0.028em` tracking) powers page display headings (`.layout-header-title`, `.section-heading`), library collection titles, and book titles across cards and detail views.
+   * `Playfair Display` (italic bold) is strictly reserved for the `book(ish)` top-bar brand wordmark (`--font-brand`).
+   * Headlines use `text-wrap: balance` to prevent isolated orphan words on trailing lines.
+2. **UI & Body Sans-Serif (`--font-sans` — `'Manrope', sans-serif`):**
+   * Powers all interactive controls (buttons, dropdowns, tabs, inputs), navigation links, uppercase archival eyebrows (`.metadata-eyebrow`), and long-form body prose (constrained to `65ch–75ch` reading measure with `leading-relaxed`).
+3. **Tabular Monospace (`--font-mono` + `tabular-nums`):**
+   * Enforced on all numeric counters, publication years, date ranges, ISBNs, and telemetry metrics (`font-variant-numeric: tabular-nums`) to guarantee vertical alignment and zero layout jitter.
 
 ---
 
-## 3. Spatial Mathematics & Layout Invariants
+## 3. Centralized UI Primitives (`src/components/ui/`)
+All interactive and structural elements MUST use the centralized primitives in `src/components/ui/` rather than ad-hoc HTML elements or inline styles:
 
-### Container Dimensions & Margins
-- **Application Max Width:** `max-w-7xl mx-auto` or `max-w-[1280px] mx-auto`. Never let text lines stretch across ultrawide monitors without bounding (max 75 characters per line).
-- **Responsive Padding:** Use standard utility `.layout-page-content` (`px-4 sm:px-6 lg:px-8 py-6 sm:py-8`).
-- **Rhythmic Vertical Spacing:**
-  - Between tightly related elements (title + author): `gap-1` or `mb-1.5`
-  - Between component sections (filters to grid): `mb-6 sm:mb-8`
-  - Between major page zones: `space-y-8 sm:space-y-12`
-
-### Tonal Layering (Elevation without Heavy Shadows)
-Modern "AI slop" relies on dark, heavy Gaussian blurs. book(ish) achieves optical depth through **surface luminance stacking**:
-- **Layer 0 (Canvas):** `bg-background` (`#fcf9f3`)
-- **Layer 1 (Card Grouping):** `bg-surface-container` (`#f0eee8`) with `border border-outline-variant/30`
-- **Layer 2 (Interactive Flyout / Modal):** `bg-surface-container-lowest` (`#ffffff`) with subtle architectural shadow:  
-  `shadow-[0_10px_30px_rgba(2,26,53,0.06)] border border-outline-variant/40`
-
-### Corner Radii & Tactile Shapes
-- **Action Buttons & Inputs:** Hard structural `rounded` (4px) or `rounded-lg` (8px). **Never use pill-shaped (24px+) buttons for action items**; pill shapes conflict with the rectangular architecture of physical books.
-- **Modals & Dialogs:** Smooth generous curvature: `rounded-[24px]` or `rounded-[32px]`.
-- **Book Covers:** Strictly adhere to the standard paperback aspect ratio ($2:3$). Always style book covers with `rounded-sm` (2px) and a subtle linear gradient simulating the side spine fold (`border-l-2 border-primary/20` or inner spine drop-shadow).
+* **Buttons (`src/components/ui/button.tsx`):**
+  * Standardized on `rounded-lg` geometry (`0.5rem`), `whitespace-nowrap shrink-0`, subtle active press feedback (`active:scale-[0.99]`), and visible focus rings (`focus-visible:ring-2 focus-visible:ring-ring/40`).
+* **Selects & Dropdowns (`src/components/ui/select.tsx`):**
+  * Built on Radix UI Select with `rounded-lg` triggers, warm popover surfaces, `border-outline-variant` borders, and 150ms compositor transitions.
+* **Badges (`src/components/ui/badge.tsx`):**
+  * Archival `rounded-md` geometry with semantic variants (`status-read`, `status-reading`, `status-to-read`, `status-abandoned`, `genre`, `subgenre`, `temporal`, `format`).
+* **Dialogs & Mobile Sheets (`src/components/ui/dialog.tsx`):**
+  * Responsive modal system that renders as a centered architectural dialog (`sm:rounded-2xl`) on desktop and a smooth bottom sheet (`max-sm:rounded-t-2xl`) on mobile viewports.
+* **Dual-Mode DataTable (`src/components/ui/data-table.tsx`):**
+  * Automatically switches between standard semantic `<table>` rendering (`<= 50` rows) and virtualized `TableVirtuoso` rendering (`> 50` rows), featuring `font-serif` book title cells, `tabular-nums` date columns, and 44px touch-friendly selection targets.
 
 ---
 
-## 4. Shared Component Signatures
-
-### A. Archival Ledger Table
-For dense data views (book lists, transaction history, extracted shelf results):
-- Rows must resemble ruled ledger lines with subtle bottom dividers: `border-b border-outline-variant/20 hover:bg-surface-container-low/60 transition-colors`
-- Numeric columns (year, page count, ratings) must use tabular figures: `font-mono tabular-nums`.
-
-### B. Flat Archival Data Bars
-Data visualizers (category breakdown, timeline era density):
-- Track: `bg-outline-variant/20 rounded-full h-1.5 overflow-hidden`
-- Fill: Solid, non-gradient fills using `bg-primary/80` or `bg-secondary/70` with smooth hover states.
-
-### C. Buttons & Controls
-- **Primary Action:** `bg-primary hover:bg-primary-container text-white font-sans font-bold text-xs uppercase tracking-wider px-4 py-2.5 rounded shadow-xs active:scale-[0.99] transition-all`
-- **Secondary / Ghost:** `border border-outline-variant/40 hover:bg-surface-container text-on-surface font-sans font-semibold text-xs uppercase tracking-wider px-4 py-2.5 rounded transition-all`
-
----
-
-## 5. The Anti-Slop Directive Checklist
-
-Before submitting any UI changes, verify against the following blacklist:
-
-- [ ] **NO Purple-to-Blue Gradients:** Saturated tech-demo gradients are strictly banned.
-- [ ] **NO Glassmorphism in Light Mode:** Do not apply heavy frosted-glass backdrops over warm paper surfaces.
-- [ ] **NO Gradient Text:** Text must be solid Oxford Blue (`text-primary`), Burnt Walnut (`text-secondary`), or high-contrast ink.
-- [ ] **NO Hero Eyebrows:** Do not add tiny tracked-out uppercase marketing chips above headers unless they represent true domain tags.
-- [ ] **NO Nested Cards:** Avoid wrapping cards inside cards. Establish hierarchy with negative space, border rules, and font weights.
-- [ ] **NO Text Wrapping Inside Badges:** Badges, chips, and buttons must keep labels on a single line (`whitespace-nowrap`).
+## 4. Signature Layout Patterns
+1. **Bento Editorial Cards (`BookCard` & `LibraryCard`):**
+   * Combine framed artwork (2:3 book covers with subtle spine lighting or 16:9 library banners) with editorial serif titles, author/curator bylines, unboxed `Genre · Year` metadata, and concise synopsis snippets inside a unified `bento-card` container.
+2. **Unified Library Command Toolbar (`LibraryView` & `LibraryCollection`):**
+   * Consolidates workspace mode tabs (*Overview · All Books · Shelf Care*), live search, filter/sort triggers, and *Grid / Table* view toggles into a coordinated sticky header system respecting the 15% mobile sticky height cap.
+3. **Magazine-Style Book Details Spread (`BookDetailsView` & `BookContent`):**
+   * A 12-column asymmetric exhibition layout (4-column sticky edition showcase + `dl` Accession Metadata Ledger on the left; 8-column editorial serif header, drop-cap synopsis, narrative Where/When setting cards, author bio, and reviews on the right).

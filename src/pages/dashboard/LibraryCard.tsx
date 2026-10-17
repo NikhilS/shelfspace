@@ -1,12 +1,12 @@
 import React, {useCallback} from 'react';
 import {Link} from 'react-router-dom';
-import {Book, User, Users, Shield} from 'lucide-react';
-import {motion} from 'motion/react';
+import {Book, User, Users, Shield, ArrowUpRight} from 'lucide-react';
 import {Library} from '../../types';
 import {toTitleCase} from '../../lib/utils';
 import {useAuth} from '../../stores/authStore';
 import {useQueryClient} from '@tanstack/react-query';
 import {trpc} from '../../lib/trpc';
+import {Badge} from '@/components/ui/badge';
 
 interface LibraryCardProps {
   lib: Library;
@@ -19,7 +19,6 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
   const utils = trpc.useUtils();
 
   const handleWarmup = useCallback(() => {
-    // Pre-seed tRPC Query cache for instant access check and header rendering
     if (lib.id) {
       utils.library.get.setData(
         {libraryId: lib.id},
@@ -51,86 +50,102 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
   const isShared = !isOwner && !isGlobalAdmin;
 
   return (
-    <motion.div
-      initial={{opacity: 0, y: 10}}
-      animate={{opacity: 1, y: 0}}
-      transition={{
-        duration: 0.4,
-        delay: index * 0.05,
-        ease: 'easeOut',
-      }}
-      className="h-full"
-    >
+    <div className="h-full" data-card-index={index}>
       <Link
         to={`/library/${lib.id}`}
-        className="block h-full group"
+        className="block h-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 rounded-xl"
         onMouseEnter={handleWarmup}
         onTouchStart={handleWarmup}
         onFocus={handleWarmup}
       >
-        <div className="bg-surface-container-low rounded-lg overflow-hidden border border-transparent shadow-elevation-3 hover:shadow-elevation-3 hover:border-outline-variant/30 transition-all duration-300 flex flex-col h-full cursor-pointer">
-          <div className="h-44 w-full overflow-hidden bg-surface-variant relative">
+        <article className="bento-card-interactive overflow-hidden flex flex-col h-full cursor-pointer">
+          {/* Bento Media Showcase Frame */}
+          <div className="h-44 sm:h-48 w-full overflow-hidden bg-surface-container relative border-b border-outline-variant/50">
             {lib.heroImageUrl ? (
               <img
                 alt={lib.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
                 src={lib.heroImageUrl}
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-surface-container">
-                <Book className="w-12 h-12 text-on-surface-variant opacity-70 group-hover:scale-110 transition-transform duration-500" />
+              <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-surface-container via-surface-container-high/60 to-surface-container-highest/40 p-6 text-center">
+                <div className="w-12 h-12 rounded-lg bg-surface/80 border border-outline-variant/60 flex items-center justify-center mb-2 shadow-2xs">
+                  <Book className="w-5 h-5 text-primary/75" />
+                </div>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant/80">
+                  Archival Collection · Vol.{' '}
+                  {String(index + 1).padStart(2, '0')}
+                </span>
               </div>
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-primary/10 to-transparent mix-blend-multiply opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity duration-300" />
 
-            {/* Top Badge */}
-            <div className="absolute top-3 right-3 flex items-center gap-1.5 shadow-sm">
+            {/* Curatorial Role Tag */}
+            <div className="absolute top-3.5 right-3.5 flex items-center gap-1.5">
               {isOwner && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-primary/90 text-on-primary backdrop-blur-md border border-primary/20">
+                <Badge
+                  variant="default"
+                  className="gap-1 bg-primary/90 text-on-primary backdrop-blur-md border-white/10 shadow-xs"
+                >
                   <User className="w-3 h-3" />
                   Owner
-                </span>
+                </Badge>
               )}
               {isShared && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-surface-container-highest/95 text-on-surface backdrop-blur-md border border-outline-variant/40">
+                <Badge
+                  variant="secondary"
+                  className="gap-1 bg-surface/95 text-on-surface backdrop-blur-md border-outline-variant/60 shadow-xs"
+                >
                   <Users className="w-3 h-3 text-primary" />
                   Shared ({toTitleCase(lib.callerRole || 'viewer')})
-                </span>
+                </Badge>
               )}
               {isGlobalAdmin && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-500/90 text-white backdrop-blur-md border border-amber-600/30">
+                <Badge
+                  variant="default"
+                  className="gap-1 bg-tertiary text-on-tertiary backdrop-blur-md border-white/15 shadow-xs"
+                >
                   <Shield className="w-3 h-3" />
                   Admin View
-                </span>
+                </Badge>
               )}
             </div>
           </div>
 
-          <div className="p-6 flex flex-col flex-grow justify-between bg-surface-container-lowest">
-            <div className="flex items-start justify-between">
-              <h3 className="font-headline-md text-headline-md text-on-surface group-hover:text-primary transition-colors line-clamp-1">
-                {toTitleCase(lib.name)}
-              </h3>
+          {/* Bento Editorial Details */}
+          <div className="p-5 sm:p-6 flex flex-col flex-grow justify-between bg-surface">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <span className="metadata-eyebrow block mb-1">
+                  {isOwner
+                    ? 'Personal Archive'
+                    : `Curated by ${toTitleCase(lib.ownerName || 'Archivist')}`}
+                </span>
+                <h3 className="font-serif text-xl sm:text-2xl font-semibold tracking-tight text-on-surface group-hover:text-primary transition-colors line-clamp-1">
+                  {toTitleCase(lib.name)}
+                </h3>
+              </div>
+              <div className="w-8 h-8 rounded-lg border border-outline-variant/60 bg-surface-container-low flex items-center justify-center text-on-surface-variant group-hover:bg-primary group-hover:text-on-primary group-hover:border-primary transition-all shrink-0 mt-1">
+                <ArrowUpRight className="w-4 h-4" />
+              </div>
             </div>
 
-            <div className="flex items-center justify-between mt-6">
-              <div className="flex items-center gap-2 text-on-surface-variant flex-shrink-0">
-                <Book className="w-4 h-4" />
-                <span className="font-label-caps text-label-caps uppercase tracking-wider">
-                  {lib.bookCount || 0} Volumes
-                </span>
+            <div className="flex items-center justify-between pt-4 mt-5 border-t border-outline-variant/50 text-xs text-on-surface-variant">
+              <div className="flex items-center gap-2 font-mono tabular-nums font-semibold text-on-surface">
+                <Book className="w-3.5 h-3.5 text-on-surface-variant" />
+                <span>{lib.bookCount || 0} Volumes</span>
               </div>
 
-              {!isOwner && (
-                <div className="text-xs font-label-caps uppercase tracking-wider text-on-surface-variant px-2 py-1 bg-surface-container rounded-sm border border-outline-variant/50 truncate max-w-[130px]">
-                  By {toTitleCase(lib.ownerName || 'User')}
-                </div>
-              )}
+              <span className="font-sans text-xs text-on-surface-variant truncate max-w-[180px]">
+                {isOwner
+                  ? 'Full curatorial access'
+                  : `By ${toTitleCase(lib.ownerName || 'User')}`}
+              </span>
             </div>
           </div>
-        </div>
+        </article>
       </Link>
-    </motion.div>
+    </div>
   );
 }

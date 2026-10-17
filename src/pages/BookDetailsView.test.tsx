@@ -109,25 +109,6 @@ vi.mock('../lib/trpc', () => ({
   trpcVanilla: {},
 }));
 
-vi.mock('firebase/firestore', () => ({
-  doc: vi.fn(),
-  getDoc: vi.fn().mockResolvedValue({exists: () => false}),
-  collection: vi.fn(),
-  query: vi.fn(),
-  onSnapshot: vi.fn((...args) => {
-    return () => {};
-  }),
-  orderBy: vi.fn(),
-  updateDoc: vi.fn(),
-  Timestamp: {},
-  setDoc: vi.fn(),
-  addDoc: vi.fn(),
-  serverTimestamp: vi.fn(),
-  deleteDoc: vi.fn(),
-  getDocFromCache: vi.fn().mockRejectedValue(new Error('no cache')),
-  getDocsFromCache: vi.fn().mockRejectedValue(new Error('no cache')),
-}));
-
 describe('BookDetailsView', () => {
   it('renders loading state initially', () => {
     const testQueryClient = createTestQueryClient();

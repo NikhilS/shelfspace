@@ -1,122 +1,122 @@
 @layer base {
   :root {
-    /* Primary Brand: Deep Midnight Obsidian / Space Slate (High-contrast, crisp modern ink) */
-    --color-primary-base: #0f172a;
-    --color-primary-on: #ffffff;
-    --color-primary-container-base: #1e293b;
-    --color-primary-container-on: #94a3b8;
-    --color-primary-inverse: #f8fafc;
-    --color-primary-fixed-base: #e2e8f0;
-    --color-primary-fixed-dim-base: #cbd5e1;
-    --color-primary-fixed-on: #0f172a;
-    --color-primary-fixed-variant-on: #334155;
+    /* Primary Brand: Deep Archival Espresso Ink (High-contrast literary ink) */
+    --color-primary-base: #1c1917;
+    --color-primary-on: #faf7f2;
+    --color-primary-container-base: #292524;
+    --color-primary-container-on: #d6d3d1;
+    --color-primary-inverse: #faf7f2;
+    --color-primary-fixed-base: #ece5d8;
+    --color-primary-fixed-dim-base: #dfd6c5;
+    --color-primary-fixed-on: #1c1917;
+    --color-primary-fixed-variant-on: #44403c;
 
-    /* Secondary Brand: Refined Charcoal Slate / Neutral Editorial Slate */
-    --color-secondary-base: #334155;
-    --color-secondary-on: #ffffff;
-    --color-secondary-container-base: #f1f5f9;
-    --color-secondary-container-on: #0f172a;
-    --color-secondary-fixed-base: #e2e8f0;
-    --color-secondary-fixed-dim-base: #cbd5e1;
-    --color-secondary-fixed-on: #0f172a;
-    --color-secondary-fixed-variant-on: #334155;
+    /* Secondary Brand: Warm Archival Umber & Curatorial Stone */
+    --color-secondary-base: #44403c;
+    --color-secondary-on: #faf7f2;
+    --color-secondary-container-base: #f4efe6;
+    --color-secondary-container-on: #1c1917;
+    --color-secondary-fixed-base: #ece5d8;
+    --color-secondary-fixed-dim-base: #dfd6c5;
+    --color-secondary-fixed-on: #1c1917;
+    --color-secondary-fixed-variant-on: #44403c;
 
-    /* Tertiary Accent: Vibrant Mint / Emerald (Modern semantic accent) */
-    --color-tertiary-base: #059669;
+    /* Tertiary Accent: Curatorial Terracotta Bronze & Forest Ink */
+    --color-tertiary-base: #9a3412;
     --color-tertiary-on: #ffffff;
-    --color-tertiary-container-base: #ecfdf5;
-    --color-tertiary-container-on: #047857;
-    --color-tertiary-fixed-base: #d1fae5;
-    --color-tertiary-fixed-dim-base: #a7f3d0;
-    --color-tertiary-fixed-on: #064e3b;
-    --color-tertiary-fixed-variant-on: #047857;
+    --color-tertiary-container-base: #ffedd5;
+    --color-tertiary-container-on: #7c2d12;
+    --color-tertiary-fixed-base: #fed7aa;
+    --color-tertiary-fixed-dim-base: #fdba74;
+    --color-tertiary-fixed-on: #431407;
+    --color-tertiary-fixed-variant-on: #9a3412;
 
-    /* Error / Destructive: Apple System Red */
-    --color-error-base: #ef4444;
+    /* Error / Destructive: Archival Crimson */
+    --color-error-base: #dc2626;
     --color-error-on: #ffffff;
     --color-error-container-base: #fef2f2;
-    --color-error-container-on: #b91c1c;
+    --color-error-container-on: #991b1b;
 
-    /* Surface & Canvas: Crisp Porcelain Studio Canvas (Clean, luminous, non-yellowed) */
-    --color-background-base: #f8fafc;
-    --color-background-on: #0f172a;
+    /* Surface & Canvas: Warm Alabaster Paper & Crisp Parchment Studio */
+    --color-background-base: #faf7f2;
+    --color-background-on: #1c1917;
     --color-surface-base: #ffffff;
-    --color-surface-dim-base: #f1f5f9;
+    --color-surface-dim-base: #f4efe6;
     --color-surface-bright-base: #ffffff;
-    --color-surface-variant-base: #f1f5f9;
-    --color-surface-on: #0f172a;
-    --color-surface-variant-on: #64748b;
-    --color-surface-inverse: #0f172a;
-    --color-surface-inverse-on: #f8fafc;
-    --color-surface-tint-value: #0f172a;
+    --color-surface-variant-base: #f4efe6;
+    --color-surface-on: #1c1917;
+    --color-surface-variant-on: #686259;
+    --color-surface-inverse: #1c1917;
+    --color-surface-inverse-on: #faf7f2;
+    --color-surface-tint-value: #1c1917;
 
-    /* Surface Hierarchy & Container Steps */
+    /* Surface Hierarchy & Warm Limestone Container Steps */
     --color-surface-container-lowest-base: #ffffff;
-    --color-surface-container-low-base: #f8fafc;
-    --color-surface-container-base: #f1f5f9;
-    --color-surface-container-high-base: #e2e8f0;
-    --color-surface-container-highest-base: #cbd5e1;
+    --color-surface-container-low-base: #faf7f2;
+    --color-surface-container-base: #f4efe6;
+    --color-surface-container-high-base: #ece5d8;
+    --color-surface-container-highest-base: #dfd6c5;
 
-    /* Outlines & Boundaries */
-    --color-outline-base: #64748b;
-    --color-outline-variant-base: #e2e8f0;
+    /* Outlines & Hairline Boundaries */
+    --color-outline-base: #78716c;
+    --color-outline-variant-base: #e4ddd0;
 
     /* Semantic Tokens */
-    --color-success-base: #10b981;
+    --color-success-base: #059669;
     --color-success-on: #ffffff;
     --color-auth-card-bg: #ffffff;
-    --color-auth-terminal-bg: #0b0f19;
+    --color-auth-terminal-bg: #12100e;
   }
 
   .dark {
-    /* Dark Mode: OLED Slate / Deep Space Titanium (Luminous, crisp contrast) */
-    --color-primary-base: #f8fafc;
-    --color-primary-on: #0f172a;
-    --color-primary-container-base: #1e293b;
-    --color-primary-container-on: #94a3b8;
-    --color-primary-inverse: #0f172a;
-    
-    --color-secondary-base: #cbd5e1;
-    --color-secondary-on: #0f172a;
-    --color-secondary-container-base: #1e293b;
-    --color-secondary-container-on: #f8fafc;
-    
-    --color-tertiary-base: #34d399;
-    --color-tertiary-on: #064e3b;
-    --color-tertiary-container-base: #064e3b;
-    --color-tertiary-container-on: #a7f3d0;
-    
+    /* Dark Mode: Warm Espresso Obsidian & Ivory Parchment Ink */
+    --color-primary-base: #f5f2eb;
+    --color-primary-on: #12100e;
+    --color-primary-container-base: #292524;
+    --color-primary-container-on: #d6d3d1;
+    --color-primary-inverse: #1c1917;
+
+    --color-secondary-base: #d6d3d1;
+    --color-secondary-on: #1c1917;
+    --color-secondary-container-base: #26221e;
+    --color-secondary-container-on: #f5f2eb;
+
+    --color-tertiary-base: #fb923c;
+    --color-tertiary-on: #431407;
+    --color-tertiary-container-base: #7c2d12;
+    --color-tertiary-container-on: #ffedd5;
+
     --color-error-base: #f87171;
     --color-error-on: #450a0a;
     --color-error-container-base: #7f1d1d;
     --color-error-container-on: #fecaca;
 
-    /* Canvas & Surface: Deep graphite / midnight titanium */
-    --color-background-base: #0b0f19;
-    --color-background-on: #f1f5f9;
-    --color-surface-base: #111827;
-    --color-surface-dim-base: #080c14;
-    --color-surface-bright-base: #1f2937;
-    --color-surface-variant-base: #1f2937;
-    --color-surface-on: #f8fafc;
-    --color-surface-variant-on: #94a3b8;
-    --color-surface-inverse: #f8fafc;
-    --color-surface-inverse-on: #0f172a;
-    --color-surface-tint-value: #f8fafc;
+    /* Canvas & Surface: Deep Espresso Obsidian */
+    --color-background-base: #12100e;
+    --color-background-on: #f5f2eb;
+    --color-surface-base: #1c1917;
+    --color-surface-dim-base: #0d0b0a;
+    --color-surface-bright-base: #292524;
+    --color-surface-variant-base: #26221e;
+    --color-surface-on: #f5f2eb;
+    --color-surface-variant-on: #a8a096;
+    --color-surface-inverse: #f5f2eb;
+    --color-surface-inverse-on: #1c1917;
+    --color-surface-tint-value: #f5f2eb;
 
-    --color-surface-container-lowest-base: #050811;
-    --color-surface-container-low-base: #0b0f19;
-    --color-surface-container-base: #111827;
-    --color-surface-container-high-base: #1f2937;
-    --color-surface-container-highest-base: #374151;
+    --color-surface-container-lowest-base: #0d0b0a;
+    --color-surface-container-low-base: #161412;
+    --color-surface-container-base: #1c1917;
+    --color-surface-container-high-base: #26221e;
+    --color-surface-container-highest-base: #332e29;
 
-    --color-outline-base: #94a3b8;
-    --color-outline-variant-base: #1f2937;
+    --color-outline-base: #a8a096;
+    --color-outline-variant-base: #2e2924;
 
     --color-success-base: #34d399;
     --color-success-on: #064e3b;
-    --color-auth-card-bg: #111827;
-    --color-auth-terminal-bg: #050811;
+    --color-auth-card-bg: #1c1917;
+    --color-auth-terminal-bg: #0d0b0a;
   }
 }
 
@@ -152,7 +152,7 @@
   --color-error: var(--color-error-base);
   --color-on-error: var(--color-error-on);
   --color-error-container: var(--color-error-container-base);
-  --color-on-error-container: var(--color-error-container-on);
+  --color-error-container-on: var(--color-error-container-on);
 
   --color-background: var(--color-background-base);
   --color-on-background: var(--color-background-on);
@@ -180,10 +180,10 @@
   --color-auth-card: var(--color-auth-card-bg);
   --color-auth-terminal: var(--color-auth-terminal-bg);
 
-  /* Apple & Google Multi-stop Ambient Diffusion Shadows */
-  --shadow-elevation-1: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-  --shadow-elevation-2: 0 4px 12px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
-  --shadow-elevation-3: 0 12px 32px -4px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04);
+  /* Warm Archival Multi-stop Ambient Diffusion Shadows */
+  --shadow-elevation-1: 0 1px 3px rgba(28, 25, 23, 0.05), 0 1px 2px rgba(28, 25, 23, 0.03);
+  --shadow-elevation-2: 0 6px 16px -3px rgba(28, 25, 23, 0.07), 0 2px 6px -1px rgba(28, 25, 23, 0.04);
+  --shadow-elevation-3: 0 14px 32px -6px rgba(28, 25, 23, 0.1), 0 4px 12px -2px rgba(28, 25, 23, 0.05);
 
   /* Legacy Mappings */
   --color-paper: var(--color-background-base);

@@ -27,85 +27,95 @@ export const BookHeader = memo(
     };
 
     return (
-      <>
-        <div>
-          <div className="flex flex-wrap items-center gap-2 mb-4 swiper-no-swiping">
-            {book.primaryGenre && (
-              <Badge
-                variant="genre"
-                onClick={() => handleGenreClick(book.primaryGenre!)}
-                className="cursor-pointer swiper-no-swiping uppercase"
-                title={`Filter library by ${book.primaryGenre}`}
-              >
-                {book.primaryGenre}
-              </Badge>
-            )}
-            {book.subgenres?.map((sg, idx) => (
-              <Badge
-                key={idx}
-                variant="subgenre"
-                onClick={() => handleGenreClick(book.primaryGenre || '', sg)}
-                className="cursor-pointer swiper-no-swiping"
-                title={`Filter library by ${sg}`}
-              >
-                {sg}
-              </Badge>
-            ))}
-            {book.series && book.series !== 'Standalone' && (
-              <Badge
-                variant="secondary"
-                className="font-label-caps text-label-caps uppercase"
-              >
-                {String(book.series)}
-              </Badge>
-            )}
-          </div>
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
-            <div className="min-w-0 w-full break-words">
-              <h1 className="font-headline-xl text-headline-xl text-primary mb-2">
-                {toTitleCase(book.title)}
-              </h1>
-              <h2 className="font-headline-md text-headline-md text-secondary mb-1 sm:mb-2 line-clamp-3">
-                by {toTitleCase(book.author)}
-              </h2>
-            </div>
-            {canEdit && (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0">
-                <Button
-                  variant="outline"
-                  onClick={onEdit}
-                  className="flex items-center justify-center gap-2 w-full sm:w-auto"
-                >
-                  <Edit2 size={16} /> Edit Details
-                </Button>
-              </div>
-            )}
-          </div>
+      <header className="border-b border-outline-variant/60 pb-6">
+        {/* Curatorial Taxonomy Kicker */}
+        <div className="flex flex-wrap items-center gap-2 mb-3.5 swiper-no-swiping">
+          {book.primaryGenre && (
+            <Badge
+              variant="genre"
+              onClick={() => handleGenreClick(book.primaryGenre!)}
+              className="cursor-pointer swiper-no-swiping uppercase"
+              title={`Filter library by ${book.primaryGenre}`}
+            >
+              {book.primaryGenre}
+            </Badge>
+          )}
+          {book.subgenres?.map((sg, idx) => (
+            <Badge
+              key={idx}
+              variant="subgenre"
+              onClick={() => handleGenreClick(book.primaryGenre || '', sg)}
+              className="cursor-pointer swiper-no-swiping"
+              title={`Filter library by ${sg}`}
+            >
+              {sg}
+            </Badge>
+          ))}
+          {book.series && book.series !== 'Standalone' && (
+            <Badge
+              variant="secondary"
+              className="font-label-caps text-label-caps uppercase"
+            >
+              {String(book.series)}
+            </Badge>
+          )}
+        </div>
 
-          <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-on-surface-variant text-sm font-body-md border-b border-surface-dim pb-6">
-            <div className="flex flex-col">
-              <span className="font-label-caps text-label-caps text-on-surface-variant mb-1">
-                Published
+        {/* Magazine Display Title & Author Byline */}
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="min-w-0 w-full break-words">
+            <h1 className="font-serif text-3xl sm:text-4xl lg:text-[42px] font-semibold tracking-tight text-primary leading-[1.15] mb-2">
+              {toTitleCase(book.title)}
+            </h1>
+            <h2 className="font-sans text-lg sm:text-xl font-medium text-on-surface-variant line-clamp-2">
+              by{' '}
+              <span className="text-on-surface font-semibold">
+                {toTitleCase(book.author)}
               </span>
-              <span>{book.publishedDate || 'Unknown'}</span>
+            </h2>
+          </div>
+          {canEdit && (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onEdit}
+                className="flex items-center justify-center gap-2 w-full sm:w-auto h-9 px-3.5"
+              >
+                <Edit2 size={14} /> Edit Details
+              </Button>
             </div>
-            <div className="w-px h-8 bg-surface-variant hidden sm:block"></div>
-            <div className="flex flex-col">
-              <span className="font-label-caps text-label-caps text-on-surface-variant mb-1">
-                Format
-              </span>
-              <span className="capitalize">{book.format || 'Physical'}</span>
-            </div>
-            <div className="w-px h-8 bg-surface-variant hidden sm:block"></div>
-            <div className="flex flex-col">
-              <span className="font-label-caps text-label-caps text-on-surface-variant mb-1">
-                ISBN
-              </span>
-              <span>{book.isbn || 'Unknown'}</span>
-            </div>
+          )}
+        </div>
+
+        {/* Compact Archival Metadata Strip (Mobile & Quick-Glance) */}
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-on-surface-variant text-xs font-sans mt-5 pt-4 border-t border-outline-variant/40">
+          <div className="flex items-center gap-1.5">
+            <span className="metadata-eyebrow">Published:</span>
+            <span className="font-mono tabular-nums font-medium text-on-surface">
+              {book.publishedDate || 'Unknown'}
+            </span>
+          </div>
+          <span aria-hidden="true" className="text-outline/50 hidden sm:inline">
+            ·
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="metadata-eyebrow">Format:</span>
+            <span className="capitalize font-medium text-on-surface">
+              {book.format || 'Physical'}
+            </span>
+          </div>
+          <span aria-hidden="true" className="text-outline/50 hidden sm:inline">
+            ·
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="metadata-eyebrow">ISBN:</span>
+            <span className="font-mono tabular-nums font-medium text-on-surface">
+              {book.isbn || 'Unknown'}
+            </span>
           </div>
         </div>
-      </>
+      </header>
     );
   },
 );

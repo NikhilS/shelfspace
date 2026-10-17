@@ -1,6 +1,6 @@
 import {router, protectedProcedure} from '../trpc';
 import {z} from 'zod';
-import * as geminiService from '../../../services/server/gemini';
+import * as geminiService from '../../services/gemini';
 
 export const geminiRouter = router({
   generateClusterNames: protectedProcedure

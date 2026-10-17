@@ -10,13 +10,13 @@ import {
 import {BookDetails} from '../services/bookApi';
 import {toast} from 'sonner';
 import {useParams} from 'react-router-dom';
-import {BackToLibrary} from '../components/BackToLibrary';
+import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {useAddBooks} from './add-book/useAddBooks';
 import {useExistingBooks} from './add-book/useExistingBooks';
 import {useOnlineStatus} from '../hooks/useOnlineStatus';
 import {Checkbox} from '../components/ui/checkbox';
 import {isDuplicateBook, normalizeBookDetails} from '../lib/utils';
-import {BookLoader} from '../components/BookLoader';
+import {BookLoader} from '../components/book/BookLoader';
 import {
   Select,
   SelectContent,
@@ -25,8 +25,8 @@ import {
   SelectValue,
 } from '../components/ui/select';
 
-import BookSearch from '../components/BookSearch';
-import CSVImportTab from '../components/CSVImportTab';
+import BookSearch from '../components/import/BookSearch';
+import CSVImportTab from '../components/import/CSVImportTab';
 import {ManualEntryTab} from './add-book/ManualEntryTab';
 
 const ScanISBNTab = lazy(() => import('./add-book/ScanISBNTab'));

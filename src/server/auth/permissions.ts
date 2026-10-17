@@ -1,5 +1,5 @@
 import {TRPCError} from '@trpc/server';
-import {LibraryService} from '../../services/server/libraryService';
+import {LibraryService} from '../services/libraryService';
 import type {AuthUser, LibraryRole} from './types';
 
 export class PermissionService {
@@ -12,7 +12,7 @@ export class PermissionService {
     user: AuthUser | null,
     libraryId: string,
     requiredRole: LibraryRole = 'viewer',
-  ): Promise<boolean> {
+  ): Promise<boolean | {role: string; userId: string}> {
     if (!user || !user.uid) {
       throw new TRPCError({
         code: 'UNAUTHORIZED',
@@ -34,7 +34,7 @@ export class PermissionService {
   static async verifyLibraryWriteAccess(
     libraryId: string,
     user: AuthUser | null,
-  ): Promise<boolean> {
+  ): Promise<boolean | {role: string; userId: string}> {
     return this.verifyLibraryAccess(user, libraryId, 'editor');
   }
 
@@ -44,7 +44,7 @@ export class PermissionService {
   static async verifyLibraryReadAccess(
     libraryId: string,
     user: AuthUser | null,
-  ): Promise<boolean> {
+  ): Promise<boolean | {role: string; userId: string}> {
     return this.verifyLibraryAccess(user, libraryId, 'viewer');
   }
 }

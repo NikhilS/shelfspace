@@ -12,7 +12,7 @@ import {
 import {Play, LibraryBig, Square, CheckCircle2} from 'lucide-react';
 import {MetadataKey} from '../../types/metadata';
 import {useBulkEnrichment} from '../../hooks/useBulkEnrichment';
-import {BulkEnrichmentBanner} from '../../components/BulkEnrichmentBanner';
+import {BulkEnrichmentBanner} from '../../components/import/BulkEnrichmentBanner';
 import {
   DataTable,
   DataTableColumn,
@@ -80,7 +80,7 @@ function isMetadataPresent(book: Book, key: MetadataKey): boolean {
   if (key === MetadataKey.SERIES) {
     return Boolean(book.series && book.series.trim().length > 0);
   }
-  const val = (book as Record<string, unknown>)[key];
+  const val = (book as unknown as Record<string, unknown>)[key];
   if (Array.isArray(val)) return val.length > 0;
   if (typeof val === 'object' && val !== null)
     return Object.keys(val).length > 0;

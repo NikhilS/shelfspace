@@ -1,9 +1,9 @@
 import {Router} from 'express';
 import {authenticateApiRequest, PermissionService} from '../../auth';
 import type {AuthenticatedApiRequest} from '../../auth';
-import {LibraryService} from '../../../services/server/libraryService';
-import {BookService} from '../../../services/server/bookService';
-import {EnrichmentService} from '../../../services/server/enrichmentService';
+import {LibraryService} from '../../services/libraryService';
+import {BookService} from '../../services/bookService';
+import {EnrichmentService} from '../../services/enrichmentService';
 import {
   enrichmentTriggerSchema,
   bookCreateSchema,
@@ -55,7 +55,7 @@ apiV1Router.get('/libraries', async (req, res) => {
 // GET /api/v1/libraries/:libraryId/books
 apiV1Router.get('/libraries/:libraryId/books', async (req, res) => {
   try {
-    const user = (req as AuthenticatedApiRequest).user;
+    const user = (req as unknown as AuthenticatedApiRequest).user;
     const {libraryId} = req.params;
 
     const missingKind = (req.query['filters[missingMetadata]'] ||
@@ -91,7 +91,7 @@ apiV1Router.get('/libraries/:libraryId/books', async (req, res) => {
 // GET /api/v1/libraries/:libraryId/books/:bookId
 apiV1Router.get('/libraries/:libraryId/books/:bookId', async (req, res) => {
   try {
-    const user = (req as AuthenticatedApiRequest).user;
+    const user = (req as unknown as AuthenticatedApiRequest).user;
     const {libraryId, bookId} = req.params;
 
     await PermissionService.verifyLibraryAccess(user, libraryId, 'viewer');
@@ -113,7 +113,7 @@ apiV1Router.get('/libraries/:libraryId/books/:bookId', async (req, res) => {
 // POST /api/v1/libraries/:libraryId/books
 apiV1Router.post('/libraries/:libraryId/books', async (req, res) => {
   try {
-    const user = (req as AuthenticatedApiRequest).user;
+    const user = (req as unknown as AuthenticatedApiRequest).user;
     const {libraryId} = req.params;
 
     await PermissionService.verifyLibraryAccess(user, libraryId, 'editor');
@@ -149,7 +149,7 @@ apiV1Router.post('/libraries/:libraryId/books', async (req, res) => {
 // PATCH /api/v1/libraries/:libraryId/books/:bookId
 apiV1Router.patch('/libraries/:libraryId/books/:bookId', async (req, res) => {
   try {
-    const user = (req as AuthenticatedApiRequest).user;
+    const user = (req as unknown as AuthenticatedApiRequest).user;
     const {libraryId, bookId} = req.params;
 
     await PermissionService.verifyLibraryAccess(user, libraryId, 'editor');
@@ -186,7 +186,7 @@ apiV1Router.patch('/libraries/:libraryId/books/:bookId', async (req, res) => {
 // DELETE /api/v1/libraries/:libraryId/books/:bookId
 apiV1Router.delete('/libraries/:libraryId/books/:bookId', async (req, res) => {
   try {
-    const user = (req as AuthenticatedApiRequest).user;
+    const user = (req as unknown as AuthenticatedApiRequest).user;
     const {libraryId, bookId} = req.params;
 
     await PermissionService.verifyLibraryAccess(user, libraryId, 'editor');
@@ -222,7 +222,7 @@ apiV1Router.delete('/libraries/:libraryId/books/:bookId', async (req, res) => {
 // POST /api/v1/libraries/:libraryId/books/batch
 apiV1Router.post('/libraries/:libraryId/books/batch', async (req, res) => {
   try {
-    const user = (req as AuthenticatedApiRequest).user;
+    const user = (req as unknown as AuthenticatedApiRequest).user;
     const {libraryId} = req.params;
 
     await PermissionService.verifyLibraryAccess(user, libraryId, 'editor');
@@ -262,7 +262,7 @@ apiV1Router.post(
   '/libraries/:libraryId/enrichment/trigger',
   async (req, res) => {
     try {
-      const user = (req as AuthenticatedApiRequest).user;
+      const user = (req as unknown as AuthenticatedApiRequest).user;
       const {libraryId} = req.params;
 
       const parseResult = enrichmentTriggerSchema.safeParse({

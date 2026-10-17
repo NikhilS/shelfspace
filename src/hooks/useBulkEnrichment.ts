@@ -3,7 +3,7 @@ import {useAuth} from '../stores/authStore';
 import {Book, BookEnrichmentStatus} from '../types';
 import {toast} from 'sonner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
-import {trpcVanilla} from '../lib/trpc';
+import {trpc, trpcVanilla} from '../lib/trpc';
 import {bulkEnrichmentClientLimiter} from '../lib/clientLimiters';
 import {ENRICHMENT_CONSTANTS} from '../constants/enrichment';
 import {ENRICHMENT_TYPE_LIST} from '../schemas/libraryApi';
@@ -24,6 +24,47 @@ export interface UseBulkEnrichmentConfig {
   overwrite?: boolean;
 }
 
+function mergeUpdatesIntoListCache(
+  oldData: unknown,
+  updatesByBookId: Map<string, Record<string, unknown>>,
+): unknown {
+  if (!oldData || updatesByBookId.size === 0) return oldData;
+
+  const mergeBook = (book: Book): Book => {
+    const patch = updatesByBookId.get(book.id);
+    if (!patch) return book;
+    return {
+      ...book,
+      ...patch,
+      enrichmentStatus: {
+        ...(book.enrichmentStatus || {}),
+        ...((patch.enrichmentStatus as BookEnrichmentStatus | undefined) || {}),
+      },
+      bookDetailsMetadata: {
+        ...(book.bookDetailsMetadata || {}),
+        ...((patch.bookDetailsMetadata as Book['bookDetailsMetadata']) || {}),
+      },
+    };
+  };
+
+  if (Array.isArray(oldData)) {
+    return (oldData as Book[]).map(mergeBook);
+  }
+
+  if (
+    typeof oldData === 'object' &&
+    Array.isArray((oldData as {books?: unknown}).books)
+  ) {
+    const container = oldData as {books: Book[]; [k: string]: unknown};
+    return {
+      ...container,
+      books: container.books.map(mergeBook),
+    };
+  }
+
+  return oldData;
+}
+
 export function useBulkEnrichment({
   books,
   isBooksLoading,
@@ -40,6 +81,14 @@ export function useBulkEnrichment({
   overwrite = false,
 }: UseBulkEnrichmentConfig) {
   const {user} = useAuth();
+  let utils: ReturnType<typeof trpc.useUtils> | undefined;
+  try {
+    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
+      utils = trpc.useUtils();
+    }
+  } catch {
+    utils = undefined;
+  }
 
   const [isBackfilling, setIsBackfilling] = useState(false);
   const [inFlightCount, setInFlightCount] = useState(0);
@@ -182,18 +231,28 @@ export function useBulkEnrichment({
           },
         );
 
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let onAbort: (() => void) | undefined;
         try {
           const bookIds = chunk.map(b => b.id);
 
           const abortPromise = new Promise<never>((_, reject) => {
+            onAbort = () => reject(new Error('Enrichment stopped by user'));
             if (abortControllerRef.current?.signal.aborted) {
-              reject(new Error('Enrichment stopped by user'));
+              onAbort();
               return;
             }
             abortControllerRef.current?.signal.addEventListener(
               'abort',
-              () => reject(new Error('Enrichment stopped by user')),
+              onAbort,
               {once: true},
+            );
+          });
+
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(
+              () => reject(new Error('Batch processing timed out')),
+              timeoutMs,
             );
           });
 
@@ -211,12 +270,7 @@ export function useBulkEnrichment({
                 canonicalEnrichmentType as (typeof ENRICHMENT_TYPE_LIST)[number],
               overwrite,
             }),
-            new Promise<never>((_, reject) =>
-              setTimeout(
-                () => reject(new Error('Batch processing timed out')),
-                timeoutMs,
-              ),
-            ),
+            timeoutPromise,
             abortPromise,
           ])) as {
             status: string;
@@ -271,10 +325,35 @@ export function useBulkEnrichment({
             batchCompleted = count;
             batchFailed = chunk.length - batchCompleted;
 
-            // Log per-book diagnostics for crystal-clear debugging visibility
+            // Log per-book diagnostics and build optimistic cache merge map
             const updatesMap = new Map(
               (data.updates || []).map(u => [u.bookId, u]),
             );
+            const cachePatchMap = new Map<string, Record<string, unknown>>();
+
+            if (Array.isArray(data.updates) && data.updates.length > 0) {
+              for (const u of data.updates) {
+                cachePatchMap.set(u.bookId, u.payload);
+              }
+            } else if (Array.isArray(data.results)) {
+              for (const r of data.results) {
+                const rid = r.id as string | undefined;
+                if (rid) {
+                  const rest = {...r};
+                  delete rest.id;
+                  cachePatchMap.set(rid, rest);
+                }
+              }
+            }
+
+            if (cachePatchMap.size > 0) {
+              utils?.book?.list?.setData?.(
+                {libraryId},
+                old =>
+                  mergeUpdatesIntoListCache(old, cachePatchMap) as typeof old,
+              );
+            }
+
             chunk.forEach(b => {
               const update = updatesMap.get(b.id);
               const statusObj = update?.payload?.enrichmentStatus as
@@ -334,6 +413,15 @@ export function useBulkEnrichment({
             );
           }
         } finally {
+          if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
+          }
+          if (onAbort && abortControllerRef.current) {
+            abortControllerRef.current.signal.removeEventListener(
+              'abort',
+              onAbort,
+            );
+          }
           setInFlightCount(prev => Math.max(0, prev - chunk.length));
           setBackfillProgress(prev => ({
             ...prev,
@@ -350,6 +438,7 @@ export function useBulkEnrichment({
       await Promise.all(promises);
 
       if (!isCancelledRef.current) {
+        await utils?.book?.list?.invalidate?.({libraryId});
         DebugTelemetryEngine.getInstance().addLog(
           'info',
           `[BulkEnrichment] Backfill run finished for ${metadataField} (Total processed: ${total})`,
@@ -390,6 +479,7 @@ export function useBulkEnrichment({
     overwrite,
     canonicalEnrichmentType,
     statusKey,
+    utils,
   ]);
 
   // Handle auto-triggering

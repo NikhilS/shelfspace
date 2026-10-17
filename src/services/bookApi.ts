@@ -112,14 +112,14 @@ async function fetchWithTimeout(
 }
 
 const getGoogleBooksUrl = (query: string): string => {
-  // Try to use process.env first for server-side
   let apiKey = '';
-  if (typeof process !== 'undefined' && process.env) {
-    apiKey = process.env.BOOKS_API_KEY || process.env.VITE_BOOKS_API_KEY || '';
-  }
-  // Try import.meta.env if process.env didn't yield a key AND import.meta is available
-  if (!apiKey && typeof import.meta !== 'undefined' && import.meta.env) {
-    apiKey = import.meta.env.VITE_BOOKS_API_KEY as string;
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      apiKey =
+        process.env.BOOKS_API_KEY || process.env.VITE_BOOKS_API_KEY || '';
+    }
+  } catch {
+    // browser environment fallback
   }
 
   const baseUrl = `https://www.googleapis.com/books/v1/volumes?q=${query}`;

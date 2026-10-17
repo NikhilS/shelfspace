@@ -1,10 +1,10 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {bookApiRouter} from './libraryApi';
-import {BookService} from '../../../services/server/bookService';
+import {BookService} from '../../services/bookService';
 import {PermissionService} from '../../auth/permissions';
 import {TRPCError} from '@trpc/server';
 
-vi.mock('../../../services/server/bookService', () => ({
+vi.mock('../../services/bookService', () => ({
   BookService: {
     createBook: vi.fn(),
     updateBook: vi.fn(),
@@ -209,8 +209,18 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
       });
       vi.mocked(BookService.listBooks).mockResolvedValueOnce({
         books: [
-          {id: 'b-1', title: 'Neuromancer'},
-          {id: 'b-2', title: 'Count Zero'},
+          {
+            id: 'b-1',
+            title: 'Neuromancer',
+            author: 'William Gibson',
+            addedAt: '2024-01-01',
+          },
+          {
+            id: 'b-2',
+            title: 'Count Zero',
+            author: 'William Gibson',
+            addedAt: '2024-01-02',
+          },
         ],
       });
 

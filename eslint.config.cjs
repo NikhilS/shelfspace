@@ -12,9 +12,18 @@ if (hasIgnoresFile) {
   customConfig = [{ignores}];
 }
 
+const firebaseRulesPlugin = require('@firebase/eslint-plugin-security-rules');
+
 module.exports = [
   ...customConfig,
   ...require('gts'),
+  firebaseRulesPlugin.flatRecommended,
+  {
+    files: ['**/*.rules'],
+    rules: {
+      'prettier/prettier': 'off',
+    },
+  },
   {
     files: ['**/*.test.ts', '**/*.test.tsx'],
     rules: {

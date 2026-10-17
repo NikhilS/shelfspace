@@ -15,12 +15,15 @@ export default defineConfig(({mode}) => {
         registerType: 'autoUpdate',
         includeAssets: ['icon.png'],
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
         },
         workbox: {
+          cleanupOutdatedCaches: true,
+          skipWaiting: true,
+          clientsClaim: true,
+          navigateFallback: null,
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-          globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          globPatterns: ['**/*.{ico,png,svg,woff,woff2}'],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -137,14 +140,72 @@ export default defineConfig(({mode}) => {
       'import.meta.env.VITE_BOOKS_API_KEY': JSON.stringify(
         env.BOOKS_API_KEY || env.VITE_BOOKS_API_KEY,
       ),
+      'process.env.VITE_BOOKS_API_KEY': JSON.stringify(
+        env.BOOKS_API_KEY || env.VITE_BOOKS_API_KEY || '',
+      ),
+      'process.env.BOOKS_API_KEY': JSON.stringify(
+        env.BOOKS_API_KEY || env.VITE_BOOKS_API_KEY || '',
+      ),
     },
     resolve: {
       alias: {
         '@': path.resolve(process.cwd(), './src'),
       },
     },
+    optimizeDeps: {
+      entries: [
+        'index.html',
+        'src/main.tsx',
+        'src/pages/*.tsx',
+        '!src/pages/*.test.tsx',
+      ],
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
+        'react-router-dom',
+        '@tanstack/react-query',
+        '@tanstack/react-query-persist-client',
+        '@tanstack/query-async-storage-persister',
+        '@trpc/client',
+        '@trpc/react-query',
+        'zustand',
+        'zustand/middleware',
+        'firebase/app',
+        'firebase/auth',
+        'lucide-react',
+        'motion/react',
+        'clsx',
+        'tailwind-merge',
+        'class-variance-authority',
+        'sonner',
+        'date-fns',
+        'zod',
+        'react-hook-form',
+        '@hookform/resolvers/zod',
+        '@radix-ui/react-checkbox',
+        '@radix-ui/react-dialog',
+        '@radix-ui/react-select',
+        'react-virtuoso',
+        'react-markdown',
+        'react-zxing',
+        'swiper/react',
+        'swiper/modules',
+        'd3-shape',
+        'three',
+        '@react-three/fiber',
+        '@react-three/drei',
+        '@vis.gl/react-google-maps',
+        'idb-keyval',
+        'bottleneck',
+        'umap-js',
+        'papaparse',
+      ],
+    },
     server: {
-      hmr: process.env.DISABLE_HMR !== 'true',
+      hmr: false,
       allowedHosts: true,
     },
     build: {
@@ -177,6 +238,7 @@ export default defineConfig(({mode}) => {
               }
               return 'vendor-core';
             }
+            return undefined;
           },
         },
       },

@@ -58,8 +58,7 @@ export function useAddBooks(libraryId?: string) {
         });
 
         if (data.status === 'success' && data.results) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data.results.forEach((r: any) => {
+          data.results.forEach(r => {
             enrichedDataMap[r.id] = r;
           });
         }
@@ -139,7 +138,10 @@ export function useAddBooks(libraryId?: string) {
 
         const hasSynopsis = Boolean(_cleanSynopsis || synopsis);
         const hasAuthorBio = Boolean(_cleanBio || authorBio);
-        const hasEmbedding = Boolean((_cleanEmbed || embedding)?.length);
+        const embedCandidate = _cleanEmbed || embedding;
+        const hasEmbedding = Boolean(
+          Array.isArray(embedCandidate) && embedCandidate.length > 0,
+        );
         const hasCluster = Boolean(_cleanCluster || clusterCoordinates);
 
         const coreBookData = {

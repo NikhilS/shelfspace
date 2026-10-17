@@ -158,10 +158,15 @@ export function BookContent({
 
   return (
     <div className="layout-page-content h-full overflow-y-auto">
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
-        {/* Left Column */}
-        <div className="md:col-span-4 flex flex-col gap-6 items-center md:items-stretch">
-          <div className="aspect-[2/3] w-3/4 max-w-[240px] md:w-full md:max-w-none mx-auto bg-surface-container rounded-lg overflow-hidden architectural-shadow relative flex-shrink-0">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12 items-start">
+        {/* Left Column: Edition Showcase & Archival Accession Ledger */}
+        <div className="md:col-span-4 md:sticky md:top-24 flex flex-col gap-5 items-center md:items-stretch">
+          <div className="aspect-[2/3] w-3/4 max-w-[240px] md:w-full md:max-w-none mx-auto bg-surface-container rounded-xl overflow-hidden book-cover-shadow border border-outline-variant/60 relative flex-shrink-0">
+            {/* Subtle book spine crease */}
+            <div
+              className="absolute inset-y-0 left-0 w-3 bg-gradient-to-r from-black/20 via-white/20 to-transparent z-10 pointer-events-none"
+              aria-hidden="true"
+            />
             {book.coverUrl ? (
               <img
                 src={book.coverUrl}
@@ -170,14 +175,25 @@ export function BookContent({
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                <BookIcon className="w-16 h-16 text-primary opacity-50" />
+              <div className="absolute inset-0 bg-gradient-to-b from-surface-container-low via-surface-container to-surface-container-high p-6 flex flex-col justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">
+                  Archival Edition
+                </span>
+                <div className="my-auto space-y-2">
+                  <p className="font-serif text-xl font-semibold text-primary leading-snug">
+                    {toTitleCase(book.title)}
+                  </p>
+                  <p className="font-sans text-xs uppercase tracking-wider text-on-surface-variant">
+                    {toTitleCase(book.author)}
+                  </p>
+                </div>
+                <BookIcon className="w-6 h-6 text-primary/40" />
               </div>
             )}
             {/* Status Badge */}
             {book.userStatuses?.[user?.uid || ''] &&
               book.userStatuses?.[user?.uid || ''] !== 'unset' && (
-                <div className="absolute top-4 right-4 shadow-sm swiper-no-swiping">
+                <div className="absolute top-3.5 right-3.5 shadow-xs swiper-no-swiping z-20">
                   <Badge
                     variant={
                       book.userStatuses[user?.uid || ''] === 'reading'
@@ -196,10 +212,32 @@ export function BookContent({
                 </div>
               )}
           </div>
+
+          {/* Archival Accession Ledger */}
+          <dl className="bento-card p-4 w-full divide-y divide-outline-variant/50 text-xs font-sans">
+            <div className="py-2 first:pt-0 flex items-center justify-between gap-3">
+              <dt className="metadata-eyebrow">Publication</dt>
+              <dd className="font-mono tabular-nums font-medium text-on-surface text-right">
+                {book.publishedDate || 'Unknown'}
+              </dd>
+            </div>
+            <div className="py-2 flex items-center justify-between gap-3">
+              <dt className="metadata-eyebrow">Format</dt>
+              <dd className="capitalize font-medium text-on-surface text-right">
+                {book.format || 'Physical'}
+              </dd>
+            </div>
+            <div className="py-2 last:pb-0 flex items-center justify-between gap-3">
+              <dt className="metadata-eyebrow">ISBN</dt>
+              <dd className="font-mono tabular-nums font-medium text-on-surface text-right truncate max-w-[160px]">
+                {book.isbn || 'Unassigned'}
+              </dd>
+            </div>
+          </dl>
         </div>
 
-        {/* Right Column */}
-        <div className="md:col-span-8 flex flex-col gap-6 sm:gap-8">
+        {/* Right Column: Magazine Literary Spread */}
+        <div className="md:col-span-8 flex flex-col gap-6 sm:gap-8 min-w-0">
           <BookHeader
             book={book}
             canEdit={canEdit}
@@ -218,10 +256,10 @@ export function BookContent({
             updateReadingStatus={updateReadingStatus}
           />
 
-          {/* Synopsis */}
-          <section>
-            <div className="flex items-center justify-between gap-4 mb-3">
-              <h3 className="font-title-lg sm:font-headline-md text-primary">
+          {/* Editorial Synopsis Spread */}
+          <section className="bento-card p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-4 mb-3.5">
+              <h3 className="font-serif text-xl font-semibold text-primary">
                 Synopsis
               </h3>
               {!book.synopsis && canEdit && (
@@ -230,7 +268,7 @@ export function BookContent({
                   size="sm"
                   disabled={isEnrichingSynopsis}
                   onClick={() => void triggerManualEnrichment('synopsis')}
-                  className="gap-1.5 swiper-no-swiping text-xs h-7 px-2.5"
+                  className="gap-1.5 swiper-no-swiping text-xs h-8 px-3"
                 >
                   {isEnrichingSynopsis ? (
                     <>
@@ -251,24 +289,24 @@ export function BookContent({
                 <div className="relative">
                   <div
                     className={cn(
-                      'text-sm sm:text-[15px] text-on-surface/90 font-sans leading-relaxed transition-all duration-200',
+                      'text-sm sm:text-[15.5px] text-on-surface/90 font-sans leading-relaxed max-w-[70ch] transition-all duration-200',
                       book.synopsis.length > 400 &&
                         !isSynopsisExpanded &&
                         'max-h-48 overflow-hidden',
                     )}
                   >
-                    <div className="markdown-body">
+                    <div className="markdown-body editorial-dropcap">
                       <Markdown>{book.synopsis}</Markdown>
                     </div>
                   </div>
                   {book.synopsis.length > 400 && !isSynopsisExpanded && (
-                    <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-surface via-surface/85 to-transparent pointer-events-none" />
                   )}
                   {book.synopsis.length > 400 && (
                     <button
                       type="button"
                       onClick={() => setIsSynopsisExpanded(!isSynopsisExpanded)}
-                      className="mt-2 text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1.5 transition-colors cursor-pointer py-1"
+                      className="mt-2.5 text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1.5 transition-colors cursor-pointer py-1"
                     >
                       {isSynopsisExpanded ? 'Show less' : 'Read full synopsis'}
                       <ChevronDown
@@ -295,8 +333,8 @@ export function BookContent({
 
             {(book.primaryGenre ||
               (book.subgenres && book.subgenres.length > 0)) && (
-              <div className="mt-5 pt-3.5 border-t border-outline-variant/30 flex items-center flex-wrap gap-2 swiper-no-swiping">
-                <span className="font-label-caps text-label-caps text-on-surface-variant mr-1">
+              <div className="mt-5 pt-3.5 border-t border-outline-variant/50 flex items-center flex-wrap gap-2 swiper-no-swiping">
+                <span className="metadata-eyebrow mr-1">
                   Genre & Subgenres:
                 </span>
                 {book.primaryGenre && (
@@ -344,14 +382,14 @@ export function BookContent({
             >
               {/* Literary Setting Card */}
               {book.geoMetadata && (
-                <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 p-4 sm:p-5 architectural-shadow flex flex-col justify-between">
+                <section className="bento-card p-5 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <div className="flex items-center justify-between gap-2 mb-3.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant/50">
                           <Globe className="w-4 h-4 text-primary" />
                         </div>
-                        <h3 className="font-sans font-bold text-base sm:text-lg text-primary truncate">
+                        <h3 className="font-serif font-semibold text-base sm:text-lg text-primary truncate">
                           Literary Setting
                         </h3>
                       </div>
@@ -367,10 +405,10 @@ export function BookContent({
                     </div>
 
                     {book.geoMetadata.isNonEarth ? (
-                      <div className="flex items-start gap-2.5 p-3 rounded-lg bg-surface-variant/20 border border-outline-variant/30">
+                      <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-surface-container-low border border-outline-variant/50">
                         <Compass className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                         <div>
-                          <h4 className="font-bold text-xs sm:text-sm text-on-surface">
+                          <h4 className="font-semibold text-xs sm:text-sm text-on-surface">
                             Fictional / Non-Earth Realm
                           </h4>
                           <p className="font-body-xs text-xs text-on-surface-variant mt-1 leading-relaxed">
@@ -379,7 +417,7 @@ export function BookContent({
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         {book.geoMetadata.locations &&
                         book.geoMetadata.locations.length > 0 ? (
                           book.geoMetadata.locations.map((loc, idx) => {
@@ -390,16 +428,16 @@ export function BookContent({
                                 case 'country':
                                   return 'bg-tertiary/10 text-tertiary border-tertiary/20';
                                 default:
-                                  return 'bg-surface-container text-on-surface border-outline-variant/40';
+                                  return 'bg-surface-container text-on-surface border-outline-variant/50';
                               }
                             };
                             return (
                               <div
                                 key={idx}
-                                className="p-2.5 sm:p-3 rounded-lg border border-outline-variant/30 bg-surface/50 hover:bg-surface-variant/5 transition-all flex flex-col justify-between"
+                                className="p-3 rounded-lg border border-outline-variant/50 bg-surface-container-low/60 flex flex-col justify-between"
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="font-sans font-bold text-xs sm:text-sm text-on-surface flex items-center gap-1.5 truncate">
+                                  <span className="font-sans font-semibold text-xs sm:text-sm text-on-surface flex items-center gap-1.5 truncate">
                                     <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
                                     {loc.name}
                                   </span>
@@ -436,15 +474,15 @@ export function BookContent({
               {book.temporalMetadata && (
                 <section
                   id="book-temporal-setting-section"
-                  className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 p-4 sm:p-5 architectural-shadow flex flex-col justify-between"
+                  className="bento-card p-5 flex flex-col justify-between"
                 >
                   <div>
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <div className="flex items-center justify-between gap-2 mb-3.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant/50">
                           <Clock className="w-4 h-4 text-primary" />
                         </div>
-                        <h3 className="font-sans font-bold text-base sm:text-lg text-primary truncate">
+                        <h3 className="font-serif font-semibold text-base sm:text-lg text-primary truncate">
                           Temporal Setting
                         </h3>
                       </div>
@@ -462,11 +500,11 @@ export function BookContent({
                     {book.temporalMetadata.isNonHistorical ? (
                       <div
                         id="temporal-non-historical-badge"
-                        className="flex items-start gap-2.5 p-3 rounded-lg bg-surface-variant/20 border border-outline-variant/30"
+                        className="flex items-start gap-2.5 p-3.5 rounded-lg bg-surface-container-low border border-outline-variant/50"
                       >
                         <Clock className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                         <div>
-                          <h4 className="font-bold text-xs sm:text-sm text-on-surface">
+                          <h4 className="font-semibold text-xs sm:text-sm text-on-surface">
                             Contemporary Era
                           </h4>
                           <p className="font-body-xs text-xs text-on-surface-variant mt-1 leading-relaxed">
@@ -474,7 +512,7 @@ export function BookContent({
                             historical era.
                           </p>
                           {book.temporalMetadata.rationale && (
-                            <p className="font-body-xs text-xs text-on-surface-variant/80 italic mt-2 border-l-2 border-outline-variant/40 pl-2 leading-relaxed line-clamp-2">
+                            <p className="font-body-xs text-xs text-on-surface-variant/85 italic mt-2 pt-2 border-t border-outline-variant/40 leading-relaxed line-clamp-2">
                               &ldquo;{book.temporalMetadata.rationale}&rdquo;
                             </p>
                           )}
@@ -483,11 +521,11 @@ export function BookContent({
                     ) : (
                       <div
                         id="temporal-historical-details"
-                        className="p-3 rounded-lg border border-outline-variant/30 bg-surface/50 space-y-2"
+                        className="p-3.5 rounded-lg border border-outline-variant/50 bg-surface-container-low/60 space-y-2"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           {book.temporalMetadata.eraName && (
-                            <h4 className="font-sans font-bold text-xs sm:text-sm text-on-surface">
+                            <h4 className="font-sans font-semibold text-xs sm:text-sm text-on-surface">
                               {book.temporalMetadata.eraName}
                             </h4>
                           )}
@@ -495,7 +533,7 @@ export function BookContent({
                             <Badge
                               variant="temporal"
                               size="sm"
-                              className="text-[11px] font-mono"
+                              className="text-[11px] font-mono tabular-nums"
                             >
                               {book.temporalMetadata.startYear !== undefined &&
                               book.temporalMetadata.endYear !== undefined
@@ -507,8 +545,8 @@ export function BookContent({
                           </div>
                         </div>
                         {book.temporalMetadata.rationale && (
-                          <div className="pt-2 border-t border-outline-variant/20">
-                            <p className="font-body-xs text-xs text-on-surface-variant leading-relaxed italic border-l-2 border-outline-variant/40 pl-2">
+                          <div className="pt-2 border-t border-outline-variant/40">
+                            <p className="font-body-xs text-xs text-on-surface-variant leading-relaxed italic">
                               &ldquo;{book.temporalMetadata.rationale}&rdquo;
                             </p>
                           </div>
@@ -522,14 +560,14 @@ export function BookContent({
           )}
 
           {/* Author Bio Bento Box */}
-          <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 p-4 sm:p-5 architectural-shadow">
+          <section className="bento-card p-5">
             <div className="flex items-start gap-3.5 sm:gap-4">
-              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden shrink-0 border border-outline-variant/50 bg-surface-container flex items-center justify-center">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden shrink-0 border border-outline-variant/60 bg-surface-container flex items-center justify-center">
                 <User className="w-5 h-5 text-on-surface-variant" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <h3 className="font-sans text-base sm:text-lg font-bold text-primary">
+                  <h3 className="font-serif text-base sm:text-lg font-semibold text-primary">
                     About {toTitleCase(book.author)}
                   </h3>
                   {!book.authorBio &&

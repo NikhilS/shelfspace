@@ -147,11 +147,10 @@ export function useSpruceUp(libraryId: string | undefined) {
     try {
       utils.book.list.setData({libraryId}, old => {
         if (!old) return {books: []};
-        const oldBooks = Array.isArray(old)
-          ? (old as Book[])
-          : (old as {books?: Book[]}).books || [];
-        const updated = oldBooks.filter((b: Book) => b.id !== id);
-        return Array.isArray(old) ? updated : {...old, books: updated};
+        return {
+          ...old,
+          books: (old.books || []).filter(b => b.id !== id),
+        };
       });
 
       await instrumentMutation(

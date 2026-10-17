@@ -32,7 +32,11 @@ describe('sanitizeStorage', () => {
       hasHeavyLeaks({id: '3', title: 'Leaked', embedding: [0.1]} as Book),
     ).toBe(true);
     expect(
-      hasHeavyLeaks({id: '4', title: 'Leaked', _inBooks: {} as any} as Book),
+      hasHeavyLeaks({
+        id: '4',
+        title: 'Leaked',
+        _inBooks: {},
+      } as unknown as Book),
     ).toBe(true);
   });
 

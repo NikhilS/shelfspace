@@ -124,176 +124,183 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
 
   return (
     <>
-      <div className="sticky top-16 z-30 flex flex-col border-b border-outline-variant/30 bg-surface/90 backdrop-blur-md transition-all shadow-xs">
-        {/* Main Controls Row: Ultra-compact, responsive, touch-friendly */}
-        <div className="px-3 sm:px-6 py-2 flex items-center justify-between gap-2 sm:gap-3">
-          {/* Search Bar with clear button */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
-            <Input
-              className="pl-9 pr-8 h-9 text-sm rounded-full bg-surface-container-low border-outline-variant/40 focus:bg-surface"
-              placeholder="Search title, author, isbn..."
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Clear search"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary h-6 w-6 p-0 rounded-full"
-              >
-                <X className="w-3.5 h-3.5" />
-              </Button>
-            )}
-          </div>
-
-          {/* Action buttons: Filter & Sort Drawer trigger, Grid/Table view */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-            {/* Filter & Sort Button (opens bottom sheet on mobile, dialog on desktop) */}
-            <Button
-              variant={hasActiveFilters ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setIsFiltersOpen(true)}
-              className={`h-9 px-3 rounded-full text-xs font-semibold flex items-center gap-1.5 border-outline-variant/50 transition-colors ${
-                hasActiveFilters
-                  ? 'bg-primary text-on-primary'
-                  : 'bg-surface hover:bg-surface-container text-on-surface'
-              }`}
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Filter & Sort</span>
-              <span className="sm:hidden">Filters</span>
-              {activeFilterCount > 0 && (
-                <Badge
-                  variant="default"
-                  size="sm"
-                  className="ml-0.5 px-1.5 py-0 font-label-caps-xs text-label-caps-xs font-bold bg-primary text-on-primary"
+      <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 pt-2">
+        <div className="bento-card p-3 sm:p-4 flex flex-col gap-3">
+          {/* Main Controls Row: Unified Search, Filter/Sort Drawer, and View Mode */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+            {/* Search Input with clear button */}
+            <div className="relative flex-1 max-w-lg">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+              <Input
+                className="pl-9 pr-8 h-9 text-sm rounded-lg bg-surface-container-low border-outline-variant/70 focus:bg-surface"
+                placeholder="Search title, author, isbn..."
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Clear search"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary h-6 w-6 p-0 rounded-md"
                 >
-                  {activeFilterCount}
-                </Badge>
+                  <X className="w-3.5 h-3.5" />
+                </Button>
               )}
-            </Button>
+            </div>
 
-            {/* View Mode Toggle: Grid vs Table */}
-            <div className="flex bg-surface-container-low rounded-full p-0.5 border border-outline-variant/40 flex-shrink-0">
+            {/* Action buttons: Volume counter, Filter & Sort Drawer trigger, Grid/Table view */}
+            <div className="flex items-center justify-between sm:justify-end gap-2 flex-shrink-0">
+              <span className="font-mono tabular-nums text-xs text-on-surface-variant mr-1 hidden md:inline-block">
+                {sortedBooks.length}{' '}
+                {sortedBooks.length === 1 ? 'volume' : 'volumes'}
+              </span>
+
+              {/* Filter & Sort Button */}
               <Button
-                variant="ghost"
+                variant={hasActiveFilters ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setViewMode('standard')}
-                className={`h-7 px-2 sm:px-2.5 rounded-full text-xs font-medium ${
-                  viewMode === 'standard'
-                    ? 'bg-surface shadow-xs text-primary'
-                    : 'text-on-surface-variant hover:text-primary'
+                onClick={() => setIsFiltersOpen(true)}
+                className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                  hasActiveFilters
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-surface hover:bg-surface-container-low text-on-surface border-outline-variant/80'
                 }`}
-                title="Grid View"
-                aria-label="Grid View"
               >
-                <LayoutGrid className="w-3.5 h-3.5 sm:mr-1" />
-                <span className="hidden sm:inline">Grid</span>
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Filter & Sort</span>
+                <span className="sm:hidden">Filters</span>
+                {activeFilterCount > 0 && (
+                  <Badge
+                    variant="default"
+                    size="sm"
+                    className="ml-0.5 px-1.5 py-0 font-mono tabular-nums text-[10px] font-bold bg-on-primary text-primary rounded-sm"
+                  >
+                    {activeFilterCount}
+                  </Badge>
+                )}
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewMode('table')}
-                className={`h-7 px-2 sm:px-2.5 rounded-full text-xs font-medium ${
-                  viewMode === 'table'
-                    ? 'bg-surface shadow-xs text-primary'
-                    : 'text-on-surface-variant hover:text-primary'
-                }`}
-                title="Table View"
-                aria-label="Table View"
-              >
-                <TableIcon className="w-3.5 h-3.5 sm:mr-1" />
-                <span className="hidden sm:inline">Table</span>
-              </Button>
+
+              {/* View Mode Toggle: Bento Grid vs Editorial Table */}
+              <div className="flex bg-surface-container rounded-lg p-0.5 border border-outline-variant/60 flex-shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setViewMode('standard')}
+                  className={`h-8 px-2.5 rounded-md text-xs font-medium ${
+                    viewMode === 'standard'
+                      ? 'bg-surface shadow-2xs text-primary font-semibold'
+                      : 'text-on-surface-variant hover:text-primary'
+                  }`}
+                  title="Grid View"
+                  aria-label="Grid View"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5 sm:mr-1" />
+                  <span className="hidden sm:inline">Grid</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setViewMode('table')}
+                  className={`h-8 px-2.5 rounded-md text-xs font-medium ${
+                    viewMode === 'table'
+                      ? 'bg-surface shadow-2xs text-primary font-semibold'
+                      : 'text-on-surface-variant hover:text-primary'
+                  }`}
+                  title="Table View"
+                  aria-label="Table View"
+                >
+                  <TableIcon className="w-3.5 h-3.5 sm:mr-1" />
+                  <span className="hidden sm:inline">Table</span>
+                </Button>
+              </div>
             </div>
           </div>
+
+          {/* Quick Genre Filter Row (1-tap curatorial filtering with rounded-md buttons) */}
+          {quickGenres.length > 0 && (
+            <div className="pt-2 border-t border-outline-variant/50 flex items-center gap-1.5 overflow-x-auto hide-scrollbar scroll-smooth">
+              <Button
+                type="button"
+                variant={!filterGenre ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterGenre('')}
+                className={`text-xs px-3 h-7 rounded-md whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
+                  !filterGenre
+                    ? 'bg-primary text-on-primary font-semibold shadow-2xs'
+                    : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container hover:text-on-surface border-outline-variant/50'
+                }`}
+              >
+                All Genres
+              </Button>
+              {quickGenres.map(genre => {
+                const isSelected =
+                  filterGenre.toLowerCase() === genre.toLowerCase();
+                return (
+                  <Button
+                    key={genre}
+                    type="button"
+                    variant={isSelected ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilterGenre(isSelected ? '' : genre)}
+                    className={`text-xs px-3 h-7 rounded-md whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
+                      isSelected
+                        ? 'bg-primary text-on-primary font-semibold shadow-2xs'
+                        : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container hover:text-on-surface border-outline-variant/50'
+                    }`}
+                  >
+                    {genre}
+                  </Button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Drill-down Subgenre Row for Selected Primary Genre */}
+          {filterGenre && activeSubgenres && activeSubgenres.length > 0 && (
+            <div className="pt-2 border-t border-outline-variant/40 flex items-center gap-1.5 overflow-x-auto hide-scrollbar scroll-smooth">
+              <span className="font-label-caps-xs text-label-caps-xs font-sans text-on-surface-variant font-semibold mr-1 flex-shrink-0">
+                Subgenres:
+              </span>
+              <Button
+                type="button"
+                variant={!filterSubgenre ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterSubgenre?.('')}
+                className={`font-label-caps-xs text-label-caps-xs px-2.5 h-6 rounded-md whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
+                  !filterSubgenre
+                    ? 'bg-primary text-on-primary font-semibold shadow-2xs'
+                    : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container hover:text-on-surface border-outline-variant/50'
+                }`}
+              >
+                All {filterGenre}
+              </Button>
+              {activeSubgenres.map(({name, count}) => {
+                const isSelected =
+                  filterSubgenre?.toLowerCase() === name.toLowerCase();
+                return (
+                  <Button
+                    key={name}
+                    type="button"
+                    variant={isSelected ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilterSubgenre?.(isSelected ? '' : name)}
+                    className={`font-label-caps-xs text-label-caps-xs px-2.5 h-6 rounded-md whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
+                      isSelected
+                        ? 'bg-primary text-on-primary font-semibold shadow-2xs'
+                        : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container hover:text-on-surface border-outline-variant/50'
+                    }`}
+                  >
+                    {name} ({count})
+                  </Button>
+                );
+              })}
+            </div>
+          )}
         </div>
-
-        {/* Quick Genre Chips Row (Horizontal Scrollable, 1-tap filtering) */}
-        {quickGenres.length > 0 && (
-          <div className="px-3 sm:px-6 pb-2 pt-0.5 flex items-center gap-1.5 overflow-x-auto hide-scrollbar scroll-smooth">
-            <Button
-              type="button"
-              variant={!filterGenre ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilterGenre('')}
-              className={`text-xs px-3 h-7 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
-                !filterGenre
-                  ? 'bg-primary text-on-primary font-semibold shadow-xs'
-                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border-transparent'
-              }`}
-            >
-              All Genres
-            </Button>
-            {quickGenres.map(genre => {
-              const isSelected =
-                filterGenre.toLowerCase() === genre.toLowerCase();
-              return (
-                <Button
-                  key={genre}
-                  type="button"
-                  variant={isSelected ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterGenre(isSelected ? '' : genre)}
-                  className={`text-xs px-3 h-7 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
-                    isSelected
-                      ? 'bg-primary text-on-primary font-semibold shadow-xs'
-                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border-transparent'
-                  }`}
-                >
-                  {genre}
-                </Button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Drill-down Subgenre Chips Row for Selected Primary Genre */}
-        {filterGenre && activeSubgenres && activeSubgenres.length > 0 && (
-          <div className="px-3 sm:px-6 pb-2 pt-1 border-t border-outline-variant/15 flex items-center gap-1.5 overflow-x-auto hide-scrollbar scroll-smooth bg-surface-container-low/30">
-            <span className="font-label-caps-xs text-label-caps-xs font-sans text-on-surface-variant/80 font-medium mr-1 flex-shrink-0">
-              Subgenres:
-            </span>
-            <Button
-              type="button"
-              variant={!filterSubgenre ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilterSubgenre?.('')}
-              className={`font-label-caps-xs text-label-caps-xs px-2.5 h-6 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
-                !filterSubgenre
-                  ? 'bg-primary text-on-primary font-semibold shadow-xs'
-                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border-transparent'
-              }`}
-            >
-              All {filterGenre}
-            </Button>
-            {activeSubgenres.map(({name, count}) => {
-              const isSelected =
-                filterSubgenre?.toLowerCase() === name.toLowerCase();
-              return (
-                <Button
-                  key={name}
-                  type="button"
-                  variant={isSelected ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterSubgenre?.(isSelected ? '' : name)}
-                  className={`font-label-caps-xs text-label-caps-xs px-2.5 h-6 rounded-full whitespace-nowrap font-medium transition-colors flex-shrink-0 ${
-                    isSelected
-                      ? 'bg-primary text-on-primary font-semibold shadow-xs'
-                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border-transparent'
-                  }`}
-                >
-                  {name} ({count})
-                </Button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* Filter & Sort Dialog / Mobile Bottom Sheet */}

@@ -27,6 +27,7 @@ export async function createSecurityContext({
     apiKeyHeader,
     authHeader,
   );
+
   if (rawApiKey) {
     user = await ApiKeyVerifier.verify(rawApiKey);
   } else {

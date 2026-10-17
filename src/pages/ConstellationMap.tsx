@@ -3,11 +3,11 @@ import {useParams} from 'react-router-dom';
 import {RefreshCw} from 'lucide-react';
 import {useConstellationData} from '../hooks/useConstellationData';
 import {Button} from '@/components/ui/button';
-import {BookLoader} from '../components/BookLoader';
-import {BackToLibrary} from '../components/BackToLibrary';
+import {BookLoader} from '../components/book/BookLoader';
+import {BackToLibrary} from '../components/layout/BackToLibrary';
 
 const ConstellationChart = lazy(
-  () => import('../components/ConstellationChart'),
+  () => import('./constellations/ConstellationChart'),
 );
 
 export default function ConstellationMap() {
@@ -16,59 +16,58 @@ export default function ConstellationMap() {
     useConstellationData(libraryId);
 
   return (
-    <>
-      <div className="layout-page-content">
-        <div className="layout-header border-none sm:flex-row sm:justify-between sm:items-start">
-          <div>
-            <BackToLibrary libraryId={libraryId} className="mb-2" />
-            <h1 className="layout-header-title">Constellation Map</h1>
-            <p className="layout-header-subtitle">
-              An AI-generated semantic map of your books. Books with similar
-              themes, genres, and synopses are clustered closer together.
-              Navigating the clusters reveals organic reading paths.
-            </p>
-          </div>
-
-          <Button
-            variant="outline"
-            onClick={handleRecluster}
-            disabled={loading}
-            className="flex items-center gap-2 rounded-full"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            Re-Cluster Map
-          </Button>
+    <div className="layout-page-content">
+      <div className="layout-header border-none sm:flex-row sm:justify-between sm:items-start">
+        <div>
+          <BackToLibrary libraryId={libraryId} className="mb-2" />
+          <h1 className="layout-header-title">Constellation Map</h1>
+          <p className="layout-header-subtitle">
+            An AI-generated celestial atlas of your library. Books with kindred
+            themes, genres, and synopses form connected constellations and
+            semantic reading paths.
+          </p>
         </div>
 
-        {loading ? (
-          <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container rounded-3xl border border-outline-variant p-8">
-            <BookLoader size="lg" className="mb-4" />
-            <p className="text-on-surface-variant font-medium animate-pulse">
-              {progress}
-            </p>
-          </div>
-        ) : plotData.length < 3 ? (
-          <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container rounded-3xl border border-outline-variant p-8">
-            <p className="text-on-surface-variant font-medium">{progress}</p>
-          </div>
-        ) : (
-          <Suspense
-            fallback={
-              <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container rounded-3xl border border-outline-variant p-8">
-                <BookLoader size="lg" className="mb-4" />
-                <p className="text-on-surface-variant font-medium animate-pulse">
-                  Loading 3D Constellation Engine...
-                </p>
-              </div>
-            }
-          >
-            <ConstellationChart
-              plotData={plotData}
-              clusterNames={clusterNames}
-            />
-          </Suspense>
-        )}
+        <Button
+          variant="outline"
+          onClick={handleRecluster}
+          disabled={loading}
+          className="flex items-center gap-2 rounded-lg whitespace-nowrap shrink-0"
+        >
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          Re-Cluster Map
+        </Button>
       </div>
-    </>
+
+      {loading ? (
+        <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container rounded-2xl border border-outline-variant p-8">
+          <BookLoader size="lg" className="mb-4" />
+          <p className="text-on-surface-variant font-medium animate-pulse">
+            {progress}
+          </p>
+        </div>
+      ) : plotData.length < 3 ? (
+        <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container rounded-2xl border border-outline-variant p-8">
+          <p className="text-on-surface-variant font-medium">{progress}</p>
+        </div>
+      ) : (
+        <Suspense
+          fallback={
+            <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container rounded-2xl border border-outline-variant p-8">
+              <BookLoader size="lg" className="mb-4" />
+              <p className="text-on-surface-variant font-medium animate-pulse">
+                Loading Celestial Chart Engine...
+              </p>
+            </div>
+          }
+        >
+          <ConstellationChart
+            plotData={plotData}
+            clusterNames={clusterNames}
+            libraryId={libraryId}
+          />
+        </Suspense>
+      )}
+    </div>
   );
 }

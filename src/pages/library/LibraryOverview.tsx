@@ -15,7 +15,7 @@ import {toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {useNavigate, useLocation, Link} from 'react-router-dom';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
-import {BookLoader} from '../../components/BookLoader';
+import {BookLoader} from '../../components/book/BookLoader';
 import {format} from 'date-fns';
 import {User} from 'firebase/auth';
 
@@ -184,10 +184,10 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6">
               {/* Left Column: Metrics & Categories */}
               <div className="md:col-span-4 flex flex-col gap-5">
-                <div className="bg-surface p-5 sm:p-6 rounded-2xl border border-outline-variant/30 shadow-xs flex flex-col min-w-0">
+                <div className="bento-card p-5 sm:p-6 flex flex-col min-w-0 h-full">
                   <div className="flex items-center justify-between mb-4">
                     <p className="metadata-eyebrow">Top Categories</p>
-                    <span className="font-sans text-xs text-on-surface-variant">
+                    <span className="font-mono tabular-nums text-[11px] text-on-surface-variant">
                       Last added: {lastCatalogedDate}
                     </span>
                   </div>
@@ -207,7 +207,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                           return (
                             <div
                               key={category.name}
-                              className="group flex flex-col gap-1 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm p-1 -m-1"
+                              className="group flex flex-col gap-1.5 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-md p-1 -m-1"
                               onClick={() => {
                                 if (selectGenreAndGoToCollection) {
                                   selectGenreAndGoToCollection(category.name);
@@ -236,14 +236,14 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                                 <span className="font-sans font-semibold text-primary group-hover:text-primary transition-colors truncate pr-2">
                                   {category.name || 'Uncategorized'}
                                 </span>
-                                <span className="font-sans font-bold text-on-surface-variant group-hover:text-primary transition-colors uppercase tracking-wider flex-shrink-0 font-label-caps-xs text-label-caps-xs">
+                                <span className="font-mono tabular-nums font-semibold text-on-surface-variant group-hover:text-primary transition-colors uppercase tracking-wider flex-shrink-0 text-[11px]">
                                   {category.value}{' '}
                                   {category.value === 1 ? 'vol' : 'vols'}
                                 </span>
                               </div>
-                              <div className="w-full h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
+                              <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-primary/40 group-hover:bg-primary transition-colors duration-300"
+                                  className="h-full bg-primary/65 group-hover:bg-primary transition-colors duration-300"
                                   style={{width: `${widthPercent}%`}}
                                 />
                               </div>
@@ -268,7 +268,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                   readingBooks.map(book => (
                     <div
                       key={`reading-${book.id}`}
-                      className="bg-surface-container-lowest p-5 sm:p-6 rounded-2xl shadow-xs border border-outline-variant/30 flex flex-col sm:flex-row gap-5 items-center sm:items-start"
+                      className="bento-card p-5 sm:p-6 flex flex-col sm:flex-row gap-5 items-center sm:items-start"
                     >
                       <div
                         className="w-24 sm:w-28 mx-auto sm:mx-0 flex-shrink-0 relative group cursor-pointer"
@@ -281,28 +281,27 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                           })
                         }
                       >
-                        <div className="absolute inset-0 bg-primary/10 -rotate-2 transform rounded-sm shadow-xs"></div>
                         {book.coverUrl ? (
                           <img
                             alt={book.title}
-                            className="relative w-full h-auto object-cover rounded-sm shadow-md border border-outline-variant/20 z-10 aspect-[2/3]"
+                            className="relative w-full h-auto object-cover rounded-lg book-cover-shadow border border-outline-variant/50 z-10 aspect-[2/3]"
                             src={book.coverUrl}
                             referrerPolicy="no-referrer"
                             loading="lazy"
                           />
                         ) : (
-                          <div className="relative w-full h-36 bg-surface-variant rounded-sm shadow-md border border-outline-variant/20 z-10 flex items-center justify-center p-2 text-center">
-                            <span className="font-sans text-xs font-bold text-on-surface-variant">
+                          <div className="relative w-full h-36 bg-surface-container rounded-lg book-cover-shadow border border-outline-variant/50 z-10 flex items-center justify-center p-2 text-center">
+                            <span className="font-serif text-xs font-semibold text-on-surface-variant">
                               {book.title}
                             </span>
                           </div>
                         )}
                       </div>
                       <div className="flex-grow min-w-0 w-full text-center sm:text-left break-words">
-                        <span className="font-label-caps-sm text-label-caps-sm font-sans font-semibold tracking-wider uppercase text-on-surface-variant block">
+                        <span className="metadata-eyebrow block">
                           Currently Reading
                         </span>
-                        <h3 className="font-sans text-lg sm:text-xl font-bold tracking-tight text-primary mt-1 mb-0.5 line-clamp-2">
+                        <h3 className="font-serif text-xl sm:text-2xl font-semibold tracking-tight text-primary mt-1 mb-0.5 line-clamp-2">
                           {toTitleCase(book.title)}
                         </h3>
                         <p className="font-sans text-xs sm:text-sm text-on-surface-variant mb-4">
@@ -332,9 +331,9 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                   ))}
 
                 {/* AI Curator's Pick */}
-                <div className="bg-gradient-to-br from-surface-container-low to-surface border border-outline-variant/30 p-5 sm:p-6 rounded-2xl relative overflow-hidden min-h-[160px] flex items-center shadow-xs">
+                <div className="bento-card bg-gradient-to-br from-surface-container-low/80 to-surface p-5 sm:p-6 relative overflow-hidden min-h-[160px] flex items-center">
                   <div className="absolute top-4 right-4 text-primary/20 pointer-events-none">
-                    <Sparkles size={24} />
+                    <Sparkles size={22} />
                   </div>
                   <Button
                     variant="ghost"
@@ -358,38 +357,38 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         {pickOfTheDay.coverUrl ? (
                           <img
                             alt="Book Cover"
-                            className="w-full h-auto object-cover rounded-sm shadow-md border border-outline-variant/20 aspect-[2/3]"
+                            className="w-full h-auto object-cover rounded-lg book-cover-shadow border border-outline-variant/50 aspect-[2/3]"
                             src={pickOfTheDay.coverUrl}
                             referrerPolicy="no-referrer"
                             loading="lazy"
                           />
                         ) : (
-                          <div className="w-full h-28 bg-surface-variant rounded-sm shadow-md border border-outline-variant/20 flex items-center justify-center p-2 text-center font-sans text-xs font-bold text-on-surface-variant">
+                          <div className="w-full h-28 bg-surface-container rounded-lg book-cover-shadow border border-outline-variant/50 flex items-center justify-center p-2 text-center font-serif text-xs font-semibold text-on-surface-variant">
                             {pickOfTheDay.title}
                           </div>
                         )}
                       </div>
                       <div className="flex flex-col justify-center flex-1 min-w-0 text-center sm:text-left break-words">
-                        <span className="font-label-caps-sm text-label-caps-sm font-sans font-semibold tracking-wider uppercase text-on-surface-variant flex items-center justify-center sm:justify-start gap-1 mb-1">
-                          <Sparkles size={13} className="text-primary" />
+                        <span className="metadata-eyebrow flex items-center justify-center sm:justify-start gap-1 mb-1">
+                          <Sparkles size={13} className="text-tertiary" />
                           Curator's Recommendation
                         </span>
-                        <h3 className="font-sans text-base sm:text-lg font-bold tracking-tight text-primary line-clamp-1">
+                        <h3 className="font-serif text-lg sm:text-xl font-semibold tracking-tight text-primary line-clamp-1">
                           {toTitleCase(pickOfTheDay.title)}
                         </h3>
-                        <p className="font-sans text-xs text-on-surface-variant mb-2">
+                        <p className="font-sans text-xs text-on-surface-variant mb-2.5">
                           {toTitleCase(pickOfTheDay.author)}
                         </p>
-                        <div className="border-l-2 border-primary/30 pl-3 py-0.5 text-left">
-                          <p className="font-sans text-xs text-on-surface leading-relaxed italic">
-                            "{pickOfTheDay.reason}"
+                        <div className="pt-2 border-t border-outline-variant/50 text-left">
+                          <p className="font-serif text-xs sm:text-sm text-on-surface leading-relaxed italic">
+                            &ldquo;{pickOfTheDay.reason}&rdquo;
                           </p>
                         </div>
                       </div>
                     </div>
                   ) : pickError ? (
                     <div className="w-full flex flex-col items-center justify-center gap-3 py-6 text-center z-10 relative px-4">
-                      <p className="font-sans text-sm font-bold text-accent">
+                      <p className="font-serif text-sm font-semibold text-primary">
                         AI Curator Unavailable
                       </p>
                       <p className="font-sans text-xs text-on-surface-variant max-w-sm">
@@ -411,7 +410,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                     </div>
                   ) : (
                     <div className="w-full flex flex-col items-center justify-center gap-2.5 py-6 text-center z-10 relative px-4">
-                      <p className="font-sans text-base font-bold text-primary">
+                      <p className="font-serif text-lg font-semibold text-primary">
                         Curator's Pick
                       </p>
                       <p className="font-sans text-xs text-on-surface-variant max-w-sm">
@@ -422,7 +421,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         onClick={() => generateNewPick()}
                         variant="outline"
                         size="sm"
-                        className="gap-2 bg-surface hover:bg-surface-container min-h-[38px] px-4 rounded-xl text-xs font-semibold"
+                        className="gap-2 bg-surface hover:bg-surface-container min-h-[38px] px-4 rounded-lg text-xs font-semibold"
                       >
                         <Sparkles className="w-3.5 h-3.5 text-primary" />
                         Surprise Me
@@ -449,14 +448,14 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => setCurrentTab('collection')}
-                  className="text-xs font-sans font-semibold text-primary hover:text-primary/80 flex items-center gap-1 group h-auto p-1"
+                  className="text-xs font-sans font-semibold text-primary hover:text-primary/80 flex items-center gap-1 group h-auto px-2.5 py-1.5"
                 >
                   <span>Browse All {books.length} Books</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
                 {recentBooks.map(book => (
                   <div
                     key={book.id}
@@ -468,9 +467,9 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                         },
                       })
                     }
-                    className="group flex flex-col p-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant/25 hover:border-primary/40 shadow-xs hover:shadow-elevation-1 transition-all cursor-pointer"
+                    className="group flex flex-col p-3 bento-card-interactive cursor-pointer"
                   >
-                    <div className="relative aspect-[2/3] w-full rounded-lg overflow-hidden bg-surface-container mb-2 border border-outline-variant/20 shadow-2xs group-hover:scale-[1.02] transition-transform">
+                    <div className="relative aspect-[2/3] w-full rounded-lg overflow-hidden bg-surface-container mb-2.5 border border-outline-variant/50 book-cover-shadow group-hover:scale-[1.02] transition-transform">
                       {book.coverUrl ? (
                         <img
                           src={book.coverUrl}
@@ -480,11 +479,11 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                           referrerPolicy="no-referrer"
                         />
                       ) : (
-                        <div className="w-full h-full p-2 flex flex-col justify-between text-center bg-surface-variant">
-                          <span className="font-sans text-xs font-bold text-on-surface-variant line-clamp-3">
+                        <div className="w-full h-full p-2.5 flex flex-col justify-between text-center bg-surface-container">
+                          <span className="font-serif text-xs font-semibold text-on-surface line-clamp-3">
                             {book.title}
                           </span>
-                          <span className="font-label-caps-xs text-label-caps-xs text-on-surface-variant/70 truncate">
+                          <span className="font-label-caps-xs text-label-caps-xs text-on-surface-variant/80 truncate">
                             {book.author}
                           </span>
                         </div>

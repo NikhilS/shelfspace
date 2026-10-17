@@ -111,6 +111,6 @@ export const enrichmentTriggerSchema = z
 
 export type LibraryListInput = z.infer<typeof libraryListSchema>;
 export type BookListInput = z.infer<typeof bookListSchema>;
-export type EnrichmentTriggerInput = z.infer<typeof enrichmentTriggerSchema>;
+export type EnrichmentTriggerInput = z.input<typeof enrichmentTriggerSchema>;
 
 export * from './book';

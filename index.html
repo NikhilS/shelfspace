@@ -2,25 +2,368 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#fcf9f3" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="book(ish)" />
     <meta name="description" content="A book librarian and companion app to organize your physical bookshelves, extract books from photos, and share libraries." />
     <meta property="og:title" content="book(ish) - Personal Librarian" />
     <meta property="og:description" content="A book librarian and companion app to organize your physical bookshelves, extract books from photos, and share libraries." />
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="apple-touch-icon" href="/icon.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
     <title>book(ish) - Personal Librarian</title>
     <style>
       body {
         margin: 0;
-        background-color: #fbf8f2;
+        background-color: #faf7f2;
+        color: #1c1917;
+        font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      @keyframes bookish-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+      .boot-shell {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+        text-align: center;
+      }
+      .boot-card {
+        max-width: 440px;
+        width: 100%;
+        background: #ffffff;
+        border: 1px solid #e4ddd0;
+        border-radius: 12px;
+        padding: 32px 24px;
+        box-shadow: 0 1px 3px rgba(28, 25, 23, 0.05);
+      }
+      .boot-title {
+        font-family: Georgia, Cambria, 'Times New Roman', serif;
+        font-size: 22px;
+        font-weight: 600;
+        color: #1c1917;
+        margin: 0 0 8px 0;
+      }
+      .boot-subtitle {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #686259;
+        font-weight: 600;
+        animation: bookish-pulse 1.8s ease-in-out infinite;
+      }
+      .boot-error-box {
+        display: none;
+        margin-top: 16px;
+        text-align: left;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+        padding: 12px;
+        border-radius: 8px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 180px;
+        overflow: auto;
+      }
+      .boot-actions {
+        display: none;
+        margin-top: 16px;
+        gap: 8px;
+        justify-content: center;
+      }
+      .boot-btn {
+        background: #1c1917;
+        color: #faf7f2;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 16px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
       }
     </style>
+    <script>
+      (function () {
+        window.__BOOKISH_BOOT_START__ = Date.now();
+        window.__BOOKISH_BOOTED__ = false;
+
+        // 1. Preserve native window.fetch so non-Gemini requests (/trpc, /api, Firebase)
+        // never hang waiting on the AI Studio iframe bootstrap MessageChannel
+        try {
+          if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+            var nativeFetch = window.fetch.bind(window);
+            window.__nativeFetch = nativeFetch;
+            var origDefineProperty = Object.defineProperty;
+            Object.defineProperty = function (obj, prop, descriptor) {
+              if (
+                obj === window &&
+                prop === 'fetch' &&
+                descriptor &&
+                typeof descriptor.get === 'function'
+              ) {
+                var iframeFetchGetter = descriptor.get;
+                return origDefineProperty.call(Object, obj, prop, {
+                  configurable: true,
+                  enumerable: true,
+                  get: function () {
+                    return function (resource, options) {
+                      var url =
+                        typeof resource === 'string'
+                          ? resource
+                          : (resource && resource.url) || '';
+                      if (url.indexOf('generativelanguage.googleapis.com') === -1) {
+                        return nativeFetch(resource, options);
+                      }
+                      return iframeFetchGetter.call(window)(resource, options);
+                    };
+                  },
+                });
+              }
+              return origDefineProperty.call(Object, obj, prop, descriptor);
+            };
+          }
+        } catch (e) {}
+
+        // Helper to report client boot/runtime errors to the server terminal logs
+        function reportClientLog(level, message, stack, meta) {
+          try {
+            var fn = window.__nativeFetch || window.fetch;
+            if (typeof fn === 'function') {
+              fn('/api/client-log', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                  level: level,
+                  message: String(message || ''),
+                  stack: stack ? String(stack) : undefined,
+                  url: window.location.href,
+                  userAgent: navigator.userAgent,
+                  meta: meta,
+                }),
+              }).catch(function () {});
+            }
+          } catch (e) {}
+        }
+        window.__reportClientLog = reportClientLog;
+
+        // Helper to clear all Service Workers & Workbox caches and reload cleanly
+        window.__bookishHardResetAndReload = function () {
+          try {
+            var tasks = [];
+            if ('serviceWorker' in navigator) {
+              tasks.push(
+                navigator.serviceWorker.getRegistrations().then(function (regs) {
+                  return Promise.all(
+                    regs.map(function (r) {
+                      return r.unregister();
+                    })
+                  );
+                })
+              );
+            }
+            if ('caches' in window) {
+              tasks.push(
+                caches.keys().then(function (keys) {
+                  return Promise.all(
+                    keys.map(function (k) {
+                      return caches.delete(k);
+                    })
+                  );
+                })
+              );
+            }
+            Promise.all(tasks).finally(function () {
+              window.location.reload();
+            });
+          } catch (e) {
+            window.location.reload();
+          }
+        };
+
+        // 2. Purge any stale Service Workers and Workbox precaches across BOTH iframe and top-level tabs.
+        // If an active Service Worker was controlling this page load (serving stale index.html),
+        // automatically reload once after unregistering so fresh HTML is fetched from the server.
+        try {
+          var hadController = Boolean(
+            'serviceWorker' in navigator && navigator.serviceWorker.controller
+          );
+          var cleanupPromises = [];
+
+          if ('serviceWorker' in navigator) {
+            cleanupPromises.push(
+              navigator.serviceWorker
+                .getRegistrations()
+                .then(function (registrations) {
+                  var unregisteredAny = false;
+                  return Promise.all(
+                    registrations.map(function (reg) {
+                      unregisteredAny = true;
+                      console.info('[boot] Unregistering stale Service Worker:', reg.scope);
+                      return reg.unregister().catch(function () {
+                        return false;
+                      });
+                    })
+                  ).then(function () {
+                    return unregisteredAny;
+                  });
+                })
+                .catch(function () {
+                  return false;
+                })
+            );
+          }
+
+          if ('caches' in window) {
+            cleanupPromises.push(
+              caches
+                .keys()
+                .then(function (keys) {
+                  var deletedAny = false;
+                  return Promise.all(
+                    keys.map(function (key) {
+                      if (
+                        key.indexOf('workbox') !== -1 ||
+                        key.indexOf('vite-pwa') !== -1
+                      ) {
+                        deletedAny = true;
+                        console.info('[boot] Deleting stale cache:', key);
+                        return caches.delete(key).catch(function () {
+                          return false;
+                        });
+                      }
+                      return Promise.resolve(false);
+                    })
+                  ).then(function () {
+                    return deletedAny;
+                  });
+                })
+                .catch(function () {
+                  return false;
+                })
+            );
+          }
+
+          if (cleanupPromises.length > 0) {
+            Promise.all(cleanupPromises)
+              .then(function (results) {
+                var cleanedAnything = results[0] || results[1];
+                if (hadController && cleanedAnything) {
+                  var reloadKey = '__bookish_sw_recovered_v2';
+                  if (!sessionStorage.getItem(reloadKey)) {
+                    sessionStorage.setItem(reloadKey, '1');
+                    console.warn(
+                      '[boot] Page was controlled by a stale Service Worker; reloading fresh document...'
+                    );
+                    reportClientLog(
+                      'warn',
+                      'Recovered from stale Service Worker controller; triggering one-time reload'
+                    );
+                    window.location.reload();
+                  }
+                } else {
+                  sessionStorage.removeItem('__bookish_sw_recovered_v2');
+                }
+              })
+              .catch(function () {});
+          }
+        } catch (e) {}
+
+        // 3. Catch Vite chunk preload errors or module script failures and recover
+        window.addEventListener('vite:preloadError', function (event) {
+          console.warn('[boot] Vite chunk preload error detected:', event);
+          reportClientLog('warn', 'Vite chunk preload error', undefined, {
+            href: window.location.href,
+          });
+        });
+
+        function showBootFailureUI(title, detail) {
+          if (window.__BOOKISH_BOOTED__) return;
+          var subtitleEl = document.getElementById('boot-subtitle');
+          var errBox = document.getElementById('boot-error-box');
+          var actionsEl = document.getElementById('boot-actions');
+          if (subtitleEl) {
+            subtitleEl.textContent = title || 'Startup error detected';
+            subtitleEl.style.animation = 'none';
+            subtitleEl.style.color = '#991b1b';
+          }
+          if (errBox && detail) {
+            errBox.style.display = 'block';
+            errBox.textContent = detail;
+          }
+          if (actionsEl) {
+            actionsEl.style.display = 'flex';
+          }
+        }
+
+        window.addEventListener('error', function (event) {
+          var msg = event.message || 'Uncaught window error';
+          var stack =
+            (event.error && event.error.stack) ||
+            (event.filename ? event.filename + ':' + event.lineno + ':' + event.colno : '');
+          console.error('[boot/window.onerror]', msg, stack);
+          reportClientLog('error', msg, stack);
+          if (!window.__BOOKISH_BOOTED__) {
+            showBootFailureUI('Application failed to finish loading', msg + (stack ? '\n' + stack : ''));
+          }
+        });
+
+        window.addEventListener('unhandledrejection', function (event) {
+          var reason = event.reason;
+          var msg =
+            (reason && (reason.message || String(reason))) ||
+            'Unhandled Promise Rejection';
+          var stack = reason && reason.stack ? String(reason.stack) : undefined;
+          if (event && typeof event.preventDefault === 'function') {
+            event.preventDefault();
+          }
+          console.warn('[boot/unhandledrejection]', msg, stack || '');
+          reportClientLog('warn', 'UnhandledRejection: ' + msg, stack);
+        });
+
+        // 4. Boot watchdog: if React hasn't mounted within 10s, surface diagnostic controls
+        setTimeout(function () {
+          if (!window.__BOOKISH_BOOTED__) {
+            var detail =
+              'React root did not mount within 10s on ' +
+              window.location.pathname +
+              '. This usually happens when the browser cached an outdated bundle or Service Worker.';
+            console.warn('[boot] ' + detail);
+            reportClientLog('warn', detail);
+            showBootFailureUI('Taking longer than expected to load', detail);
+          }
+        }, 10000);
+      })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-shell">
+        <div class="boot-card">
+          <h1 class="boot-title">book(ish)</h1>
+          <div id="boot-subtitle" class="boot-subtitle">Consulting Archives…</div>
+          <pre id="boot-error-box" class="boot-error-box"></pre>
+          <div id="boot-actions" class="boot-actions">
+            <button
+              type="button"
+              class="boot-btn"
+              onclick="window.__bookishHardResetAndReload && window.__bookishHardResetAndReload()"
+            >
+              Clear Cache &amp; Reload
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

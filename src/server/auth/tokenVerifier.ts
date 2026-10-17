@@ -16,7 +16,12 @@ export class TokenVerifier {
     }
 
     const token = authHeader.substring(7).trim();
-    if (!token || token.startsWith('lib_live_')) {
+    if (
+      !token ||
+      token.startsWith('lib_live_') ||
+      token === 'undefined' ||
+      token === 'null'
+    ) {
       return null;
     }
 

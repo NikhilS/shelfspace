@@ -1,6 +1,6 @@
 import {router, protectedProcedure} from '../trpc';
 import {createApiKeySchema, revokeApiKeySchema} from '../../../schemas/apiKey';
-import {ApiKeyService} from '../../../services/server/apiKeyService';
+import {ApiKeyService} from '../../services/apiKeyService';
 
 export const apiKeyRouter = router({
   list: protectedProcedure.query(async ({ctx}) => {

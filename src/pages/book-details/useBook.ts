@@ -1,9 +1,9 @@
-import {useState, useEffect, useMemo} from 'react';
+import {useState, useEffect, useMemo, useCallback} from 'react';
 import {uploadBase64Image} from '../../services/db/storage';
 import {Book, BookDetailsPayload, FirestoreDate} from '../../types';
 export type {Book, BookDetailsPayload, FirestoreDate};
 import {useAuth} from '../../stores/authStore';
-import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query';
+import {useMutation} from '@tanstack/react-query';
 import {deleteBookAtomic} from '../../services/db/books';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {instrumentMutation} from '../../lib/telemetry';
@@ -17,6 +17,48 @@ export interface Review {
   createdAt: FirestoreDate | string;
 }
 
+type FullBookRecord = Book & BookDetailsPayload;
+
+function extractBookList(cachedData: unknown): Book[] | undefined {
+  if (Array.isArray(cachedData)) {
+    return cachedData as Book[];
+  }
+  if (
+    cachedData &&
+    typeof cachedData === 'object' &&
+    Array.isArray((cachedData as {books?: unknown}).books)
+  ) {
+    return (cachedData as {books: Book[]}).books;
+  }
+  return undefined;
+}
+
+function patchBookInListCache(
+  oldData: unknown,
+  bookId: string,
+  updater: (book: Book) => Book | null,
+): unknown {
+  if (!oldData) return oldData;
+  if (Array.isArray(oldData)) {
+    return (oldData as Book[])
+      .map(b => (b.id === bookId ? updater(b) : b))
+      .filter((b): b is Book => b !== null);
+  }
+  if (
+    typeof oldData === 'object' &&
+    Array.isArray((oldData as {books?: unknown}).books)
+  ) {
+    const container = oldData as {books: Book[]; [k: string]: unknown};
+    return {
+      ...container,
+      books: container.books
+        .map(b => (b.id === bookId ? updater(b) : b))
+        .filter((b): b is Book => b !== null),
+    };
+  }
+  return oldData;
+}
+
 export function useBook(
   libraryId: string | undefined,
   bookId: string | undefined,
@@ -24,7 +66,6 @@ export function useBook(
   isLive: boolean = true,
 ) {
   const {user} = useAuth();
-  const queryClient = useQueryClient();
   const utils = trpc.useUtils();
   const [canEditLocal, setCanEditLocal] = useState(false);
 
@@ -51,25 +92,17 @@ export function useBook(
     setCanEditLocal(isOwner || isEditor);
   }, [libraryQuery.data, user, passedCanEdit]);
 
-  // 2. Book query via tRPC
+  // 2. Book query via tRPC (Single source of truth for book & heavy details)
   const trpcBookQuery = trpc.book.get.useQuery(
     {libraryId: libraryId || '', bookId: bookId || ''},
     {
       enabled: Boolean(libraryId && bookId && isLive),
       initialData: () => {
-        const cached = queryClient.getQueryData<Book>([
-          'bookBase',
-          libraryId,
-          bookId,
-        ]);
-        if (cached) return cached;
-        const cachedData = libraryId
-          ? utils.book.list.getData({libraryId})
-          : undefined;
-        const cachedBooks = Array.isArray(cachedData)
-          ? (cachedData as Book[])
-          : (cachedData as {books?: Book[]})?.books;
-        return cachedBooks?.find(b => b.id === bookId);
+        if (!libraryId || !bookId) return undefined;
+        const cachedData = utils.book?.list?.getData?.({libraryId});
+        const cachedBooks = extractBookList(cachedData);
+        const match = cachedBooks?.find(b => b.id === bookId);
+        return match as unknown as ReturnType<typeof utils.book.get.getData>;
       },
       staleTime: 1000 * 60 * 5,
     },
@@ -84,69 +117,69 @@ export function useBook(
     },
   );
 
-  const rawBook = trpcBookQuery.data;
+  const rawBook = trpcBookQuery.data as FullBookRecord | null | undefined;
 
-  // Sync to query cache
-  useEffect(() => {
-    if (!libraryId || !bookId || !rawBook) return;
-    const b = rawBook as Book;
-    queryClient.setQueryData(['bookBase', libraryId, bookId], b);
-    queryClient.setQueryData(['bookDetails', libraryId, bookId], {
-      synopsis: (rawBook as {synopsis?: string}).synopsis,
-      authorBio: (rawBook as {authorBio?: string}).authorBio,
-      embedding: (rawBook as {embedding?: number[]}).embedding,
-      clusterCoordinates: (
-        rawBook as {clusterCoordinates?: {x: number; y: number}}
-      ).clusterCoordinates,
-    });
-  }, [libraryId, bookId, rawBook, queryClient]);
+  const bookBase = useMemo<Book | null>(() => {
+    if (!rawBook) return null;
+    const base = {...rawBook};
+    delete base.synopsis;
+    delete base.authorBio;
+    delete base.embedding;
+    delete base.clusterCoordinates;
+    delete base.description;
+    return base as Book;
+  }, [rawBook]);
 
-  const bookBase = useQuery<Book | null>({
-    queryKey: ['bookBase', libraryId, bookId],
-    queryFn: () => (rawBook as Book) || null,
-    initialData: () => (rawBook as Book) || null,
-    staleTime: 1000 * 60 * 5,
-  }).data;
+  const bookDetails = useMemo<BookDetailsPayload | null>(() => {
+    if (!rawBook) return null;
+    return {
+      synopsis: rawBook.synopsis,
+      authorBio: rawBook.authorBio,
+      embedding: rawBook.embedding,
+      clusterCoordinates: rawBook.clusterCoordinates,
+      description: rawBook.description,
+    };
+  }, [rawBook]);
 
-  const bookDetails = useQuery<BookDetailsPayload | null>({
-    queryKey: ['bookDetails', libraryId, bookId],
-    queryFn: () => ({
-      synopsis: (rawBook as {synopsis?: string})?.synopsis,
-      authorBio: (rawBook as {authorBio?: string})?.authorBio,
-      embedding: (rawBook as {embedding?: number[]})?.embedding,
-      clusterCoordinates: (
-        rawBook as {clusterCoordinates?: {x: number; y: number}}
-      )?.clusterCoordinates,
-    }),
-    initialData: () => ({
-      synopsis: (rawBook as {synopsis?: string})?.synopsis,
-      authorBio: (rawBook as {authorBio?: string})?.authorBio,
-      embedding: (rawBook as {embedding?: number[]})?.embedding,
-      clusterCoordinates: (
-        rawBook as {clusterCoordinates?: {x: number; y: number}}
-      )?.clusterCoordinates,
-    }),
-    staleTime: 1000 * 60 * 5,
-  }).data;
+  const book = useMemo<FullBookRecord | null>(() => {
+    if (!rawBook) return null;
+    return rawBook;
+  }, [rawBook]);
 
-  const book = useMemo(() => {
-    if (!bookBase) return null;
-    return {...bookBase, ...bookDetails};
-  }, [bookBase, bookDetails]);
-
-  const reviews = useMemo(() => {
-    if (trpcReviewsQuery.data?.reviews) {
-      return trpcReviewsQuery.data.reviews as unknown as Review[];
+  const reviews = useMemo<Review[]>(() => {
+    const data = trpcReviewsQuery.data as
+      {reviews?: Review[]} | Review[] | undefined;
+    if (Array.isArray(data)) {
+      return data;
     }
-    const cached = queryClient.getQueryData<Review[]>([
-      'bookReviews',
-      libraryId,
-      bookId,
-    ]);
-    return cached || [];
-  }, [trpcReviewsQuery.data, queryClient, libraryId, bookId]);
+    if (data && Array.isArray(data.reviews)) {
+      return data.reviews;
+    }
+    return [];
+  }, [trpcReviewsQuery.data]);
 
   const isLoading = trpcBookQuery.isLoading && !book;
+
+  const applyOptimisticBookPatch = useCallback(
+    (partialBook: Partial<FullBookRecord>) => {
+      if (!libraryId || !bookId) return;
+
+      utils.book?.get?.setData?.({libraryId, bookId}, old => {
+        if (!old) return old;
+        return {...old, ...partialBook} as typeof old;
+      });
+
+      utils.book?.list?.setData?.(
+        {libraryId},
+        old =>
+          patchBookInListCache(old, bookId, existing => ({
+            ...existing,
+            ...partialBook,
+          })) as typeof old,
+      );
+    },
+    [libraryId, bookId, utils.book],
+  );
 
   // Mutations
   const deleteBookMutation = useMutation({
@@ -154,11 +187,32 @@ export function useBook(
       if (!libraryId || !bookId) return;
       await deleteBookAtomic(libraryId, bookId);
     },
-    onSuccess: () => {
-      queryClient.setQueryData(['bookBase', libraryId, bookId], null);
-      queryClient.setQueryData(['bookDetails', libraryId, bookId], null);
+    onMutate: async () => {
+      if (!libraryId || !bookId) return {};
+      const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
+      const prevList = utils.book?.list?.getData?.({libraryId});
+
+      utils.book?.list?.setData?.(
+        {libraryId},
+        old => patchBookInListCache(old, bookId, () => null) as typeof old,
+      );
+
+      return {prevBook, prevList};
+    },
+    onError: (_err, _vars, context) => {
+      if (!libraryId || !bookId || !context) return;
+      if (context.prevBook !== undefined) {
+        utils.book?.get?.setData?.({libraryId, bookId}, context.prevBook);
+      }
+      if (context.prevList !== undefined) {
+        utils.book?.list?.setData?.({libraryId}, context.prevList);
+      }
+    },
+    onSettled: () => {
       if (libraryId) {
-        void utils.book.list.invalidate({libraryId});
+        void utils.book?.list?.invalidate?.({libraryId});
+        void utils.library?.get?.invalidate?.({libraryId});
+        void utils.library?.list?.invalidate?.();
       }
     },
   });
@@ -182,32 +236,34 @@ export function useBook(
       );
     },
     onMutate: async newStatus => {
-      if (!user) return;
-      const prev = queryClient.getQueryData<Book>([
-        'bookBase',
-        libraryId,
-        bookId,
-      ]);
-      queryClient.setQueryData(
-        ['bookBase', libraryId, bookId],
-        (old: Book | null) => {
-          if (!old) return old;
-          return {
-            ...old,
-            userStatuses: {
-              ...(old.userStatuses || {}),
-              [user.uid]: newStatus,
-            },
-          };
-        },
-      );
-      return {prev};
+      if (!user || !libraryId || !bookId) return {};
+      const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
+      const prevList = utils.book?.list?.getData?.({libraryId});
+
+      const nextUserStatuses = {
+        ...((prevBook as FullBookRecord | undefined)?.userStatuses ||
+          book?.userStatuses ||
+          {}),
+        [user.uid]: newStatus,
+      };
+
+      applyOptimisticBookPatch({userStatuses: nextUserStatuses});
+
+      return {prevBook, prevList};
     },
-    onError: (err, newStatus, context) => {
-      const ctx = context as {prev?: Book | null};
-      if (ctx?.prev) {
-        queryClient.setQueryData(['bookBase', libraryId, bookId], ctx.prev);
+    onError: (_err, _newStatus, context) => {
+      if (!libraryId || !bookId || !context) return;
+      if (context.prevBook !== undefined) {
+        utils.book?.get?.setData?.({libraryId, bookId}, context.prevBook);
       }
+      if (context.prevList !== undefined) {
+        utils.book?.list?.setData?.({libraryId}, context.prevList);
+      }
+    },
+    onSettled: () => {
+      if (!libraryId || !bookId) return;
+      void utils.book?.get?.invalidate?.({libraryId, bookId});
+      void utils.book?.list?.invalidate?.({libraryId});
     },
   });
 
@@ -226,10 +282,9 @@ export function useBook(
             text,
           }),
       );
-      void trpcReviewsQuery.refetch();
     },
     onMutate: async newReview => {
-      if (!user) return;
+      if (!user || !libraryId || !bookId) return {};
       const tempId = `temp-${Date.now()}`;
       const rev: Review = {
         id: tempId,
@@ -240,30 +295,37 @@ export function useBook(
         createdAt: new Date().toISOString(),
       };
 
-      const prevReviews = queryClient.getQueryData<Review[]>([
-        'bookReviews',
+      const prevReviews = utils.book?.listReviews?.getData?.({
         libraryId,
         bookId,
-      ]);
-      queryClient.setQueryData(
-        ['bookReviews', libraryId, bookId],
-        (old: Review[] | undefined) => [rev, ...(old || [])],
-      );
+      });
+      utils.book?.listReviews?.setData?.({libraryId, bookId}, old => ({
+        reviews: [
+          rev as unknown as NonNullable<typeof old>['reviews'][number],
+          ...(old?.reviews || []),
+        ],
+      }));
       return {prevReviews};
     },
-    onError: (err, newReview, context) => {
-      const ctx = context as {prevReviews?: Review[]};
-      if (ctx?.prevReviews) {
-        queryClient.setQueryData(
-          ['bookReviews', libraryId, bookId],
-          ctx.prevReviews,
-        );
+    onError: (_err, _newReview, context) => {
+      if (!libraryId || !bookId || !context?.prevReviews) return;
+      utils.book?.listReviews?.setData?.(
+        {libraryId, bookId},
+        context.prevReviews,
+      );
+    },
+    onSettled: () => {
+      if (!libraryId || !bookId) return;
+      if (utils.book?.listReviews?.invalidate) {
+        void utils.book.listReviews.invalidate({libraryId, bookId});
+      } else {
+        void trpcReviewsQuery.refetch?.();
       }
     },
   });
 
   const updateBookMutation = useMutation({
-    mutationFn: async (cleanForm: Partial<Book & BookDetailsPayload>) => {
+    mutationFn: async (cleanForm: Partial<FullBookRecord>) => {
       if (!libraryId || !bookId || !book) return;
       const cargo = {...cleanForm};
 
@@ -293,40 +355,27 @@ export function useBook(
       );
     },
     onMutate: async partialBook => {
-      const prevBase = queryClient.getQueryData([
-        'bookBase',
-        libraryId,
-        bookId,
-      ]);
-      const prevDetails = queryClient.getQueryData([
-        'bookDetails',
-        libraryId,
-        bookId,
-      ]);
+      if (!libraryId || !bookId) return {};
+      const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
+      const prevList = utils.book?.list?.getData?.({libraryId});
 
-      queryClient.setQueryData(
-        ['bookBase', libraryId, bookId],
-        (old: Book | null) => (old ? {...old, ...partialBook} : old),
-      );
-      queryClient.setQueryData(
-        ['bookDetails', libraryId, bookId],
-        (old: BookDetailsPayload | null) =>
-          old ? {...old, ...partialBook} : old,
-      );
-      return {prevBase, prevDetails};
+      applyOptimisticBookPatch(partialBook);
+
+      return {prevBook, prevList};
     },
-    onError: (err, newBook, context: unknown) => {
-      const ctx = context as {
-        prevBase?: Book | null;
-        prevDetails?: BookDetailsPayload | null;
-      };
-      if (ctx?.prevBase)
-        queryClient.setQueryData(['bookBase', libraryId, bookId], ctx.prevBase);
-      if (ctx?.prevDetails)
-        queryClient.setQueryData(
-          ['bookDetails', libraryId, bookId],
-          ctx.prevDetails,
-        );
+    onError: (_err, _newBook, context) => {
+      if (!libraryId || !bookId || !context) return;
+      if (context.prevBook !== undefined) {
+        utils.book?.get?.setData?.({libraryId, bookId}, context.prevBook);
+      }
+      if (context.prevList !== undefined) {
+        utils.book?.list?.setData?.({libraryId}, context.prevList);
+      }
+    },
+    onSettled: () => {
+      if (!libraryId || !bookId) return;
+      void utils.book?.get?.invalidate?.({libraryId, bookId});
+      void utils.book?.list?.invalidate?.({libraryId});
     },
   });
 
@@ -343,23 +392,19 @@ export function useBook(
     ) => updateReadingStatusMutation.mutateAsync(status),
     addReview: (rating: number, text: string) =>
       addReviewMutation.mutateAsync({rating, text}),
-    updateBook: (cleanForm: Partial<Book & BookDetailsPayload>) =>
+    updateBook: (cleanForm: Partial<FullBookRecord>) =>
       updateBookMutation.mutateAsync(cleanForm),
-    updateBookOptimistically: (
-      partialBook: Partial<Book & BookDetailsPayload>,
-    ) => {
-      queryClient.setQueryData(
-        ['bookBase', libraryId, bookId],
-        (old: Book | null) => (old ? {...old, ...partialBook} : old),
-      );
-      queryClient.setQueryData(
-        ['bookDetails', libraryId, bookId],
-        (old: BookDetailsPayload | null) =>
-          old ? {...old, ...partialBook} : old,
-      );
+    updateBookOptimistically: (partialBook: Partial<FullBookRecord>) => {
+      applyOptimisticBookPatch(partialBook);
     },
     setReviewsOptimistically: (newReviews: Review[]) => {
-      queryClient.setQueryData(['bookReviews', libraryId, bookId], newReviews);
+      if (!libraryId || !bookId) return;
+      utils.book?.listReviews?.setData?.(
+        {libraryId, bookId},
+        {
+          reviews: newReviews as unknown as [],
+        },
+      );
     },
   };
 }

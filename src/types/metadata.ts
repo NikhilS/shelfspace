@@ -24,6 +24,8 @@ export interface CoreBookData {
   primaryGenre?: string;
   subgenres?: string[];
   synopsis?: string;
+  description?: string;
+  [key: string]: unknown;
 }
 
 export interface IMetadataProvider<T = unknown> {

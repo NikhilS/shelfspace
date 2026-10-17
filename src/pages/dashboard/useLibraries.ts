@@ -1,4 +1,4 @@
-import {useState, useEffect, useCallback} from 'react';
+import {useState, useEffect, useCallback, useMemo} from 'react';
 import {useAuth} from '../../stores/authStore';
 import {uploadBase64Image} from '../../services/db/storage';
 import {Library} from '../../types';
@@ -74,7 +74,7 @@ export function useLibraries(
     trpc.gemini.generateLibraryHeroImage.useMutation();
 
   const rawData = librariesQuery.data;
-  const libraries = normalizeLibraries(rawData);
+  const libraries = useMemo(() => normalizeLibraries(rawData), [rawData]);
 
   // Pre-seed individual library caches for instant navigation
   useEffect(() => {
@@ -117,6 +117,7 @@ export function useLibraries(
         cancel(handle as number);
       };
     }
+    return undefined;
   }, [libraries, scopes, utils]);
 
   const createLibrary = async (name: string) => {
@@ -163,6 +164,8 @@ export function useLibraries(
   return {
     libraries,
     isLoading: librariesQuery.isLoading,
+    error: librariesQuery.error,
+    refetch: librariesQuery.refetch,
     isSubmitting,
     createLibrary,
     scopes,

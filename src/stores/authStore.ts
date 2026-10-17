@@ -62,7 +62,7 @@ export const useAuthStore = create<AuthState>(set => ({
   logOut: async () => {
     try {
       await signOut(auth);
-      set({user: null, authError: null});
+      set({user: null, isAdmin: false, authError: null});
     } catch (error) {
       console.error('Error signing out', error);
       throw error;

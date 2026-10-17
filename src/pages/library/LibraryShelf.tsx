@@ -3,7 +3,7 @@ import {useNavigate, useLocation} from 'react-router-dom';
 import {Book} from '../../types';
 import {VirtuosoGrid} from 'react-virtuoso';
 import {Book as BookIcon} from 'lucide-react';
-import BookCard from '../../components/BookCard';
+import BookCard from '../../components/book/BookCard';
 import {SortOption} from '../../hooks/useBookFilters';
 import {User} from 'firebase/auth';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -115,7 +115,7 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
         headerClassName:
           'hidden sm:table-cell sm:w-1/4 py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right',
         cellClassName: 'hidden sm:table-cell py-4 px-6 text-right',
-        cell: book => <BookDateCell date={book.addedAt || book.dateAdded} />,
+        cell: book => <BookDateCell date={book.addedAt} />,
       },
     ],
     [

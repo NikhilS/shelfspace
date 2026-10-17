@@ -34,7 +34,7 @@ vi.mock('lucide-react', async () => {
 });
 
 // Mock CoverCamera
-vi.mock('../../components/CoverCamera', () => ({
+vi.mock('../../components/import/CoverCamera', () => ({
   __esModule: true,
   default: ({
     onCapture,

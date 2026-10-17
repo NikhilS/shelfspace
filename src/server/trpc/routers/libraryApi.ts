@@ -11,9 +11,9 @@ import {
   bookDeleteSchema,
   bookBatchUpsertSchema,
 } from '../../../schemas/book';
-import {LibraryService} from '../../../services/server/libraryService';
-import {BookService} from '../../../services/server/bookService';
-import {EnrichmentService} from '../../../services/server/enrichmentService';
+import {LibraryService} from '../../services/libraryService';
+import {BookService} from '../../services/bookService';
+import {EnrichmentService} from '../../services/enrichmentService';
 
 export const libraryApiRouter = router({
   /**
@@ -57,7 +57,7 @@ export const libraryApiRouter = router({
       return LibraryService.createLibrary(
         ctx.user.uid,
         ctx.user.email,
-        ctx.user.name,
+        ctx.user.displayName,
         input,
       );
     }),
@@ -71,7 +71,9 @@ export const libraryApiRouter = router({
         libraryId: z.string().min(1),
         name: z.string().optional(),
         heroImageUrl: z.string().nullable().optional(),
-        access: z.record(z.enum(['owner', 'editor', 'viewer'])).optional(),
+        access: z
+          .record(z.string(), z.enum(['owner', 'editor', 'viewer']))
+          .optional(),
       }),
     )
     .mutation(async ({input, ctx}) => {
@@ -145,6 +147,27 @@ export const libraryApiRouter = router({
         ctx.user.email,
         input.libraryId,
         input.metadataType,
+      );
+    }),
+
+  /**
+   * Uploads a base64 image (hero banner or book cover) to Cloud Storage via Admin SDK.
+   */
+  uploadImage: libraryProcedure('editor')
+    .input(
+      z.object({
+        libraryId: z.string().min(1),
+        path: z.string().min(1),
+        base64Data: z.string().min(1),
+      }),
+    )
+    .mutation(async ({input, ctx}) => {
+      return LibraryService.uploadImage(
+        ctx.user.uid,
+        ctx.user.email,
+        input.libraryId,
+        input.path,
+        input.base64Data,
       );
     }),
 });
@@ -331,7 +354,7 @@ export const bookApiRouter = router({
       return BookService.addReview(
         ctx.user.uid,
         ctx.user.email,
-        ctx.user.name,
+        ctx.user.displayName,
         input.libraryId,
         input.bookId,
         input,

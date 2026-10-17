@@ -39,8 +39,8 @@ To eliminate split-brain security rules and fragmented code paths, **book(ish)**
                                           v
 +-----------------------------------------------------------------------------------+
 |                              CLOUD FIRESTORE (Database)                           |
-|                       firestore.rules: allow read, write: if false;               |
-|            (100% sealed from public browser internet; accessible only via Admin)   |
+|  - Accessed exclusively by the Node.js server via firebase-admin/firestore        |
+|  - Client & direct REST access sealed (firestore.rules: allow read, write: false) |
 +-----------------------------------------------------------------------------------+
 ```
 

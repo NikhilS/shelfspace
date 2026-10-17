@@ -564,5 +564,7 @@ function StatusBadge({status}: {status: WaitlistStatus}) {
           Rejected
         </span>
       );
+    default:
+      return null;
   }
 }

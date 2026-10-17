@@ -126,6 +126,7 @@ export function useLibraryData(
         cancel(handle as number);
       };
     }
+    return undefined;
   }, [library, libraryId, libraryQuery.isStale]);
 
   useEffect(() => {
@@ -157,6 +158,7 @@ export function useLibraryData(
         cancel(handle as number);
       };
     }
+    return undefined;
   }, [books, libraryId, booksQuery.isStale]);
 
   // 5. Navigation Guard on Fatal Error

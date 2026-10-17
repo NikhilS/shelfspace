@@ -1,0 +1,162 @@
+import React from 'react';
+import {Book as BookIcon} from 'lucide-react';
+import {toTitleCase} from '../../lib/utils';
+import {Book, FirestoreDate} from '../../types';
+import {Badge} from '@/components/ui/badge';
+import {Button} from '@/components/ui/button';
+
+interface BookCardProps {
+  key?: React.Key;
+  book: Book & {
+    addedAt: FirestoreDate;
+    synopsis?: string;
+  };
+  onClick?: () => void;
+  canEdit: boolean;
+  isSelected?: boolean;
+  isSelectMode?: boolean;
+  onSelect?: (e: React.MouseEvent) => void;
+}
+
+export default function BookCard({
+  book,
+  onClick,
+  isSelected,
+  isSelectMode,
+  onSelect,
+}: BookCardProps) {
+  const pubYear =
+    book.publishedDate && book.publishedDate.length >= 4
+      ? book.publishedDate.slice(0, 4)
+      : null;
+
+  return (
+    <article
+      onClick={onClick}
+      className={`group cursor-pointer flex flex-col h-full bento-card-interactive p-3 sm:p-3.5 ${
+        isSelected
+          ? 'ring-2 ring-primary border-primary bg-surface-container-low/60'
+          : ''
+      }`}
+    >
+      {/* Framed 2:3 Book Cover Showcase */}
+      <div className="relative aspect-[2/3] mb-3.5 bg-surface-container rounded-lg book-cover-shadow overflow-hidden border border-outline-variant/50">
+        {/* Subtle physical book spine highlight */}
+        <div
+          className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-black/15 via-white/20 to-transparent z-10 pointer-events-none"
+          aria-hidden="true"
+        />
+
+        {onSelect && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={isSelected ? 'Deselect book' : 'Select book'}
+            className={`absolute top-1.5 left-1.5 z-20 min-w-[44px] min-h-[44px] w-11 h-11 p-0 flex items-center justify-center rounded-lg hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary transition-opacity ${
+              isSelected || isSelectMode
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100'
+            }`}
+            onClick={e => {
+              e.stopPropagation();
+              onSelect(e);
+            }}
+          >
+            <div
+              className={`w-6 h-6 rounded-md border flex items-center justify-center shadow-xs transition-all duration-150 active:scale-95 ${
+                isSelected
+                  ? 'bg-primary border-primary text-on-primary'
+                  : 'bg-surface/95 border-outline/80 backdrop-blur-md hover:border-primary'
+              }`}
+            >
+              {isSelected && (
+                <span className="text-on-primary text-xs font-bold leading-none select-none">
+                  ✓
+                </span>
+              )}
+            </div>
+          </Button>
+        )}
+
+        {book.primaryGenre && (
+          <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none">
+            <Badge
+              variant="genre"
+              size="sm"
+              className="bg-surface/92 text-primary backdrop-blur-xs shadow-2xs tracking-wider line-clamp-1 max-w-[130px] uppercase font-semibold border border-outline-variant/50"
+            >
+              {book.primaryGenre}
+            </Badge>
+          </div>
+        )}
+
+        {book.coverUrl ? (
+          <img
+            src={book.coverUrl}
+            alt={book.title}
+            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+            referrerPolicy="no-referrer"
+            loading="lazy"
+          />
+        ) : (
+          /* Monograph Typographic Cover Fallback (No thick left accent border) */
+          <div className="absolute inset-0 p-4 sm:p-5 flex flex-col justify-between text-on-surface bg-gradient-to-b from-surface-container-low via-surface-container to-surface-container-high">
+            <div className="flex items-center justify-between border-b border-outline-variant/60 pb-2">
+              <span className="font-mono text-[9px] uppercase tracking-widest text-on-surface-variant">
+                Archival Ed.
+              </span>
+              <BookIcon
+                size={13}
+                className="text-on-surface-variant/70"
+                strokeWidth={1.5}
+              />
+            </div>
+            <div className="my-auto py-2 space-y-1.5 overflow-hidden">
+              <h3 className="font-serif font-semibold text-sm sm:text-base leading-snug tracking-tight text-primary line-clamp-3">
+                {toTitleCase(book.title)}
+              </h3>
+              <p className="font-sans text-[11px] text-on-surface-variant font-medium tracking-wide uppercase line-clamp-2">
+                {toTitleCase(book.author)}
+              </p>
+            </div>
+            <div className="border-t border-outline-variant/60 pt-2 flex items-center justify-between text-[10px] font-mono tabular-nums text-on-surface-variant/80">
+              <span>{pubYear || 'Cataloged'}</span>
+              <span>book(ish)</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bento Editorial Metadata & Synopsis Preview */}
+      <div className="flex flex-col flex-1 justify-between min-w-0 pt-0.5">
+        <div>
+          <h3 className="font-serif font-semibold text-base leading-snug text-on-surface group-hover:text-primary transition-colors line-clamp-1 tracking-tight">
+            {toTitleCase(book.title)}
+          </h3>
+          <div className="flex items-center gap-1.5 text-xs text-on-surface-variant mt-0.5 truncate">
+            <span className="font-sans font-medium truncate">
+              {toTitleCase(book.author)}
+            </span>
+            {pubYear && (
+              <>
+                <span aria-hidden="true" className="text-outline/60 shrink-0">
+                  ·
+                </span>
+                <span className="font-mono tabular-nums text-[11px] text-on-surface-variant/85 shrink-0">
+                  {pubYear}
+                </span>
+              </>
+            )}
+          </div>
+
+          {book.synopsis && (
+            <p className="font-sans text-xs text-on-surface-variant/85 line-clamp-2 mt-2 leading-relaxed">
+              {book.synopsis}
+            </p>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}

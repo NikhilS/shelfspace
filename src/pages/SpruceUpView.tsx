@@ -2,13 +2,13 @@ import React from 'react';
 import {useParams} from 'react-router-dom';
 import {motion} from 'motion/react';
 import {WifiOff} from 'lucide-react';
-import {ErrorBoundary} from '../components/ErrorBoundary';
+import {ErrorBoundary} from '../components/layout/ErrorBoundary';
 import {useSpruceUp} from './spruce-up/useSpruceUp';
 import {DuplicateSection} from './spruce-up/DuplicateSection';
 import {ManualEnrichmentSection} from './spruce-up/ManualEnrichmentSection';
 import {ResetMetadataSection} from './spruce-up/ResetMetadataSection';
-import {PageLoading} from '../components/PageLoading';
-import {BackToLibrary} from '../components/BackToLibrary';
+import {PageLoading} from '../components/layout/PageLoading';
+import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {useOnlineStatus} from '../hooks/useOnlineStatus';
 
 export default function SpruceUpView() {

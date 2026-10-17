@@ -5,7 +5,6 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import Dashboard from './Dashboard';
 import {useAuth} from '../stores/authStore';
-import {addDoc} from 'firebase/firestore';
 
 vi.mock('../stores/authStore');
 
@@ -90,46 +89,6 @@ vi.mock('../firebase', () => ({
 global.fetch = vi.fn().mockResolvedValue({
   ok: true,
   json: () => Promise.resolve({id: 'newLibId'}),
-});
-
-vi.mock('firebase/firestore', async () => {
-  const actual =
-    await vi.importActual<typeof import('firebase/firestore')>(
-      'firebase/firestore',
-    );
-  return {
-    ...actual,
-    collection: vi.fn(),
-    query: vi.fn(),
-    where: vi.fn(),
-    or: vi.fn(),
-    onSnapshot: vi.fn((...args: unknown[]) => {
-      const callback = (typeof args[1] === 'function' ? args[1] : args[2]) as (
-        snap: unknown,
-      ) => void;
-      if (callback) {
-        callback({
-          forEach: (cb: (doc: unknown) => void) =>
-            cb({
-              id: 'lib1',
-              data: () => ({
-                name: 'Test Library',
-                ownerId: 'user1',
-                ownerName: 'User One',
-                bookCount: 5,
-              }),
-            }),
-          metadata: {fromCache: false},
-          empty: false,
-        });
-      }
-      return () => {};
-    }),
-    addDoc: vi.fn().mockResolvedValue({id: 'newLibId'}),
-    updateDoc: vi.fn(),
-    doc: vi.fn(),
-    getCountFromServer: vi.fn().mockResolvedValue({data: () => ({count: 0})}),
-  };
 });
 
 describe('Dashboard', () => {

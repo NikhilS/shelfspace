@@ -12,7 +12,7 @@ describe('LibraryFilterControls', () => {
         onToggleScope={onToggleScope}
         isAdmin={true}
         totalCount={5}
-      />
+      />,
     );
 
     // Verify "Filter Catalog" is dropped
@@ -40,12 +40,18 @@ describe('LibraryFilterControls', () => {
         scopes={['owned']}
         onToggleScope={onToggleScope}
         isAdmin={false}
-      />
+      />,
     );
 
-    expect(screen.getByRole('button', {name: /My Libraries/i})).toBeInTheDocument();
-    expect(screen.getByRole('button', {name: /Shared with Me/i})).toBeInTheDocument();
-    expect(screen.queryByRole('button', {name: /All Libraries/i})).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {name: /My Libraries/i}),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {name: /Shared with Me/i}),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', {name: /All Libraries/i}),
+    ).not.toBeInTheDocument();
   });
 
   it('calls onToggleScope when clicking a chip', () => {
@@ -55,7 +61,7 @@ describe('LibraryFilterControls', () => {
         scopes={['owned']}
         onToggleScope={onToggleScope}
         isAdmin={true}
-      />
+      />,
     );
 
     const sharedBtn = screen.getByRole('button', {name: /Shared with Me/i});

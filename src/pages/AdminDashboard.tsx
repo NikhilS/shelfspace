@@ -8,8 +8,8 @@ import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Badge} from '@/components/ui/badge';
 import {toast} from 'sonner';
-import {ApiKeyManagement} from '../components/ApiKeyManagement';
-import {BackToLibrary} from '../components/BackToLibrary';
+import {ApiKeyManagement} from '../components/account/ApiKeyManagement';
+import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {WaitlistManagement} from '../components/admin/WaitlistManagement';
 
 export default function AdminDashboard() {

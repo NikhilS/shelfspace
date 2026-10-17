@@ -13,15 +13,15 @@ Access control operates on two distinct layers: **Platform Administration** and 
 ```
 +-------------------------------------------------------------------------------+
 | LAYER 1: PLATFORM ALLOWLIST (Superadmin & Allowlist Service)                  |
-| - Verifies if user email is enrolled in `/config/allowlist`                   |
+| - Verifies user email in `/appSettings/allowlist/users/{email}`               |
 | - Superadmins (`isAdmin: true`) bypass all library-level ownership checks     |
 +-------------------------------------------------------------------------------+
                                        |
 +-------------------------------------------------------------------------------+
 | LAYER 2: LIBRARY-LEVEL ABAC (Attribute-Based Access Control)                  |
 | - Owner: User ID matches `library.ownerId`. Full read/write/delete/share.     |
-| - Editor: User email listed in `library.sharedWith`. Read/add/edit books.     |
-| - Viewer: Public library (`isPublic: true`) or viewer invite. Read-only.      |
+| - Editor: `library.access[email] == 'editor'`. Read/add/edit books & metadata.|
+| - Viewer: `library.access[email] == 'viewer'`. Read-only catalog view.        |
 +-------------------------------------------------------------------------------+
 ```
 
@@ -30,11 +30,11 @@ Every server request (tRPC procedure or REST endpoint) executes the unified cont
 1. Extract token from `Authorization: Bearer <token>` or API key from `X-API-Key`.
 2. Verify token via Firebase Admin SDK or match hashed API key in `apiKeys/`.
 3. Check `allowlistService`: determine if caller has administrative privileges.
-4. Construct immutable `AuthContext`:
+4. Construct immutable `SecurityContext`:
    ```typescript
-   export interface AuthContext {
-     user: AuthenticatedUser | null;
-     apiKey: ApiKeyRecord | null;
+   export interface SecurityContext {
+     user: AuthUser | null;
+     isAppAllowed: boolean;
      isAdmin: boolean;
    }
    ```

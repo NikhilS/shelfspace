@@ -12,7 +12,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import {Button} from '@/components/ui/button';
-import {BookLoader} from '../components/BookLoader';
+import {BookLoader} from '../components/book/BookLoader';
 
 // Subcomponents
 import {HeroShowcaseCard} from './marketing/HeroShowcaseCard';
@@ -90,7 +90,7 @@ export default function Login() {
           </Button>
           <Button
             onClick={signIn}
-            className="bg-primary hover:bg-primary/90 text-on-primary font-label-caps-sm text-label-caps-sm font-bold uppercase tracking-wider px-5 sm:px-6 shadow-elevation-1 hover:shadow-elevation-2 transition-all rounded-full"
+            className="bg-primary hover:bg-primary/90 text-on-primary font-label-caps-sm text-label-caps-sm font-bold uppercase tracking-wider px-5 sm:px-6 shadow-elevation-1 hover:shadow-elevation-2 transition-all rounded-lg"
           >
             Get Started
             <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -135,7 +135,7 @@ export default function Login() {
             <div className="flex flex-col sm:flex-row items-center gap-4 mt-10 w-full sm:w-auto">
               <Button
                 onClick={signIn}
-                className="bg-primary hover:bg-primary/90 text-on-primary h-14 px-8 sm:px-10 rounded-full font-label-caps font-bold uppercase tracking-wider flex items-center justify-center gap-3 shadow-elevation-2 hover:-translate-y-0.5 transition-all w-full sm:w-auto"
+                className="bg-primary hover:bg-primary/90 text-on-primary h-14 px-8 sm:px-10 rounded-xl font-label-caps font-bold uppercase tracking-wider flex items-center justify-center gap-3 shadow-elevation-2 hover:-translate-y-0.5 transition-all w-full sm:w-auto"
               >
                 <Database className="w-5 h-5 text-on-primary/80" />
                 Open Your Vault
@@ -202,7 +202,7 @@ export default function Login() {
             <div className="pt-10 flex flex-col items-center gap-4">
               <Button
                 onClick={signIn}
-                className="bg-primary hover:bg-primary/90 text-on-primary font-label-caps font-bold uppercase tracking-wider h-14 px-10 rounded-full shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 transition-all flex items-center gap-3"
+                className="bg-primary hover:bg-primary/90 text-on-primary font-label-caps font-bold uppercase tracking-wider h-14 px-10 rounded-xl shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 transition-all flex items-center gap-3"
               >
                 Sign In & Start Scanning
                 <ArrowRight className="w-4 h-4 ml-1" />

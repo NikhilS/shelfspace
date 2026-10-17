@@ -6,9 +6,9 @@ import {Virtual} from 'swiper/modules';
 import type {Swiper as SwiperClass} from 'swiper';
 import {useLibraryPermissions} from '../hooks/useLibraryPermissions';
 import {useAuth} from '../stores/authStore';
-import {PrefetchAdjacentBooks} from '../components/PrefetchAdjacentBooks';
+import {PrefetchAdjacentBooks} from '../components/book/PrefetchAdjacentBooks';
 import {ChevronLeft, ChevronRight} from 'lucide-react';
-import {BackToLibrary} from '../components/BackToLibrary';
+import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {Button} from '@/components/ui/button';
 import {Book} from '../types';
 import {trpc} from '../lib/trpc';
@@ -158,14 +158,14 @@ export default function BookDetailsView() {
                 <span className="text-xs font-sans text-on-surface-variant font-medium">
                   {currentSlideIndex + 1} of {bookList.length}
                 </span>
-                <div className="flex items-center gap-0.5 border border-outline-variant/30 rounded-full p-0.5 bg-surface-container-low">
+                <div className="flex items-center gap-0.5 border border-outline-variant/30 rounded-lg p-0.5 bg-surface-container-low">
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     onClick={() => swiperInstance?.slidePrev()}
                     disabled={currentSlideIndex <= 0}
-                    className="w-7 h-7 min-w-[28px] min-h-[28px] rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant disabled:cursor-not-allowed transition-colors"
+                    className="w-7 h-7 min-w-[28px] min-h-[28px] rounded-md flex items-center justify-center text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant disabled:cursor-not-allowed transition-colors"
                     aria-label="Previous Book"
                     title="Previous Book"
                   >
@@ -177,7 +177,7 @@ export default function BookDetailsView() {
                     size="icon"
                     onClick={() => swiperInstance?.slideNext()}
                     disabled={currentSlideIndex >= bookList.length - 1}
-                    className="w-7 h-7 min-w-[28px] min-h-[28px] rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant disabled:cursor-not-allowed transition-colors"
+                    className="w-7 h-7 min-w-[28px] min-h-[28px] rounded-md flex items-center justify-center text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant disabled:cursor-not-allowed transition-colors"
                     aria-label="Next Book"
                     title="Next Book"
                   >
@@ -198,7 +198,7 @@ export default function BookDetailsView() {
               variant="outline"
               size="icon"
               onClick={() => swiperInstance?.slidePrev()}
-              className="hidden md:flex fixed left-76 top-1/2 -translate-y-1/2 z-20 min-w-[44px] min-h-[44px] w-11 h-11 rounded-full bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100"
+              className="hidden md:flex fixed left-76 top-1/2 -translate-y-1/2 z-20 min-w-[44px] min-h-[44px] w-11 h-11 rounded-lg bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100"
               title="Previous Book (Left Arrow)"
               aria-label="Previous Book"
             >
@@ -213,7 +213,7 @@ export default function BookDetailsView() {
               variant="outline"
               size="icon"
               onClick={() => swiperInstance?.slideNext()}
-              className="hidden md:flex fixed right-6 top-1/2 -translate-y-1/2 z-20 min-w-[44px] min-h-[44px] w-11 h-11 rounded-full bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100"
+              className="hidden md:flex fixed right-6 top-1/2 -translate-y-1/2 z-20 min-w-[44px] min-h-[44px] w-11 h-11 rounded-lg bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100"
               title="Next Book (Right Arrow)"
               aria-label="Next Book"
             >

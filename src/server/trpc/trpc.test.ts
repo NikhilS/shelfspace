@@ -5,13 +5,13 @@ import {
   verifyLibraryReadAccess,
   ContextUser,
 } from './trpc';
-import {ApiKeyService} from '../../services/server/apiKeyService';
-import {LibraryService} from '../../services/server/libraryService';
+import {ApiKeyService} from '../services/apiKeyService';
+import {LibraryService} from '../services/libraryService';
 import admin from 'firebase-admin';
 
-vi.mock('../../services/server/apiKeyService');
-vi.mock('../../services/server/libraryService');
-vi.mock('../../services/server/firebaseAdmin', () => ({
+vi.mock('../services/apiKeyService');
+vi.mock('../services/libraryService');
+vi.mock('../services/firebaseAdmin', () => ({
   getAdminDb: () => mockFirestore(),
 }));
 

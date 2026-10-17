@@ -1,4 +1,4 @@
-import {ApiKeyService} from '../../services/server/apiKeyService';
+import {ApiKeyService} from '../services/apiKeyService';
 import type {AuthUser} from './types';
 
 export class ApiKeyVerifier {

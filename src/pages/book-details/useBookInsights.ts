@@ -1,5 +1,4 @@
 import {useState, useEffect, useCallback} from 'react';
-import {useQueryClient} from '@tanstack/react-query';
 import {Book, BookDetailsPayload} from '../../types';
 import {toast} from 'sonner';
 import {trpc, trpcVanilla} from '../../lib/trpc';
@@ -17,7 +16,6 @@ export function useBookInsights(
   const [isEnrichingSynopsis, setIsEnrichingSynopsis] = useState(false);
   const [isEnrichingBio, setIsEnrichingBio] = useState(false);
 
-  const queryClient = useQueryClient();
   const utils = trpc.useUtils();
   const generateBookInsightsMutation =
     trpc.gemini.generateBookInsights.useMutation();
@@ -28,15 +26,9 @@ export function useBookInsights(
       await Promise.allSettled([
         utils.book.get.invalidate({libraryId, bookId}),
         utils.book.list.invalidate({libraryId}),
-        queryClient.invalidateQueries({
-          queryKey: ['bookBase', libraryId, bookId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ['bookDetails', libraryId, bookId],
-        }),
       ]);
     },
-    [libraryId, utils.book.get, utils.book.list, queryClient],
+    [libraryId, utils.book.get, utils.book.list],
   );
 
   const triggerManualEnrichment = useCallback(

@@ -8,59 +8,57 @@ import {
   Outlet,
   useLocation,
 } from 'react-router-dom';
-import {httpBatchLink} from '@trpc/client';
-import {trpc} from './lib/trpc';
-import {auth} from './firebase';
+import {trpc, trpcClient} from './lib/trpc';
 import {queryClient} from './lib/queryClient';
 import {initAuthListener} from './services/authListener';
 import {useAuthStore} from './stores/authStore';
 import {useAppStore} from './stores/appStore';
 import {useAppPermissions} from './hooks/useAppPermissions';
-import {DebugConsoleHUD} from './components/DebugConsoleHUD';
-import {ErrorBoundary} from './components/ErrorBoundary';
+import {DebugConsoleHUD} from './components/debug/DebugConsoleHUD';
+import {ErrorBoundary} from './components/layout/ErrorBoundary';
 import {Toaster} from 'sonner';
-import AppLayout from './components/AppLayout';
-import ScrollToTop from './components/ScrollToTop';
-import {RequireLibraryPermission} from './components/RequireLibraryPermission';
-import {BookLoader} from './components/BookLoader';
-import {PageLoading} from './components/PageLoading';
+import AppLayout from './components/layout/AppLayout';
+import ScrollToTop from './components/layout/ScrollToTop';
+import {RequireLibraryPermission} from './components/layout/RequireLibraryPermission';
+import {BookLoader} from './components/book/BookLoader';
+import {PageLoading} from './components/layout/PageLoading';
 import {
   LibraryMainSkeleton,
   DashboardMainSkeleton,
-} from './components/LibrarySkeletons';
+} from './components/book/LibrarySkeletons';
 import {useDebug} from './stores/debugStore';
 import {Button} from './components/ui/button';
-import {WaitlistScreen} from './components/WaitlistScreen';
+import {WaitlistScreen} from './components/account/WaitlistScreen';
+
+import Dashboard from './pages/Dashboard';
+import Login from './pages/Login';
 
 // Initialize Auth
 initAuthListener();
 
-const trpcClient = trpc.createClient({
-  links: [
-    httpBatchLink({
-      url: '/trpc',
-      async headers() {
-        const token = await auth.currentUser?.getIdToken();
-        return {
-          Authorization: token ? `Bearer ${token}` : '',
-        };
-      },
-    }),
-  ],
-});
+function lazyWithRetry<T extends React.ComponentType<unknown>>(
+  factory: () => Promise<{default: T}>,
+) {
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, 400));
+      return await factory();
+    }
+  });
+}
 
-// Eagerly prefetch the primary Dashboard chunk while auth initializes
-const dashboardPromise = import('./pages/Dashboard');
-const Dashboard = lazy(() => dashboardPromise);
-const LibraryView = lazy(() => import('./pages/LibraryView'));
-const BookDetailsView = lazy(() => import('./pages/BookDetailsView'));
-const AddBookView = lazy(() => import('./pages/AddBookView'));
-const ConstellationMap = lazy(() => import('./pages/ConstellationMap'));
-const WorldMap = lazy(() => import('./pages/WorldMap'));
-const Login = lazy(() => import('./pages/Login'));
-const SpruceUpView = lazy(() => import('./pages/SpruceUpView'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
-const TimelineView = lazy(() => import('./pages/TimelineView'));
+const LibraryView = lazyWithRetry(() => import('./pages/LibraryView'));
+const BookDetailsView = lazyWithRetry(() => import('./pages/BookDetailsView'));
+const AddBookView = lazyWithRetry(() => import('./pages/AddBookView'));
+const ConstellationMap = lazyWithRetry(
+  () => import('./pages/ConstellationMap'),
+);
+const WorldMap = lazyWithRetry(() => import('./pages/WorldMap'));
+const SpruceUpView = lazyWithRetry(() => import('./pages/SpruceUpView'));
+const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
+const TimelineView = lazyWithRetry(() => import('./pages/TimelineView'));
 
 function LoadingScreen() {
   return (
@@ -76,7 +74,7 @@ function PageWrapper({children}: {children?: React.ReactNode}) {
   const isDashboardRoute = location.pathname === '/';
 
   return (
-    <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out flex-1">
+    <div className="w-full flex-1">
       <ErrorBoundary>
         <Suspense
           fallback={
@@ -215,6 +213,8 @@ function AnimatedRoutes() {
             }
           />
         </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );
@@ -290,17 +290,17 @@ function ThemeProvider({children}: {children: React.ReactNode}) {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
 
-    if (theme === 'system') {
-      const isDark =
-        typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-          ? window.matchMedia('(prefers-color-scheme: dark)').matches
-          : false;
-      const systemTheme = isDark ? 'dark' : 'light';
-      root.classList.add(systemTheme);
+    if (theme === 'dark' || theme === 'light') {
+      root.classList.add(theme);
       return;
     }
 
-    root.classList.add(theme);
+    const isDark =
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        : false;
+    const systemTheme = isDark ? 'dark' : 'light';
+    root.classList.add(systemTheme);
   }, [theme]);
 
   // Listen for system theme changes if mode is 'system'

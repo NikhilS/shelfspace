@@ -1,0 +1,369 @@
+import React from 'react';
+import {MapPin, Globe, X} from 'lucide-react';
+import {Button} from '@/components/ui/button';
+import {BookLoader} from '../../components/book/BookLoader';
+import {APIProvider, Map, AdvancedMarker} from '@vis.gl/react-google-maps';
+import {FlattenedLocationPin, MapCluster, WorldMapMode} from './types';
+
+interface WorldMapCanvasProps {
+  isBooksLoading: boolean;
+  hasMapsApiKey: boolean;
+  googleMapsKey: string;
+  filteredPins: FlattenedLocationPin[];
+  scaleClusters: MapCluster[];
+  selectedSinglePin: FlattenedLocationPin | null;
+  activeTab: WorldMapMode;
+  zoom: number;
+  center: {lat: number; lng: number};
+  showApiSetupModal: boolean;
+  onSetShowApiSetupModal: (show: boolean) => void;
+  onZoomChanged: (zoom: number) => void;
+  onCenterChanged: (center: {lat: number; lng: number}) => void;
+  onClusterClick: (cluster: MapCluster) => void;
+  onFallbackPinClick: (pin: FlattenedLocationPin, index: number) => void;
+  onMapClick: () => void;
+}
+
+export const WorldMapCanvas: React.FC<WorldMapCanvasProps> = ({
+  isBooksLoading,
+  hasMapsApiKey,
+  googleMapsKey,
+  filteredPins,
+  scaleClusters,
+  selectedSinglePin,
+  activeTab,
+  zoom,
+  center,
+  showApiSetupModal,
+  onSetShowApiSetupModal,
+  onZoomChanged,
+  onCenterChanged,
+  onClusterClick,
+  onFallbackPinClick,
+  onMapClick,
+}) => {
+  return (
+    <div
+      className="lg:col-span-8 bg-surface-variant/30 rounded-3xl overflow-hidden border border-outline-variant h-[calc(100vh-14rem)] min-h-[500px]"
+      id="map-interaction-stage"
+    >
+      {isBooksLoading ? (
+        <div className="w-full h-full flex flex-col items-center justify-center p-8">
+          <BookLoader size="lg" className="mb-4" />
+          <p className="text-on-surface-variant text-sm font-medium">
+            Assembling cartographic assets...
+          </p>
+        </div>
+      ) : !hasMapsApiKey ? (
+        /* Interactive Fallback Map with plotted coordinates */
+        <div className="relative w-full h-full bg-surface p-6 flex flex-col justify-between overflow-hidden rounded-3xl border border-outline-variant select-none">
+          {/* Vintage map grid background */}
+          <div className="absolute inset-0 pointer-events-none opacity-[0.12]">
+            <div className="absolute inset-0 grid grid-cols-12 grid-rows-6">
+              {Array.from({length: 72}).map((_, i) => (
+                <div key={i} className="border-[0.5px] border-zinc-900/10" />
+              ))}
+            </div>
+            <div className="absolute left-1/2 top-0 bottom-0 border-l border-zinc-950/30 border-dashed" />
+            <div className="absolute top-1/2 left-0 right-0 border-t border-zinc-950/30 border-dashed" />
+            <span className="absolute left-4 top-[51%] font-label-caps-xs text-label-caps-xs font-mono font-medium text-stone-600 uppercase tracking-widest">
+              Equator
+            </span>
+            <span className="absolute left-[51%] top-4 font-label-caps-xs text-label-caps-xs font-mono font-medium text-stone-600 uppercase tracking-widest leading-none rotate-90 origin-top-left">
+              Prime Meridian
+            </span>
+          </div>
+
+          {/* Continent shapes as minimalist pastel vectors */}
+          <div className="absolute inset-0 pointer-events-none opacity-[0.22] flex items-center justify-center">
+            <div className="relative w-full h-full max-w-[800px] max-h-[400px]">
+              <div className="absolute left-[12%] top-[15%] w-[20%] h-[35%] bg-stone-500/30 rounded-[40px_20px_80px_40px] rotate-[10deg] blur-sm" />
+              <div className="absolute left-[24%] top-[50%] w-[14%] h-[40%] bg-stone-500/30 rounded-[20px_40px_80px_30px] rotate-[-5deg] blur-sm" />
+              <div className="absolute left-[45%] top-[10%] w-[45%] h-[45%] bg-stone-500/30 rounded-[50px_90px_60px_40px] rotate-[-2deg] blur-sm" />
+              <div className="absolute left-[46%] top-[45%] w-[16%] h-[38%] bg-stone-500/30 rounded-[30px_30px_90px_60px] blur-sm" />
+              <div className="absolute left-[75%] top-[65%] w-[12%] h-[20%] bg-stone-500/30 rounded-[40px_30px_60px_40px] blur-sm" />
+              <div className="absolute left-[28%] top-[5%] w-[8%] h-[10%] bg-stone-500/30 rounded-[10px_45px_10px_20px] blur-sm" />
+            </div>
+          </div>
+
+          {/* Top-level Banner overlay informing user they are running in fallback mode */}
+          <div className="absolute top-4 left-4 right-4 z-20 flex justify-between items-center bg-white/95 backdrop-blur-md border border-neutral-200/80 px-4 py-2.5 rounded-2xl shadow-elevation-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-semibold text-stone-700 font-sans">
+                Viewing interactive literary geography fallback map
+              </span>
+            </div>
+            <Button
+              onClick={() => onSetShowApiSetupModal(true)}
+              variant="outline"
+              type="button"
+              className="font-label-caps-xs text-label-caps-xs h-7 px-3 py-1 font-bold rounded-xl border-zinc-200 hover:bg-neutral-50 active:bg-neutral-100 uppercase tracking-widest text-zinc-800"
+            >
+              Set Google Maps Key
+            </Button>
+          </div>
+
+          {/* Render interactive coordinate plotted pins */}
+          <div className="relative w-full h-full pt-16 pb-6 pr-6">
+            {filteredPins.length === 0 ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
+                <Globe className="text-stone-400 w-10 h-10 mb-3 animate-pulse" />
+                <h4 className="text-sm font-bold text-stone-700">
+                  No geographical settings found
+                </h4>
+                <p className="text-xs text-stone-500 max-w-sm mt-1">
+                  We couldn&apos;t locate any plotted settings for this view.
+                  Expand your libraries or sync geocoding data.
+                </p>
+              </div>
+            ) : (
+              filteredPins.map((pin, i) => {
+                const left = ((pin.lng + 180) / 360) * 100;
+                const top = ((72 - pin.lat) / 128) * 100;
+
+                const boundedLeft = Math.max(4, Math.min(left, 96));
+                const boundedTop = Math.max(22, Math.min(top, 92));
+
+                const isSelected =
+                  selectedSinglePin?.name === pin.name &&
+                  selectedSinglePin?.book.id === pin.book.id;
+
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => onFallbackPinClick(pin, i)}
+                    className={`absolute group/pin -translate-x-1/2 -translate-y-1/2 p-2 transition-all duration-300 z-10 ${
+                      isSelected ? 'scale-125 z-20' : 'hover:scale-115'
+                    }`}
+                    style={{
+                      left: `${boundedLeft}%`,
+                      top: `${boundedTop}%`,
+                    }}
+                  >
+                    <div className="relative flex items-center justify-center">
+                      <div
+                        className={`absolute w-8 h-8 rounded-full opacity-35 ${
+                          isSelected
+                            ? 'bg-emerald-500 animate-ping'
+                            : 'bg-primary/25 group-hover/pin:bg-primary/45'
+                        }`}
+                      />
+                      <div
+                        className={`w-3.5 h-3.5 rounded-full border-2 border-white shadow-md transition-all ${
+                          isSelected
+                            ? 'bg-emerald-500 scale-110'
+                            : 'bg-primary group-hover/pin:bg-amber-500'
+                        }`}
+                      />
+
+                      <div className="pointer-events-none opacity-0 group-hover/pin:opacity-100 absolute bottom-6 bg-stone-900 text-white rounded-lg px-2.5 py-1.5 font-body-xs text-body-xs font-medium leading-none whitespace-nowrap shadow-xl z-30 transition border border-stone-800">
+                        <span className="font-bold text-emerald-400">
+                          {pin.name}
+                        </span>
+                        <span className="text-stone-300 block mt-0.5 max-w-[120px] truncate">
+                          {pin.book.title}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          <div className="absolute bottom-3 left-4 right-4 flex justify-between font-mono font-label-caps-xs text-label-caps-xs font-medium text-stone-500 select-none uppercase tracking-widest">
+            <span>Plotted Settings: {filteredPins.length}</span>
+            <span>Projection: Equirectangular 1.0</span>
+          </div>
+
+          {showApiSetupModal && (
+            <div className="absolute inset-0 bg-zinc-950/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="bg-white border border-stone-200 max-w-sm w-full rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                      <Globe size={16} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-stone-900 leading-none">
+                        Connect Google Maps API
+                      </h3>
+                      <p className="font-body-xs text-body-xs text-stone-500 mt-1">
+                        Unlock live map zoom &amp; coordinates
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      onSetShowApiSetupModal(false);
+                    }}
+                    className="p-1 hover:bg-neutral-105 rounded-full transition"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div className="space-y-3.5 text-xs text-stone-600 leading-relaxed">
+                  <p className="text-stone-600">
+                    To switch this offline fallback map into a production-ready
+                    global interactive canvas powered by Google Maps:
+                  </p>
+                  <div className="bg-neutral-50 rounded-xl p-3 border border-neutral-100 space-y-2 text-stone-600">
+                    <p className="flex gap-1.5">
+                      <span className="font-bold text-primary">1.</span>
+                      Go to your workspace{' '}
+                      <span className="font-bold">Settings / Secrets</span> menu
+                      in Google AI Studio.
+                    </p>
+                    <p className="flex gap-1.5">
+                      <span className="font-bold text-primary">2.</span>
+                      Add a new variable named{' '}
+                      <code className="font-mono bg-zinc-150 px-1 rounded font-bold">
+                        VITE_GOOGLE_MAPS_API_KEY
+                      </code>
+                      .
+                    </p>
+                    <p className="flex gap-1.5">
+                      <span className="font-bold text-primary">3.</span>
+                      Paste your client-side valid Google Maps API Key in the
+                      field.
+                    </p>
+                  </div>
+                  <p className="font-body-xs text-body-xs text-stone-500 bg-amber-50/50 border border-amber-100 rounded-xl p-3">
+                    ⚠️ Note: Server tasks require the{' '}
+                    <span className="font-semibold text-stone-700">
+                      Geocoding API
+                    </span>{' '}
+                    and client-side map calls require the{' '}
+                    <span className="font-semibold text-stone-700">
+                      Maps JavaScript API
+                    </span>{' '}
+                    to both be enabled inside your Google Cloud project Console.
+                  </p>
+                </div>
+
+                <div className="pt-1">
+                  <Button
+                    onClick={e => {
+                      e.stopPropagation();
+                      onSetShowApiSetupModal(false);
+                    }}
+                    type="button"
+                    className="w-full text-xs font-semibold rounded-xl"
+                  >
+                    Continue Browsing Fallback Map
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Real Google Maps Frame */
+        <APIProvider apiKey={googleMapsKey}>
+          <Map
+            mapId="c4a6baaaf53963889edccd6b"
+            internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+            gestureHandling={'cooperative'}
+            zoom={zoom}
+            center={center}
+            onZoomChanged={ev => onZoomChanged(ev.detail.zoom)}
+            onCenterChanged={ev => onCenterChanged(ev.detail.center)}
+            onClick={onMapClick}
+            style={{width: '100%', height: '100%'}}
+            disableDefaultUI={false}
+            zoomControl={true}
+            mapTypeControl={false}
+            scaleControl={true}
+            streetViewControl={false}
+            rotateControl={false}
+            fullscreenControl={true}
+          >
+            {scaleClusters.map(cluster => {
+              const isHeatMode = activeTab === 'heat';
+              const uniqueBookCount = new Set(cluster.pins.map(p => p.book.id))
+                .size;
+
+              if (isHeatMode) {
+                let outerSize = 'w-12 h-12';
+                let middleSize = 'w-8 h-8';
+                let innerSize = 'w-4 h-4';
+
+                if (uniqueBookCount > 100) {
+                  outerSize = 'w-44 h-44';
+                  middleSize = 'w-28 h-28';
+                  innerSize = 'w-10 h-10';
+                } else if (uniqueBookCount > 20) {
+                  outerSize = 'w-32 h-32';
+                  middleSize = 'w-20 h-20';
+                  innerSize = 'w-8 h-8';
+                } else if (uniqueBookCount > 5) {
+                  outerSize = 'w-24 h-24';
+                  middleSize = 'w-16 h-16';
+                  innerSize = 'w-6 h-6';
+                } else if (uniqueBookCount > 1) {
+                  outerSize = 'w-16 h-16';
+                  middleSize = 'w-10 h-10';
+                  innerSize = 'w-5 h-5';
+                }
+
+                return (
+                  <AdvancedMarker
+                    key={cluster.id}
+                    position={cluster.center}
+                    onClick={() => onClusterClick(cluster)}
+                  >
+                    <div
+                      className="relative flex items-center justify-center cursor-pointer group"
+                      id={cluster.id}
+                    >
+                      <div
+                        className={`absolute ${outerSize} bg-primary/20 rounded-full group-hover:scale-125 transition-transform`}
+                      />
+                      <div
+                        className={`absolute ${middleSize} bg-primary/40 rounded-full transition-transform`}
+                      />
+                      <div
+                        className={`${innerSize} bg-primary rounded-full border-2 border-background shadow-md shadow-primary/30`}
+                      />
+                    </div>
+                  </AdvancedMarker>
+                );
+              } else {
+                return (
+                  <AdvancedMarker
+                    key={cluster.id}
+                    position={cluster.center}
+                    onClick={() => onClusterClick(cluster)}
+                  >
+                    <div
+                      className={`flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 text-white shadow-xl ${
+                        uniqueBookCount > 1
+                          ? 'bg-zinc-900 border-2 border-emerald-500 rounded-full w-10 h-10 font-bold text-sm'
+                          : 'bg-primary border border-white rounded-full w-8 h-8 text-xs font-semibold'
+                      }`}
+                      id={cluster.id}
+                    >
+                      {uniqueBookCount > 1 ? (
+                        uniqueBookCount
+                      ) : (
+                        <MapPin size={14} className="text-white" />
+                      )}
+                    </div>
+                  </AdvancedMarker>
+                );
+              }
+            })}
+          </Map>
+        </APIProvider>
+      )}
+    </div>
+  );
+};

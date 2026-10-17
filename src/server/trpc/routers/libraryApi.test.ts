@@ -1,10 +1,10 @@
 import {describe, it, expect, vi} from 'vitest';
 import {libraryApiRouter, bookApiRouter} from './libraryApi';
-import {LibraryService} from '../../../services/server/libraryService';
+import {LibraryService} from '../../services/libraryService';
 import {TRPCError} from '@trpc/server';
 import {SUPERADMIN_EMAIL} from '../../../constants/auth';
 
-vi.mock('../../../services/server/libraryService', () => ({
+vi.mock('../../services/libraryService', () => ({
   LibraryService: {
     getUserLibraries: vi.fn(),
     getFilteredBooks: vi.fn(),
@@ -12,7 +12,7 @@ vi.mock('../../../services/server/libraryService', () => ({
   },
 }));
 
-vi.mock('../../../services/server/enrichmentService', () => ({
+vi.mock('../../services/enrichmentService', () => ({
   EnrichmentService: {
     triggerBatchEnrichment: vi.fn(),
   },

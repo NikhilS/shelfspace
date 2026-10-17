@@ -1,9 +1,9 @@
 import {z} from 'zod';
 import {router, protectedProcedure, verifyLibraryWriteAccess} from '../trpc';
-import {MetadataRegistry} from '../../../services/server/metadata';
-import {MetadataKey} from '../../../types/metadata';
+import {MetadataRegistry} from '../../services/metadata';
+import {MetadataKey, CoreBookData} from '../../../types/metadata';
 import {ENRICHMENT_CONSTANTS} from '../../../constants/enrichment';
-import {EnrichmentService} from '../../../services/server/enrichmentService';
+import {EnrichmentService} from '../../services/enrichmentService';
 import {EnrichmentTriggerInput} from '../../../schemas/libraryApi';
 
 export const metadataRouter = router({
@@ -46,12 +46,15 @@ export const metadataRouter = router({
           )
         : activeProviders;
 
-      const results: Record<string, unknown>[] = [];
+      const results: Array<{id: string} & Record<string, unknown>> = [];
       const CHUNK_SIZE = ENRICHMENT_CONSTANTS.GEMINI_CHUNK_SIZE;
 
       for (let i = 0; i < books.length; i += CHUNK_SIZE) {
-        const bookChunk = books.slice(i, i + CHUNK_SIZE);
-        const chunkResults: Record<string, Record<string, unknown>> = {};
+        const bookChunk: CoreBookData[] = books.slice(i, i + CHUNK_SIZE);
+        const chunkResults: Record<
+          string,
+          {id: string} & Record<string, unknown>
+        > = {};
         for (const book of bookChunk) {
           chunkResults[book.id] = {id: book.id};
         }
@@ -59,8 +62,7 @@ export const metadataRouter = router({
         await Promise.allSettled(
           providersToRun.map(async provider => {
             try {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const batchRes = await provider.bulkFetch(bookChunk as any);
+              const batchRes = await provider.bulkFetch(bookChunk);
               if (batchRes) {
                 for (const [bookId, val] of Object.entries(batchRes)) {
                   if (val && chunkResults[bookId]) {

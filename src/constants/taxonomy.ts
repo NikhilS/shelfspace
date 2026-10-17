@@ -537,8 +537,11 @@ export function mapLegacyGenreToTaxonomy(rawCategory: string | string[]): {
   }
 
   // Default fallback to Other with cleaned string
+  const rawStr = Array.isArray(rawCategory)
+    ? rawCategory[0] || 'Other'
+    : rawCategory;
   return {
-    primaryGenre: rawCategory.trim(),
+    primaryGenre: rawStr.trim(),
     subgenres: [],
     isCustomPrimary: true,
   };

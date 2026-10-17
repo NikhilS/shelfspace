@@ -2,9 +2,11 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 100% of database queries and mutations route through the Node.js tRPC / OpenAPI Gateway
+    // using firebase-admin/firestore (which bypasses Firestore Security Rules).
+    // Direct client-side or user-token access to Cloud Firestore is strictly forbidden.
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
-

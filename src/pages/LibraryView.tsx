@@ -33,13 +33,13 @@ import {LibraryOverview} from './library/LibraryOverview';
 import {LibraryCollection} from './library/LibraryCollection';
 import {LibrarySettingsModals} from './library/LibrarySettingsModals';
 import {BulkActionsBar} from './library/BulkActionsBar';
-import {ErrorBoundary} from '../components/ErrorBoundary';
+import {ErrorBoundary} from '../components/layout/ErrorBoundary';
 import {useDebug} from '../stores/debugStore';
 import {
   LibraryMainSkeleton,
   LibraryOverviewSkeleton,
   LibraryCollectionSkeleton,
-} from '../components/LibrarySkeletons';
+} from '../components/book/LibrarySkeletons';
 
 export default function LibraryView() {
   const {id} = useParams<{id: string}>();
@@ -461,19 +461,19 @@ export default function LibraryView() {
             />
           </ErrorBoundary>
 
-          {/* Sticky Library Sub-Navigation Bar */}
-          <div className="sticky top-16 z-20 bg-background/95 backdrop-blur-md border-b border-outline-variant/20 shadow-xs">
-            <div className="w-full max-w-[1200px] mx-auto px-3 sm:px-8 py-2 flex items-center justify-between gap-1.5 sm:gap-2">
-              {/* Tabs Switcher */}
-              <div className="flex items-center gap-1 sm:gap-1.5 p-1 bg-surface-container-low rounded-xl border border-outline-variant/30 text-xs font-sans font-medium shrink-0">
+          {/* Sticky Library Command Bar */}
+          <div className="sticky top-16 z-20 bg-background/95 backdrop-blur-md border-b border-outline-variant/60">
+            <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-2 sm:gap-4">
+              {/* Segmented Workspace Mode Switcher */}
+              <div className="flex items-center gap-1 p-1 bg-surface-container rounded-lg border border-outline-variant/60 text-xs font-sans font-medium shrink-0">
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   onClick={() => filters.setCurrentTab('overview')}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-lg transition-all ${
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-md transition-all ${
                     filters.currentTab === 'overview'
-                      ? 'bg-surface text-primary font-semibold shadow-xs hover:bg-surface'
+                      ? 'bg-surface text-primary font-semibold shadow-2xs border border-outline-variant/50 hover:bg-surface'
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
@@ -486,9 +486,9 @@ export default function LibraryView() {
                   variant="ghost"
                   size="sm"
                   onClick={() => filters.setCurrentTab('collection')}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3.5 h-8 rounded-lg transition-all ${
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-md transition-all ${
                     filters.currentTab === 'collection'
-                      ? 'bg-surface text-primary font-semibold shadow-xs hover:bg-surface'
+                      ? 'bg-surface text-primary font-semibold shadow-2xs border border-outline-variant/50 hover:bg-surface'
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
@@ -498,7 +498,7 @@ export default function LibraryView() {
                   <Badge
                     variant="outline"
                     size="sm"
-                    className="ml-0.5 px-1 sm:px-1.5 py-0 font-label-caps-xs text-label-caps-xs font-semibold bg-surface-container text-on-surface-variant border-transparent"
+                    className="ml-0.5 px-1.5 py-0 font-mono tabular-nums text-[10px] font-semibold bg-surface-container-high/80 text-on-surface border-transparent rounded-sm"
                     title={
                       isBooksLoading && books.length === 0
                         ? undefined
@@ -515,7 +515,7 @@ export default function LibraryView() {
 
                 <Link
                   to={`/library/${id}/spruce-up`}
-                  className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface/50 transition-all"
+                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-8 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface/50 transition-all"
                   title="Shelf Care & Health"
                 >
                   <Wand2 className="w-3.5 h-3.5" />
@@ -523,11 +523,11 @@ export default function LibraryView() {
                 </Link>
               </div>
 
-              {/* Add Books Action */}
+              {/* Primary Add Books Action */}
               {canEdit && (
                 <Link
                   to={`/library/${id}/add`}
-                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-primary text-on-primary hover:bg-primary/90 text-xs font-sans font-semibold transition-all shadow-xs shrink-0"
+                  className="flex items-center gap-1.5 px-3 sm:px-4 h-9 rounded-lg bg-primary text-on-primary hover:bg-primary/90 text-xs font-sans font-semibold transition-all shadow-xs shrink-0"
                   title="Add Books"
                 >
                   <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -538,7 +538,7 @@ export default function LibraryView() {
             </div>
           </div>
 
-          <div className="relative flex-grow flex flex-col pt-6">
+          <div className="relative flex-grow flex flex-col pt-4 sm:pt-6">
             <AnimatePresence mode="wait">
               {filters.currentTab === 'overview' ? (
                 <motion.div

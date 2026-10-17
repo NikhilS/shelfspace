@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import {BookDetails} from '../../services/bookApi';
-import CameraScanner from '../../components/CameraScanner';
-import ExtractedBooksTable from '../../components/ExtractedBooksTable';
+import CameraScanner from '../../components/import/CameraScanner';
+import ExtractedBooksTable from '../../components/import/ExtractedBooksTable';
 import {logger} from '../../stores/debugStore';
 import {triggerHaptics} from '../../lib/utils';
 

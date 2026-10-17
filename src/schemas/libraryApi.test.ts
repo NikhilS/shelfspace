@@ -78,7 +78,7 @@ describe('Library API Zod Validation Schemas', () => {
       });
 
       expect(valid.flow).toBe('geo');
-      expect(valid.bookIds.length).toBe(2);
+      expect(valid.bookIds?.length).toBe(2);
     });
 
     it('rejects empty bookIds array', () => {

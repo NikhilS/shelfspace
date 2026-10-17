@@ -1,6 +1,6 @@
 import React from 'react';
 import {describe, it, expect, vi} from 'vitest';
-import {render, screen} from '@testing-library/react';
+import {render, screen, fireEvent} from '@testing-library/react';
 import {MemoryRouter, Route, Routes} from 'react-router-dom';
 import TimelineView from './TimelineView';
 
@@ -22,7 +22,7 @@ vi.mock('../hooks/useLibraryData', () => ({
         author: 'Marcus Aurelius',
         libraryId: 'lib-1',
         temporalMetadata: {
-          startYear: 180,
+          startYear: 161,
           endYear: 180,
           eraName: 'Roman Empire',
           rationale: 'Written during the Marcomannic Wars.',
@@ -49,7 +49,7 @@ vi.mock('../hooks/useLibraryData', () => ({
 vi.mock('../hooks/useBulkEnrichment', () => ({
   useBulkEnrichment: () => ({
     isBackfilling: false,
-    progress: {processed: 0, total: 0},
+    progress: {completed: 0, failed: 0, total: 0},
     inFlightCount: 0,
     retryFailed: vi.fn(),
     startBulkEnrichment: vi.fn(),
@@ -57,7 +57,7 @@ vi.mock('../hooks/useBulkEnrichment', () => ({
 }));
 
 describe('TimelineView', () => {
-  it('renders the timeline view successfully with clusters and presets', () => {
+  it('renders the D3 + HTML5 Canvas meandering river timeline view with century scrubber, riverbank docks, and presets', () => {
     render(
       <MemoryRouter initialEntries={['/library/lib-1/timeline']}>
         <Routes>
@@ -73,5 +73,39 @@ describe('TimelineView', () => {
     expect(screen.getByText('All-Time Focus')).toBeInTheDocument();
     expect(screen.getByText('Ancient & BCE Era')).toBeInTheDocument();
     expect(screen.getByText('Century Highlights')).toBeInTheDocument();
+    expect(
+      screen.getByText('Hydrographic Century Scrubber'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Roman Empire').length).toBeGreaterThan(0);
+    expect(screen.getByText('Span Arc:')).toBeInTheDocument();
+  });
+
+  it('opens the Epoch Curatorial Drawer and Mobile Bottom Sheet when a peninsula dock is clicked', () => {
+    render(
+      <MemoryRouter initialEntries={['/library/lib-1/timeline']}>
+        <Routes>
+          <Route path="/library/:id/timeline" element={<TimelineView />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const inspectBtn = screen.getByRole('button', {
+      name: /Inspect Roman Empire/i,
+    });
+    fireEvent.click(inspectBtn);
+
+    expect(
+      screen.getByRole('complementary', {
+        name: /Selected epoch: Roman Empire/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', {
+        name: /Epoch books: Roman Empire/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('link', {name: /Meditations/i})[0],
+    ).toHaveAttribute('href', '/library/lib-1/book/b1');
   });
 });

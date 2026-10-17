@@ -1,8 +1,14 @@
 import React, {useState} from 'react';
 import {useAuth} from '../stores/authStore';
 import {Navigate} from 'react-router-dom';
-import {Plus, Library as LibraryIcon, ShieldAlert} from 'lucide-react';
-import {ErrorBoundary} from '../components/ErrorBoundary';
+import {
+  Plus,
+  Library as LibraryIcon,
+  ShieldAlert,
+  AlertTriangle,
+  RefreshCw,
+} from 'lucide-react';
+import {ErrorBoundary} from '../components/layout/ErrorBoundary';
 import {useLibraries} from './dashboard/useLibraries';
 import {LibraryCard} from './dashboard/LibraryCard';
 import {LibrarySkeleton} from './dashboard/LibrarySkeleton';
@@ -17,6 +23,8 @@ export default function Dashboard() {
   const {
     libraries,
     isLoading,
+    error,
+    refetch,
     isSubmitting,
     createLibrary,
     scopes,
@@ -49,11 +57,11 @@ export default function Dashboard() {
             </p>
           </div>
           {isLoading ? (
-            <div className="h-[42px] w-36 bg-surface-variant/40 rounded-xl self-start sm:self-auto animate-pulse shrink-0" />
+            <div className="h-[42px] w-36 bg-surface-variant/40 rounded-lg self-start sm:self-auto animate-pulse shrink-0" />
           ) : (
             <Button
               onClick={() => setIsCreating(true)}
-              className="flex items-center gap-2 min-h-[42px] px-5 bg-primary text-on-primary font-sans font-semibold rounded-xl hover:bg-primary/90 shadow-xs self-start sm:self-auto transition-all"
+              className="flex items-center gap-2 min-h-[42px] px-5 bg-primary text-on-primary font-sans font-semibold rounded-lg hover:bg-primary/90 shadow-xs self-start sm:self-auto transition-all"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>Create Library</span>
@@ -79,6 +87,31 @@ export default function Dashboard() {
 
           {isLoading ? (
             <LibrarySkeleton />
+          ) : error ? (
+            <div
+              role="alert"
+              className="py-12 px-6 bg-surface-container-low rounded-lg border border-destructive/30 shadow-elevation-1 text-center max-w-2xl mx-auto"
+            >
+              <div className="w-12 h-12 bg-destructive/10 rounded-lg flex items-center justify-center mx-auto mb-4 border border-destructive/20">
+                <AlertTriangle className="w-6 h-6 text-destructive" />
+              </div>
+              <h3 className="font-sans text-lg font-bold text-on-surface mb-2">
+                Unable to Load Libraries
+              </h3>
+              <p className="font-sans text-sm text-on-surface-variant leading-relaxed mb-6 break-words">
+                {error instanceof Error
+                  ? error.message
+                  : 'An unexpected server error occurred while fetching your libraries.'}
+              </p>
+              <Button
+                onClick={() => void refetch?.()}
+                variant="outline"
+                className="mx-auto flex items-center gap-2 rounded-lg font-sans font-semibold"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Retry</span>
+              </Button>
+            </div>
           ) : libraryList.length === 0 && !isCreating ? (
             <div className="text-center py-20 px-6 bg-surface-container-low rounded-2xl border border-outline-variant/30 shadow-elevation-1">
               <div className="w-16 h-16 bg-surface rounded-full flex items-center justify-center mx-auto mb-5 shadow-sm border border-outline-variant/50">
@@ -109,7 +142,7 @@ export default function Dashboard() {
               {(!scopes.includes('shared') || scopes.includes('owned')) && (
                 <Button
                   onClick={() => setIsCreating(true)}
-                  className="mx-auto flex items-center gap-2 min-h-[44px] px-6 rounded-xl font-sans font-semibold"
+                  className="mx-auto flex items-center gap-2 min-h-[44px] px-6 rounded-lg font-sans font-semibold"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Create Library</span>

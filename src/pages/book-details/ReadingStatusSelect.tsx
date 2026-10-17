@@ -41,10 +41,10 @@ export const ReadingStatusSelect = memo(
     const currentStatus = book.userStatuses?.[user?.uid || ''] || 'unset';
 
     return (
-      <section className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-surface-container p-4 rounded-lg border border-outline-variant/30 w-fit swiper-no-swiping">
+      <section className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bento-card p-3.5 sm:p-4 w-full sm:w-fit swiper-no-swiping">
         <label
           htmlFor="readingStatus"
-          className="font-label-caps text-label-caps text-on-surface-variant"
+          className="metadata-eyebrow shrink-0 pr-2"
         >
           Reading Status
         </label>
@@ -79,7 +79,7 @@ export const ReadingStatusSelect = memo(
         >
           <SelectTrigger
             id="readingStatus"
-            className="swiper-no-swiping min-w-[180px] bg-surface text-on-surface border-outline-variant/60"
+            className="swiper-no-swiping min-w-[190px] h-9 bg-surface-container-low text-on-surface border-outline-variant/70 font-medium"
           >
             <SelectValue />
           </SelectTrigger>

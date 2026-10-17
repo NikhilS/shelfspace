@@ -1,6 +1,6 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {apiV1Router} from './router';
-import {BookService} from '../../../services/server/bookService';
+import {BookService} from '../../services/bookService';
 import {PermissionService} from '../../auth';
 
 vi.mock('../../auth', () => ({
@@ -13,7 +13,7 @@ vi.mock('../../auth', () => ({
   },
 }));
 
-vi.mock('../../../services/server/bookService', () => ({
+vi.mock('../../services/bookService', () => ({
   BookService: {
     createBook: vi.fn(),
     updateBook: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock('../../../services/server/bookService', () => ({
   },
 }));
 
-vi.mock('../../../services/server/libraryService', () => ({
+vi.mock('../../services/libraryService', () => ({
   LibraryService: {
     getUserLibraries: vi.fn(),
     getLibrary: vi.fn(),

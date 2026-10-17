@@ -48,12 +48,17 @@ if (typeof window !== 'undefined' && typeof indexedDB !== 'undefined') {
       },
     });
 
-    void persistQueryClient({
+    const [, restorePromise] = persistQueryClient({
       queryClient,
       persister: idbPersister,
       maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-      buster: 'v1.0.0',
+      buster: 'v2.0.0',
     });
+    if (restorePromise && typeof restorePromise.catch === 'function') {
+      restorePromise.catch(err => {
+        console.warn('[QueryClient] Failed to restore persisted cache:', err);
+      });
+    }
   } catch (err) {
     console.warn(
       '[QueryClient] Failed to initialize IndexedDB persistence:',

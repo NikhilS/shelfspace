@@ -10,7 +10,14 @@ export type LogLevel =
   | 'gen_ai';
 
 export type MutationType =
-  'setDoc' | 'updateDoc' | 'deleteDoc' | 'writeBatch' | 'addDoc';
+  | 'setDoc'
+  | 'updateDoc'
+  | 'deleteDoc'
+  | 'writeBatch'
+  | 'addDoc'
+  | 'create'
+  | 'update'
+  | 'delete';
 
 export type TelemetryProfilingLevel = 'off' | 'basic' | 'high_fidelity';
 
@@ -90,7 +97,7 @@ export interface TelemetryPlugin {
   id: string;
   name: string;
   order?: number;
-  icon: React.ComponentType<{className?: string; size?: number}>;
+  icon?: React.ComponentType<{className?: string; size?: number}>;
   badge?: (ctx: TelemetryPluginContext) => string | number | undefined;
   onLog?: (entry: TelemetryLog, engine: DebugTelemetryEngine) => void;
   renderTab: (ctx: TelemetryPluginContext) => React.ReactNode;

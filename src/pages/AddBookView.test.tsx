@@ -5,7 +5,6 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import AddBookView from './AddBookView';
 import {useAuth} from '../stores/authStore';
 import {BrowserRouter} from 'react-router-dom';
-import {writeBatch} from 'firebase/firestore';
 
 const mockExtractBooksFromImage = vi.fn();
 const mockBatchUpsertMutate = vi.fn().mockResolvedValue({success: true});
@@ -73,32 +72,6 @@ vi.mock('../services/bookApi', () => ({
   searchBookByIsbn: vi.fn(() => Promise.resolve(null)),
   searchBookByTitleAndAuthor: vi.fn(() => Promise.resolve([])),
 }));
-
-vi.mock('firebase/firestore', async importOriginal => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return {
-    ...actual,
-    getFirestore: vi.fn(),
-    collection: vi.fn(() => ({})),
-    doc: vi.fn(() => ({id: 'mock-doc-id'})),
-    writeBatch: vi.fn(() => ({
-      set: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-      commit: vi.fn(),
-    })),
-    addDoc: vi.fn(() => Promise.resolve({id: 'doc123'})),
-    updateDoc: vi.fn(() => Promise.resolve()),
-    increment: vi.fn(),
-    getDocs: vi.fn(() => Promise.resolve({docs: []})),
-    onSnapshot: vi.fn((_ref, cb) => {
-      cb({docs: []});
-      return () => {};
-    }),
-    serverTimestamp: vi.fn(),
-    setDoc: vi.fn(),
-  };
-});
 
 vi.mock('../firebase', () => ({
   db: {},

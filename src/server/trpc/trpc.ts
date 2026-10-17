@@ -23,7 +23,10 @@ export type Context = SecurityContext;
 export const createContext = async ({
   req,
   res,
-}: trpcExpress.CreateExpressContextOptions): Promise<SecurityContext> => {
+}: Pick<
+  trpcExpress.CreateExpressContextOptions,
+  'req' | 'res'
+>): Promise<SecurityContext> => {
   return createSecurityContext({req, res});
 };
 
@@ -43,7 +46,9 @@ export async function verifyLibraryWriteAccess(
   libraryId: string,
   user: ContextUser | null,
 ): Promise<boolean> {
-  return PermissionService.verifyLibraryWriteAccess(libraryId, user);
+  return Boolean(
+    await PermissionService.verifyLibraryWriteAccess(libraryId, user),
+  );
 }
 
 /**
@@ -53,5 +58,7 @@ export async function verifyLibraryReadAccess(
   libraryId: string,
   user: ContextUser | null,
 ): Promise<boolean> {
-  return PermissionService.verifyLibraryReadAccess(libraryId, user);
+  return Boolean(
+    await PermissionService.verifyLibraryReadAccess(libraryId, user),
+  );
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import {Gauge} from 'lucide-react';
 import {TelemetryPlugin, TelemetryPluginContext} from '../telemetry';
-import {PersistenceTelemetryPanel} from '../../components/PersistenceTelemetryPanel';
+import {PersistenceTelemetryPanel} from '../../components/debug/PersistenceTelemetryPanel';
 
 export class PersistenceTelemetryPlugin implements TelemetryPlugin {
   public id = 'persistence';
