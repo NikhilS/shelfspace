@@ -2,15 +2,13 @@ import {getAdminDb, formatFirestoreAdminError} from '../firebaseAdmin';
 import {FieldValue} from 'firebase-admin/firestore';
 import {SUPERADMIN_EMAIL} from '../../../constants/auth';
 import {TRPCError} from '@trpc/server';
-import {BookListInput, LibraryScope} from '../../../schemas/libraryApi';
+import {LibraryScope} from '../../../schemas/libraryApi';
 import {AllowlistService} from '../../auth/allowlistService';
-import type {
-  Library,
-  FilteredBookRecord,
-  BookGeoMetadata,
-  BookTemporalMetadata,
-} from '../../../types';
+import {WaitlistService} from '../../auth/waitlistService';
+import type {Library} from '../../../types';
 import {LibraryService} from './index';
+import {evaluateRoleFromLibraryData} from './libraryShareService';
+import {normalizeFirestoreTimestamp} from '../book/bookPartitioner';
 
 export interface LibraryApiRecord {
   id: string;
@@ -92,6 +90,9 @@ export async function getUserLibraries(
         seenIds.add(docSnap.id);
 
         const data = docSnap.data();
+        if (data.isVirtual === true || docSnap.id.startsWith('virtual_')) {
+          return;
+        }
         const ownerId = data.ownerId;
         const accessMap: Record<string, 'owner' | 'editor' | 'viewer'> =
           data.access || {};
@@ -117,21 +118,6 @@ export async function getUserLibraries(
         }
 
         if (callerRole) {
-          let createdAtStr: string | undefined;
-          let updatedAtStr: string | undefined;
-
-          if (data.createdAt?.toDate) {
-            createdAtStr = data.createdAt.toDate().toISOString();
-          } else if (typeof data.createdAt === 'string') {
-            createdAtStr = data.createdAt;
-          }
-
-          if (data.updatedAt?.toDate) {
-            updatedAtStr = data.updatedAt.toDate().toISOString();
-          } else if (typeof data.updatedAt === 'string') {
-            updatedAtStr = data.updatedAt;
-          }
-
           result.push({
             id: docSnap.id,
             name: data.name || 'Untitled Library',
@@ -143,8 +129,8 @@ export async function getUserLibraries(
             heroImageUrl: data.heroImageUrl || undefined,
             bookCount:
               typeof data.bookCount === 'number' ? data.bookCount : undefined,
-            createdAt: createdAtStr,
-            updatedAt: updatedAtStr,
+            createdAt: normalizeFirestoreTimestamp(data.createdAt),
+            updatedAt: normalizeFirestoreTimestamp(data.updatedAt),
           });
         }
       });
@@ -165,212 +151,81 @@ export async function getUserLibraries(
 }
 
 /**
- * Retrieves books within a specific library, supporting filters and pagination.
- */
-export async function getFilteredBooks(
-  userId: string,
-  userEmail: string | undefined,
-  input: BookListInput,
-): Promise<{books: FilteredBookRecord[]; nextCursor?: string}> {
-  const {libraryId, filters, limit = 50, cursor} = input;
-
-  await LibraryService.verifyLibraryAccess(
-    userId,
-    userEmail,
-    libraryId,
-    'viewer',
-  );
-
-  try {
-    const db = getAdminDb();
-    let booksRef = db
-      .collection('libraries')
-      .doc(libraryId)
-      .collection('books')
-      .orderBy('addedAt', 'desc');
-
-    if (cursor) {
-      const cursorSnap = await db
-        .collection('libraries')
-        .doc(libraryId)
-        .collection('books')
-        .doc(cursor)
-        .get();
-      if (cursorSnap.exists) {
-        booksRef = booksRef.startAfter(cursorSnap);
-      }
-    }
-
-    const limitToFetch = limit + 1;
-    const snap = await booksRef.limit(limitToFetch * 5).get();
-
-    const missingKind = filters?.missingMetadata;
-
-    const allBooks: FilteredBookRecord[] = [];
-
-    snap.forEach(docSnap => {
-      const b = docSnap.data();
-      const bookId = docSnap.id;
-
-      const hasGeo = !!(
-        b.geoMetadata?.locations &&
-        Array.isArray(b.geoMetadata.locations) &&
-        b.geoMetadata.locations.length > 0
-      );
-
-      const hasTemporal = !!(
-        b.temporalMetadata &&
-        (b.temporalMetadata.startYear !== undefined ||
-          b.temporalMetadata.eraName ||
-          b.temporalMetadata.rationale)
-      );
-
-      const hasGenre = !!(
-        b.primaryGenre && String(b.primaryGenre).trim().length > 0
-      );
-
-      const hasSynopsis = !!(
-        b.bookDetailsMetadata?.hasSynopsis ||
-        (b.synopsis &&
-          typeof b.synopsis === 'string' &&
-          b.synopsis.trim().length > 0)
-      );
-
-      const hasCoverImage = !!(
-        b.coverUrlRaw ||
-        b.coverUrl ||
-        b.imageUrl ||
-        b.thumbnail
-      );
-
-      if (missingKind) {
-        if (missingKind === 'geo' && hasGeo) return;
-        if (missingKind === 'temporal' && hasTemporal) return;
-        if (
-          (missingKind === 'genre' || missingKind === 'primaryGenre') &&
-          hasGenre
-        )
-          return;
-        if (missingKind === 'synopsis' && hasSynopsis) return;
-        if (missingKind === 'coverImage' && hasCoverImage) return;
-      }
-
-      allBooks.push({
-        id: bookId,
-        title: b.title || 'Untitled Book',
-        author: b.author || 'Unknown Author',
-        isbn: b.isbn || undefined,
-        synopsis: b.synopsis || undefined,
-        primaryGenre: b.primaryGenre || undefined,
-        subgenres: b.subgenres || [],
-        isCustomPrimary: b.isCustomPrimary,
-        genre: b.primaryGenre || undefined,
-        coverImage:
-          b.coverUrlRaw || b.coverUrl || b.imageUrl || b.thumbnail || undefined,
-        geoData: (b.geoMetadata as BookGeoMetadata | undefined) || undefined,
-        temporalData:
-          (b.temporalMetadata as BookTemporalMetadata | undefined) || undefined,
-        metadataStatus: {
-          hasGeo,
-          hasTemporal,
-          hasGenre,
-          hasSynopsis,
-          hasCoverImage,
-        },
-      });
-    });
-
-    let nextCursor: string | undefined = undefined;
-    const slicedBooks = allBooks.slice(0, limit);
-
-    if (allBooks.length > limit) {
-      nextCursor = slicedBooks[slicedBooks.length - 1].id;
-    }
-
-    return {
-      books: slicedBooks,
-      nextCursor,
-    };
-  } catch (err: unknown) {
-    if (err instanceof TRPCError) throw err;
-    const errMsg = formatFirestoreAdminError(err);
-    console.error('[LibraryService] Error querying filtered books:', errMsg);
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: `Failed to retrieve books: ${errMsg}`,
-    });
-  }
-}
-
-/**
  * Retrieves a single library by ID with role metadata for caller.
+ * Reuses prefetched library data from libraryProcedure context when available.
  */
 export async function getLibrary(
   userId: string,
   userEmail: string | undefined,
   libraryId: string,
+  options?: {
+    skipAccessCheck?: boolean;
+    prefetchedData?: Record<string, unknown>;
+    callerRole?: 'owner' | 'editor' | 'viewer' | null;
+  },
 ): Promise<Library> {
-  await LibraryService.verifyLibraryAccess(
-    userId,
-    userEmail,
-    libraryId,
-    'viewer',
-  );
+  let data: Record<string, unknown>;
 
-  const db = getAdminDb();
-  const libSnap = await db.collection('libraries').doc(libraryId).get();
-  if (!libSnap.exists) {
-    throw new TRPCError({
-      code: 'NOT_FOUND',
-      message: `Library '${libraryId}' not found`,
-    });
+  if (options?.prefetchedData) {
+    data = options.prefetchedData;
+  } else {
+    if (!options?.skipAccessCheck) {
+      await LibraryService.verifyLibraryAccess(
+        userId,
+        userEmail,
+        libraryId,
+        'viewer',
+      );
+    }
+
+    const db = getAdminDb();
+    const libSnap = await db.collection('libraries').doc(libraryId).get();
+    if (!libSnap.exists) {
+      if (libraryId === `virtual_${userId}`) {
+        data = {
+          name: 'Personal Reading Shelf',
+          ownerId: userId,
+          ownerName: userEmail || 'Reader',
+          isVirtual: true,
+          bookCount: 0,
+        };
+      } else {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Library '${libraryId}' not found`,
+        });
+      }
+    } else {
+      data = (libSnap.data() || {}) as Record<string, unknown>;
+    }
   }
-
-  const data = (libSnap.data() || {}) as Record<string, unknown>;
 
   const ownerId = (data.ownerId as string | undefined) || userId;
   const accessMap: Record<string, 'owner' | 'editor' | 'viewer'> =
     (data.access as
       Record<string, 'owner' | 'editor' | 'viewer'> | undefined) || {};
 
-  let callerRole: 'owner' | 'editor' | 'viewer' | null = null;
-  const normalizedEmail = userEmail?.toLowerCase().trim();
-  if (normalizedEmail === SUPERADMIN_EMAIL.toLowerCase().trim()) {
-    callerRole = 'owner';
-  } else if (ownerId === userId) {
-    callerRole = 'owner';
-  } else if (userEmail && accessMap[userEmail]) {
-    callerRole = accessMap[userEmail];
-  } else if (userEmail && accessMap[userEmail.toLowerCase()]) {
-    callerRole = accessMap[userEmail.toLowerCase()];
-  }
+  const callerRole: 'owner' | 'editor' | 'viewer' | null =
+    options?.callerRole ??
+    (libraryId === `virtual_${userId}`
+      ? 'owner'
+      : evaluateRoleFromLibraryData(userId, userEmail, data));
 
-  let createdAtStr: string | undefined;
-  let updatedAtStr: string | undefined;
-
-  const createdVal = data.createdAt as
-    {toDate?: () => Date} | string | undefined;
-  if (createdVal && typeof createdVal === 'object' && createdVal.toDate) {
-    createdAtStr = createdVal.toDate().toISOString();
-  } else if (typeof createdVal === 'string') {
-    createdAtStr = createdVal;
-  }
-
-  const updatedVal = data.updatedAt as
-    {toDate?: () => Date} | string | undefined;
-  if (updatedVal && typeof updatedVal === 'object' && updatedVal.toDate) {
-    updatedAtStr = updatedVal.toDate().toISOString();
-  } else if (typeof updatedVal === 'string') {
-    updatedAtStr = updatedVal;
-  }
+  const createdAtStr = normalizeFirestoreTimestamp(data.createdAt);
+  const updatedAtStr = normalizeFirestoreTimestamp(data.updatedAt);
 
   return {
     ...(data as unknown as Library),
     id: libraryId,
-    name: (data.name as string) || 'Untitled Library',
+    name:
+      (data.name as string) ||
+      (libraryId.startsWith('virtual_')
+        ? 'Personal Reading Shelf'
+        : 'Untitled Library'),
     ownerId,
     ownerName: (data.ownerName as string) || '',
     access: accessMap,
+    isVirtual: Boolean(data.isVirtual || libraryId.startsWith('virtual_')),
     callerRole,
     isOwner: callerRole === 'owner',
     canEdit: callerRole === 'owner' || callerRole === 'editor',
@@ -440,6 +295,7 @@ export async function createLibrary(
 
 /**
  * Updates an existing library (name, heroImageUrl, access roles).
+ * Modifying `access` requires 'owner' permission and registers unapproved invitees on the waitlist.
  */
 export async function updateLibrary(
   userId: string,
@@ -450,13 +306,28 @@ export async function updateLibrary(
     heroImageUrl?: string | null;
     access?: Record<string, 'owner' | 'editor' | 'viewer'>;
   },
+  options?: {
+    skipAccessCheck?: boolean;
+    callerRole?: 'owner' | 'editor' | 'viewer' | null;
+  },
 ): Promise<{success: true}> {
-  await LibraryService.verifyLibraryAccess(
-    userId,
-    userEmail,
-    libraryId,
-    'editor',
-  );
+  const requiresOwner = updates.access !== undefined;
+
+  if (requiresOwner && options?.callerRole && options.callerRole !== 'owner') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Only the library owner can modify collaborator access',
+    });
+  }
+
+  if (!options?.skipAccessCheck || (requiresOwner && !options?.callerRole)) {
+    await LibraryService.verifyLibraryAccess(
+      userId,
+      userEmail,
+      libraryId,
+      requiresOwner ? 'owner' : 'editor',
+    );
+  }
 
   const updatePayload: Record<string, unknown> = {
     updatedAt: FieldValue.serverTimestamp(),
@@ -469,12 +340,33 @@ export async function updateLibrary(
     updatePayload.heroImageUrl = updates.heroImageUrl;
   }
   if (updates.access !== undefined) {
-    updatePayload.access = updates.access;
-    for (const email of Object.keys(updates.access)) {
+    const normalizedAccess: Record<string, 'owner' | 'editor' | 'viewer'> = {};
+    for (const [rawEmail, role] of Object.entries(updates.access)) {
+      const cleanEmail = rawEmail.trim().toLowerCase();
+      if (cleanEmail) {
+        normalizedAccess[cleanEmail] = role;
+      }
+    }
+    const callerEmail = userEmail?.trim().toLowerCase();
+    if (callerEmail && normalizedAccess[callerEmail] !== 'owner') {
+      // Ensure owner cannot demote or lock themselves out via full map update
+      normalizedAccess[callerEmail] = 'owner';
+    }
+    updatePayload.access = normalizedAccess;
+
+    for (const [email, role] of Object.entries(normalizedAccess)) {
+      if (role === 'owner') continue;
       try {
-        await AllowlistService.addUser(email, 'user');
+        const perms = await AllowlistService.getPermissions(email);
+        if (!perms.isAppAllowed) {
+          await WaitlistService.ensureInvitedEntry({
+            email,
+            invitedByEmail: callerEmail,
+            libraryName: updates.name,
+          });
+        }
       } catch (e) {
-        console.warn('Failed to auto-allowlist shared user:', e);
+        console.warn('Failed to register invited user on waitlist:', e);
       }
     }
   }
@@ -495,19 +387,22 @@ export async function updateLibrary(
 }
 
 /**
- * Deletes a library and all contained books, details, and reviews.
+ * Deletes a library and all contained books, details, reviews, and allowedDuplicates.
  */
 export async function deleteLibrary(
   userId: string,
   userEmail: string | undefined,
   libraryId: string,
+  options?: {skipAccessCheck?: boolean},
 ): Promise<{success: true}> {
-  await LibraryService.verifyLibraryAccess(
-    userId,
-    userEmail,
-    libraryId,
-    'owner',
-  );
+  if (!options?.skipAccessCheck) {
+    await LibraryService.verifyLibraryAccess(
+      userId,
+      userEmail,
+      libraryId,
+      'owner',
+    );
+  }
 
   try {
     const db = getAdminDb();
@@ -522,6 +417,20 @@ export async function deleteLibrary(
       batch.delete(bookDoc.ref);
       batch.delete(libRef.collection('bookDetails').doc(bookDoc.id));
       count += 2;
+
+      // Cascade delete reviews subcollection for each book
+      try {
+        if (typeof bookDoc.ref?.collection === 'function') {
+          const reviewsSnap = await bookDoc.ref.collection('reviews').get();
+          reviewsSnap.forEach(reviewDoc => {
+            batch.delete(reviewDoc.ref);
+            count++;
+          });
+        }
+      } catch {
+        // Non-fatal if reviews subcollection is empty or mocked
+      }
+
       if (count >= batchSize) {
         await batch.commit();
         batch = db.batch();

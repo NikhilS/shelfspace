@@ -1,6 +1,5 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {TokenVerifier} from './tokenVerifier';
-import admin from 'firebase-admin';
 
 const mockVerifyIdToken = vi.fn();
 
@@ -30,16 +29,13 @@ describe('TokenVerifier', () => {
       expect(token).toBeNull();
     });
 
-    it('returns null if header is empty or undefined', () => {
+    it('returns null if header is empty, undefined, or literal null/undefined', () => {
       expect(TokenVerifier.extractTokenFromHeader(undefined)).toBeNull();
       expect(TokenVerifier.extractTokenFromHeader('')).toBeNull();
-    });
-
-    it('returns null if header is an API key (Bearer lib_live_...)', () => {
-      const token = TokenVerifier.extractTokenFromHeader(
-        'Bearer lib_live_somekey',
-      );
-      expect(token).toBeNull();
+      expect(TokenVerifier.extractTokenFromHeader('Bearer null')).toBeNull();
+      expect(
+        TokenVerifier.extractTokenFromHeader('Bearer undefined'),
+      ).toBeNull();
     });
   });
 
@@ -54,7 +50,6 @@ describe('TokenVerifier', () => {
       expect(user).toEqual({
         uid: 'firebase_user_1',
         email: 'user@example.com', // normalized to lowercase
-        authType: 'jwt',
       });
       expect(mockVerifyIdToken).toHaveBeenCalledWith('valid_token_xyz');
     });
@@ -74,6 +69,17 @@ describe('TokenVerifier', () => {
       });
 
       const user = await TokenVerifier.verify('no_email_token');
+      expect(user).toBeNull();
+    });
+
+    it('returns null if decoded token has email_verified === false', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({
+        uid: 'unverified_user',
+        email: 'spoof@example.com',
+        email_verified: false,
+      });
+
+      const user = await TokenVerifier.verify('unverified_token');
       expect(user).toBeNull();
     });
   });

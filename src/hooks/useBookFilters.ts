@@ -1,4 +1,4 @@
-import {useMemo, useDeferredValue} from 'react';
+import {useState, useEffect, useRef, useMemo, useDeferredValue} from 'react';
 import {
   useSearchParams,
   useLocation,
@@ -10,6 +10,19 @@ import {getFirestoreTime} from '../lib/utils';
 import {CANONICAL_PRIMARY_GENRES} from '../constants/taxonomy';
 
 export type SortOption = 'added' | 'title' | 'author';
+
+interface IndexedBookEntry {
+  book: Book;
+  titleLower: string;
+  authorLower: string;
+  primaryGenreLower: string;
+  subgenresLower: string[];
+  isbnLower: string;
+  pubYear: number | null;
+  addedAtMs: number;
+}
+
+const CANONICAL_SET = new Set<string>(CANONICAL_PRIMARY_GENRES);
 
 export function useBookFilters(books: Book[]) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -26,7 +39,7 @@ export function useBookFilters(books: Book[]) {
   const sortOrder = (searchParams.get('order') as 'asc' | 'desc') || 'desc';
   const viewMode =
     (searchParams.get('view') as 'standard' | 'table') || 'standard';
-  const searchQuery = searchParams.get('q') || '';
+  const urlSearchQuery = searchParams.get('q') || '';
   const filterGenre = searchParams.get('genre') || '';
   const filterSubgenre = searchParams.get('subgenre') || '';
   const filterAuthor = searchParams.get('author') || '';
@@ -34,35 +47,86 @@ export function useBookFilters(books: Book[]) {
   const filterYearMax = searchParams.get('yearMax') || '';
   const isFiltersOpen = searchParams.get('filters') === 'true';
 
-  const deferredSearchQuery = useDeferredValue(searchQuery);
+  // Local input state for sub-16ms keystroke responsiveness, synced to URL after 300ms debounce
+  const [localSearchQuery, setLocalSearchQuery] = useState(urlSearchQuery);
+  const lastCommittedUrlQueryRef = useRef(urlSearchQuery);
+
+  // Sync inward when URL ?q= parameter changes externally (e.g. Back/Forward navigation)
+  useEffect(() => {
+    if (urlSearchQuery !== lastCommittedUrlQueryRef.current) {
+      lastCommittedUrlQueryRef.current = urlSearchQuery;
+      setLocalSearchQuery(urlSearchQuery);
+    }
+  }, [urlSearchQuery]);
+
+  // Sync outward from localSearchQuery to URL ?q= parameter after a 300ms debounce
+  useEffect(() => {
+    if (localSearchQuery === urlSearchQuery) return undefined;
+
+    const timer = setTimeout(() => {
+      lastCommittedUrlQueryRef.current = localSearchQuery;
+      setSearchParams(
+        prev => {
+          const next = new URLSearchParams(prev);
+          if (!localSearchQuery) next.delete('q');
+          else next.set('q', localSearchQuery);
+          return next;
+        },
+        {replace: true},
+      );
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [localSearchQuery, urlSearchQuery, setSearchParams]);
+
+  const deferredSearchQuery = useDeferredValue(localSearchQuery);
 
   const setSearchParamsValue = (key: string, value: string | null) => {
     setSearchParams(
       prev => {
-        if (value === null || value === '') prev.delete(key);
-        else prev.set(key, value);
-        return prev;
+        const next = new URLSearchParams(prev);
+        if (value === null || value === '') next.delete(key);
+        else next.set(key, value);
+        return next;
       },
       {replace: true},
     );
   };
 
+  // Pre-index normalized strings, publication years, and addedAt timestamps once per books array change
+  const indexedBooks = useMemo<IndexedBookEntry[]>(() => {
+    return books.map(book => {
+      const yearMatch = book.publishedDate?.match(/\d{4}/);
+      return {
+        book,
+        titleLower: book.title ? book.title.toLowerCase() : '',
+        authorLower: book.author ? book.author.toLowerCase() : '',
+        primaryGenreLower: book.primaryGenre
+          ? book.primaryGenre.trim().toLowerCase()
+          : '',
+        subgenresLower: book.subgenres
+          ? book.subgenres.map(sg => (sg ? sg.trim().toLowerCase() : ''))
+          : [],
+        isbnLower: book.isbn ? book.isbn.toLowerCase() : '',
+        pubYear: yearMatch ? parseInt(yearMatch[0], 10) : null,
+        addedAtMs: getFirestoreTime(book.addedAt),
+      };
+    });
+  }, [books]);
+
   const availableGenres = useMemo(() => {
     const counts: Record<string, number> = {};
     let customCount = 0;
-    books.forEach(b => {
-      if (b.primaryGenre) {
-        if (
-          CANONICAL_PRIMARY_GENRES.includes(
-            b.primaryGenre as (typeof CANONICAL_PRIMARY_GENRES)[number],
-          )
-        ) {
-          counts[b.primaryGenre] = (counts[b.primaryGenre] || 0) + 1;
+    for (let i = 0; i < books.length; i++) {
+      const pg = books[i].primaryGenre;
+      if (pg) {
+        if (CANONICAL_SET.has(pg)) {
+          counts[pg] = (counts[pg] || 0) + 1;
         } else {
           customCount++;
         }
       }
-    });
+    }
 
     const activeCanonical = CANONICAL_PRIMARY_GENRES.filter(
       g => (counts[g] || 0) > 0,
@@ -76,88 +140,93 @@ export function useBookFilters(books: Book[]) {
 
   const activeSubgenres = useMemo(() => {
     if (!filterGenre) return [];
+    const targetLower = filterGenre.trim().toLowerCase();
+    const isOther = targetLower === 'other';
     const counts: Record<string, number> = {};
-    books.forEach(b => {
-      const matchesPrimary =
-        filterGenre.toLowerCase() === 'other'
-          ? Boolean(b.isCustomPrimary)
-          : b.primaryGenre?.toLowerCase() === filterGenre.toLowerCase();
-      if (matchesPrimary && b.subgenres) {
-        b.subgenres.forEach(sg => {
+
+    for (let i = 0; i < indexedBooks.length; i++) {
+      const entry = indexedBooks[i];
+      const matchesPrimary = isOther
+        ? Boolean(entry.book.isCustomPrimary)
+        : entry.primaryGenreLower === targetLower;
+      if (matchesPrimary && entry.book.subgenres) {
+        for (const sg of entry.book.subgenres) {
           if (sg) counts[sg] = (counts[sg] || 0) + 1;
-        });
+        }
       }
-    });
+    }
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .map(([name, count]) => ({name, count}));
-  }, [books, filterGenre]);
+  }, [indexedBooks, filterGenre]);
 
   const availableAuthors = useMemo(() => {
     const authors = new Set<string>();
-    books.forEach(b => {
-      if (b.author) authors.add(b.author);
-    });
+    for (let i = 0; i < books.length; i++) {
+      if (books[i].author) authors.add(books[i].author);
+    }
     return Array.from(authors).sort();
   }, [books]);
 
-  const filteredBooks = useMemo(() => {
-    return books.filter(book => {
-      const effectiveQuery = (deferredSearchQuery || searchQuery)
-        .trim()
-        .toLowerCase();
+  const filteredIndexedBooks = useMemo(() => {
+    const effectiveQuery = (deferredSearchQuery || localSearchQuery)
+      .trim()
+      .toLowerCase();
+    const normalizedGenre = filterGenre ? filterGenre.trim().toLowerCase() : '';
+    const isOtherGenre = normalizedGenre === 'other';
+    const normalizedSubgenre = filterSubgenre
+      ? filterSubgenre.trim().toLowerCase()
+      : '';
+    const minYearNum = filterYearMin ? parseInt(filterYearMin, 10) : null;
+    const maxYearNum = filterYearMax ? parseInt(filterYearMax, 10) : null;
+
+    return indexedBooks.filter(entry => {
       if (effectiveQuery) {
-        const titleMatch = book.title?.toLowerCase().includes(effectiveQuery);
-        const authorMatch = book.author?.toLowerCase().includes(effectiveQuery);
+        const titleMatch = entry.titleLower.includes(effectiveQuery);
+        const authorMatch = entry.authorLower.includes(effectiveQuery);
+        const isbnMatch =
+          entry.isbnLower.length > 0 &&
+          entry.isbnLower.includes(effectiveQuery);
         const genreMatch =
-          book.primaryGenre?.toLowerCase().includes(effectiveQuery) ||
-          book.subgenres?.some(sg => sg.toLowerCase().includes(effectiveQuery));
-        if (!titleMatch && !authorMatch && !genreMatch) return false;
+          entry.primaryGenreLower.includes(effectiveQuery) ||
+          entry.subgenresLower.some(sg => sg.includes(effectiveQuery));
+        if (!titleMatch && !authorMatch && !isbnMatch && !genreMatch) {
+          return false;
+        }
       }
 
-      if (filterGenre) {
-        const normalizedFilter = filterGenre.trim().toLowerCase();
-        const matchesPrimary =
-          normalizedFilter === 'other'
-            ? Boolean(book.isCustomPrimary)
-            : book.primaryGenre?.trim().toLowerCase() === normalizedFilter;
-        const matchesSubgenre = book.subgenres?.some(
-          sg => sg.trim().toLowerCase() === normalizedFilter,
+      if (normalizedGenre) {
+        const matchesPrimary = isOtherGenre
+          ? Boolean(entry.book.isCustomPrimary)
+          : entry.primaryGenreLower === normalizedGenre;
+        const matchesSubgenre = entry.subgenresLower.some(
+          sg => sg === normalizedGenre,
         );
         if (!matchesPrimary && !matchesSubgenre) return false;
       }
 
-      if (filterSubgenre) {
-        const normalizedSub = filterSubgenre.trim().toLowerCase();
-        const matchesSub = book.subgenres?.some(
-          sg => sg.trim().toLowerCase() === normalizedSub,
+      if (normalizedSubgenre) {
+        const matchesSub = entry.subgenresLower.some(
+          sg => sg === normalizedSubgenre,
         );
         if (!matchesSub) return false;
       }
 
-      if (filterAuthor && book.author !== filterAuthor) return false;
+      if (filterAuthor && entry.book.author !== filterAuthor) return false;
 
-      if (filterYearMin || filterYearMax) {
-        const yearMatch = book.publishedDate?.match(/\d{4}/);
-        const year = yearMatch ? parseInt(yearMatch[0], 10) : null;
-        if (
-          filterYearMin &&
-          (year === null || year < parseInt(filterYearMin, 10))
-        )
-          return false;
-        if (
-          filterYearMax &&
-          (year === null || year > parseInt(filterYearMax, 10))
-        )
-          return false;
+      if (minYearNum !== null && !Number.isNaN(minYearNum)) {
+        if (entry.pubYear === null || entry.pubYear < minYearNum) return false;
+      }
+      if (maxYearNum !== null && !Number.isNaN(maxYearNum)) {
+        if (entry.pubYear === null || entry.pubYear > maxYearNum) return false;
       }
 
       return true;
     });
   }, [
-    books,
+    indexedBooks,
     deferredSearchQuery,
-    searchQuery,
+    localSearchQuery,
     filterGenre,
     filterSubgenre,
     filterAuthor,
@@ -166,32 +235,32 @@ export function useBookFilters(books: Book[]) {
   ]);
 
   const sortedBooks = useMemo(() => {
-    const sorted = [...filteredBooks];
+    const sorted = [...filteredIndexedBooks];
     if (sortBy === 'title') {
       sorted.sort((a, b) => {
-        const titleA = a.title || '';
-        const titleB = b.title || '';
+        const titleA = a.book.title || '';
+        const titleB = b.book.title || '';
         return sortOrder === 'asc'
           ? titleA.localeCompare(titleB)
           : titleB.localeCompare(titleA);
       });
     } else if (sortBy === 'author') {
       sorted.sort((a, b) => {
-        const authorA = a.author || '';
-        const authorB = b.author || '';
+        const authorA = a.book.author || '';
+        const authorB = b.book.author || '';
         return sortOrder === 'asc'
           ? authorA.localeCompare(authorB)
           : authorB.localeCompare(authorA);
       });
     } else {
-      sorted.sort((a, b) => {
-        const timeA = getFirestoreTime(a.addedAt);
-        const timeB = getFirestoreTime(b.addedAt);
-        return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
-      });
+      sorted.sort((a, b) =>
+        sortOrder === 'asc'
+          ? a.addedAtMs - b.addedAtMs
+          : b.addedAtMs - a.addedAtMs,
+      );
     }
-    return sorted;
-  }, [filteredBooks, sortBy, sortOrder]);
+    return sorted.map(entry => entry.book);
+  }, [filteredIndexedBooks, sortBy, sortOrder]);
 
   const handleSort = (option: SortOption) => {
     if (sortBy === option) {
@@ -199,10 +268,10 @@ export function useBookFilters(books: Book[]) {
     } else {
       setSearchParams(
         prev => {
-          prev.set('sort', option);
-          // Default to asc for title/author, desc for added
-          prev.set('order', option === 'added' ? 'desc' : 'asc');
-          return prev;
+          const next = new URLSearchParams(prev);
+          next.set('sort', option);
+          next.set('order', option === 'added' ? 'desc' : 'asc');
+          return next;
         },
         {replace: true},
       );
@@ -225,20 +294,27 @@ export function useBookFilters(books: Book[]) {
     viewMode,
     setViewMode: (view: 'standard' | 'table') =>
       setSearchParamsValue('view', view),
-    searchQuery,
-    setSearchQuery: (q: string) => setSearchParamsValue('q', q),
+    searchQuery: localSearchQuery,
+    setSearchQuery: (q: string) => {
+      setLocalSearchQuery(q);
+      if (!q) {
+        lastCommittedUrlQueryRef.current = '';
+        setSearchParamsValue('q', null);
+      }
+    },
     filterGenre,
     setFilterGenre: (genre: string) => {
       setSearchParams(
         prev => {
+          const next = new URLSearchParams(prev);
           if (!genre) {
-            prev.delete('genre');
-            prev.delete('subgenre');
+            next.delete('genre');
+            next.delete('subgenre');
           } else {
-            prev.set('genre', genre);
-            prev.delete('subgenre');
+            next.set('genre', genre);
+            next.delete('subgenre');
           }
-          return prev;
+          return next;
         },
         {replace: true},
       );
@@ -270,15 +346,18 @@ export function useBookFilters(books: Book[]) {
     availableAuthors,
     sortedBooks,
     clearFilters: () => {
+      setLocalSearchQuery('');
+      lastCommittedUrlQueryRef.current = '';
       setSearchParams(
         prev => {
-          prev.delete('q');
-          prev.delete('genre');
-          prev.delete('subgenre');
-          prev.delete('author');
-          prev.delete('yearMin');
-          prev.delete('yearMax');
-          return prev;
+          const next = new URLSearchParams(prev);
+          next.delete('q');
+          next.delete('genre');
+          next.delete('subgenre');
+          next.delete('author');
+          next.delete('yearMin');
+          next.delete('yearMax');
+          return next;
         },
         {replace: true},
       );

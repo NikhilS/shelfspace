@@ -26,13 +26,15 @@ Access control operates on two distinct layers: **Platform Administration** and 
 ```
 
 ### Context Resolution Pipeline
-Every server request (tRPC procedure or REST endpoint) executes the unified context pipeline (`src/server/auth/context.ts`):
-1. Extract token from `Authorization: Bearer <token>` or API key from `X-API-Key`.
-2. Verify token via Firebase Admin SDK or match hashed API key in `apiKeys/`.
-3. Check `allowlistService`: determine if caller has administrative privileges.
-4. Construct immutable `SecurityContext`:
+Every server request executes the single-path JWT context pipeline (`src/server/auth/context.ts`):
+1. Extract Firebase ID Token from `Authorization: Bearer <token>` via `TokenVerifier.extractTokenFromHeader`.
+2. Verify token signature, expiration, and `email_verified` claim via Firebase Admin SDK (`TokenVerifier.verify`).
+3. Check `AllowlistService.getPermissions(user.email)`: determine whether the caller is on the platform allowlist (`isAppAllowed`) and whether they hold administrative privileges (`isAdmin`).
+4. Construct the request `SecurityContext`:
    ```typescript
    export interface SecurityContext {
+     req: express.Request;
+     res: express.Response;
      user: AuthUser | null;
      isAppAllowed: boolean;
      isAdmin: boolean;
@@ -76,11 +78,8 @@ For deep runtime visibility into cache hit rates, network latency, and memory co
 ### Architectural Guidelines
 1. **Passive Observer Pattern:** The debug engine (`src/lib/telemetry/DebugTelemetryEngine.ts`) wraps `window.console` non-destructively. It never swallows or alters native DevTools console outputs.
 2. **Capped Memory Ring Buffer:** The log history maintains a maximum capacity of **200 entries**. When capacity is reached, the oldest log entry is evicted to prevent memory leaks during long developer sessions.
-3. **Semantic Database Metrics:** The HUD tracks domain-level metrics rather than raw network packets:
-   - Cache Hit Ratio: $\frac{\text{Cache Hits}}{\text{Total Reads}} \times 100$
-   - RPC Round-Trip Latency (tRPC vs REST)
-   - Active UMAP Worker calculation duration
-4. **HUD Keybinding:** The overlay panel toggles with `Ctrl + ~` or `Cmd + ~`, or via the discreet developer bezel in the bottom-right corner during development.
+3. **Admin-Gated Server Telemetry:** Server-wide outbound API telemetry (`metadata.debugTelemetry`) and provider quota snapshots (`metadata.providerCapacities`) are restricted to system administrators via `adminProcedure`.
+4. **HUD Keybinding:** The overlay panel toggles with `Ctrl + ~` or `Cmd + ~`, or via the developer toggle in the user profile dialog for administrators.
 
 ---
 

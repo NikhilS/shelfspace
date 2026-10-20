@@ -2,6 +2,7 @@ import React, {useState, useMemo, useCallback, useEffect} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
 import {useAuth} from '../stores/authStore';
 import {useLibraryData} from '../hooks/useLibraryData';
+import {getAccessFromLibrary} from '../lib/permissions';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../components/import/BulkEnrichmentBanner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
@@ -40,11 +41,12 @@ export default function WorldMap() {
   const {user} = useAuth();
 
   // 1. Fetch library core data using existing hook
-  const {books, isBooksLoading} = useLibraryData(
+  const {library, books, isBooksLoading} = useLibraryData(
     libraryId,
     user?.uid,
     navigate,
   );
+  const {canEdit} = getAccessFromLibrary(library, user?.uid, user?.email);
 
   // Map settings and presentation controls
   const [zoom, setZoom] = useState<number>(1.5);
@@ -79,6 +81,7 @@ export default function WorldMap() {
     providerKey: 'geoMetadata',
     metadataField: 'geoMetadata',
     filterPredicate: filterGeoPredicate,
+    canEdit,
     successToastMessage:
       'Successfully backfilled literary settings map references!',
     errorToastMessage:

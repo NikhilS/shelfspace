@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {BookDetails} from '../../services/bookApi';
+import {BookDetails} from '../../types';
 import CameraScanner from '../../components/import/CameraScanner';
 import ExtractedBooksTable from '../../components/import/ExtractedBooksTable';
 import {logger} from '../../stores/debugStore';

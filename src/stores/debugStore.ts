@@ -1,5 +1,9 @@
 import {create} from 'zustand';
-import {DebugTelemetryEngine, TelemetryProfilingLevel} from '../lib/telemetry';
+import {
+  DebugTelemetryEngine,
+  TelemetryProfilingLevel,
+  createLogger,
+} from '../lib/telemetry';
 
 export interface DebugLog {
   id: string;
@@ -32,6 +36,7 @@ export const useDebugStore = create<DebugState>(set => {
       ? localStorage.getItem('debugMode') === 'true'
       : false;
 
+  DebugTelemetryEngine.setDebugModeEnabled(isDebugMode);
   const profilingLevel = DebugTelemetryEngine.getProfilingLevel();
 
   return {
@@ -44,8 +49,13 @@ export const useDebugStore = create<DebugState>(set => {
     toggleDebugMode: () =>
       set(state => {
         const next = !state.isDebugMode;
+        DebugTelemetryEngine.setDebugModeEnabled(next);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('debugMode', String(next));
+          try {
+            localStorage.setItem('debugMode', String(next));
+          } catch {
+            // Ignore storage errors
+          }
         }
         return {isDebugMode: next};
       }),
@@ -55,31 +65,20 @@ export const useDebugStore = create<DebugState>(set => {
       set({profilingLevel: level});
     },
 
-    addLog: (message, level = 'info', payload?: unknown) =>
-      set(state => {
-        const newLog: DebugLog = {
-          id: Math.random().toString(36).substring(7),
-          timestamp: new Date(),
-          message,
-          level,
-          payload,
-        };
-        console.log(
-          `[DEBUG] [${level.toUpperCase()}] ${message}`,
-          payload !== undefined ? payload : '',
-        );
+    addLog: (message, level = 'info', payload?: unknown) => {
+      try {
+        DebugTelemetryEngine.getInstance().addLog(level, message, payload, {
+          scope: 'App',
+        });
+      } catch {
+        // Ignore if telemetry engine is not yet initialized
+      }
+    },
 
-        // Forward directly to DebugTelemetryEngine so logs are visible in the HUD
-        try {
-          DebugTelemetryEngine.getInstance().addLog(level, message, payload);
-        } catch {
-          // Ignore if telemetry engine is not yet initialized
-        }
-
-        return {logs: [newLog, ...state.logs.slice(0, 99)]};
-      }),
-
-    clearLogs: () => set({logs: []}),
+    clearLogs: () => {
+      DebugTelemetryEngine.getInstance().clearLogs();
+      set({logs: []});
+    },
 
     setDebugData: (data, title) =>
       set(() => ({
@@ -89,13 +88,6 @@ export const useDebugStore = create<DebugState>(set => {
   };
 });
 
-export const logger = {
-  info: (message: string, payload?: unknown) =>
-    useDebugStore.getState().addLog(message, 'info', payload),
-  warn: (message: string, payload?: unknown) =>
-    useDebugStore.getState().addLog(message, 'warn', payload),
-  error: (message: string, payload?: unknown) =>
-    useDebugStore.getState().addLog(message, 'error', payload),
-};
+export const logger = createLogger('App');
 
 export const useDebug = useDebugStore;

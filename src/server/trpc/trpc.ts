@@ -1,15 +1,16 @@
 import * as trpcExpress from '@trpc/server/adapters/express';
+import {createSecurityContext} from '../auth/context';
+import {PermissionService} from '../auth/permissions';
 import {
-  createSecurityContext,
-  PermissionService,
   router,
   publicProcedure,
+  authenticatedProcedure,
   protectedProcedure,
   adminProcedure,
   libraryProcedure,
   t,
-} from '../auth';
-import type {AuthUser, SecurityContext} from '../auth';
+} from '../auth/procedures';
+import type {AuthUser, SecurityContext} from '../auth/types';
 
 // Backward compatibility alias for ContextUser
 export type ContextUser = AuthUser;
@@ -33,6 +34,7 @@ export const createContext = async ({
 export {
   router,
   publicProcedure,
+  authenticatedProcedure,
   protectedProcedure,
   adminProcedure,
   libraryProcedure,

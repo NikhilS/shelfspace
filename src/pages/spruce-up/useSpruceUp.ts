@@ -1,99 +1,24 @@
-import {useMemo, useState} from 'react';
+import {useMemo, useState, useEffect, useRef} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {Book} from '../../types';
 import {toast} from 'sonner';
 import {useAuth} from '../../stores/authStore';
 import {useLibraryData} from '../../hooks/useLibraryData';
-import {trpc} from '../../lib/trpc';
+import {trpc, trpcVanilla} from '../../lib/trpc';
 import {instrumentMutation} from '../../lib/telemetry';
-
-const getFingerprints = (b: Book) => {
-  const cleanIsbn = (b.isbn || '').trim().replace(/[^0-9X]/gi, '');
-  const cleanTitle = (b.title || '').trim().toLowerCase();
-  const cleanAuthor = (b.author || '').trim().toLowerCase();
-  const format = b.format || 'physical';
-  return {cleanIsbn, cleanTitle, cleanAuthor, format};
-};
-
-function findDuplicates(books: Book[]): Book[][] {
-  const adjList: Record<string, Set<string>> = {};
-
-  const addEdge = (id1: string, id2: string) => {
-    if (!adjList[id1]) adjList[id1] = new Set();
-    if (!adjList[id2]) adjList[id2] = new Set();
-    adjList[id1].add(id2);
-    adjList[id2].add(id1);
-  };
-
-  const isbnGroups: Record<string, string[]> = {};
-  const titleAuthorGroups: Record<string, string[]> = {};
-
-  for (const b of books) {
-    const {cleanIsbn, cleanTitle, cleanAuthor, format} = getFingerprints(b);
-
-    if (cleanIsbn) {
-      const key = `${cleanIsbn}:${format}`;
-      if (!isbnGroups[key]) isbnGroups[key] = [];
-      isbnGroups[key].push(b.id);
-    }
-
-    if (cleanTitle && cleanAuthor) {
-      const key = `${cleanTitle}|${cleanAuthor}:${format}`;
-      if (!titleAuthorGroups[key]) titleAuthorGroups[key] = [];
-      titleAuthorGroups[key].push(b.id);
-    }
-  }
-
-  const connectGroup = (group: string[]) => {
-    if (group.length > 1) {
-      const first = group[0];
-      for (let i = 1; i < group.length; i++) {
-        addEdge(first, group[i]);
-      }
-    }
-  };
-
-  Object.values(isbnGroups).forEach(connectGroup);
-  Object.values(titleAuthorGroups).forEach(connectGroup);
-
-  const visited = new Set<string>();
-  const duplicateGroups: Book[][] = [];
-  const bookMap = new Map(books.map(b => [b.id, b]));
-
-  for (const node of Object.keys(adjList)) {
-    if (!visited.has(node)) {
-      const groupIds: string[] = [];
-      const queue = [node];
-      visited.add(node);
-
-      while (queue.length > 0) {
-        const curr = queue.shift()!;
-        groupIds.push(curr);
-        for (const neighbor of adjList[curr] || []) {
-          if (!visited.has(neighbor)) {
-            visited.add(neighbor);
-            queue.push(neighbor);
-          }
-        }
-      }
-
-      if (groupIds.length > 1) {
-        duplicateGroups.push(
-          groupIds.map(id => bookMap.get(id)!).filter(Boolean),
-        );
-      }
-    }
-  }
-
-  return duplicateGroups;
-}
+import {
+  detectDuplicatesWithConfidence,
+  DuplicateGroupMetadata,
+} from '../../lib/duplicateDetection';
+import {DuplicateMergePayload} from './DuplicateMergeModal';
 
 export function useSpruceUp(libraryId: string | undefined) {
   const {user} = useAuth();
   const navigate = useNavigate();
   const utils = trpc.useUtils();
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
 
-  // Consume declarative query provided by useLibraryData
   const {books, isBooksLoading: booksLoading} = useLibraryData(
     libraryId,
     user?.uid,
@@ -108,7 +33,9 @@ export function useSpruceUp(libraryId: string | undefined) {
   const deleteBookMutation = trpc.book.delete.useMutation({
     onSuccess: () => {
       if (libraryId) {
-        void utils.book.list.invalidate({libraryId});
+        void utilsRef.current.book.list.invalidate({libraryId});
+        void utilsRef.current.library.get?.invalidate({libraryId});
+        void utilsRef.current.library.list?.invalidate();
       }
     },
   });
@@ -127,26 +54,137 @@ export function useSpruceUp(libraryId: string | undefined) {
   }, [allowedQuery.data]);
 
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+  const [rawDuplicateGroups, setRawDuplicateGroups] = useState<
+    DuplicateGroupMetadata[]
+  >([]);
+  const [isScanningDuplicates, setIsScanningDuplicates] = useState<boolean>(
+    () => Boolean(booksLoading || (books && books.length >= 2)),
+  );
+  const workerRef = useRef<Worker | null>(null);
+  const latestBooksRef = useRef<Book[]>(books);
+  latestBooksRef.current = books;
 
-  const duplicates = useMemo(() => {
-    const allDuplicates = findDuplicates(books);
+  const booksFingerprint = useMemo(() => {
+    if (!books || books.length === 0) return '';
+    return `${books.length}:${books
+      .map(b => `${b.id}:${b.isbn || ''}:${b.title}:${b.author || ''}`)
+      .join('|')}`;
+  }, [books]);
 
-    return allDuplicates.filter(group => {
-      const groupIds = group.map(b => b.id);
+  useEffect(() => {
+    if (booksLoading) {
+      setIsScanningDuplicates(true);
+      return;
+    }
+
+    const currentBooks = latestBooksRef.current;
+    if (!currentBooks || currentBooks.length < 2) {
+      setRawDuplicateGroups([]);
+      setIsScanningDuplicates(false);
+      return;
+    }
+
+    setIsScanningDuplicates(true);
+    let cancelled = false;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const runAsyncFallback = () => {
+      fallbackTimer = setTimeout(() => {
+        if (cancelled) return;
+        const computed = detectDuplicatesWithConfidence(currentBooks);
+        if (!cancelled) {
+          setRawDuplicateGroups(computed);
+          setIsScanningDuplicates(false);
+        }
+      }, 0);
+    };
+
+    if (typeof Worker !== 'undefined') {
+      try {
+        workerRef.current?.terminate();
+        const worker = new Worker(
+          new URL(
+            '../../workers/duplicateDetection.worker.ts',
+            import.meta.url,
+          ),
+          {type: 'module'},
+        );
+        workerRef.current = worker;
+
+        worker.onmessage = (
+          e: MessageEvent<{groups: DuplicateGroupMetadata[]; error?: string}>,
+        ) => {
+          if (!cancelled) {
+            if (!e.data.error && Array.isArray(e.data.groups)) {
+              setRawDuplicateGroups(e.data.groups);
+            } else {
+              setRawDuplicateGroups(
+                detectDuplicatesWithConfidence(currentBooks),
+              );
+            }
+            setIsScanningDuplicates(false);
+          }
+          worker.terminate();
+          if (workerRef.current === worker) {
+            workerRef.current = null;
+          }
+        };
+
+        worker.onerror = () => {
+          worker.terminate();
+          if (workerRef.current === worker) {
+            workerRef.current = null;
+          }
+          if (!cancelled) {
+            runAsyncFallback();
+          }
+        };
+
+        worker.postMessage({books: currentBooks});
+      } catch {
+        runAsyncFallback();
+      }
+    } else {
+      runAsyncFallback();
+    }
+
+    return () => {
+      cancelled = true;
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+      }
+      workerRef.current?.terminate();
+      workerRef.current = null;
+    };
+  }, [booksFingerprint, booksLoading]);
+
+  const duplicateGroupsWithMeta = useMemo(() => {
+    return rawDuplicateGroups.filter(group => {
+      const groupIds = group.books.map(b => b.id);
       const isAllowed = allowedDuplicateGroups.some(allowedGroup =>
         groupIds.every(id => allowedGroup.includes(id)),
       );
       return !isAllowed;
     });
-  }, [books, allowedDuplicateGroups]);
+  }, [rawDuplicateGroups, allowedDuplicateGroups]);
+
+  const duplicates = useMemo(
+    () => duplicateGroupsWithMeta.map(g => g.books),
+    [duplicateGroupsWithMeta],
+  );
 
   const handleDelete = async (id: string) => {
     if (!libraryId) return;
-    const originalData = utils.book.list.getData({libraryId});
+    const originalData = utilsRef.current.book.list.getData({libraryId});
     setProcessingIds(prev => new Set(prev).add(id));
     try {
-      utils.book.list.setData({libraryId}, old => {
+      utilsRef.current.book.list.setData({libraryId}, old => {
         if (!old) return {books: []};
+        if (Array.isArray(old)) {
+          return (old as Book[]).filter(
+            b => b.id !== id,
+          ) as unknown as typeof old;
+        }
         return {
           ...old,
           books: (old.books || []).filter(b => b.id !== id),
@@ -162,7 +200,7 @@ export function useSpruceUp(libraryId: string | undefined) {
       toast.success('Book deleted');
     } catch (error) {
       if (originalData) {
-        utils.book.list.setData({libraryId}, originalData);
+        utilsRef.current.book.list.setData({libraryId}, originalData);
       }
       toast.error('Failed to delete book');
       console.error('Failed to delete book:', error);
@@ -196,14 +234,46 @@ export function useSpruceUp(libraryId: string | undefined) {
     }
   };
 
-  const loading = booksLoading || allowedQuery.isLoading;
+  const handleMergeDuplicates = async (payload: DuplicateMergePayload) => {
+    if (!libraryId) return;
+    const bookClient = trpcVanilla.book as unknown as {
+      mergeDuplicates?: {
+        mutate: (
+          input: DuplicateMergePayload & {libraryId: string},
+        ) => Promise<unknown>;
+      };
+    };
+
+    try {
+      if (bookClient?.mergeDuplicates?.mutate) {
+        await bookClient.mergeDuplicates.mutate({
+          libraryId,
+          ...payload,
+        });
+      }
+      await utilsRef.current.book.list.invalidate({libraryId});
+      void utilsRef.current.library.get?.invalidate({libraryId});
+      void utilsRef.current.library.list?.invalidate();
+      toast.success('Duplicate records merged into surviving edition');
+    } catch (error) {
+      toast.error('Failed to merge duplicate books');
+      console.error('Failed to merge duplicate books:', error);
+      throw error;
+    }
+  };
+
+  const loading = booksLoading;
+  const isCheckingDuplicates = isScanningDuplicates || allowedQuery.isLoading;
 
   return {
     loading,
+    isCheckingDuplicates,
     books,
     duplicates,
+    duplicateGroupsWithMeta,
     processingIds,
     handleDelete,
     handleAllowDuplicateGroup,
+    handleMergeDuplicates,
   };
 }

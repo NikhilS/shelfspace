@@ -1,4 +1,4 @@
-import {render, screen} from '@testing-library/react';
+import {render, screen, fireEvent} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import React from 'react';
 import SpruceUpView from './SpruceUpView';
@@ -88,11 +88,11 @@ describe('SpruceUpView', () => {
     vi.clearAllMocks();
   });
 
-  it('renders Shelf Care view and identifies duplicate books via tRPC', async () => {
+  it('renders Shelf Care 3-tab workspace and switches between Enrichment, Duplicates, and Maintenance tabs', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {queries: {retry: false}},
     });
-    render(
+    const {getByTestId} = render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/library/123/spruce-up']}>
           <Routes>
@@ -103,5 +103,21 @@ describe('SpruceUpView', () => {
     );
 
     expect(await screen.findByText('Shelf Care')).toBeInTheDocument();
+    expect(screen.getByText('Complete Book Details')).toBeInTheDocument();
+
+    // Switch to Duplicates tab and verify non-blocking duplicate group detection
+    fireEvent.click(getByTestId('shelf-care-tab-duplicates'));
+    expect(
+      await screen.findByText('Potentially Duplicate Books'),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByTestId('duplicate-confidence-badge-0'),
+    ).toHaveTextContent('100% Match • Exact ISBN');
+
+    // Switch to Maintenance tab
+    fireEvent.click(getByTestId('shelf-care-tab-maintenance'));
+    expect(
+      await screen.findByText('Hardened Storage Sanitization'),
+    ).toBeInTheDocument();
   });
 });

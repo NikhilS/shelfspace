@@ -54,11 +54,70 @@ vi.mock('../lib/trpc', () => ({
           mutateAsync: vi.fn().mockResolvedValue(''),
         }),
       },
+      getPickOfTheDay: {
+        useMutation: () => ({
+          mutateAsync: vi.fn().mockResolvedValue([
+            {
+              title: 'The Left Hand of Darkness',
+              author: 'Ursula K. Le Guin',
+              reason: 'A luminous exploration of duality and kinship.',
+            },
+          ]),
+        }),
+      },
+    },
+    readingTracker: {
+      getShelf: {
+        useQuery: vi.fn(() => ({
+          data: {
+            items: [
+              {
+                id: 'b-reading-1',
+                libraryId: 'lib1',
+                libraryName: 'Test Library',
+                isVirtual: false,
+                ownershipStatus: 'owned',
+                readingStatus: 'reading',
+                title: 'Project Hail Mary',
+                author: 'Andy Weir',
+                primaryGenre: 'Science Fiction',
+                addedAt: '2026-01-01',
+              },
+              {
+                id: 'b-read-1',
+                libraryId: 'virtual_user1',
+                libraryName: 'Personal Reading Shelf',
+                isVirtual: true,
+                ownershipStatus: 'unowned',
+                readingStatus: 'finished',
+                userRating: 5,
+                title: 'Piranesi',
+                author: 'Susanna Clarke',
+                primaryGenre: 'Fantasy',
+                addedAt: '2026-01-02',
+              },
+            ],
+            counts: {
+              all: 2,
+              want_to_read: 0,
+              reading: 1,
+              finished: 1,
+              abandoned: 0,
+            },
+          },
+          isLoading: false,
+        })),
+      },
     },
   },
   trpcVanilla: {
     library: {
       update: {
+        mutate: vi.fn().mockResolvedValue({}),
+      },
+    },
+    metadata: {
+      searchByTitleAndAuthor: {
         mutate: vi.fn().mockResolvedValue({}),
       },
     },
@@ -124,7 +183,7 @@ describe('Dashboard', () => {
     renderDashboard();
   });
 
-  it('renders libraries when user is logged in', async () => {
+  it('renders libraries and Reading Room Bento cards when user is logged in', async () => {
     (
       useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
     ).mockReturnValue({
@@ -133,6 +192,26 @@ describe('Dashboard', () => {
     renderDashboard();
     expect(await screen.findByText('Test Library')).toBeInTheDocument();
     expect(await screen.findByText('5 Volumes')).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText('Project Hail Mary')).length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText('Books Read by Genre')).toBeInTheDocument();
+    expect(await screen.findByText('Fantasy')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/Interactive stack of your last 1 finished books/i),
+    ).toBeInTheDocument();
+  });
+
+  it('navigates to the library view when clicking a library card', async () => {
+    (
+      useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
+    ).mockReturnValue({
+      user: {uid: 'user1', email: 'user@example.com'},
+    });
+    renderDashboard();
+    const cardTitle = await screen.findByText('Test Library');
+    fireEvent.click(cardTitle);
+    expect(mockNavigate).toHaveBeenCalledWith('/library/lib1');
   });
 
   it('can create a new library', async () => {

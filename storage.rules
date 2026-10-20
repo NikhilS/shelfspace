@@ -2,13 +2,8 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // 100% of storage mutations route through the Node.js tRPC Gateway using firebase-admin/storage.
-    // Direct client-side writes to Cloud Storage are strictly forbidden.
-    match /libraries/{libraryId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if false;
-    }
-
+    // 100% of storage operations route through the Node.js tRPC Gateway using firebase-admin/storage
+    // or signed download token URLs. Direct client-side Firebase Storage SDK reads/writes are forbidden.
     match /{allPaths=**} {
       allow read, write: if false;
     }

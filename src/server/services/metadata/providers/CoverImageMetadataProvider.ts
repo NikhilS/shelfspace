@@ -1,87 +1,115 @@
 import {
   IMetadataProvider,
+  MetadataBulkFetchOptions,
   MetadataKey,
   CoreBookData,
 } from '../../../../types/metadata';
-import {
-  searchBookByIsbn,
-  searchBookByTitleAndAuthor,
-} from '../../../../services/bookApi';
-import {googleBooksLimiter} from '../../limiters';
-import {normalizeIsbn} from '../../../../lib/utils';
+import {catalogOrchestrator} from '../../catalog';
 
-export class CoverImageMetadataProvider implements IMetadataProvider<string> {
+export class CoverImageMetadataProvider implements IMetadataProvider<
+  string | null
+> {
   getKey(): MetadataKey {
-    // using the exact field mapped in the db/UI schema
     return MetadataKey.COVER_IMAGE;
   }
 
-  isAvailable(): boolean {
-    return true; // Uses free APIs (OpenLibrary, Google Books) and fetch is globally available
-  }
-
-  shouldFetchOnCreate(): boolean {
-    return true; // We want covers immediately upon creation
-  }
-
-  async fetch(book: CoreBookData): Promise<string> {
-    if (
-      'coverUrl' in book &&
-      typeof (book as Record<string, unknown>).coverUrl === 'string' &&
-      (book as Record<string, unknown>).coverUrl
-    ) {
-      return (book as Record<string, unknown>).coverUrl as string;
-    }
-
-    const isbnClean = normalizeIsbn(book.isbn);
-
-    if (isbnClean) {
-      // 1. Give API schema a shot.
-      const details = await searchBookByIsbn(isbnClean);
-      if (details?.coverUrl) {
-        return details.coverUrl;
+  async fetch(
+    book: CoreBookData,
+    options?: MetadataBulkFetchOptions,
+  ): Promise<string | null> {
+    if (options?.signal?.aborted) return null;
+    try {
+      // Query federated cover candidates across both ISBN and Title+Author providers
+      // (including Apple Books 1000x1000 Ultra-Res covers, PRH ISBN CDN, Hardcover, Longitood, etc.)
+      if (book.isbn || book.title) {
+        const candidateRes = await catalogOrchestrator.fetchCoverCandidates(
+          {
+            isbn: book.isbn,
+            title: book.title,
+            author: book.author || undefined,
+          },
+          {
+            priority: 'BATCH',
+            verifyCovers: true,
+            signal: options?.signal,
+          },
+        );
+        if (candidateRes.candidates.length > 0) {
+          return candidateRes.candidates[0].url;
+        }
       }
 
-      // 2. Fallback to OpenLibrary generic schema
-      // OpenLibrary doesn't confirm existence immediately, but it's a valid source URL pattern
-      // Because we want strong covers, we'll return this if we at least have an ISBN.
-      // However, we'll try title/author first to see if we can get a verified one.
-    }
+      if (options?.signal?.aborted) return null;
 
-    if (book.title) {
-      const list = await searchBookByTitleAndAuthor(book.title, book.author);
-      const firstWithCover = list.find(b => b.coverUrl);
-      if (firstWithCover?.coverUrl) {
-        return firstWithCover.coverUrl;
+      if (book.isbn) {
+        const details = await catalogOrchestrator.searchByIsbn(book.isbn, {
+          priority: 'BATCH',
+          verifyCovers: true,
+          signal: options?.signal,
+        });
+        if (details?.coverUrl) {
+          return details.coverUrl;
+        }
       }
-    }
 
-    // Only return the fallback OpenLibrary URL if we really found nothing else
-    if (isbnClean) {
-      return `https://covers.openlibrary.org/b/isbn/${isbnClean}-L.jpg`;
-    }
+      if (options?.signal?.aborted) return null;
 
-    return '';
+      if (book.title) {
+        const searchRes = await catalogOrchestrator.searchByQuery(
+          {
+            title: book.title,
+            author: book.author || '',
+            isbn: book.isbn,
+            limit: 3,
+          },
+          {
+            priority: 'BATCH',
+            verifyCovers: true,
+            signal: options?.signal,
+          },
+        );
+        const match = searchRes.books.find(b => Boolean(b.coverUrl));
+        if (match?.coverUrl) {
+          return match.coverUrl;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      if ((error as Error)?.name !== 'AbortError') {
+        console.error(
+          `CoverImageMetadataProvider failed for "${book.title}":`,
+          error,
+        );
+      }
+      return null;
+    }
   }
 
-  async bulkFetch(books: CoreBookData[]): Promise<Record<string, string>> {
-    const results: Record<string, string> = {};
-    // Map the array through the global limiter to guarantee API safety
+  async bulkFetch(
+    books: CoreBookData[],
+    options?: MetadataBulkFetchOptions,
+  ): Promise<Record<string, string | null>> {
+    const results: Record<string, string | null> = {};
+
     await Promise.all(
-      books.map(book =>
-        googleBooksLimiter.schedule(async () => {
-          try {
-            const res = await this.fetch(book);
-            if (res) {
-              results[book.id] = res;
-            }
-          } catch (error) {
-            console.error(`Cover Image batch error for ${book.id}:`, error);
-          }
-        }),
-      ),
+      books.map(async book => {
+        if (options?.signal?.aborted) {
+          results[book.id] = null;
+          return;
+        }
+        results[book.id] = await this.fetch(book, options);
+      }),
     );
 
     return results;
+  }
+
+  shouldFetchOnCreate(): boolean {
+    return true;
+  }
+
+  isAvailable(): boolean {
+    return true;
   }
 }

@@ -18,11 +18,12 @@ The database follows a hierarchical subcollection structure designed to guarante
   ├── role: "admin" | "user"
   └── createdAt: Timestamp
 
-/libraries/{libraryId}
+/libraries/{libraryId}  (Standard collections or deterministic virtual_{userId} personal reading shelf)
   ├── id: string
   ├── name: string
   ├── ownerId: string (UID of owner)
   ├── ownerName: string
+  ├── isVirtual?: boolean (true for virtual_{userId} personal reading shelves)
   ├── access: { [email: string]: "owner" | "editor" | "viewer" }
   ├── heroImageUrl: string | null
   ├── bookCount: number
@@ -40,8 +41,10 @@ The database follows a hierarchical subcollection structure designed to guarante
   │     ├── subgenres: string[]
   │     ├── isCustomPrimary: boolean
   │     ├── series: string
-  │     ├── format: "physical" | "digital"
-  │     ├── userStatuses: { [userId]: "unset" | "reading" | "finished" | "abandoned" }
+  │     ├── format: "physical" | "digital" | "audiobook"
+  │     ├── ownershipStatus?: "owned" | "unowned"
+  │     ├── userStatuses: { [userId]: "unset" | "want_to_read" | "reading" | "finished" | "abandoned" }
+  │     ├── userRatings?: { [userId]: number } (1 to 5 stars, denormalized from reviews)
   │     ├── geoMetadata: { isNonEarth, lastSyncedAt, locations: [{ name, adminLevel, rationale, coordinates }] }
   │     ├── addedAt: Timestamp / ISO date string
   │     ├── addedBy: string (UID)
@@ -62,18 +65,8 @@ The database follows a hierarchical subcollection structure designed to guarante
   └── createdAt: Timestamp / ISO date string
 
 /appSettings
-  ├── /allowlist/users/{email}: { email, grantedAt, grantedBy }
+  ├── /allowlist/users/{email}: { email, role: "admin" | "user", grantedAt, grantedBy }
   └── /waitlist/entries/{email}: { email, displayName, photoURL, status: "pending" | "approved" | "rejected", requestedAt }
-
-/apiKeys/{keyId}
-  ├── id: string
-  ├── keyHash: string (SHA-256 hash of plaintext key)
-  ├── maskedKey: string ("bk_live_****abcd")
-  ├── ownerId: string
-  ├── name: string
-  ├── permissions: string[]
-  ├── lastUsedAt: Timestamp
-  └── createdAt: Timestamp
 ```
 
 ---

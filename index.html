@@ -13,6 +13,7 @@
     <meta property="og:description" content="A book librarian and companion app to organize your physical bookshelves, extract books from photos, and share libraries." />
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="apple-touch-icon" href="/icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>book(ish) - Personal Librarian</title>
     <style>
       body {
@@ -305,11 +306,23 @@
           }
         }
 
+        function isBenignViteWsError(msg, stack) {
+          var combined = (String(msg || '') + ' ' + String(stack || '')).toLowerCase();
+          return (
+            combined.indexOf('websocket closed without opened') !== -1 ||
+            combined.indexOf('failed to connect to websocket') !== -1 ||
+            combined.indexOf('@vite/client') !== -1
+          );
+        }
+
         window.addEventListener('error', function (event) {
           var msg = event.message || 'Uncaught window error';
           var stack =
             (event.error && event.error.stack) ||
             (event.filename ? event.filename + ':' + event.lineno + ':' + event.colno : '');
+          if (isBenignViteWsError(msg, stack)) {
+            return;
+          }
           console.error('[boot/window.onerror]', msg, stack);
           reportClientLog('error', msg, stack);
           if (!window.__BOOKISH_BOOTED__) {
@@ -325,6 +338,9 @@
           var stack = reason && reason.stack ? String(reason.stack) : undefined;
           if (event && typeof event.preventDefault === 'function') {
             event.preventDefault();
+          }
+          if (isBenignViteWsError(msg, stack)) {
+            return;
           }
           console.warn('[boot/unhandledrejection]', msg, stack || '');
           reportClientLog('warn', 'UnhandledRejection: ' + msg, stack);

@@ -1,10 +1,12 @@
-import React from 'react';
-import {useParams} from 'react-router-dom';
+import React, {useEffect, useRef} from 'react';
+import {useParams, useLocation} from 'react-router-dom';
 import {useAuth} from '../../stores/authStore';
 import {useLibraryPermissions} from '../../hooks/useLibraryPermissions';
 import {AlertCircle} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {LibraryMainSkeleton} from '../book/LibrarySkeletons';
+import {trpc} from '../../lib/trpc';
+import {preloadRouteByPathname} from '../../lib/routePreload';
 
 interface RequireLibraryPermissionProps {
   children?: React.ReactNode;
@@ -16,14 +18,41 @@ export function RequireLibraryPermission({
   requires,
 }: RequireLibraryPermissionProps) {
   const params = useParams<Record<string, string>>();
+  const location = useLocation();
   const libraryId = params.id || params.libraryId;
   const {user} = useAuth();
-  const {canEdit, isOwner, canView, role, loading} = useLibraryPermissions(
-    libraryId,
-    user?.uid,
-  );
+  const {canEdit, isOwner, canView, role, loading, isError} =
+    useLibraryPermissions(libraryId, user?.uid);
 
+  let utils: ReturnType<typeof trpc.useUtils> | undefined;
+  try {
+    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
+      utils = trpc.useUtils();
+    }
+  } catch {
+    utils = undefined;
+  }
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
+
+  // Preload view chunk and prefetch book list in parallel with library/permission resolution
+  useEffect(() => {
+    preloadRouteByPathname(location.pathname);
+    const currentUtils = utilsRef.current;
+    if (libraryId && user?.uid && currentUtils?.book?.list?.prefetch) {
+      void currentUtils.book.list.prefetch(
+        {libraryId},
+        {staleTime: 1000 * 60 * 5},
+      );
+    }
+  }, [libraryId, user?.uid, location.pathname]);
+
+  // For viewer routes, mount children immediately while library.get is in flight
+  // so lazy chunks and child queries run in parallel with server-enforced RBAC.
   if (loading) {
+    if (requires === 'viewer' && !isError) {
+      return <>{children}</>;
+    }
     return <LibraryMainSkeleton />;
   }
 

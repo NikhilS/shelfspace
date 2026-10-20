@@ -1,5 +1,4 @@
 import React from 'react';
-import * as d3Shape from 'd3-shape';
 import {BookOpen} from 'lucide-react';
 import {motion} from 'motion/react';
 import {TimelineCluster, formatYear} from './TimelineControls';
@@ -185,6 +184,72 @@ export function sampleOrganicRiver(
   });
 }
 
+/**
+ * Native uniform cubic B-spline (d3.curveBasis equivalent) SVG path generator.
+ */
+function basisBezierSegment(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): string {
+  const c1x = (2 * x0 + x1) / 3;
+  const c1y = (2 * y0 + y1) / 3;
+  const c2x = (x0 + 2 * x1) / 3;
+  const c2y = (y0 + 2 * y1) / 3;
+  const ex = (x0 + 4 * x1 + x2) / 6;
+  const ey = (y0 + 4 * y1 + y2) / 6;
+  return `C${c1x},${c1y},${c2x},${c2y},${ex},${ey}`;
+}
+
+export function basisOpenPath(points: [number, number][]): string {
+  const n = points.length;
+  if (n < 2) return '';
+  const [x0, y0] = points[0];
+  if (n === 2) {
+    const [x1, y1] = points[1];
+    return `M${x0},${y0}L${x1},${y1}`;
+  }
+
+  const [x1, y1] = points[1];
+  let path = `M${x0},${y0}L${(5 * x0 + x1) / 6},${(5 * y0 + y1) / 6}`;
+
+  for (let i = 1; i < n - 1; i++) {
+    const [px0, py0] = points[i - 1];
+    const [px1, py1] = points[i];
+    const [px2, py2] = points[i + 1];
+    path += basisBezierSegment(px0, py0, px1, py1, px2, py2);
+  }
+
+  const [xn2, yn2] = points[n - 2];
+  const [xn1, yn1] = points[n - 1];
+  path += basisBezierSegment(xn2, yn2, xn1, yn1, xn1, yn1);
+  path += `L${xn1},${yn1}`;
+  return path;
+}
+
+export function basisClosedPath(points: [number, number][]): string {
+  const n = points.length;
+  if (n < 3) return '';
+  const [x0, y0] = points[n - 2];
+  const [x1, y1] = points[n - 1];
+  const [x2, y2] = points[0];
+
+  const startX = (x0 + 4 * x1 + x2) / 6;
+  const startY = (y0 + 4 * y1 + y2) / 6;
+  let path = `M${startX},${startY}`;
+
+  for (let i = 0; i < n; i++) {
+    const p0 = points[(i + n - 1) % n];
+    const p1 = points[i];
+    const p2 = points[(i + 1) % n];
+    path += basisBezierSegment(p0[0], p0[1], p1[0], p1[1], p2[0], p2[1]);
+  }
+  return `${path}Z`;
+}
+
 export function buildAsymmetricRiverPolygon(
   samples: SampledRiverPoint[],
   scale = 1,
@@ -206,14 +271,8 @@ export function buildAsymmetricRiverPolygon(
     return [pt.x - pt.nx * r, pt.y - pt.ny * r];
   });
 
-  const d3Basis = d3Shape
-    .line<[number, number]>()
-    .x(d => d[0])
-    .y(d => d[1])
-    .curve(d3Shape.curveBasis);
-
-  const leftPath = d3Basis(leftBank) || '';
-  const rightPath = d3Basis(rightBank) || '';
+  const leftPath = basisOpenPath(leftBank);
+  const rightPath = basisOpenPath(rightBank);
   if (!leftPath || !rightPath) return '';
 
   return `${leftPath} L ${rightPath.slice(1)} Z`;
@@ -230,13 +289,7 @@ export function buildWaterLiningPath(
     return [pt.x + pt.nx * offset, pt.y + pt.ny * offset];
   });
 
-  const d3Basis = d3Shape
-    .line<[number, number]>()
-    .x(d => d[0])
-    .y(d => d[1])
-    .curve(d3Shape.curveBasis);
-
-  return d3Basis(pts) || '';
+  return basisOpenPath(pts);
 }
 
 export function computeRiverGeometry(
@@ -396,12 +449,6 @@ export function computeRiverGeometry(
   const islands: RiverIsland[] = [];
   const tributaries: TributaryCreek[] = [];
 
-  const d3ClosedBasis = d3Shape
-    .line<[number, number]>()
-    .x(d => d[0])
-    .y(d => d[1])
-    .curve(d3Shape.curveBasisClosed);
-
   bendNodes.forEach((node, idx) => {
     let bestSample = samples[0];
     let minDist = Infinity;
@@ -464,8 +511,8 @@ export function computeRiverGeometry(
     islands.push({
       id: `island-${node.cluster.key}`,
       clusterKey: node.cluster.key,
-      outerPath: d3ClosedBasis(outerPts) || '',
-      innerVegPath: d3ClosedBasis(innerPts) || '',
+      outerPath: basisClosedPath(outerPts),
+      innerVegPath: basisClosedPath(innerPts),
     });
 
     const creekDir = node.isRightApex ? -1 : 1;

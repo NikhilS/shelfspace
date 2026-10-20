@@ -20,7 +20,9 @@ export function useSelection(
   const batchUpsertMutation = trpc.book.batchUpsert.useMutation({
     onSuccess: () => {
       if (libraryId) {
-        void utils.book.list.invalidate({libraryId});
+        void utils.book?.list?.invalidate?.({libraryId});
+        void utils.library?.get?.invalidate?.({libraryId});
+        void utils.library?.list?.invalidate?.();
       }
     },
   });

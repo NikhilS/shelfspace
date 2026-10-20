@@ -45,6 +45,7 @@ import {
 import CoverCamera from '../../components/import/CoverCamera';
 import {applyNanobananaFlash} from '../../lib/nanobanana';
 import {GenreSelect} from '../../components/book/GenreSelect';
+import {CoverGalleryPicker} from '../../components/book/CoverGalleryPicker';
 
 interface EditBookFormProps {
   libraryId: string;
@@ -137,6 +138,9 @@ export function EditBookForm({
 
   const formatValue = watch('format');
   const manualCoverUrl = watch('coverUrl');
+  const watchedTitle = watch('title');
+  const watchedAuthor = watch('author');
+  const watchedIsbn = watch('isbn');
 
   // Sync back to form state when activeCoverUrl changes
   useEffect(() => {
@@ -475,6 +479,14 @@ export function EditBookForm({
                         onChange={e => setActiveCoverUrl(e.target.value)}
                       />
                     </div>
+
+                    <CoverGalleryPicker
+                      title={watchedTitle}
+                      author={watchedAuthor}
+                      isbn={watchedIsbn}
+                      activeCoverUrl={activeCoverUrl}
+                      onSelectCover={url => setActiveCoverUrl(url)}
+                    />
                   </div>
 
                   {/* RIGHT COLUMN: TAXONOMICAL DETAILS FORM */}

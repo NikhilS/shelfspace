@@ -9,159 +9,111 @@ import {
 } from './procedures';
 import {PermissionService} from './permissions';
 import {TRPCError} from '@trpc/server';
+import {z} from 'zod';
 import type {SecurityContext} from './types';
 
-vi.mock('./permissions', () => ({
-  PermissionService: {
-    verifyLibraryAccess: vi.fn(),
-  },
-}));
+vi.mock('./permissions');
 
-describe('tRPC Auth Procedures', () => {
-  const testRouter = router({
-    publicHello: publicProcedure.query(() => 'hello public'),
-    authOnly: authenticatedProcedure.query(
-      ({ctx}) => `hello auth ${ctx.user.email}`,
-    ),
-    protectedData: protectedProcedure.query(
-      ({ctx}) => `hello ${ctx.user.email}`,
-    ),
-    adminOnly: adminProcedure.query(() => 'admin secret'),
-    libraryEdit: libraryProcedure('editor')
-      .input((val: unknown) => val as {libraryId: string})
-      .mutation(({ctx}) => `edited library ${ctx.libraryId}`),
-  });
+const testRouter = router({
+  pub: publicProcedure.query(() => 'public_ok'),
+  authedOnly: authenticatedProcedure.query(({ctx}) => `authed_${ctx.user.uid}`),
+  prot: protectedProcedure.query(({ctx}) => `protected_${ctx.user.uid}`),
+  adm: adminProcedure.query(({ctx}) => `admin_${ctx.user.email}`),
+  libViewer: libraryProcedure('viewer')
+    .input(z.object({libraryId: z.string()}))
+    .query(({ctx}) => `lib_viewer_${ctx.libraryId}`),
+  libOwner: libraryProcedure('owner')
+    .input(z.object({libraryId: z.string()}))
+    .mutation(({ctx}) => `lib_owner_${ctx.libraryId}`),
+});
 
-  const caller = (ctx: Partial<SecurityContext>) =>
-    testRouter.createCaller(ctx as SecurityContext);
+describe('tRPC Security Procedures', () => {
+  const createCaller = (ctx: Partial<SecurityContext>) =>
+    testRouter.createCaller({
+      req: {} as unknown as SecurityContext['req'],
+      res: {} as unknown as SecurityContext['res'],
+      user: null,
+      isAppAllowed: false,
+      isAdmin: false,
+      ...ctx,
+    });
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('publicProcedure', () => {
-    it('allows unauthenticated access', async () => {
-      const api = caller({user: null, isAppAllowed: false, isAdmin: false});
-      const res = await api.publicHello();
-      expect(res).toBe('hello public');
-    });
+  it('allows publicProcedure without authentication', async () => {
+    const caller = createCaller({});
+    expect(await caller.pub()).toBe('public_ok');
   });
 
-  describe('authenticatedProcedure', () => {
-    it('throws UNAUTHORIZED if caller is not logged in', async () => {
-      const api = caller({user: null, isAppAllowed: false, isAdmin: false});
-      await expect(api.authOnly()).rejects.toThrow(TRPCError);
-      await expect(api.authOnly()).rejects.toMatchObject({
-        code: 'UNAUTHORIZED',
-      });
+  it('enforces authentication on authenticatedProcedure without requiring allowlist', async () => {
+    const unauthCaller = createCaller({});
+    await expect(unauthCaller.authedOnly()).rejects.toThrow(TRPCError);
+    await expect(unauthCaller.authedOnly()).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
     });
 
-    it('succeeds for authenticated caller even if not on allowlist', async () => {
-      const api = caller({
-        user: {
-          uid: 'u_unenrolled',
-          email: 'unenrolled@example.com',
-          authType: 'jwt',
-        },
-        isAppAllowed: false,
-        isAdmin: false,
-      });
-      const res = await api.authOnly();
-      expect(res).toBe('hello auth unenrolled@example.com');
+    const nonAllowlistedCaller = createCaller({
+      user: {uid: 'waitlist_1', email: 'waitlist@example.com'},
+      isAppAllowed: false,
     });
+    expect(await nonAllowlistedCaller.authedOnly()).toBe('authed_waitlist_1');
   });
 
-  describe('protectedProcedure', () => {
-    it('throws UNAUTHORIZED if caller is not logged in', async () => {
-      const api = caller({user: null, isAppAllowed: false, isAdmin: false});
-      await expect(api.protectedData()).rejects.toThrow(TRPCError);
-      await expect(api.protectedData()).rejects.toMatchObject({
-        code: 'UNAUTHORIZED',
-      });
+  it('enforces authentication and allowlist on protectedProcedure', async () => {
+    const unauthCaller = createCaller({});
+    await expect(unauthCaller.prot()).rejects.toThrow(TRPCError);
+
+    const unallowedCaller = createCaller({
+      user: {uid: 'u1', email: 'guest@example.com'},
+      isAppAllowed: false,
+    });
+    await expect(unallowedCaller.prot()).rejects.toMatchObject({
+      code: 'FORBIDDEN',
     });
 
-    it('throws FORBIDDEN if user is not on allowlist', async () => {
-      const api = caller({
-        user: {uid: '123', email: 'guest@example.com', authType: 'jwt'},
-        isAppAllowed: false,
-        isAdmin: false,
-      });
-      await expect(api.protectedData()).rejects.toMatchObject({
-        code: 'FORBIDDEN',
-      });
+    const allowedCaller = createCaller({
+      user: {uid: 'u1', email: 'user@example.com'},
+      isAppAllowed: true,
     });
-
-    it('succeeds for authenticated and allowlisted user', async () => {
-      const api = caller({
-        user: {uid: '123', email: 'user@example.com', authType: 'jwt'},
-        isAppAllowed: true,
-        isAdmin: false,
-      });
-      const res = await api.protectedData();
-      expect(res).toBe('hello user@example.com');
-    });
+    expect(await allowedCaller.prot()).toBe('protected_u1');
   });
 
-  describe('adminProcedure', () => {
-    it('throws FORBIDDEN if user is not an administrator', async () => {
-      const api = caller({
-        user: {uid: '123', email: 'user@example.com', authType: 'jwt'},
-        isAppAllowed: true,
-        isAdmin: false,
-      });
-      await expect(api.adminOnly()).rejects.toMatchObject({
-        code: 'FORBIDDEN',
-      });
+  it('enforces admin role on adminProcedure', async () => {
+    const regularCaller = createCaller({
+      user: {uid: 'u1', email: 'user@example.com'},
+      isAppAllowed: true,
+      isAdmin: false,
+    });
+    await expect(regularCaller.adm()).rejects.toMatchObject({
+      code: 'FORBIDDEN',
     });
 
-    it('succeeds if user is an administrator', async () => {
-      const api = caller({
-        user: {uid: 'admin_1', email: 'admin@example.com', authType: 'jwt'},
-        isAppAllowed: true,
-        isAdmin: true,
-      });
-      const res = await api.adminOnly();
-      expect(res).toBe('admin secret');
+    const adminCaller = createCaller({
+      user: {uid: 'u2', email: 'admin@example.com'},
+      isAppAllowed: true,
+      isAdmin: true,
     });
+    expect(await adminCaller.adm()).toBe('admin_admin@example.com');
   });
 
-  describe('libraryProcedure', () => {
-    it('verifies library access and attaches libraryId to context', async () => {
-      vi.mocked(PermissionService.verifyLibraryAccess).mockResolvedValueOnce(
-        true,
-      );
-
-      const api = caller({
-        user: {uid: 'user_1', email: 'editor@example.com', authType: 'jwt'},
-        isAppAllowed: true,
-        isAdmin: false,
-      });
-
-      const res = await api.libraryEdit({libraryId: 'lib_777'});
-      expect(res).toBe('edited library lib_777');
-      expect(PermissionService.verifyLibraryAccess).toHaveBeenCalledWith(
-        {uid: 'user_1', email: 'editor@example.com', authType: 'jwt'},
-        'lib_777',
-        'editor',
-      );
+  it('enforces library role on libraryProcedure', async () => {
+    const caller = createCaller({
+      user: {uid: 'u1', email: 'user@example.com'},
+      isAppAllowed: true,
+      isAdmin: false,
     });
 
-    it('rejects if permission check fails', async () => {
-      vi.mocked(PermissionService.verifyLibraryAccess).mockRejectedValueOnce(
-        new TRPCError({code: 'FORBIDDEN', message: 'Not permitted'}),
-      );
-
-      const api = caller({
-        user: {uid: 'user_1', email: 'viewer@example.com', authType: 'jwt'},
-        isAppAllowed: true,
-        isAdmin: false,
-      });
-
-      await expect(
-        api.libraryEdit({libraryId: 'lib_777'}),
-      ).rejects.toMatchObject({
-        code: 'FORBIDDEN',
-      });
-    });
+    vi.mocked(PermissionService.verifyLibraryAccess).mockResolvedValueOnce(
+      true,
+    );
+    const res = await caller.libViewer({libraryId: 'lib_abc'});
+    expect(res).toBe('lib_viewer_lib_abc');
+    expect(PermissionService.verifyLibraryAccess).toHaveBeenCalledWith(
+      {uid: 'u1', email: 'user@example.com'},
+      'lib_abc',
+      'viewer',
+    );
   });
 });

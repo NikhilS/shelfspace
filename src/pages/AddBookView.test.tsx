@@ -67,12 +67,6 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../services/bookApi', () => ({
-  searchBookByTitle: vi.fn(() => Promise.resolve([])),
-  searchBookByIsbn: vi.fn(() => Promise.resolve(null)),
-  searchBookByTitleAndAuthor: vi.fn(() => Promise.resolve([])),
-}));
-
 vi.mock('../firebase', () => ({
   db: {},
   auth: {
@@ -95,7 +89,7 @@ vi.mock('../firebase', () => ({
   },
 }));
 
-vi.mock('../services/db/storage', () => ({
+vi.mock('../lib/storage', () => ({
   uploadBase64Image: vi.fn(() => Promise.resolve('mocked-url')),
 }));
 

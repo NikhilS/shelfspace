@@ -6,18 +6,27 @@ import {
   useLocation,
   Link,
 } from 'react-router-dom';
-import {Sparkles, BookOpen, Wand2, Plus} from 'lucide-react';
+import {
+  Sparkles,
+  BookOpen,
+  Wand2,
+  Plus,
+  AlertTriangle,
+  RefreshCw,
+  ArrowLeft,
+} from 'lucide-react';
 import {useAuth} from '../stores/authStore';
 import {auth} from '../firebase';
-import {uploadBase64Image} from '../services/db/storage';
+import {uploadBase64Image} from '../lib/storage';
 import {trpc, trpcVanilla} from '../lib/trpc';
 import {toast} from 'sonner';
 import {toTitleCase, getFirestoreTime, formatCompactNumber} from '../lib/utils';
 import {motion, AnimatePresence} from 'motion/react';
-import {format} from 'date-fns';
+import {formatFullDateTime} from '../lib/date';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {instrumentMutation} from '../lib/telemetry';
+import {preloadRouteChunk} from '../lib/routePreload';
 
 // Hooks
 import {useLibraryData} from '../hooks/useLibraryData';
@@ -46,12 +55,17 @@ export default function LibraryView() {
   const {user} = useAuth();
   const navigate = useNavigate();
 
-  // Data fetching
-  const {library, books, isLoading, isBooksLoading, isSyncing} = useLibraryData(
-    id,
-    user?.uid,
-    navigate,
-  );
+  // Data fetching (do not pass navigate so transient errors show in-page recovery UI instead of silently bouncing back to /)
+  const {
+    library,
+    books,
+    isLoading,
+    isBooksLoading,
+    isSyncing,
+    isError,
+    error,
+    refetch,
+  } = useLibraryData(id, user?.uid);
 
   // Filters and Sorts
   const filters = useBookFilters(books);
@@ -130,10 +144,15 @@ export default function LibraryView() {
       }, 250);
     }
 
+    let scrollRafId: number | null = null;
     const handleScroll = () => {
-      if (filters.currentTab === 'collection') {
-        sessionStorage.setItem(scrollKey, window.scrollY.toString());
-      }
+      if (filters.currentTab !== 'collection' || scrollRafId !== null) return;
+      scrollRafId = window.requestAnimationFrame(() => {
+        scrollRafId = null;
+        if (filters.currentTab === 'collection') {
+          sessionStorage.setItem(scrollKey, window.scrollY.toString());
+        }
+      });
     };
 
     const registerTimer = setTimeout(() => {
@@ -142,6 +161,7 @@ export default function LibraryView() {
 
     return () => {
       if (scrollTimer) clearTimeout(scrollTimer);
+      if (scrollRafId !== null) window.cancelAnimationFrame(scrollRafId);
       clearTimeout(registerTimer);
       window.removeEventListener('scroll', handleScroll);
     };
@@ -163,26 +183,23 @@ export default function LibraryView() {
   const handleRemoveShare = async (email: string) => {
     if (!id || !library) return;
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Not logged in');
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not logged in');
 
       const targetEmail = email.trim().toLowerCase();
-
-      // Remove from access
-      const newAccess = {...(library.access || {})};
-      delete newAccess[targetEmail];
 
       await instrumentMutation(
         'update',
         `libraries/${id}`,
-        {access: newAccess},
+        {removeCollaborator: targetEmail},
         () =>
-          trpcVanilla.library.update.mutate({
+          trpcVanilla.library.removeCollaborator.mutate({
             libraryId: id,
-            access: newAccess,
+            email: targetEmail,
           }),
       );
 
+      void refetch();
       toast.success(`Removed access for ${email}`);
     } catch (error) {
       console.error('Failed to remove collaborator:', error);
@@ -194,24 +211,45 @@ export default function LibraryView() {
     if (!id || !library) return;
     try {
       const targetEmail = email.trim().toLowerCase();
-      const newAccess = {...(library.access || {})};
-      newAccess[targetEmail] = role;
 
       await instrumentMutation(
         'update',
         `libraries/${id}`,
-        {access: newAccess},
+        {upsertCollaborator: {email: targetEmail, role}},
         () =>
-          trpcVanilla.library.update.mutate({
+          trpcVanilla.library.upsertCollaborator.mutate({
             libraryId: id,
-            access: newAccess,
+            email: targetEmail,
+            role,
           }),
       );
 
-      toast.success(`Updated role for ${email} to ${role}`);
+      void refetch();
+      toast.success(`Updated role for ${email} to ${toTitleCase(role)}`);
     } catch (error) {
       console.error('Failed to update role:', error);
       toast.error('Failed to update collaborator role');
+    }
+  };
+
+  const handleRenameLibrary = async (newName: string) => {
+    if (!id || !library) return;
+    try {
+      await instrumentMutation(
+        'update',
+        `libraries/${id}`,
+        {name: newName},
+        () =>
+          trpcVanilla.library.update.mutate({
+            libraryId: id,
+            name: newName,
+          }),
+      );
+      void refetch();
+      toast.success('Library name updated');
+    } catch (error) {
+      console.error('Failed to rename library:', error);
+      toast.error('Failed to rename library');
     }
   };
 
@@ -273,7 +311,7 @@ export default function LibraryView() {
       let addedDateStr = '';
       if (book.addedAt) {
         const time = getFirestoreTime(book.addedAt);
-        if (time > 0) addedDateStr = format(new Date(time), 'PPpp');
+        if (time > 0) addedDateStr = formatFullDateTime(time);
       }
 
       // Format
@@ -361,7 +399,7 @@ export default function LibraryView() {
   const isOwner = access.isOwner;
   const canEdit = access.canEdit;
 
-  const {setDebugData} = useDebug();
+  const {setDebugData, isDebugMode} = useDebug();
 
   const [isRefreshingHero, setIsRefreshingHero] = useState(false);
   const generateLibraryHeroImageMutation =
@@ -421,7 +459,7 @@ export default function LibraryView() {
   const location = useLocation();
 
   useEffect(() => {
-    if (library) {
+    if (library && isDebugMode) {
       const timer = setTimeout(() => {
         setDebugData(
           {
@@ -438,9 +476,54 @@ export default function LibraryView() {
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [library, books, setDebugData, location.pathname]);
+  }, [library, books, isDebugMode, setDebugData, location.pathname]);
 
-  if (!library || isLoading) {
+  if (isLoading) {
+    return <LibraryMainSkeleton tab={filters.currentTab} />;
+  }
+
+  if (!library) {
+    if (isError) {
+      return (
+        <div className="layout-page-content flex items-center justify-center min-h-[60vh]">
+          <div
+            role="alert"
+            className="py-12 px-6 bg-surface-container-low rounded-xl border border-destructive/30 shadow-elevation-1 text-center max-w-lg w-full"
+          >
+            <div className="w-12 h-12 bg-destructive/10 rounded-lg flex items-center justify-center mx-auto mb-4 border border-destructive/20">
+              <AlertTriangle className="w-6 h-6 text-destructive" />
+            </div>
+            <h2 className="font-serif text-xl font-semibold text-on-surface mb-2">
+              Unable to Open Library
+            </h2>
+            <p className="font-sans text-sm text-on-surface-variant leading-relaxed mb-6 break-words">
+              {error instanceof Error
+                ? error.message
+                : 'This library could not be found or you may not have permission to view it.'}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void navigate('/')}
+                className="flex items-center gap-2 rounded-lg font-sans font-semibold"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>All Libraries</span>
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void refetch()}
+                className="flex items-center gap-2 rounded-lg font-sans font-semibold"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Retry</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return <LibraryMainSkeleton tab={filters.currentTab} />;
   }
 
@@ -513,20 +596,26 @@ export default function LibraryView() {
                   </Badge>
                 </Button>
 
-                <Link
-                  to={`/library/${id}/spruce-up`}
-                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-8 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface/50 transition-all"
-                  title="Shelf Care & Health"
-                >
-                  <Wand2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Shelf Care</span>
-                </Link>
+                {canEdit && (
+                  <Link
+                    to={`/library/${id}/spruce-up`}
+                    onMouseEnter={() => preloadRouteChunk('spruceUp')}
+                    onFocus={() => preloadRouteChunk('spruceUp')}
+                    className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-8 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface/50 transition-all"
+                    title="Shelf Care & Health"
+                  >
+                    <Wand2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Shelf Care</span>
+                  </Link>
+                )}
               </div>
 
-              {/* Primary Add Books Action */}
+              {/* Right Action: Primary Add Books Action */}
               {canEdit && (
                 <Link
                   to={`/library/${id}/add`}
+                  onMouseEnter={() => preloadRouteChunk('addBook')}
+                  onFocus={() => preloadRouteChunk('addBook')}
                   className="flex items-center gap-1.5 px-3 sm:px-4 h-9 rounded-lg bg-primary text-on-primary hover:bg-primary/90 text-xs font-sans font-semibold transition-all shadow-xs shrink-0"
                   title="Add Books"
                 >
@@ -604,7 +693,7 @@ export default function LibraryView() {
                         setFilterSubgenre={filters.setFilterSubgenre}
                         activeSubgenres={filters.activeSubgenres}
                         filterAuthor={filters.filterAuthor}
-                        setFilterAuthor={filters.setFilterAuthor}
+                        setFilterAuthor={filters.filterAuthor}
                         filterYearMin={filters.filterYearMin}
                         setFilterYearMin={filters.setFilterYearMin}
                         filterYearMax={filters.filterYearMax}
@@ -640,26 +729,34 @@ export default function LibraryView() {
             addShareEmail={async (email, role) => {
               if (!id || !library || !email.trim()) return;
               try {
-                const user = auth.currentUser;
-                if (!user) throw new Error('Not logged in');
+                const currentUser = auth.currentUser;
+                if (!currentUser) throw new Error('Not logged in');
 
                 const newEmail = email.trim().toLowerCase();
-                const newAccess = {...(library.access || {})};
-                newAccess[newEmail] = role;
 
-                // Update library access via unified tRPC gateway
-                await instrumentMutation(
+                const res = await instrumentMutation(
                   'update',
                   `libraries/${id}`,
-                  {access: newAccess},
+                  {upsertCollaborator: {email: newEmail, role}},
                   () =>
-                    trpcVanilla.library.update.mutate({
+                    trpcVanilla.library.upsertCollaborator.mutate({
                       libraryId: id,
-                      access: newAccess,
+                      email: newEmail,
+                      role,
                     }),
                 );
 
-                toast.success(`Shared with ${email} as ${toTitleCase(role)}`);
+                void refetch();
+
+                if (res?.allowlistStatus === 'pending_approval') {
+                  toast.success(
+                    `Invited ${newEmail} as ${toTitleCase(role)} (Pending admin waitlist approval)`,
+                  );
+                } else {
+                  toast.success(
+                    `Shared with ${newEmail} as ${toTitleCase(role)}`,
+                  );
+                }
               } catch (error) {
                 console.error('Failed to share library:', error);
                 toast.error('Failed to update collaborator access');
@@ -667,16 +764,19 @@ export default function LibraryView() {
             }}
             handleRemoveShare={handleRemoveShare}
             handleUpdateRole={handleUpdateRole}
+            handleRenameLibrary={handleRenameLibrary}
             handleExportToCSV={handleExportToCSV}
             handleDeleteLibrary={() => setLibraryToDelete(true)}
             confirmDeleteLibrary={confirmDeleteLibrary}
           />
 
-          <BulkActionsBar
-            selectedCount={selection.selectedBooks.size}
-            onClear={selection.clearSelection}
-            onStatusChange={selection.handleBulkStatusChange}
-          />
+          {canEdit && (
+            <BulkActionsBar
+              selectedCount={selection.selectedBooks.size}
+              onClear={selection.clearSelection}
+              onStatusChange={selection.handleBulkStatusChange}
+            />
+          )}
         </div>
       </div>
     </>

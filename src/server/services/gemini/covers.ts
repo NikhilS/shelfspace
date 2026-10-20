@@ -5,7 +5,7 @@ export async function generateLibraryHeroImage(
 ): Promise<string | null> {
   try {
     const response = await generateContentWithLimiter({
-      model: 'gemini-3.1-flash-image',
+      model: 'gemini-3.1-flash-image-preview',
       contents: {
         parts: [
           {

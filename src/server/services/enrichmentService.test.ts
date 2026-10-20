@@ -1,9 +1,9 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {EnrichmentService} from './enrichmentService';
-import {LibraryService} from './libraryService';
+import {LibraryService} from './library';
 import {MetadataRegistry} from './metadata';
 
-vi.mock('./libraryService');
+vi.mock('./library');
 vi.mock('./metadata');
 
 const mockBookGet = vi.fn();

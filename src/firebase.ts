@@ -3,7 +3,7 @@ import {getAuth, connectAuthEmulator} from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase App & Authentication for client-side OAuth token generation.
-// All Firestore and Cloud Storage operations route exclusively through the server tRPC/OpenAPI Gateway.
+// All Firestore and Cloud Storage operations route exclusively through the server tRPC Gateway.
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 

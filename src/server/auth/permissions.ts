@@ -1,5 +1,5 @@
 import {TRPCError} from '@trpc/server';
-import {LibraryService} from '../services/libraryService';
+import {LibraryService} from '../services/library';
 import type {AuthUser, LibraryRole} from './types';
 
 export class PermissionService {

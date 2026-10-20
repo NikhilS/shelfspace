@@ -301,122 +301,31 @@ describe('LibraryService', () => {
     });
   });
 
-  describe('getFilteredBooks', () => {
-    it('retrieves books and calculates metadata status flags correctly', async () => {
-      // 1. Mock verify access
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({
-          ownerId: 'u1',
-          access: {},
-        }),
-      });
-
-      // 2. Mock books collection
-      const mockBookDocs = [
-        {
-          id: 'b1',
-          data: () => ({
-            title: 'Complete Book',
-            author: 'Author A',
-            bookDetailsMetadata: {hasSynopsis: true},
-            primaryGenre: 'Fantasy',
-            subgenres: ['Epic & High Fantasy'],
-            coverUrl: 'https://example.com/cover.jpg',
-            geoMetadata: {locations: [{name: 'Paris'}]},
-            temporalMetadata: {startYear: 1800, eraName: '19th Century'},
-            addedAt: '2026-01-01',
-          }),
-        },
-        {
-          id: 'b2',
-          data: () => ({
-            title: 'Incomplete Book',
-            author: 'Author B',
-            addedAt: '2026-01-02',
-          }),
-        },
-      ];
-
-      mockBooksGet.mockResolvedValueOnce({
-        forEach: (cb: (doc: unknown) => void) => mockBookDocs.forEach(cb),
-      });
-
-      const res = await LibraryService.getFilteredBooks(
+  describe('getLibrary with prefetched context data', () => {
+    it('reuses prefetched library data and callerRole without extra Firestore reads', async () => {
+      const lib = await LibraryService.getLibrary(
         'u1',
         'u1@example.com',
+        'lib1',
         {
-          libraryId: 'lib1',
-          limit: 50,
-        },
-      );
-
-      expect(res.books.length).toBe(2);
-
-      const b1 = res.books[0];
-      expect(b1.metadataStatus).toEqual({
-        hasGeo: true,
-        hasTemporal: true,
-        hasGenre: true,
-        hasSynopsis: true,
-        hasCoverImage: true,
-      });
-
-      const b2 = res.books[1];
-      expect(b2.metadataStatus).toEqual({
-        hasGeo: false,
-        hasTemporal: false,
-        hasGenre: false,
-        hasSynopsis: false,
-        hasCoverImage: false,
-      });
-    });
-
-    it('filters books by missing metadata criteria (e.g. missing cover image)', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({
-          ownerId: 'u1',
-        }),
-      });
-
-      const mockBookDocs = [
-        {
-          id: 'b1',
-          data: () => ({
-            title: 'With Cover',
-            author: 'Author A',
-            coverUrl: 'https://example.com/cover.jpg',
-          }),
-        },
-        {
-          id: 'b2',
-          data: () => ({
-            title: 'Without Cover',
-            author: 'Author B',
-          }),
-        },
-      ];
-
-      mockBooksGet.mockResolvedValueOnce({
-        forEach: (cb: (doc: unknown) => void) => mockBookDocs.forEach(cb),
-      });
-
-      const res = await LibraryService.getFilteredBooks(
-        'u1',
-        'u1@example.com',
-        {
-          libraryId: 'lib1',
-          filters: {
-            missingMetadata: 'coverImage',
+          skipAccessCheck: true,
+          prefetchedData: {
+            name: 'Prefetched Archive',
+            ownerId: 'u1',
+            ownerName: 'Archivist',
+            bookCount: 42,
+            createdAt: '2026-01-01T00:00:00.000Z',
           },
-          limit: 50,
+          callerRole: 'owner',
         },
       );
 
-      expect(res.books.length).toBe(1);
-      expect(res.books[0].id).toBe('b2');
-      expect(res.books[0].title).toBe('Without Cover');
+      expect(mockLibGet).not.toHaveBeenCalled();
+      expect(lib.id).toBe('lib1');
+      expect(lib.name).toBe('Prefetched Archive');
+      expect(lib.callerRole).toBe('owner');
+      expect(lib.isOwner).toBe(true);
+      expect(lib.canEdit).toBe(true);
     });
   });
 

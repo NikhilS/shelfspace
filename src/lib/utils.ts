@@ -1,5 +1,4 @@
-import {FirestoreDate} from '../types';
-import {BookDetails} from '../services/bookApi';
+import {FirestoreDate, BookDetails, CoverCandidate} from '../types';
 import {clsx, type ClassValue} from 'clsx';
 import {twMerge} from 'tailwind-merge';
 
@@ -49,12 +48,22 @@ export function getFirestoreTime(
 ): number {
   if (!dateObj) return 0;
 
-  if (
-    typeof dateObj === 'object' &&
-    'toMillis' in dateObj &&
-    typeof dateObj.toMillis === 'function'
-  ) {
-    return dateObj.toMillis();
+  if (typeof dateObj === 'object') {
+    if ('toMillis' in dateObj && typeof dateObj.toMillis === 'function') {
+      return dateObj.toMillis();
+    }
+    if (
+      'toDate' in dateObj &&
+      typeof (dateObj as {toDate?: () => Date}).toDate === 'function'
+    ) {
+      return (dateObj as {toDate: () => Date}).toDate().getTime();
+    }
+    const sec =
+      (dateObj as {seconds?: number; _seconds?: number}).seconds ??
+      (dateObj as {seconds?: number; _seconds?: number})._seconds;
+    if (typeof sec === 'number') {
+      return sec * 1000;
+    }
   }
 
   const d = new Date(dateObj as string | number | Date);
@@ -83,6 +92,9 @@ export interface GenericBookInput {
   synopsis?: string;
   authorBio?: string;
   format?: 'physical' | 'digital';
+  coverCandidates?: CoverCandidate[];
+  sources?: string[];
+  fieldSources?: Record<string, string>;
 }
 
 export function normalizeBookDetails(raw: GenericBookInput): BookDetails {
@@ -103,6 +115,13 @@ export function normalizeBookDetails(raw: GenericBookInput): BookDetails {
     synopsis: normalizeText(raw.synopsis || ''),
     authorBio: normalizeText(raw.authorBio || ''),
     format: raw.format || 'physical',
+    ...(raw.coverCandidates && raw.coverCandidates.length > 0
+      ? {coverCandidates: raw.coverCandidates}
+      : {}),
+    ...(raw.sources && raw.sources.length > 0 ? {sources: raw.sources} : {}),
+    ...(raw.fieldSources && Object.keys(raw.fieldSources).length > 0
+      ? {fieldSources: raw.fieldSources}
+      : {}),
   };
 }
 

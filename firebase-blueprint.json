@@ -27,6 +27,7 @@
           "additionalProperties": { "type": "string", "enum": ["owner", "editor", "viewer"] }
         },
         "heroImageUrl": { "type": "string" },
+        "isVirtual": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "ownerId", "createdAt"]
@@ -49,9 +50,14 @@
         "isCustomPrimary": { "type": "boolean" },
         "series": { "type": "string" },
         "format": { "type": "string", "enum": ["physical", "digital"] },
+        "ownershipStatus": { "type": "string", "enum": ["owned", "unowned"] },
         "userStatuses": { 
           "type": "object",
-          "additionalProperties": { "type": "string", "enum": ["unset", "reading", "finished", "abandoned"] }
+          "additionalProperties": { "type": "string", "enum": ["unset", "want_to_read", "reading", "finished", "abandoned"] }
+        },
+        "userRatings": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
         },
         "geoMetadata": {
           "type": "object",
@@ -176,7 +182,9 @@
         "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
         "requestedAt": { "type": "string", "format": "date-time" },
         "reviewedAt": { "type": "string", "format": "date-time" },
-        "reviewedBy": { "type": "string", "format": "email" }
+        "reviewedBy": { "type": "string", "format": "email" },
+        "invitedBy": { "type": "string", "format": "email" },
+        "invitedLibraryName": { "type": "string" }
       },
       "required": ["email", "status", "requestedAt"]
     }

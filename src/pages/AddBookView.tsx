@@ -7,7 +7,7 @@ import {
   Search,
   WifiOff,
 } from 'lucide-react';
-import {BookDetails} from '../services/bookApi';
+import {BookDetails} from '../types';
 import {toast} from 'sonner';
 import {useParams} from 'react-router-dom';
 import {BackToLibrary} from '../components/layout/BackToLibrary';
@@ -179,7 +179,12 @@ export default function AddBookView() {
               )}
 
               {activeTab === 'scan' && (
-                <ScanISBNTab addBooks={addBooks} isAddingAll={isAddingAll} />
+                <ScanISBNTab
+                  addBooks={addBooks}
+                  isAddingAll={isAddingAll}
+                  existingBooks={existingBooks}
+                  allowDuplicates={allowDuplicates}
+                />
               )}
 
               {activeTab === 'camera' && (

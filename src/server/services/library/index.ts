@@ -1,7 +1,12 @@
-import {verifyLibraryAccess, getUserRole} from './libraryShareService';
+import {
+  verifyLibraryAccess,
+  getUserRole,
+  upsertCollaborator,
+  removeCollaborator,
+  getCollaboratorStatuses,
+} from './libraryShareService';
 import {
   getUserLibraries,
-  getFilteredBooks,
   getLibrary,
   createLibrary,
   updateLibrary,
@@ -20,13 +25,15 @@ export type {LibraryApiRecord};
 export class LibraryService {
   static verifyLibraryAccess = verifyLibraryAccess;
   static getUserLibraries = getUserLibraries;
-  static getFilteredBooks = getFilteredBooks;
   static resetMetadata = resetMetadata;
   static getLibrary = getLibrary;
   static createLibrary = createLibrary;
   static updateLibrary = updateLibrary;
   static deleteLibrary = deleteLibrary;
   static getUserRole = getUserRole;
+  static upsertCollaborator = upsertCollaborator;
+  static removeCollaborator = removeCollaborator;
+  static getCollaboratorStatuses = getCollaboratorStatuses;
   static listAllowedDuplicates = listAllowedDuplicates;
   static allowDuplicateGroup = allowDuplicateGroup;
   static uploadImage = uploadImage;
@@ -35,13 +42,15 @@ export class LibraryService {
 export {
   verifyLibraryAccess,
   getUserLibraries,
-  getFilteredBooks,
   resetMetadata,
   getLibrary,
   createLibrary,
   updateLibrary,
   deleteLibrary,
   getUserRole,
+  upsertCollaborator,
+  removeCollaborator,
+  getCollaboratorStatuses,
   listAllowedDuplicates,
   allowDuplicateGroup,
   uploadImage,

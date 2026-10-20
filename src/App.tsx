@@ -27,10 +27,12 @@ import {
   DashboardMainSkeleton,
 } from './components/book/LibrarySkeletons';
 import {useDebug} from './stores/debugStore';
+import {createLogger} from './lib/telemetry';
 import {Button} from './components/ui/button';
 import {WaitlistScreen} from './components/account/WaitlistScreen';
 
 import Dashboard from './pages/Dashboard';
+import LibraryView from './pages/LibraryView';
 import Login from './pages/Login';
 
 // Initialize Auth
@@ -49,7 +51,6 @@ function lazyWithRetry<T extends React.ComponentType<unknown>>(
   });
 }
 
-const LibraryView = lazyWithRetry(() => import('./pages/LibraryView'));
 const BookDetailsView = lazyWithRetry(() => import('./pages/BookDetailsView'));
 const AddBookView = lazyWithRetry(() => import('./pages/AddBookView'));
 const ConstellationMap = lazyWithRetry(
@@ -75,8 +76,9 @@ function PageWrapper({children}: {children?: React.ReactNode}) {
 
   return (
     <div className="w-full flex-1">
-      <ErrorBoundary>
+      <ErrorBoundary key={location.pathname}>
         <Suspense
+          key={location.pathname}
           fallback={
             isLibraryRoute ? (
               <LibraryMainSkeleton />
@@ -326,14 +328,20 @@ function ThemeProvider({children}: {children: React.ReactNode}) {
   return <>{children}</>;
 }
 
+const routerLogger = createLogger('Router');
+
 function DebugDataClearer() {
   const location = useLocation();
   const {setDebugData} = useDebug();
 
   React.useEffect(() => {
-    // Clear debug data on route change
+    // Clear debug data on route change and emit structured navigation breadcrumb
     setDebugData(null);
-  }, [location.pathname, setDebugData]);
+    routerLogger.info(`Navigated to ${location.pathname}${location.search}`, {
+      pathname: location.pathname,
+      search: location.search,
+    });
+  }, [location.pathname, location.search, setDebugData]);
 
   return null;
 }

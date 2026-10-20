@@ -1,5 +1,4 @@
-import {BookDetails} from '../../services/bookApi';
-import {Book} from '../../types';
+import {Book, BookDetails} from '../../types';
 import {trpc} from '../../lib/trpc';
 
 export function useExistingBooks(libraryId?: string) {

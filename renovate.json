@@ -1,0 +1,52 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "group:allNonMajor"
+  ],
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "postUpdateOptions": ["npmDedupe"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["before 5am on the first day of the month"]
+  },
+  "packageRules": [
+    {
+      "description": "Automerge all non-major patch and minor updates once CI passes",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "Group TanStack Query packages together",
+      "groupName": "TanStack Query",
+      "matchPackagePrefixes": ["@tanstack/"]
+    },
+    {
+      "description": "Group tRPC client, server, and React Query packages together",
+      "groupName": "tRPC",
+      "matchPackagePrefixes": ["@trpc/"]
+    },
+    {
+      "description": "Group Radix UI primitives together",
+      "groupName": "Radix UI",
+      "matchPackagePrefixes": ["@radix-ui/"]
+    },
+    {
+      "description": "Group Firebase client and admin SDKs",
+      "groupName": "Firebase",
+      "matchPackageNames": ["firebase", "firebase-admin", "@firebase/eslint-plugin-security-rules"]
+    },
+    {
+      "description": "Require manual review for major version upgrades",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "dependencyDashboardApproval": false
+    }
+  ]
+}

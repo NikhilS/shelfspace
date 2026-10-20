@@ -1,6 +1,7 @@
 import React, {useState} from 'react';
-import {BookDetails} from '../../services/bookApi';
+import {BookDetails} from '../../types';
 import CoverCamera from '../../components/import/CoverCamera';
+import {CoverGalleryPicker} from '../../components/book/CoverGalleryPicker';
 import {Camera, X, Loader2} from 'lucide-react';
 import {toast} from 'sonner';
 import {useForm} from 'react-hook-form';
@@ -91,6 +92,9 @@ export function ManualEntryTab({
   });
 
   const formatValue = watch('format');
+  const watchedTitle = watch('title');
+  const watchedAuthor = watch('author');
+  const watchedIsbn = watch('isbn');
 
   const onSubmit = async (data: ManualEntryFormValues) => {
     if (!isOnline) {
@@ -132,7 +136,7 @@ export function ManualEntryTab({
 
   return (
     <div className="space-y-6 sm:space-y-8 bg-surface-container-low/30 p-3 sm:p-6 rounded-xl sm:rounded-3xl border border-outline-variant/30 mt-2 sm:mt-4">
-      <div className="flex flex-col items-center mb-6">
+      <div className="flex flex-col items-center mb-6 gap-3">
         {isCoverCameraActive ? (
           <CoverCamera
             onCapture={base64Image => {
@@ -183,6 +187,15 @@ export function ManualEntryTab({
             )}
           </div>
         )}
+        <div className="w-full max-w-md">
+          <CoverGalleryPicker
+            title={watchedTitle}
+            author={watchedAuthor}
+            isbn={watchedIsbn}
+            activeCoverUrl={coverUrl}
+            onSelectCover={url => setCoverUrl(url)}
+          />
+        </div>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">

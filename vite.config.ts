@@ -3,140 +3,17 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
-import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
-    plugins: [
-      react(),
-      tailwindcss(),
-      VitePWA({
-        registerType: 'autoUpdate',
-        includeAssets: ['icon.png'],
-        devOptions: {
-          enabled: false,
-        },
-        workbox: {
-          cleanupOutdatedCaches: true,
-          skipWaiting: true,
-          clientsClaim: true,
-          navigateFallback: null,
-          maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-          globPatterns: ['**/*.{ico,png,svg,woff,woff2}'],
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts-cache',
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365, // <== 365 days
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'gstatic-fonts-cache',
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365, // <== 365 days
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/books\.google\.com\/books\/content.*/i,
-              handler: 'StaleWhileRevalidate',
-              options: {
-                cacheName: 'google-books-covers',
-                expiration: {
-                  maxEntries: 100,
-                  maxAgeSeconds: 60 * 60 * 24 * 30, // <== 30 days
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/covers\.openlibrary\.org\/.*/i,
-              handler: 'StaleWhileRevalidate',
-              options: {
-                cacheName: 'openlibrary-covers',
-                expiration: {
-                  maxEntries: 100,
-                  maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/upload\.wikimedia\.org\/.*/i,
-              handler: 'StaleWhileRevalidate',
-              options: {
-                cacheName: 'wikimedia-covers',
-                expiration: {
-                  maxEntries: 100,
-                  maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
-                },
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
-          ],
-        },
-        manifest: {
-          id: '/',
-          start_url: '/',
-          scope: '/',
-          name: 'book(ish) Library',
-          short_name: 'book(ish)',
-          description: 'Modern Archivist Personal Library Catalog',
-          theme_color: '#fcf9f3',
-          background_color: '#fcf9f3',
-          display: 'standalone',
-          icons: [
-            {
-              src: 'icon.png',
-              sizes: '192x192',
-              type: 'image/png',
-              purpose: 'any',
-            },
-            {
-              src: 'icon.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'any',
-            },
-            {
-              src: 'icon.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'maskable',
-            },
-          ],
-        },
-      }),
-    ],
+    plugins: [react(), tailwindcss()],
     test: {
       environment: 'jsdom',
       setupFiles: ['./src/setupTests.ts'],
       globals: true,
     },
     define: {
-      'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'import.meta.env.VITE_BOOKS_API_KEY': JSON.stringify(
         env.BOOKS_API_KEY || env.VITE_BOOKS_API_KEY,
       ),
@@ -181,7 +58,6 @@ export default defineConfig(({mode}) => {
         'tailwind-merge',
         'class-variance-authority',
         'sonner',
-        'date-fns',
         'zod',
         'react-hook-form',
         '@hookform/resolvers/zod',
@@ -189,19 +65,7 @@ export default defineConfig(({mode}) => {
         '@radix-ui/react-dialog',
         '@radix-ui/react-select',
         'react-virtuoso',
-        'react-markdown',
-        'react-zxing',
-        'swiper/react',
-        'swiper/modules',
-        'd3-shape',
-        'three',
-        '@react-three/fiber',
-        '@react-three/drei',
-        '@vis.gl/react-google-maps',
         'idb-keyval',
-        'bottleneck',
-        'umap-js',
-        'papaparse',
       ],
     },
     server: {
@@ -213,30 +77,39 @@ export default defineConfig(({mode}) => {
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (id.includes('node_modules')) {
-              if (id.includes('firebase')) {
-                return 'vendor-firebase';
-              }
-              if (id.includes('@react-three') || id.includes('three')) {
-                return 'vendor-three';
-              }
-              if (
-                id.includes('@vis.gl') ||
-                id.includes('@googlemaps') ||
-                id.includes('leaflet')
-              ) {
-                return 'vendor-maps';
-              }
-              if (id.includes('@tanstack') || id.includes('@trpc')) {
-                return 'vendor-data';
-              }
-              if (id.includes('zxing')) {
-                return 'vendor-zxing';
-              }
-              if (id.includes('lucide-react') || id.includes('motion')) {
-                return 'vendor-ui';
-              }
-              return 'vendor-core';
+            if (!id.includes('node_modules')) {
+              return undefined;
+            }
+            if (
+              id.includes('/react/') ||
+              id.includes('/react-dom/') ||
+              id.includes('/react-router') ||
+              id.includes('/scheduler/')
+            ) {
+              return 'vendor-react';
+            }
+            if (id.includes('firebase')) {
+              return 'vendor-firebase';
+            }
+            if (id.includes('@tanstack') || id.includes('@trpc')) {
+              return 'vendor-data';
+            }
+            if (
+              id.includes('lucide-react') ||
+              id.includes('motion') ||
+              id.includes('@radix-ui') ||
+              id.includes('sonner')
+            ) {
+              return 'vendor-ui';
+            }
+            if (id.includes('@vis.gl') || id.includes('@googlemaps')) {
+              return 'vendor-maps';
+            }
+            if (id.includes('zxing')) {
+              return 'vendor-zxing';
+            }
+            if (id.includes('swiper')) {
+              return 'vendor-swiper';
             }
             return undefined;
           },

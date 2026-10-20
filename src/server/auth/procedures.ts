@@ -3,31 +3,30 @@ import type {
   SecurityContext,
   LibraryRole,
   AuthUser,
-  OpenApiMeta,
+  CachedLibraryAccess,
 } from './types';
 import {PermissionService} from './permissions';
+import {captureLibraryAccess} from '../services/library/libraryShareService';
+import {safeIdSchema} from '../../schemas/common';
 
-const t = initTRPC.context<SecurityContext>().meta<OpenApiMeta>().create();
+export const t = initTRPC.context<SecurityContext>().create();
 
 export const router = t.router;
-export const middleware = t.middleware;
-
-/**
- * Public procedure - no authentication required.
- */
 export const publicProcedure = t.procedure;
 
 /**
- * Authenticated procedure - requires authenticated caller (Firebase JWT or API key),
- * regardless of whether they are on the active allowlist yet.
+ * Middleware: Requires an authenticated identity (Firebase JWT),
+ * but does NOT require the user to be on the app allowlist yet.
+ * Used for waitlist status checks and submitting waitlist requests.
  */
-export const authenticatedProcedure = t.procedure.use(({ctx, next}) => {
+const enforceIsAuthenticated = t.middleware(({ctx, next}) => {
   if (!ctx.user) {
     throw new TRPCError({
       code: 'UNAUTHORIZED',
-      message: 'Not authenticated',
+      message: 'Authentication required. Provide a valid Bearer token.',
     });
   }
+
   return next({
     ctx: {
       ...ctx,
@@ -37,82 +36,117 @@ export const authenticatedProcedure = t.procedure.use(({ctx, next}) => {
 });
 
 /**
- * Protected procedure - requires authenticated caller on the active allowlist.
+ * Middleware: Requires an authenticated identity AND app allowlist authorization.
  */
-export const protectedProcedure = t.procedure.use(({ctx, next}) => {
+const enforceUserIsAuthed = t.middleware(({ctx, next}) => {
   if (!ctx.user) {
     throw new TRPCError({
       code: 'UNAUTHORIZED',
-      message: 'Not authenticated',
+      message: 'Authentication required. Provide a valid Bearer token.',
     });
   }
+
   if (!ctx.isAppAllowed) {
     throw new TRPCError({
       code: 'FORBIDDEN',
-      message: 'User not on allowlist',
+      message: 'Forbidden: User is not authorized on the access allowlist.',
     });
   }
+
   return next({
     ctx: {
       ...ctx,
       user: ctx.user as AuthUser,
-      isAppAllowed: true as const,
     },
   });
 });
 
 /**
- * Admin procedure - requires authenticated caller who is also an administrator.
+ * Middleware: Requires the authenticated caller to be an administrator.
  */
-export const adminProcedure = protectedProcedure.use(({ctx, next}) => {
+const enforceUserIsAdmin = enforceUserIsAuthed.unstable_pipe(({ctx, next}) => {
   if (!ctx.isAdmin) {
     throw new TRPCError({
       code: 'FORBIDDEN',
-      message: 'Administrative access required',
+      message: 'Forbidden: Administrative privileges required.',
     });
   }
+
   return next({
     ctx: {
       ...ctx,
-      isAdmin: true as const,
+      user: ctx.user as AuthUser,
+      isAdmin: true,
     },
   });
 });
 
+export const authenticatedProcedure = t.procedure.use(enforceIsAuthenticated);
+export const protectedProcedure = t.procedure.use(enforceUserIsAuthed);
+export const adminProcedure = t.procedure.use(enforceUserIsAdmin);
+
 /**
- * Library RBAC Procedure Factory:
- * Automatically validates caller membership & role before executing procedure.
+ * Creates a procedure that enforces library-level access control (viewer, editor, or owner).
+ * Uses request-isolated AsyncLocalStorage capture to populate libraryData and callerRole
+ * without any cross-request mutable global state.
  */
 export function libraryProcedure(requiredRole: LibraryRole = 'viewer') {
-  return protectedProcedure.use(async ({ctx, next, getRawInput}) => {
-    let raw: unknown;
-    try {
-      raw = await getRawInput();
-    } catch {
-      raw = undefined;
-    }
+  return protectedProcedure.use(async ({ctx, getRawInput, next}) => {
+    const rawInput = (await getRawInput()) as
+      {libraryId?: unknown} | undefined | null;
+    const rawLibraryId = rawInput?.libraryId;
 
-    const input = raw as {libraryId?: string} | undefined;
-    if (!input?.libraryId) {
+    const parsedId = safeIdSchema.safeParse(rawLibraryId);
+    if (!parsedId.success) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
-        message: 'libraryId required for library access validation',
+        message:
+          typeof rawLibraryId === 'string' && rawLibraryId.trim().length > 0
+            ? 'Invalid libraryId format in request input.'
+            : 'Missing required libraryId in request input.',
       });
     }
+    const libraryId = parsedId.data;
 
-    await PermissionService.verifyLibraryAccess(
-      ctx.user,
-      input.libraryId,
-      requiredRole,
-    );
+    const cache =
+      ctx.libraryAccessCache ?? new Map<string, CachedLibraryAccess>();
+    let cached = cache.get(libraryId);
+
+    let resultRole: LibraryRole;
+    if (
+      cached &&
+      PermissionService.hasSufficientRole(cached.role, requiredRole)
+    ) {
+      resultRole = cached.role;
+    } else {
+      const {result: accessResult, captured} = await captureLibraryAccess(() =>
+        PermissionService.verifyLibraryAccess(
+          ctx.user,
+          libraryId,
+          requiredRole,
+        ),
+      );
+      resultRole =
+        typeof accessResult === 'object' && accessResult !== null
+          ? accessResult.role
+          : requiredRole;
+
+      cached = {
+        role: captured?.role ?? resultRole,
+        libraryData: captured?.libraryData,
+      };
+      cache.set(libraryId, cached);
+    }
 
     return next({
       ctx: {
         ...ctx,
-        libraryId: input.libraryId,
+        user: ctx.user as AuthUser,
+        libraryId,
+        callerRole: cached.role,
+        libraryData: cached.libraryData,
+        libraryAccessCache: cache,
       },
     });
   });
 }
-
-export {t};

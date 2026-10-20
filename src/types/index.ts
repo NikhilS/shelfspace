@@ -1,6 +1,32 @@
-import type {BookDetails} from '../services/bookApi';
+import type {
+  BookDetails,
+  CoverCandidate,
+  GeoLocationReference,
+  BookGeoMetadata,
+  BookTemporalMetadata,
+  EnrichmentTypeStatus,
+  BookEnrichmentStatus,
+  BookDetailsMetadata,
+  ClusterCoordinates,
+  BookDetailsPayload,
+  BookReviewRecord,
+} from '../schemas/book';
 
 export * from './metadata';
+
+export type {
+  BookDetails,
+  CoverCandidate,
+  GeoLocationReference,
+  BookGeoMetadata,
+  BookTemporalMetadata,
+  EnrichmentTypeStatus,
+  BookEnrichmentStatus,
+  BookDetailsMetadata,
+  ClusterCoordinates,
+  BookDetailsPayload,
+  BookReviewRecord,
+};
 
 export interface Timestamp {
   seconds?: number;
@@ -10,6 +36,11 @@ export interface Timestamp {
 }
 
 export type FirestoreDate = Timestamp | Date | string | number;
+
+export type ReadingStatusValue =
+  'unset' | 'want_to_read' | 'reading' | 'finished' | 'completed' | 'abandoned';
+
+export type OwnershipStatus = 'owned' | 'unowned';
 
 export interface Library {
   id: string;
@@ -21,6 +52,7 @@ export interface Library {
   updatedAt?: Timestamp | string;
   heroImageUrl?: string | null;
   bookCount?: number;
+  isVirtual?: boolean;
   callerRole?: 'owner' | 'editor' | 'viewer' | 'admin' | null;
   ownershipType?: 'owned' | 'shared' | 'global_admin';
   isOwner?: boolean;
@@ -28,61 +60,11 @@ export interface Library {
 }
 
 export interface UserStatuses {
-  [userId: string]:
-    'unset' | 'reading' | 'finished' | 'completed' | 'abandoned';
+  [userId: string]: ReadingStatusValue;
 }
 
-export interface GeoLocationReference {
-  name: string;
-  adminLevel: 'city' | 'state' | 'country' | 'region';
-  rationale: string;
-  coordinates?: {
-    lat: number;
-    lng: number;
-  };
-}
-
-export interface BookGeoMetadata {
-  isNonEarth: boolean;
-  locations: GeoLocationReference[];
-  lastSyncedAt: string;
-}
-
-export interface BookTemporalMetadata {
-  isNonHistorical: boolean;
-  startYear?: number;
-  endYear?: number;
-  eraName?: string;
-  rationale?: string;
-  lastProcessedAt: string;
-}
-
-export type EnrichmentTypeStatus =
-  | 'completed'
-  | 'unsupported'
-  | 'failed'
-  | 'pending'
-  | 'in_progress'
-  | 'processing'
-  | 'skipped';
-
-export interface BookEnrichmentStatus {
-  geo?: EnrichmentTypeStatus;
-  temporal?: EnrichmentTypeStatus;
-  genre?: EnrichmentTypeStatus;
-  synopsis?: EnrichmentTypeStatus;
-  authorBio?: EnrichmentTypeStatus;
-  coverImage?: EnrichmentTypeStatus;
-  embedding?: EnrichmentTypeStatus;
-  lastAttemptedAt?: string;
-}
-
-export interface BookDetailsMetadata {
-  hasSynopsis?: boolean;
-  hasAuthorBio?: boolean;
-  hasEmbedding?: boolean;
-  hasDescription?: boolean;
-  hasClusterCoordinates?: boolean;
+export interface UserRatings {
+  [userId: string]: number;
 }
 
 export interface Book extends Omit<
@@ -94,11 +76,13 @@ export interface Book extends Omit<
   isbn?: string;
   coverUrl?: string;
   publishedDate?: string;
-  status?: 'unset' | 'reading' | 'finished' | 'completed' | 'abandoned';
+  status?: ReadingStatusValue;
+  ownershipStatus?: OwnershipStatus;
   addedBy?: string | null;
   addedAt: FirestoreDate;
   updatedAt?: FirestoreDate;
   userStatuses?: UserStatuses;
+  userRatings?: UserRatings;
   geoMetadata?: BookGeoMetadata;
   temporalMetadata?: BookTemporalMetadata;
   enrichmentStatus?: BookEnrichmentStatus;
@@ -107,36 +91,8 @@ export interface Book extends Omit<
   synopsis?: string;
   authorBio?: string;
   embedding?: number[];
-  clusterCoordinates?: {
-    x: number;
-    y: number;
-    clusterId?: number;
-    clusterName?: string;
-  };
+  clusterCoordinates?: ClusterCoordinates;
   heavyDetails?: BookDetailsPayload;
-}
-
-export interface BookDetailsPayload {
-  synopsis?: string;
-  authorBio?: string;
-  embedding?: number[];
-  clusterCoordinates?: {
-    x: number;
-    y: number;
-    clusterId?: number;
-    clusterName?: string;
-  };
-  description?: string;
-  updatedAt?: FirestoreDate;
-}
-
-export interface BookReviewRecord {
-  id: string;
-  userId: string;
-  userName: string;
-  rating: number;
-  text: string;
-  createdAt?: string;
 }
 
 export interface FilteredBookRecord {

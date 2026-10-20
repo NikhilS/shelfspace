@@ -1,10 +1,11 @@
 import {Type} from '@google/genai';
 import {
-  getGeminiClient,
   generateContentWithLimiter,
+  geminiEmbeddingProvider,
   isApiKeyError,
   handleGeminiError,
 } from './client';
+import type {SchedulePriority} from '../scheduler/providerQuotaScheduler';
 
 export async function generateClusterNames(
   clusters: {id: number; books: {title: string; author?: string}[]}[],
@@ -31,7 +32,7 @@ ${clusters
 `;
 
     const response = await generateContentWithLimiter({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         systemInstruction:
@@ -101,42 +102,36 @@ ${clusters
 export async function generateBookEmbeddings(
   texts: string[],
   onProgress?: (completed: number, total: number) => void,
+  options?: {priority?: SchedulePriority; signal?: AbortSignal},
 ): Promise<number[][]> {
   try {
     if (!texts || texts.length === 0) return [];
     const embeddings: number[][] = new Array(texts.length).fill([]);
 
-    const BATCH_SIZE = 10;
     let completedCount = 0;
-    const ai = getGeminiClient();
-    for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-      const batchTexts = texts.slice(i, i + BATCH_SIZE);
-      const batchPromises = batchTexts.map(async (text, index) => {
-        let embedResponse;
+    const priority = options?.priority ?? 'BATCH';
+
+    await Promise.all(
+      texts.map(async (text, index) => {
+        if (options?.signal?.aborted) return;
         try {
-          embedResponse = await ai.models.embedContent({
-            model: 'gemini-embedding-2-preview',
-            contents: text,
+          const values = await geminiEmbeddingProvider.embedText(text, {
+            priority,
+            signal: options?.signal,
           });
+          if (values && values.length > 0) {
+            embeddings[index] = values;
+          }
         } catch (err: unknown) {
           console.warn('Failed to embed text: ', err);
+        } finally {
+          completedCount++;
+          if (onProgress) {
+            onProgress(completedCount, texts.length);
+          }
         }
-
-        if (
-          embedResponse &&
-          embedResponse.embeddings &&
-          embedResponse.embeddings.length > 0
-        ) {
-          embeddings[i + index] = embedResponse.embeddings[0].values || [];
-        }
-      });
-
-      await Promise.all(batchPromises);
-      completedCount += batchTexts.length;
-      if (onProgress) {
-        onProgress(completedCount, texts.length);
-      }
-    }
+      }),
+    );
 
     return embeddings;
   } catch (error) {

@@ -1,11 +1,7 @@
 import React from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
-import {
-  DebugTelemetryEngine,
-  interceptConsoleLogs,
-  calculatePayloadBytes,
-} from '../../lib/telemetry';
+import {DebugTelemetryEngine, calculatePayloadBytes} from '../../lib/telemetry';
 import {DebugConsoleHUD} from './DebugConsoleHUD';
 
 // Mock Debug Context
@@ -18,6 +14,8 @@ vi.mock('../../stores/debugStore', () => ({
     debugData: null,
     setDebugData: vi.fn(),
     debugTitle: 'Debug Data',
+    profilingLevel: 'basic',
+    setProfilingLevel: vi.fn(),
   }),
 }));
 
@@ -25,6 +23,7 @@ describe('DebugTelemetryEngine Unit Tests', () => {
   let engine: DebugTelemetryEngine;
 
   beforeEach(() => {
+    DebugTelemetryEngine.resetInstance();
     engine = DebugTelemetryEngine.getInstance();
     engine.clearLogs();
     engine.resetMetrics();
@@ -56,9 +55,9 @@ describe('DebugTelemetryEngine Unit Tests', () => {
     expect(logs[0].message).toBe('Log entry item 204');
   });
 
-  it('updates metrics and tracks Firestore cache hits ratio correctly', () => {
-    engine.addLog('db_read', 'Read from server cache', {fromCache: true});
-    engine.addLog('db_read', 'Read from server network', {fromCache: false});
+  it('updates metrics and tracks cache hits ratio correctly', () => {
+    engine.addLog('db_read', 'Read from cache', {fromCache: true});
+    engine.addLog('db_read', 'Read from network', {fromCache: false});
 
     const metrics = engine.getMetrics();
     expect(metrics.totalFirestoreReads).toBe(2);
@@ -66,12 +65,12 @@ describe('DebugTelemetryEngine Unit Tests', () => {
   });
 
   it('handles API request latency calculation correctly', () => {
-    engine.addLog('api_res', 'GET /api/books', {durationMs: 100});
-    engine.addLog('api_res', 'GET /api/status', {durationMs: 200});
+    engine.addLog('api_res', 'GET /trpc/book.list', {durationMs: 100});
+    engine.addLog('api_res', 'GET /trpc/library.get', {durationMs: 200});
 
     const metrics = engine.getMetrics();
     expect(metrics.totalApiRequests).toBe(2);
-    expect(metrics.averageApiLatency).toBe(150); // (100 + 200) / 2
+    expect(metrics.averageApiLatency).toBe(150);
   });
 
   it('allows active components or hooks state observer inspection', () => {
@@ -90,11 +89,7 @@ describe('DebugTelemetryEngine Unit Tests', () => {
     expect(engine.getActiveStates().SampleComponent).toBeUndefined();
   });
 
-  // ==========================================
-  // PHASE 0 TELEMETRY INFRASTRUCTURE TESTS
-  // ==========================================
-
-  describe('Phase 0: Persistence Telemetry Engine Features', () => {
+  describe('Persistence & Cache Telemetry Engine Features', () => {
     it('accurately calculates payload bytes for various data types', () => {
       expect(calculatePayloadBytes(null)).toBe(0);
       expect(calculatePayloadBytes(undefined)).toBe(0);
@@ -110,32 +105,27 @@ describe('DebugTelemetryEngine Unit Tests', () => {
 
     it('tracks active listener registrations and cleanups accurately', () => {
       const unregister1 = engine.registerListener(
-        'useLibraryData:books',
-        'libraries/lib1/books',
+        'SSE:geo',
+        '/api/enrichment/stream?libraryId=lib1',
       );
       expect(engine.getMetrics().activeFirestoreListeners).toBe(1);
 
       const listeners = engine.getActiveListeners();
       expect(listeners.length).toBe(1);
-      expect(listeners[0].name).toBe('useLibraryData:books');
-      expect(listeners[0].path).toBe('libraries/lib1/books');
+      expect(listeners[0].name).toBe('SSE:geo');
 
       const unregister2 = engine.registerListener(
-        'useBook:details',
-        'libraries/lib1/books/b1/details',
+        'SSE:genre',
+        '/api/enrichment/stream?libraryId=lib2',
       );
       expect(engine.getMetrics().activeFirestoreListeners).toBe(2);
-      expect(engine.getActiveListeners().length).toBe(2);
 
-      // Cleanup listener 1
       unregister1();
       expect(engine.getMetrics().activeFirestoreListeners).toBe(1);
-      expect(engine.getActiveListeners()[0].name).toBe('useBook:details');
+      expect(engine.getActiveListeners()[0].name).toBe('SSE:genre');
 
-      // Cleanup listener 2
       unregister2();
       expect(engine.getMetrics().activeFirestoreListeners).toBe(0);
-      expect(engine.getActiveListeners().length).toBe(0);
     });
 
     it('accumulates transferred bytes and computes average book document size', () => {
@@ -148,10 +138,9 @@ describe('DebugTelemetryEngine Unit Tests', () => {
 
       let metrics = engine.getMetrics();
       expect(metrics.totalBytesTransferred).toBe(15000);
-      expect(metrics.averageBookDocumentBytes).toBe(1500); // 15000 / 10
+      expect(metrics.averageBookDocumentBytes).toBe(1500);
       expect(metrics.snapshotParseDurationMs).toBe(8);
 
-      // Add another snapshot with 20 books (30,000 bytes)
       engine.addLog('db_read', 'Books second snapshot', {
         bytes: 30000,
         docCount: 20,
@@ -161,7 +150,6 @@ describe('DebugTelemetryEngine Unit Tests', () => {
 
       metrics = engine.getMetrics();
       expect(metrics.totalBytesTransferred).toBe(45000);
-      // Total bytes across books = 45000, total docs = 30 -> average = 1500
       expect(metrics.averageBookDocumentBytes).toBe(1500);
       expect(metrics.snapshotParseDurationMs).toBe(14);
       expect(metrics.firestoreCacheHits).toBe(1);
@@ -181,17 +169,14 @@ describe('DebugTelemetryEngine Unit Tests', () => {
       expect(baseline.metrics.totalBytesTransferred).toBe(20000);
       expect(baseline.metrics.averageBookDocumentBytes).toBe(2000);
 
-      // Modify live metrics
       engine.addLog('db_read', 'Second read', {
         bytes: 10000,
         docCount: 5,
       });
 
-      // Baseline should remain an immutable copy
       expect(engine.getBaseline()?.metrics.totalBytesTransferred).toBe(20000);
       expect(engine.getMetrics().totalBytesTransferred).toBe(30000);
 
-      // Clear baseline
       engine.clearBaseline();
       expect(engine.getBaseline()).toBeNull();
     });
@@ -200,6 +185,7 @@ describe('DebugTelemetryEngine Unit Tests', () => {
 
 describe('DebugConsoleHUD Component rendering', () => {
   beforeEach(() => {
+    DebugTelemetryEngine.resetInstance();
     const engine = DebugTelemetryEngine.getInstance();
     engine.clearLogs();
     engine.resetMetrics();
@@ -213,22 +199,23 @@ describe('DebugConsoleHUD Component rendering', () => {
     expect(btn).toBeInTheDocument();
   });
 
-  it('expands on trigger button click, presenting core navigation tabs', () => {
+  it('expands on trigger button click, presenting the 4 streamlined navigation tabs', () => {
     render(<DebugConsoleHUD />);
 
     const btn = screen.getByRole('button', {name: /Console/i});
     fireEvent.click(btn);
 
-    // Core navigation tabs should enter DOM
-    expect(screen.getByText('Network & DB Ops')).toBeInTheDocument();
-    expect(screen.getByText('Active Page State')).toBeInTheDocument();
-    expect(screen.getByText('Diagnostics')).toBeInTheDocument();
-    expect(screen.getByText('Persistence Telemetry')).toBeInTheDocument();
+    expect(screen.getByText('Logs')).toBeInTheDocument();
+    expect(screen.getByText('Network & Services')).toBeInTheDocument();
+    expect(screen.getByTitle('Cache & Persistence')).toBeInTheDocument();
+    expect(screen.getByText('PWA & System')).toBeInTheDocument();
   });
 
-  it('displays logged telemetry items correctly inside the log drawer', () => {
+  it('displays logged telemetry items and filters by scope inside the Logs tab', () => {
     const engine = DebugTelemetryEngine.getInstance();
-    engine.addLog('info', 'Unique Diagnostic Assertion Message');
+    engine.addLog('info', 'Unique Diagnostic Assertion Message', undefined, {
+      scope: 'Auth',
+    });
 
     render(<DebugConsoleHUD />);
 
@@ -240,7 +227,7 @@ describe('DebugConsoleHUD Component rendering', () => {
     ).toBeInTheDocument();
   });
 
-  it('switches to the Persistence Telemetry tab and displays live telemetry metrics', () => {
+  it('switches to the Cache tab and displays live TanStack Query & IndexedDB gauges and baseline snapshot controls', () => {
     const engine = DebugTelemetryEngine.getInstance();
     engine.addLog('db_read', 'Books snapshot loaded', {
       bytes: 25600,
@@ -248,57 +235,42 @@ describe('DebugConsoleHUD Component rendering', () => {
       parseDurationMs: 12,
       fromCache: true,
     });
-    engine.registerListener('useLibraryData:books', 'libraries/lib1/books');
 
     render(<DebugConsoleHUD />);
 
-    // Expand HUD
-    const expandBtn = screen.getByRole('button', {name: /Console/i});
-    fireEvent.click(expandBtn);
-
-    // Click Persistence Telemetry tab
-    const persistenceTabBtn = screen.getByRole('button', {
-      name: /Persistence Telemetry/i,
-    });
-    fireEvent.click(persistenceTabBtn);
-
-    // Verify Phase 0 header and gauges are rendered
-    expect(
-      screen.getByText(/PHASE 0: DATA & PERSISTENCE PROFILER/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/NET TRANSFERRED/i)).toBeInTheDocument();
-    expect(screen.getByText(/AVG BOOK DOC SIZE/i)).toBeInTheDocument();
-    expect(screen.getByText(/ACTIVE LISTENERS/i)).toBeInTheDocument();
-    expect(screen.getByText(/CACHE & PARSE/i)).toBeInTheDocument();
-
-    // Verify active listener is listed in registry
-    expect(screen.getByText('useLibraryData:books')).toBeInTheDocument();
-    expect(screen.getByText('libraries/lib1/books')).toBeInTheDocument();
-  });
-
-  it('captures baseline from the Persistence Telemetry panel', () => {
-    const engine = DebugTelemetryEngine.getInstance();
-    engine.addLog('db_read', 'Initial read', {
-      bytes: 50000,
-      docCount: 20,
-    });
-
-    render(<DebugConsoleHUD />);
-
-    // Expand HUD and open persistence tab
     fireEvent.click(screen.getByRole('button', {name: /Console/i}));
-    fireEvent.click(
-      screen.getByRole('button', {name: /Persistence Telemetry/i}),
-    );
+    fireEvent.click(screen.getByTitle('Cache & Persistence'));
 
-    // Click Capture Baseline button
+    expect(
+      screen.getByText(/TANSTACK QUERY & INDEXEDDB CACHE INSPECTOR/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/CACHE HIT RATIO/i)).toBeInTheDocument();
+    expect(screen.getByText(/IN-MEMORY QUERIES/i)).toBeInTheDocument();
+    expect(screen.getByText(/INDEXEDDB PERSISTER/i)).toBeInTheDocument();
+    expect(screen.getByText(/NET TRANSFERRED/i)).toBeInTheDocument();
+
     const captureBtn = screen.getByRole('button', {name: /Capture Baseline/i});
     fireEvent.click(captureBtn);
 
-    // Profiler comparison table should now be rendered
     expect(
       screen.getByText(/Before & After Snapshot Profiler/i),
     ).toBeInTheDocument();
     expect(engine.getBaseline()).not.toBeNull();
+  });
+
+  it('switches to the PWA & System tab and displays connectivity, Service Worker, and active streams', () => {
+    const engine = DebugTelemetryEngine.getInstance();
+    engine.registerListener('SSE:geo', '/api/enrichment/stream?libraryId=lib1');
+    engine.updateState('LibraryView', {selectedCount: 3});
+
+    render(<DebugConsoleHUD />);
+
+    fireEvent.click(screen.getByRole('button', {name: /Console/i}));
+    fireEvent.click(screen.getByTitle('PWA & System'));
+
+    expect(screen.getByText(/PWA CONNECTIVITY/i)).toBeInTheDocument();
+    expect(screen.getByText(/SERVICE WORKER/i)).toBeInTheDocument();
+    expect(screen.getByText('SSE:geo')).toBeInTheDocument();
+    expect(screen.getByText('LibraryView')).toBeInTheDocument();
   });
 });

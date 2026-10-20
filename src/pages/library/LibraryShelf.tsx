@@ -1,4 +1,4 @@
-import React, {useMemo} from 'react';
+import React, {useMemo, useCallback} from 'react';
 import {useNavigate, useLocation} from 'react-router-dom';
 import {Book} from '../../types';
 import {VirtuosoGrid} from 'react-virtuoso';
@@ -7,6 +7,7 @@ import BookCard from '../../components/book/BookCard';
 import {SortOption} from '../../hooks/useBookFilters';
 import {User} from 'firebase/auth';
 import {Checkbox} from '@/components/ui/checkbox';
+import {preloadRouteChunk} from '../../lib/routePreload';
 import {
   DataTable,
   DataTableColumn,
@@ -47,6 +48,23 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Precompute ordered bookIds array once per books change rather than inside every card click handler
+  const bookIds = useMemo(() => books.map(b => b.id), [books]);
+  const isSelectMode = selectedBooks.size > 0;
+
+  const handleNavigateBook = useCallback(
+    (bookId: string) => {
+      preloadRouteChunk('bookDetails');
+      void navigate(`/library/${libraryId}/book/${bookId}`, {
+        state: {
+          from: location.pathname + location.search,
+          bookList: bookIds,
+        },
+      });
+    },
+    [navigate, libraryId, location.pathname, location.search, bookIds],
+  );
+
   const allBooksSelected =
     books.length > 0 && books.every(b => selectedBooks.has(b.id));
   const someBooksSelected =
@@ -65,9 +83,9 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
         id: 'title',
         header: () => (
           <div className="flex items-center gap-4">
-            {user && (
+            {canEdit && user && (
               <div
-                className={`w-8 flex items-center justify-center flex-shrink-0 transition-opacity ${selectedBooks.size > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                className={`w-8 flex items-center justify-center flex-shrink-0 transition-opacity ${isSelectMode ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 onClick={e => {
                   e.stopPropagation();
                   toggleAllBooks(books);
@@ -93,7 +111,7 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
             coverUrl={book.coverUrl}
             userStatus={user ? book.userStatuses?.[user.uid] : undefined}
             isSelected={selectedBooks.has(book.id)}
-            showCheckbox={Boolean(user)}
+            showCheckbox={Boolean(canEdit && user)}
             onToggleSelect={e => toggleBookSelection(e, book.id)}
           />
         ),
@@ -122,6 +140,7 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
       books,
       user,
       selectedBooks,
+      isSelectMode,
       shelfSelectAllState,
       toggleAllBooks,
       toggleBookSelection,
@@ -139,14 +158,7 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
             sortColumn={sortBy}
             sortDirection={sortOrder}
             onSort={colId => handleSort(colId as SortOption)}
-            onRowClick={book =>
-              navigate(`/library/${libraryId}/book/${book.id}`, {
-                state: {
-                  from: location.pathname + location.search,
-                  bookList: books.map(b => b.id),
-                },
-              })
-            }
+            onRowClick={book => handleNavigateBook(book.id)}
             rowClassName={() =>
               'group hover:bg-surface-container-low/50 transition-colors cursor-pointer border-b border-surface-variant/60'
             }
@@ -181,18 +193,9 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
               canEdit={!!canEdit}
               book={book}
               isSelected={selectedBooks.has(book.id)}
-              isSelectMode={selectedBooks.size > 0}
-              onSelect={
-                canEdit ? e => toggleBookSelection(e, book.id) : undefined
-              }
-              onClick={() =>
-                navigate(`/library/${libraryId}/book/${book.id}`, {
-                  state: {
-                    from: location.pathname + location.search,
-                    bookList: books.map(b => b.id),
-                  },
-                })
-              }
+              isSelectMode={isSelectMode}
+              onSelectBook={canEdit ? toggleBookSelection : undefined}
+              onNavigateBook={handleNavigateBook}
             />
           )}
         />

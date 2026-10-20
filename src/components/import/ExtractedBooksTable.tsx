@@ -11,7 +11,7 @@ import {toast} from 'sonner';
 import {Checkbox} from '../ui/checkbox';
 import {Button} from '../ui/button';
 import {logger} from '../../stores/debugStore';
-import {BookDetails} from '../../services/bookApi';
+import {BookDetails} from '../../types';
 
 type ExtractedBook = {
   title: string;

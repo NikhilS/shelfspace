@@ -187,10 +187,22 @@ export function WaitlistScreen({
                 <h1 className="font-sans text-2xl sm:text-3xl font-bold tracking-tight text-primary">
                   You&apos;re on the list.
                 </h1>
-                <p className="font-sans text-sm sm:text-base text-on-surface-variant leading-relaxed">
-                  We are rolling out access in small cohorts to preserve catalog
-                  quality and dedicated Gemini AI compute.
-                </p>
+                {entry?.invitedLibraryName ? (
+                  <p className="font-sans text-sm sm:text-base text-on-surface-variant leading-relaxed">
+                    You have been invited to collaborate on{' '}
+                    <strong className="text-on-surface">
+                      {entry.invitedLibraryName}
+                    </strong>
+                    {entry.invitedBy ? ` by ${entry.invitedBy}` : ''}. An
+                    administrator will review and activate your global archive
+                    access shortly.
+                  </p>
+                ) : (
+                  <p className="font-sans text-sm sm:text-base text-on-surface-variant leading-relaxed">
+                    We are rolling out access in small cohorts to preserve
+                    catalog quality and dedicated Gemini AI compute.
+                  </p>
+                )}
               </div>
 
               {/* User applicant metadata card */}

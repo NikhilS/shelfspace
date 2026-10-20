@@ -1,11 +1,15 @@
+import {TRPCError} from '@trpc/server';
 import {getAdminDb, FieldValue} from '../services/firebaseAdmin';
 import {SUPERADMIN_EMAIL} from '../../constants/auth';
+import {validateAndNormalizeEmail} from '../../schemas/common';
 import type {SecurityPermissions} from './types';
 
 interface CachedUserPerms {
   perms: SecurityPermissions;
   expiresAt: number;
 }
+
+const ALLOWED_ROLES = new Set(['user', 'admin']);
 
 export class AllowlistService {
   private static cache = new Map<string, CachedUserPerms>();
@@ -22,8 +26,10 @@ export class AllowlistService {
       return {isAppAllowed: false, isAdmin: false};
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
-    if (!normalizedEmail) {
+    let normalizedEmail: string;
+    try {
+      normalizedEmail = validateAndNormalizeEmail(email);
+    } catch {
       return {isAppAllowed: false, isAdmin: false};
     }
 
@@ -107,10 +113,26 @@ export class AllowlistService {
   }
 
   /**
-   * Adds or updates an allowlisted user.
+   * Adds or updates an allowlisted user, and synchronizes any existing waitlist entry to approved.
    */
   static async addUser(email: string, role: string = 'user'): Promise<void> {
-    const normalized = email.toLowerCase().trim();
+    let normalized: string;
+    try {
+      normalized = validateAndNormalizeEmail(email);
+    } catch (err) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: err instanceof Error ? err.message : 'Invalid email address',
+      });
+    }
+
+    if (!ALLOWED_ROLES.has(role)) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `Invalid allowlist role '${role}'. Allowed roles: 'user', 'admin'`,
+      });
+    }
+
     const db = getAdminDb();
     await db.collection('appSettings/allowlist/users').doc(normalized).set(
       {
@@ -121,13 +143,65 @@ export class AllowlistService {
       {merge: true},
     );
     this.setCache(normalized, {isAppAllowed: true, isAdmin: role === 'admin'});
+
+    // Synchronize existing waitlist record if one exists so approved users don't remain in pending queue
+    try {
+      const waitlistRef = db.doc(`appSettings/waitlist/entries/${normalized}`);
+      const waitlistSnap = await waitlistRef.get();
+      if (waitlistSnap && waitlistSnap.exists) {
+        const currentData = waitlistSnap.data() as
+          {status?: string} | undefined;
+        if (currentData?.status !== 'approved') {
+          await waitlistRef.set(
+            {
+              email: normalized,
+              status: 'approved',
+              reviewedAt: new Date().toISOString(),
+            },
+            {merge: true},
+          );
+        }
+      }
+    } catch {
+      // Non-fatal if waitlist collection is unavailable or unmocked in isolated tests
+    }
   }
 
   /**
    * Removes a user from the allowlist.
+   * Blocks removing SUPERADMIN_EMAIL or the acting administrator's own account.
    */
-  static async removeUser(email: string): Promise<void> {
-    const normalized = email.toLowerCase().trim();
+  static async removeUser(
+    email: string,
+    actingAdminEmail?: string,
+  ): Promise<void> {
+    let normalized: string;
+    try {
+      normalized = validateAndNormalizeEmail(email);
+    } catch (err) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: err instanceof Error ? err.message : 'Invalid email address',
+      });
+    }
+
+    if (normalized === SUPERADMIN_EMAIL.toLowerCase().trim()) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'Cannot remove superadmin from the allowlist',
+      });
+    }
+
+    if (
+      actingAdminEmail &&
+      normalized === actingAdminEmail.toLowerCase().trim()
+    ) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Administrators cannot remove their own allowlist entry',
+      });
+    }
+
     const db = getAdminDb();
     await db.collection('appSettings/allowlist/users').doc(normalized).delete();
     this.cache.delete(normalized);

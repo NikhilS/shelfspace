@@ -74,7 +74,7 @@ export function WaitlistManagement() {
   const entries = data?.entries || [];
 
   const reviewMutation = trpc.auth.reviewWaitlistEntry.useMutation({
-    onSuccess: (result, variables) => {
+    onSuccess: (_result, variables) => {
       void utils.auth.listWaitlist.invalidate();
       void utils.auth.listAllowlist.invalidate();
       if (variables.action === 'approve') {
@@ -447,6 +447,11 @@ function WaitlistRow({
               {entry.displayName || 'Reader'}
             </span>
             <StatusBadge status={entry.status} />
+            {entry.invitedLibraryName && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-primary/10 text-primary border border-primary/20">
+                Invited to &ldquo;{entry.invitedLibraryName}&rdquo;
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-xs text-on-surface-variant truncate mt-0.5">

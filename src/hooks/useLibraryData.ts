@@ -1,4 +1,4 @@
-import {useEffect, useMemo} from 'react';
+import {useEffect, useMemo, useRef} from 'react';
 import {Library, Book} from '../types';
 import {toast} from 'sonner';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../lib/telemetry';
@@ -59,11 +59,45 @@ export function useLibraryData(
 ): UseLibraryDataResult {
   const isEnabled = Boolean(libraryId && userId);
 
+  let utils: ReturnType<typeof trpc.useUtils> | undefined;
+  try {
+    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
+      utils = trpc.useUtils();
+    }
+  } catch {
+    utils = undefined;
+  }
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
+
+  const cachedLibrary = useMemo((): Library | undefined => {
+    const currentUtils = utilsRef.current;
+    if (!libraryId || !userId || !currentUtils?.library) return undefined;
+    const getFn = currentUtils.library.get?.getData;
+    const fromGet = getFn?.({libraryId}) as Library | undefined;
+    if (fromGet) return fromGet;
+
+    const listFn = currentUtils.library.list?.getData;
+    const rawOwned = listFn?.({scopes: ['owned', 'shared']})?.libraries;
+    const ownedShared = rawOwned as Library[] | undefined;
+    const fromOwnedShared = ownedShared?.find(l => l.id === libraryId);
+    if (fromOwnedShared) return fromOwnedShared;
+
+    const rawAll = listFn?.({scopes: ['all']})?.libraries;
+    const allLibs = rawAll as Library[] | undefined;
+    const fromAll = allLibs?.find(l => l.id === libraryId);
+    if (fromAll) return fromAll;
+
+    const defaultLibs = listFn?.()?.libraries as Library[] | undefined;
+    return defaultLibs?.find(l => l.id === libraryId);
+  }, [libraryId, userId]);
+
   // 1. Declarative Library Query
   const libraryQuery = trpc.library.get.useQuery(
     {libraryId: libraryId || ''},
     {
       enabled: isEnabled,
+      ...(cachedLibrary ? {initialData: cachedLibrary} : {}),
       staleTime: 1000 * 60 * 5, // 5 minutes fresh
       gcTime: 1000 * 60 * 60 * 24, // 24 hours in memory
     },
@@ -83,8 +117,8 @@ export function useLibraryData(
 
   // 3. Normalized Data Derivation
   const library = useMemo(() => {
-    return (libraryQuery.data as unknown as Library) ?? null;
-  }, [libraryQuery.data]);
+    return (libraryQuery.data as unknown as Library) ?? cachedLibrary ?? null;
+  }, [libraryQuery.data, cachedLibrary]);
 
   const books = useMemo(() => {
     if (!booksQuery.data) return [];
@@ -96,9 +130,9 @@ export function useLibraryData(
     return [];
   }, [booksQuery.data]);
 
-  // 4. Telemetry Logging (Deferred execution to avoid blocking critical render frame)
+  // 4. Telemetry Logging (Deferred execution, gated when Developer HUD is closed)
   useEffect(() => {
-    if (library && libraryId) {
+    if (library && libraryId && DebugTelemetryEngine.isHudActive()) {
       const schedule =
         typeof window !== 'undefined' && 'requestIdleCallback' in window
           ? window.requestIdleCallback
@@ -130,7 +164,7 @@ export function useLibraryData(
   }, [library, libraryId, libraryQuery.isStale]);
 
   useEffect(() => {
-    if (books.length > 0 && libraryId) {
+    if (books.length > 0 && libraryId && DebugTelemetryEngine.isHudActive()) {
       const schedule =
         typeof window !== 'undefined' && 'requestIdleCallback' in window
           ? window.requestIdleCallback
@@ -161,18 +195,18 @@ export function useLibraryData(
     return undefined;
   }, [books, libraryId, booksQuery.isStale]);
 
-  // 5. Navigation Guard on Fatal Error
+  // 5. Navigation Guard on Fatal Error (only when no cached library fallback exists and caller requested redirect)
   useEffect(() => {
-    if (libraryQuery.isError) {
+    if (libraryQuery.isError && !library) {
       toast.error('Library not found or access denied');
       if (navigate) {
         navigate('/');
       }
     }
-  }, [libraryQuery.isError, navigate]);
+  }, [libraryQuery.isError, library, navigate]);
 
   // 6. Granular State Derivation directly from TanStack Query
-  const isLoading = libraryQuery.isLoading;
+  const isLoading = libraryQuery.isLoading && !library;
   const isBooksLoading = booksQuery.isLoading;
   const isSyncing = booksQuery.isFetching && !booksQuery.isLoading;
   const isCachedFirstPaint = !booksQuery.isLoading && books.length > 0;

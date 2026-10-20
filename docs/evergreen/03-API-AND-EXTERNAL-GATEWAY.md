@@ -1,52 +1,51 @@
-# API Architecture & External Gateway Design
+# API Architecture & Gateway Design
 
 > **Document Status:** Authoritative API & Gateway Standard  
 > **Target Path:** `/docs/evergreen/03-API-AND-EXTERNAL-GATEWAY.md`
 
 ---
 
-## 1. The Unified Gateway Architecture
+## 1. The Unified tRPC Gateway Architecture
 
-To eliminate split-brain security rules and fragmented code paths, **book(ish)** routes 100% of data queries, mutations, and AI enrichment through a unified API Gateway layer running in the Node/Express service.
+To eliminate split-brain security rules and redundant REST wrappers, **book(ish)** routes 100% of data queries, mutations, and AI enrichment through a unified tRPC v11 Gateway running in the Node/Express service, complemented by a dedicated Server-Sent Events (SSE) progress stream.
 
 ```
 +-----------------------------------------------------------------------------------+
-|                                     CLIENTS                                       |
-|   [React Web UI]            [External Scripts / CLI]         [Future Mobile Apps] |
+|                                BOOK(ISH) WEB CLIENT                               |
+|   [React 19 + TanStack Query + tRPC Client]          [EventSource SSE Progress]   |
 +-----------------------+----------------------------------+------------------------+
                         |                                  |
-            tRPC HTTP   |                      REST / JSON | (X-API-Key or Bearer)
+            tRPC HTTP   | (Bearer Firebase JWT)            | GET /api/enrichment/stream
                         v                                  v
 +-----------------------------------------------------------------------------------+
 |                         NODE.JS / EXPRESS API GATEWAY (Port 3000)                 |
 |                                                                                   |
-|  1. Gateway Guards: Rate Limiting, CORS, Body Size Caps (1MB payload ceiling)     |
-|  2. Unified Auth Context: TokenVerifier (Firebase JWT) + ApiKeyVerifier (SHA-256) |
-|  3. Permission Matrix: Superadmin Check + Library Role (Owner/Editor/Viewer)      |
+|  1. Gateway Guards: Security Headers, Rate Limiting, Scoped Body Size Caps        |
+|  2. Single-Path Auth Context: TokenVerifier (Firebase Admin ID Token JWT)         |
+|  3. Permission Matrix: Platform Allowlist + Library Role (Owner/Editor/Viewer)    |
 +-----------------------+----------------------------------+------------------------+
                         |                                  |
-         (Internal tRPC)|                   (External REST)|
                         v                                  v
-+-------------------------------+  +------------------------------------------------+
-|      tRPC v11 Routers         |  |             OpenAPI / Express v1 Router        |
-| - libraryApi    - apiKey      |  |  GET    /api/v1/libraries                      |
-| - bookApi       - gemini      |  |  POST   /api/v1/libraries/{id}/books           |
-| - metadata      - auth/user   |  |  GET    /api/v1/openapi.json (Swagger UI)      |
-+-------------------------------+  +------------------------------------------------+
-                        |                                  |
-                        +-----------------+----------------+
-                                          |
-                                          v
++-----------------------------------------------+  +--------------------------------+
+|               tRPC v11 AppRouter              |  |     SSE Enrichment Stream      |
+| - library       - metadata                    |  |  Real-time job snapshots and   |
+| - book          - gemini                      |  |  item progress events          |
+| - enrichment    - auth / user                 |  |                                |
++-----------------------+-----------------------+  +---------------+----------------+
+                        |                                          |
+                        +--------------------+---------------------+
+                                             |
+                                             v
 +-----------------------------------------------------------------------------------+
-|                              CLOUD FIRESTORE (Database)                           |
-|  - Accessed exclusively by the Node.js server via firebase-admin/firestore        |
-|  - Client & direct REST access sealed (firestore.rules: allow read, write: false) |
+|                   CLOUD FIRESTORE & CLOUD STORAGE (Admin SDK Only)                |
+|  - Accessed exclusively by the Node.js server via firebase-admin                  |
+|  - Client & direct SDK access sealed (firestore.rules & storage.rules: if false)  |
 +-----------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 2. Internal API: tRPC v11 Specification
+## 2. tRPC v11 Specification
 
 ### Procedure Hierarchy & Authorization Middleware
 Every procedure must use the most restrictive builder applicable:
@@ -55,74 +54,43 @@ Every procedure must use the most restrictive builder applicable:
 // 1. Public Procedure (No credentials required)
 publicProcedure.query(...)
 
-// 2. Protected Procedure (Valid Firebase user or valid API key required)
+// 2. Authenticated Procedure (Valid Firebase JWT required; used pre-allowlist for waitlist status/join)
+authenticatedProcedure.query(...)
+
+// 3. Protected Procedure (Valid Firebase JWT + verified allowlist membership required)
 protectedProcedure.query(...)
 
-// 3. Superadmin Procedure (User must belong to the verified admin allowlist)
+// 4. Administrator Procedure (Caller must belong to the verified admin allowlist)
 adminProcedure.mutation(...)
 
-// 4. Library Procedure with Role Check (Validates user has required role on the specific library)
+// 5. Library Procedure with Role Check (Validates caller has required role on the target library)
 libraryProcedure('owner').mutation(...)  // Owner-only
 libraryProcedure('editor').mutation(...) // Owner or Editor
 libraryProcedure('viewer').query(...)    // Owner, Editor, or Viewer (Read-only)
 ```
 
 ### Procedure Conventions
-1. **Always Validate with Zod:** Every query and mutation must declare an `input(zodSchema)` and preferably an `output(zodSchema)`.
-2. **Standardized Error Bubbling:** Use `TRPCError` with semantic codes:
-   - `BAD_REQUEST`: Failed input validation or malformed ISBN.
-   - `UNAUTHORIZED`: Missing or expired authentication token.
-   - `FORBIDDEN`: User authenticated, but lacks permissions for the library.
+1. **Always Validate with Zod:** Every query and mutation must declare an `input(zodSchema)` using hardened primitives (`safeIdSchema`, `safeUrlSchema`, `safeEmailSchema`) and strict object schemas.
+2. **Request-Isolated Library Access:** `libraryProcedure` captures resolved library metadata and caller roles via `AsyncLocalStorage` (`captureLibraryAccess`), eliminating global mutable caches across concurrent requests.
+3. **Standardized Error Bubbling:** Use `TRPCError` with semantic codes:
+   - `BAD_REQUEST`: Failed input validation or malformed identifier/ISBN.
+   - `UNAUTHORIZED`: Missing or expired Firebase ID Token (`Bearer <JWT>`).
+   - `FORBIDDEN`: User authenticated, but lacks allowlist membership or required library role.
    - `NOT_FOUND`: Target library or book does not exist.
    - `TOO_MANY_REQUESTS`: Rate limit exceeded.
 
 ---
 
-## 3. External API: REST / OpenAPI v1 (`/api/v1`)
+## 3. Gateway Guards & Rate Limiting
 
-The external API allows users, automation scripts, and command-line tools to interact with their libraries programmatically.
-
-### Base URL & Endpoints
-All external endpoints are mounted under `/api/v1`:
-
-- `GET /api/v1/openapi.json`: OpenAPI 3.0 specification document.
-- `GET /api/v1/docs`: Interactive Swagger UI documentation explorer.
-- `GET /api/v1/libraries`: List libraries accessible to the caller.
-- `GET /api/v1/libraries/{id}`: Retrieve library metadata.
-- `GET /api/v1/libraries/{id}/books`: Paginated list of books with taxonomy filters.
-- `POST /api/v1/libraries/{id}/books`: Add a book to the library.
-- `GET /api/v1/libraries/{id}/books/{bookId}`: Retrieve a single book volume.
-- `PATCH /api/v1/libraries/{id}/books/{bookId}`: Update book metadata or reading status.
-- `DELETE /api/v1/libraries/{id}/books/{bookId}`: Remove a book volume.
-
-### Authentication Headers
-The external API supports two interchangeable authentication methods:
-1. **API Key Header:** `X-API-Key: bk_live_xxxxxxxxxxxxxxxxxxxxxxxx`
-2. **Bearer Token:** `Authorization: Bearer <Firebase_ID_Token>`
-
-### API Key Security & Lifecycle
-- **Key Generation:** Generated client-side or server-side as high-entropy random strings with prefix (`bk_live_...`).
-- **Storage Rule:** Plaintext keys are **NEVER** stored in the database. When an API key is created, compute its SHA-256 hash:
-  $$\text{KeyHash} = \text{SHA256}(\text{RawKey})$$
-  Store only `keyHash`, `maskedKey` (`bk_live_****1234`), `ownerId`, `name`, and `createdAt`.
-- **Verification:** On incoming requests, hash the provided key and query `apiKeys/` by `keyHash`.
-
----
-
-## 4. Gateway Guards & Rate Limiting
-
-1. **Payload Size Guard:** Request bodies larger than $1\text{MB}$ are rejected with `413 Payload Too Large` to prevent denial-of-wallet memory attacks.
-2. **Rate Limiting:**
-   - External API Keys: Standard tier capped at $60\text{ req/min}$.
-   - Unauthenticated endpoints: $30\text{ req/min}$ per IP.
-   - Headers: Return `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `Retry-After`.
-3. **Graceful Error Envelope:**
-   ```json
-   {
-     "error": {
-       "code": "FORBIDDEN",
-       "message": "You do not have editor access to this library.",
-       "details": []
-     }
-   }
-   ```
+1. **Payload Size Guards:**
+   - Default JSON/URL-encoded request bodies are capped at `2MB`.
+   - Base64 image vision and upload endpoints (`gemini.extractBooksFromImage`, `library.uploadImage`) use a scoped `15MB` parser with a `5MB` decoded binary buffer cap and raster magic-byte verification.
+2. **Sliding-Window Rate Limiting:**
+   - `/trpc`: $300\text{ req/min}$ per authenticated user/IP.
+   - `/api/enrichment/stream`: $30\text{ req/min}$ per user/IP and max $5$ concurrent SSE streams per user.
+   - `/api/client-log`: $20\text{ req/min}$ per IP.
+   - Emits `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `Retry-After` headers on `429 Too Many Requests`.
+3. **Log Sanitization & Token Redaction:**
+   - Query parameters containing tokens (`?token=...`) are redacted (`[REDACTED]`) before HTTP access logs are written.
+   - Client error logs strip control characters (`\r`, `\n`, ANSI escapes) and enforce strict field truncation.

@@ -1,92 +1,143 @@
 import {
   IMetadataProvider,
+  MetadataBulkFetchOptions,
   MetadataKey,
   CoreBookData,
 } from '../../../../types/metadata';
-import {generateBookInsights} from '../../gemini';
-import {googleBooksLimiter} from '../../limiters';
-import {
-  searchBookByIsbn,
-  searchBookByTitleAndAuthor,
-} from '../../../../services/bookApi';
+import {catalogOrchestrator} from '../../catalog';
+import {generateBookSynopsesBatch} from '../../gemini';
 
-export class SynopsisMetadataProvider implements IMetadataProvider<string> {
+export class SynopsisMetadataProvider implements IMetadataProvider<
+  string | null
+> {
   getKey(): MetadataKey {
     return MetadataKey.SYNOPSIS;
   }
 
-  async fetch(book: CoreBookData): Promise<string> {
-    if ('synopsis' in book && (book as Record<string, unknown>).synopsis) {
-      return (book as Record<string, unknown>).synopsis as string;
-    }
+  async fetch(
+    book: CoreBookData,
+    options?: MetadataBulkFetchOptions,
+  ): Promise<string | null> {
+    if (options?.signal?.aborted) return null;
+    try {
+      if (book.isbn) {
+        const details = await catalogOrchestrator.searchByIsbn(book.isbn, {
+          priority: 'BATCH',
+          verifyCovers: false,
+          signal: options?.signal,
+        });
+        if (details?.synopsis) {
+          return details.synopsis;
+        }
+      }
 
-    if (book.isbn) {
-      try {
-        const bookData = await searchBookByIsbn(book.isbn);
-        if (bookData?.synopsis) return bookData.synopsis;
-      } catch (err) {
-        console.warn(
-          `[SynopsisProvider] ISBN search failed for ${book.isbn}:`,
-          err,
+      if (options?.signal?.aborted) return null;
+
+      if (book.title) {
+        const searchRes = await catalogOrchestrator.searchByQuery(
+          {
+            title: book.title,
+            author: book.author || '',
+            isbn: book.isbn,
+            limit: 3,
+          },
+          {
+            priority: 'BATCH',
+            verifyCovers: false,
+            signal: options?.signal,
+          },
+        );
+        const match = searchRes.books.find(b => Boolean(b.synopsis));
+        if (match?.synopsis) {
+          return match.synopsis;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      if ((error as Error)?.name !== 'AbortError') {
+        console.error(
+          `SynopsisMetadataProvider failed for "${book.title}":`,
+          error,
         );
       }
-    }
-
-    try {
-      const booksData = await searchBookByTitleAndAuthor(
-        book.title,
-        book.author,
-      );
-      if (booksData && booksData.length > 0 && booksData[0].synopsis) {
-        return booksData[0].synopsis;
-      }
-    } catch (err) {
-      console.warn(
-        `[SynopsisProvider] Title/Author search failed for ${book.title}:`,
-        err,
-      );
-    }
-
-    try {
-      const synopsis = await generateBookInsights(
-        book.title,
-        book.author,
-        'synopsis',
-      );
-      return synopsis || '';
-    } catch (err) {
-      console.warn(
-        `[SynopsisProvider] AI fallback failed for ${book.title}:`,
-        err,
-      );
-      return '';
+      return null;
     }
   }
 
-  async bulkFetch(books: CoreBookData[]): Promise<Record<string, string>> {
-    const results: Record<string, string> = {};
+  async bulkFetch(
+    books: CoreBookData[],
+    options?: MetadataBulkFetchOptions,
+  ): Promise<Record<string, string | null>> {
+    const results: Record<string, string | null> = {};
+
     await Promise.all(
-      books.map(book =>
-        googleBooksLimiter.schedule(async () => {
+      books.map(async book => {
+        if (options?.signal?.aborted) {
+          results[book.id] = null;
+          return;
+        }
+        results[book.id] = await this.fetch(book, options);
+      }),
+    );
+
+    if (options?.signal?.aborted) {
+      return results;
+    }
+
+    const remaining = books.filter(b => !results[b.id] && b.title);
+    if (
+      remaining.length > 0 &&
+      Boolean(process.env.GEMINI_API_KEY) &&
+      typeof generateBookSynopsesBatch === 'function'
+    ) {
+      const CHUNK_SIZE = 10;
+      const chunks: Array<Array<{id: string; title: string; author: string}>> =
+        [];
+      for (let i = 0; i < remaining.length; i += CHUNK_SIZE) {
+        chunks.push(
+          remaining.slice(i, i + CHUNK_SIZE).map(b => ({
+            id: b.id,
+            title: b.title,
+            author: b.author || 'Unknown Author',
+          })),
+        );
+      }
+      await Promise.all(
+        chunks.map(async chunk => {
+          if (options?.signal?.aborted) return;
           try {
-            const res = await this.fetch(book);
-            if (res) {
-              results[book.id] = res;
+            const aiSynopses = await generateBookSynopsesBatch(chunk, {
+              priority: 'BATCH',
+              signal: options?.signal,
+            });
+            if (aiSynopses && typeof aiSynopses === 'object') {
+              for (const [id, syn] of Object.entries(aiSynopses)) {
+                if (syn && syn.trim()) {
+                  results[id] = syn.trim();
+                }
+              }
             }
-          } catch (error) {
-            console.error(`Synopsis batch error for ${book.id}:`, error);
+          } catch (err) {
+            if ((err as Error)?.name !== 'AbortError') {
+              console.warn(
+                'SynopsisMetadataProvider Gemini fallback failed:',
+                err,
+              );
+            }
           }
         }),
-      ),
-    );
+      );
+    }
+
     return results;
   }
 
   shouldFetchOnCreate(): boolean {
-    return true;
+    return false;
   }
 
   isAvailable(): boolean {
-    return true; // We can use search APIs even if Gemini is missing
+    return true;
   }
 }

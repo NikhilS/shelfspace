@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {BookDetails} from '../../services/bookApi';
+import {BookDetails} from '../../types';
 import BulkImport from './BulkImport';
 import ExtractedBooksTable from './ExtractedBooksTable';
 
@@ -19,6 +19,8 @@ export default function CSVImportTab({
       title: string;
       author: string;
       isbn?: string;
+      primaryGenre?: string;
+      subgenres?: string[];
       genres?: string[];
       format?: 'physical' | 'digital';
     }[]

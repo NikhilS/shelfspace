@@ -10,7 +10,7 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
-import {TelemetryPlugin, TelemetryPluginContext} from '../telemetry';
+import {TelemetryPlugin, TelemetryPluginContext} from './index';
 import {Button} from '@/components/ui/button';
 
 interface RenderPerformancePanelProps {

@@ -1,38 +1,52 @@
-import React from 'react';
+import React, {memo} from 'react';
 import {Book as BookIcon} from 'lucide-react';
 import {toTitleCase} from '../../lib/utils';
 import {Book, FirestoreDate} from '../../types';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 
-interface BookCardProps {
+export interface BookCardProps {
   key?: React.Key;
   book: Book & {
     addedAt: FirestoreDate;
     synopsis?: string;
   };
   onClick?: () => void;
+  onNavigateBook?: (bookId: string) => void;
   canEdit: boolean;
   isSelected?: boolean;
   isSelectMode?: boolean;
   onSelect?: (e: React.MouseEvent) => void;
+  onSelectBook?: (e: React.MouseEvent, bookId: string) => void;
 }
 
-export default function BookCard({
+function BookCardComponent({
   book,
   onClick,
+  onNavigateBook,
   isSelected,
   isSelectMode,
   onSelect,
+  onSelectBook,
 }: BookCardProps) {
   const pubYear =
     book.publishedDate && book.publishedDate.length >= 4
       ? book.publishedDate.slice(0, 4)
       : null;
 
+  const hasSelectHandler = Boolean(onSelect || onSelectBook);
+
+  const handleCardClick = () => {
+    if (onNavigateBook) {
+      onNavigateBook(book.id);
+    } else if (onClick) {
+      onClick();
+    }
+  };
+
   return (
     <article
-      onClick={onClick}
+      onClick={handleCardClick}
       className={`group cursor-pointer flex flex-col h-full bento-card-interactive p-3 sm:p-3.5 ${
         isSelected
           ? 'ring-2 ring-primary border-primary bg-surface-container-low/60'
@@ -47,7 +61,7 @@ export default function BookCard({
           aria-hidden="true"
         />
 
-        {onSelect && (
+        {hasSelectHandler && (
           <Button
             type="button"
             variant="ghost"
@@ -60,7 +74,11 @@ export default function BookCard({
             }`}
             onClick={e => {
               e.stopPropagation();
-              onSelect(e);
+              if (onSelectBook) {
+                onSelectBook(e, book.id);
+              } else if (onSelect) {
+                onSelect(e);
+              }
             }}
           >
             <div
@@ -160,3 +178,20 @@ export default function BookCard({
     </article>
   );
 }
+
+function areBookCardPropsEqual(
+  prev: BookCardProps,
+  next: BookCardProps,
+): boolean {
+  return (
+    prev.book === next.book &&
+    prev.canEdit === next.canEdit &&
+    prev.isSelected === next.isSelected &&
+    prev.isSelectMode === next.isSelectMode &&
+    prev.onSelectBook === next.onSelectBook &&
+    prev.onNavigateBook === next.onNavigateBook
+  );
+}
+
+const BookCard = memo(BookCardComponent, areBookCardPropsEqual);
+export default BookCard;

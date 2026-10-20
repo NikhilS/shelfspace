@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import {createServer as createViteServer} from 'vite';
 import path from 'path';
 import fs from 'fs';
@@ -15,12 +16,18 @@ if (
 import * as trpcExpress from '@trpc/server/adapters/express';
 import {appRouter} from './src/server/trpc/routers/_app';
 import {createContext} from './src/server/trpc/trpc';
-import {apiV1Router} from './src/server/api/v1';
-import type {AuthUser, AuthenticatedApiRequest} from './src/server/auth';
 import {getAdminApp, firebaseConfig} from './src/server/services/firebaseAdmin';
-
-export type ApiAuthUser = AuthUser;
-export type {AuthenticatedApiRequest};
+import {TokenVerifier, AllowlistService} from './src/server/auth';
+import {LibraryService} from './src/server/services/library';
+import {enrichmentJobCoordinator} from './src/server/services/enrichmentJobCoordinator';
+import {
+  createRateLimiter,
+  redactUrlForLog,
+  sanitizeLogField,
+  securityHeadersMiddleware,
+  SseConcurrencyTracker,
+} from './src/server/middleware/securityGateway';
+import {safeIdSchema} from './src/schemas/common';
 
 // Initialize Firebase Admin
 try {
@@ -74,6 +81,9 @@ async function startServer() {
     `[server] Booting book(ish) server (mode=${isProd ? 'production' : 'development'}, node=${process.version}, pid=${process.pid})`,
   );
 
+  app.disable('x-powered-by');
+  app.use(securityHeadersMiddleware);
+
   // Unauthenticated health check endpoints MUST be defined before any auth middleware
   app.get(['/api/health', '/health'], (_req, res) => {
     res.status(200).json({status: 'ok'});
@@ -98,35 +108,80 @@ async function startServer() {
     },
   );
 
-  app.use(express.json({limit: '50mb'}));
-  app.use(express.urlencoded({limit: '50mb', extended: true}));
+  app.use(
+    compression({
+      filter: (req, res) => {
+        if (req.path.startsWith('/api/enrichment/stream')) {
+          return false;
+        }
+        return compression.filter(req, res);
+      },
+    }),
+  );
+  // Scoped 15MB parser for base64 image upload / vision endpoints, 2MB default for all other routes
+  const imageUploadJsonParser = express.json({limit: '15mb'});
+  const defaultJsonParser = express.json({limit: '2mb'});
+  app.use((req, res, next) => {
+    if (
+      req.path.includes('extractBooksFromImage') ||
+      req.path.includes('uploadImage')
+    ) {
+      imageUploadJsonParser(req, res, next);
+      return;
+    }
+    defaultJsonParser(req, res, next);
+  });
+  app.use(express.urlencoded({limit: '2mb', extended: true}));
 
-  // Structured HTTP request & timing logger for navigations, API calls, tRPC, and errors
+  // Structured HTTP request & timing logger with query token redaction
   app.use((req, res, next) => {
     const start = Date.now();
     res.on('finish', () => {
       const durationMs = Date.now() - start;
-      const url = req.originalUrl || req.url;
+      const rawUrl = req.originalUrl || req.url;
+      const safeUrl = redactUrlForLog(rawUrl);
       const status = res.statusCode;
-      const isApiOrTrpc = url.startsWith('/trpc') || url.startsWith('/api/');
+      const isApiOrTrpc =
+        rawUrl.startsWith('/trpc') || rawUrl.startsWith('/api/');
       const isDocNavigation =
         req.method === 'GET' &&
-        !url.startsWith('/src/') &&
-        !url.startsWith('/node_modules/') &&
-        !url.startsWith('/@') &&
+        !rawUrl.startsWith('/src/') &&
+        !rawUrl.startsWith('/node_modules/') &&
+        !rawUrl.startsWith('/@') &&
         !path.extname(req.path);
 
       if (status >= 400) {
-        console.warn(`[HTTP ${status}] ${req.method} ${url} (${durationMs}ms)`);
+        console.warn(
+          `[HTTP ${status}] ${req.method} ${safeUrl} (${durationMs}ms)`,
+        );
       } else if (isApiOrTrpc || isDocNavigation) {
-        console.log(`[HTTP ${status}] ${req.method} ${url} (${durationMs}ms)`);
+        console.log(
+          `[HTTP ${status}] ${req.method} ${safeUrl} (${durationMs}ms)`,
+        );
       }
     });
     next();
   });
 
-  // Client-side error & diagnostic log relay endpoint so browser boot/runtime errors appear in server logs
-  app.post('/api/client-log', (req, res) => {
+  const clientLogRateLimiter = createRateLimiter({
+    windowMs: 60_000,
+    maxRequests: 20,
+    keyPrefix: 'client-log',
+  });
+  const trpcRateLimiter = createRateLimiter({
+    windowMs: 60_000,
+    maxRequests: 300,
+    keyPrefix: 'trpc',
+  });
+  const sseRateLimiter = createRateLimiter({
+    windowMs: 60_000,
+    maxRequests: 30,
+    keyPrefix: 'sse',
+  });
+  const sseConcurrencyTracker = new SseConcurrencyTracker(5);
+
+  // Client-side error & diagnostic log relay endpoint with rate limiting and log sanitization
+  app.post('/api/client-log', clientLogRateLimiter, (req, res) => {
     const {
       level = 'error',
       message,
@@ -142,22 +197,37 @@ async function startServer() {
       userAgent?: string;
       meta?: unknown;
     }) || {};
-    const prefix = `[CLIENT_${String(level).toUpperCase()}]`;
+    const combined = `${message || ''} ${stack || ''}`.toLowerCase();
+    if (
+      combined.includes('websocket closed without opened') ||
+      combined.includes('failed to connect to websocket')
+    ) {
+      res.status(200).json({received: true, ignored: true});
+      return;
+    }
+    const cleanLevel = sanitizeLogField(level, 16).toUpperCase() || 'ERROR';
+    const cleanMessage =
+      sanitizeLogField(message, 1000) || 'Unknown client log';
+    const cleanUrl = sanitizeLogField(url, 500) || 'n/a';
+    const cleanUa = sanitizeLogField(userAgent, 120) || 'n/a';
+    const prefix = `[CLIENT_${cleanLevel}]`;
+
     console.error(
-      `${prefix} ${message || 'Unknown client log'} | url=${url || 'n/a'} | ua=${userAgent ? userAgent.slice(0, 80) : 'n/a'}`,
+      `${prefix} ${cleanMessage} | url=${cleanUrl} | ua=${cleanUa}`,
     );
     if (stack) {
-      console.error(`${prefix} stack:\n${stack}`);
+      console.error(`${prefix} stack: ${sanitizeLogField(stack, 4000)}`);
     }
     if (meta) {
-      console.error(`${prefix} meta:`, JSON.stringify(meta).slice(0, 500));
+      console.error(`${prefix} meta: ${sanitizeLogField(meta, 500)}`);
     }
     res.status(200).json({received: true});
   });
 
-  // Mount tRPC adapter with structured error logging
+  // Mount tRPC adapter with rate limiting and structured error logging
   app.use(
     '/trpc',
+    trpcRateLimiter,
     trpcExpress.createExpressMiddleware({
       router: appRouter,
       createContext,
@@ -174,8 +244,93 @@ async function startServer() {
     }),
   );
 
-  // Mount Unified REST Gateway (/api/v1)
-  app.use('/api/v1', apiV1Router);
+  // Server-Sent Events (SSE) live stream for background bulk enrichment jobs
+  app.get('/api/enrichment/stream', sseRateLimiter, async (req, res) => {
+    const rawLibraryId =
+      typeof req.query.libraryId === 'string' ? req.query.libraryId.trim() : '';
+    const queryToken =
+      typeof req.query.token === 'string' ? req.query.token.trim() : '';
+    const headerToken = TokenVerifier.extractTokenFromHeader(
+      req.headers.authorization,
+    );
+    const token = queryToken || headerToken || '';
+
+    const parsedLibId = safeIdSchema.safeParse(rawLibraryId);
+    if (!parsedLibId.success) {
+      res.status(400).json({error: 'Missing or invalid libraryId parameter'});
+      return;
+    }
+    const libraryId = parsedLibId.data;
+
+    const user = await TokenVerifier.verify(token);
+    if (!user) {
+      res.status(401).json({error: 'Unauthorized'});
+      return;
+    }
+
+    const perms = await AllowlistService.getPermissions(user.email);
+    if (!perms.isAppAllowed) {
+      res.status(403).json({error: 'Forbidden: User not on allowlist'});
+      return;
+    }
+
+    try {
+      await LibraryService.verifyLibraryAccess(
+        user.uid,
+        user.email,
+        libraryId,
+        'viewer',
+      );
+    } catch {
+      res.status(403).json({error: 'Forbidden'});
+      return;
+    }
+
+    const releaseSseSlot = sseConcurrencyTracker.tryAcquire(user.uid);
+    if (!releaseSseSlot) {
+      res.status(429).json({
+        error: 'Too many concurrent enrichment stream connections',
+      });
+      return;
+    }
+
+    res.status(200).set({
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders?.();
+
+    const writeEvent = (eventType: string, payload: unknown) => {
+      if (res.writableEnded) return;
+      res.write(`event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`);
+    };
+
+    // Immediately emit current job snapshot if one exists
+    const initialSnapshot = enrichmentJobCoordinator.getJobStatus(libraryId);
+    if (initialSnapshot) {
+      writeEvent('job:snapshot', initialSnapshot);
+    }
+
+    const unsubscribe = enrichmentJobCoordinator.subscribeToLibrary(
+      libraryId,
+      event => {
+        writeEvent(event.type, event.payload);
+      },
+    );
+
+    const heartbeat = setInterval(() => {
+      if (res.writableEnded) return;
+      res.write(': heartbeat\n\n');
+    }, 15_000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+      releaseSseSlot();
+    });
+  });
 
   // Dedicated API 404 handler
   app.use('/api/*', (req, res) => {

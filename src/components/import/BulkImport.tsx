@@ -21,6 +21,8 @@ interface BulkImportProps {
       title: string;
       author: string;
       isbn?: string;
+      primaryGenre?: string;
+      subgenres?: string[];
       genres?: string[];
       format?: 'physical' | 'digital';
     }[],

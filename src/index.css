@@ -8,7 +8,6 @@
 
 @theme {
   --font-brand: 'Playfair Display', Georgia, Cambria, 'Times New Roman', serif;
-  --font-editorial: 'Plus Jakarta Sans', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-serif: 'Plus Jakarta Sans', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -133,25 +132,8 @@ body {
 }
 
 @layer components {
-  .sidebar-nav-item {
-    @apply flex items-center gap-3 px-3.5 py-2.5 rounded-lg transition-all duration-150 w-full text-left font-sans text-sm font-medium tracking-normal cursor-pointer;
-  }
-  .sidebar-nav-item:not(.active):not(.active-sub) {
-    @apply text-on-surface-variant hover:text-on-surface hover:bg-surface-container;
-  }
-  .sidebar-nav-item.active {
-    @apply text-primary font-semibold bg-surface-container-high shadow-xs;
-  }
-  .sidebar-nav-item.active-sub {
-    @apply text-primary font-semibold bg-surface-container;
-  }
-
   .font-brand {
     font-family: var(--font-brand);
-  }
-
-  .font-editorial {
-    font-family: var(--font-editorial);
   }
 
   .layout-container {
@@ -198,17 +180,8 @@ body {
     @apply font-sans text-sm sm:text-base text-on-surface-variant max-w-md mx-auto leading-relaxed mb-6;
   }
 
-  .metadata-label {
-    @apply font-sans text-[11px] font-semibold text-on-surface-variant uppercase tracking-widest;
-  }
-
   .metadata-eyebrow {
     @apply font-sans text-[11px] font-semibold text-on-surface-variant uppercase tracking-widest;
-  }
-
-  .dialog-title-editorial {
-    @apply font-serif text-xl sm:text-2xl font-semibold tracking-tight text-on-surface;
-    text-wrap: balance;
   }
 
   .bento-card {
@@ -226,20 +199,8 @@ body {
 }
 
 @layer utilities {
-  .touch-target {
-    min-width: 44px;
-    min-height: 44px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
   .swiper-no-swiping {
     touch-action: pan-y;
-  }
-
-  .text-shadow-sm {
-    text-shadow: 0 1px 2px rgba(28, 25, 23, 0.06);
   }
 
   .architectural-shadow {
@@ -263,13 +224,6 @@ body {
     margin-top: 0.15rem;
     font-weight: 600;
     color: var(--color-primary);
-  }
-
-  .glass-panel {
-    background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--color-outline-variant);
   }
 
   .hide-scrollbar {

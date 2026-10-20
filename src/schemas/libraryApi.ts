@@ -1,20 +1,38 @@
 import {z} from 'zod';
+import {
+  bookCreateSchema,
+  bookUpdateSchema,
+  bookDeleteSchema,
+  bookBatchUpsertSchema,
+  bookMergeDuplicatesSchema,
+  bookStatusEnum,
+} from './book';
+import {safeIdSchema} from './common';
+
+export {
+  bookCreateSchema,
+  bookUpdateSchema,
+  bookDeleteSchema,
+  bookBatchUpsertSchema,
+  bookMergeDuplicatesSchema,
+};
 
 export const libraryScopeSchema = z.enum(['owned', 'shared', 'all']);
 export type LibraryScope = z.infer<typeof libraryScopeSchema>;
 
 export const libraryListSchema = z
   .object({
-    scopes: z.array(libraryScopeSchema).optional().default(['owned', 'shared']),
+    scopes: z
+      .array(libraryScopeSchema)
+      .max(3)
+      .optional()
+      .default(['owned', 'shared']),
   })
   .optional()
   .default({scopes: ['owned', 'shared']});
 
 export const bookListSchema = z.object({
-  libraryId: z
-    .string()
-    .min(1, 'libraryId is required')
-    .describe('Target library ID (exactly one)'),
+  libraryId: safeIdSchema,
   filters: z
     .object({
       missingMetadata: z
@@ -24,93 +42,157 @@ export const bookListSchema = z.object({
           'genre',
           'primaryGenre',
           'synopsis',
+          'authorBio',
           'coverImage',
+          'series',
+          'embedding',
+          'embeddings',
         ])
         .optional(),
+      primaryGenre: z.string().max(200).optional(),
+      status: bookStatusEnum.optional(),
     })
     .optional(),
   limit: z.number().int().min(1).max(250).optional().default(50),
-  cursor: z.string().optional(),
+  cursor: safeIdSchema.optional(),
 });
 
-export const ENRICHMENT_TYPE_LIST = [
+export const enrichmentFlowEnum = z.enum([
   'geo',
+  'geoMetadata',
   'temporal',
+  'temporalMetadata',
   'genre',
   'primaryGenre',
   'synopsis',
-  'coverImage',
   'authorBio',
-  'geoMetadata',
-  'temporalMetadata',
+  'coverImage',
   'coverUrl',
+  'series',
   'embedding',
   'embeddings',
-] as const;
+]);
+
+export type RawEnrichmentFlow = z.infer<typeof enrichmentFlowEnum>;
+export type CanonicalEnrichmentType =
+  | 'geo'
+  | 'temporal'
+  | 'genre'
+  | 'synopsis'
+  | 'authorBio'
+  | 'coverImage'
+  | 'series'
+  | 'embedding';
+
+export function normalizeEnrichmentType(raw?: string): CanonicalEnrichmentType {
+  switch (raw) {
+    case 'geo':
+    case 'geoMetadata':
+      return 'geo';
+    case 'temporal':
+    case 'temporalMetadata':
+      return 'temporal';
+    case 'genre':
+    case 'primaryGenre':
+      return 'genre';
+    case 'synopsis':
+      return 'synopsis';
+    case 'authorBio':
+      return 'authorBio';
+    case 'coverImage':
+    case 'coverUrl':
+      return 'coverImage';
+    case 'series':
+      return 'series';
+    case 'embedding':
+    case 'embeddings':
+      return 'embedding';
+    default:
+      return 'genre';
+  }
+}
 
 export const enrichmentTriggerSchema = z
   .object({
-    libraryId: z
-      .string()
-      .min(1, 'libraryId is required')
-      .describe('Target library ID (exactly one)'),
-    bookIds: z.array(z.string().min(1)).min(1).max(100).optional(),
-    books: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1),
-            title: z.string().min(1),
-            author: z.string().optional(),
-            isbn: z.string().optional(),
-            synopsis: z.string().optional(),
-            description: z.string().optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
-    limit: z.number().int().min(1).max(100).optional().default(20),
-    enrichmentType: z.enum(ENRICHMENT_TYPE_LIST).optional(),
-    flow: z.enum(ENRICHMENT_TYPE_LIST).optional(),
+    libraryId: safeIdSchema,
+    flow: enrichmentFlowEnum.optional(),
+    enrichmentType: enrichmentFlowEnum.optional(),
+    bookIds: z.array(safeIdSchema).min(1).max(100),
     overwrite: z.boolean().optional().default(false),
+    customGenres: z.array(z.string().max(200)).max(100).optional(),
   })
-  .refine(data => !!(data.enrichmentType || data.flow), {
-    message: 'Either enrichmentType or flow must be specified',
-    path: ['enrichmentType'],
+  .refine(data => Boolean(data.flow || data.enrichmentType), {
+    message: 'Either flow or enrichmentType must be provided',
   })
-  .transform(val => {
-    const rawType = (val.enrichmentType || val.flow)!;
-    // Normalize aliases to canonical short names
-    const normalizedType =
-      rawType === 'geoMetadata'
-        ? 'geo'
-        : rawType === 'temporalMetadata'
-          ? 'temporal'
-          : rawType === 'coverUrl'
-            ? 'coverImage'
-            : rawType === 'embeddings'
-              ? 'embedding'
-              : rawType === 'primaryGenre'
-                ? 'genre'
-                : rawType;
-
-    const derivedBookIds =
-      val.bookIds && val.bookIds.length > 0
-        ? val.bookIds
-        : val.books && val.books.length > 0
-          ? val.books.map(b => b.id)
-          : undefined;
-
+  .transform(data => {
+    const normalized = normalizeEnrichmentType(
+      data.enrichmentType || data.flow,
+    );
     return {
-      ...val,
-      bookIds: derivedBookIds,
-      enrichmentType: normalizedType,
-      flow: normalizedType,
+      ...data,
+      flow: normalized,
+      enrichmentType: normalized,
     };
   });
 
-export type LibraryListInput = z.infer<typeof libraryListSchema>;
-export type BookListInput = z.infer<typeof bookListSchema>;
-export type EnrichmentTriggerInput = z.input<typeof enrichmentTriggerSchema>;
+export const enrichmentStartJobSchema = z
+  .object({
+    libraryId: safeIdSchema,
+    flow: enrichmentFlowEnum.optional(),
+    enrichmentType: enrichmentFlowEnum.optional(),
+    bookIds: z.array(safeIdSchema).min(1).max(5000),
+    overwrite: z.boolean().optional().default(false),
+    customGenres: z.array(z.string().max(200)).max(100).optional(),
+  })
+  .transform(data => {
+    const normalized = normalizeEnrichmentType(
+      data.enrichmentType || data.flow || 'genre',
+    );
+    return {
+      ...data,
+      flow: normalized,
+      enrichmentType: normalized,
+    };
+  });
 
-export * from './book';
+export const enrichmentCancelJobSchema = z.object({
+  libraryId: safeIdSchema,
+  jobId: safeIdSchema.optional(),
+});
+
+export const enrichmentJobStatusSchema = z.object({
+  libraryId: safeIdSchema,
+});
+
+export const libraryResetMetadataSchema = z.object({
+  libraryId: safeIdSchema,
+  metadataType: z.enum([
+    'geo',
+    'temporal',
+    'genre',
+    'primaryGenre',
+    'synopsis',
+    'authorBio',
+    'coverImage',
+    'series',
+    'embedding',
+    'sanitize',
+  ]),
+});
+
+export const libraryUploadImageSchema = z.object({
+  libraryId: safeIdSchema,
+  path: z
+    .string()
+    .trim()
+    .min(1, 'path is required')
+    .max(300, 'path exceeds maximum length')
+    .refine(
+      val => !val.includes('..') && !val.includes('//') && !val.includes('\\'),
+      'Invalid storage path',
+    ),
+  base64Data: z
+    .string()
+    .min(1, 'base64Data is required')
+    .max(10 * 1024 * 1024, 'Image payload exceeds maximum allowed size'),
+});

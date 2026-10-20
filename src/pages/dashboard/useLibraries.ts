@@ -1,6 +1,6 @@
-import {useState, useEffect, useCallback, useMemo} from 'react';
+import {useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import {useAuth} from '../../stores/authStore';
-import {uploadBase64Image} from '../../services/db/storage';
+import {uploadBase64Image} from '../../lib/storage';
 import {Library} from '../../types';
 import {LibraryScope} from '../../schemas/libraryApi';
 import {toast} from 'sonner';
@@ -28,6 +28,8 @@ export function useLibraries(
 ) {
   const {user} = useAuth();
   const utils = trpc.useUtils();
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scopes, setScopes] = useState<LibraryScope[]>(initialScopes);
 
@@ -66,7 +68,7 @@ export function useLibraries(
 
   const createLibraryMutation = trpc.library.create.useMutation({
     onSuccess: () => {
-      void utils.library.list.invalidate();
+      void utilsRef.current.library.list.invalidate();
     },
   });
 
@@ -76,7 +78,7 @@ export function useLibraries(
   const rawData = librariesQuery.data;
   const libraries = useMemo(() => normalizeLibraries(rawData), [rawData]);
 
-  // Pre-seed individual library caches for instant navigation
+  // Pre-seed individual library caches once per libraries data change for instant navigation
   useEffect(() => {
     if (libraries.length > 0) {
       const schedule =
@@ -102,14 +104,23 @@ export function useLibraries(
         );
       });
 
+      const currentUtils = utilsRef.current;
       libraries.forEach(lib => {
-        if (lib.id) {
-          utils.library.get.setData(
-            {libraryId: lib.id},
-            lib as unknown as NonNullable<
-              ReturnType<typeof utils.library.get.getData>
-            >,
-          );
+        if (lib.id && currentUtils?.library?.get?.setData) {
+          const normalizedRole =
+            lib.callerRole === 'admin' ? 'owner' : lib.callerRole;
+          const isOwner =
+            normalizedRole === 'owner' ||
+            lib.ownershipType === 'owned' ||
+            (Boolean(user?.uid) && lib.ownerId === user?.uid);
+          const canEdit = isOwner || normalizedRole === 'editor';
+          currentUtils.library.get.setData({libraryId: lib.id}, {
+            ...lib,
+            isOwner,
+            canEdit,
+          } as unknown as NonNullable<
+            ReturnType<typeof currentUtils.library.get.getData>
+          >);
         }
       });
 
@@ -118,7 +129,7 @@ export function useLibraries(
       };
     }
     return undefined;
-  }, [libraries, scopes, utils]);
+  }, [libraries, scopes, user?.uid]);
 
   const createLibrary = async (name: string) => {
     if (!name.trim() || !user || isSubmitting) return;

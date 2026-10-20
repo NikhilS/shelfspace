@@ -190,9 +190,11 @@ export async function geocodeLocation(
     }
     return undefined;
   }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3500);
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(name)}&key=${apiKey}`;
-    const response = await fetch(url);
+    const response = await fetch(url, {signal: controller.signal});
     if (!response.ok) {
       console.error(
         `[Geocoding] Failed to geocode ${name}: HTTP ${response.status}`,
@@ -212,5 +214,7 @@ export async function geocodeLocation(
   } catch (error) {
     console.error(`[Geocoding] Exception for ${name}:`, error);
     return undefined;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

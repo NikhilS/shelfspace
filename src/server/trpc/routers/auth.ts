@@ -1,10 +1,6 @@
 import {z} from 'zod';
 import {router} from '../trpc';
-import {
-  publicProcedure,
-  authenticatedProcedure,
-  adminProcedure,
-} from '../../auth/procedures';
+import {authenticatedProcedure, adminProcedure} from '../../auth/procedures';
 import {AllowlistService} from '../../auth/allowlistService';
 import {WaitlistService} from '../../auth/waitlistService';
 import {
@@ -12,9 +8,10 @@ import {
   listWaitlistInputSchema,
   reviewWaitlistInputSchema,
 } from '../../../schemas/waitlist';
+import {safeEmailSchema} from '../../../schemas/common';
 
 export const authRouter = router({
-  getPermissions: publicProcedure.query(async ({ctx}) => {
+  getPermissions: authenticatedProcedure.query(async ({ctx}) => {
     return {
       isAppAllowed: ctx.isAppAllowed,
       isAdmin: ctx.isAdmin,
@@ -30,8 +27,8 @@ export const authRouter = router({
   addAllowlistUser: adminProcedure
     .input(
       z.object({
-        email: z.string().email(),
-        role: z.string().optional().default('user'),
+        email: safeEmailSchema,
+        role: z.enum(['user', 'admin']).optional().default('user'),
       }),
     )
     .mutation(async ({input}) => {
@@ -40,9 +37,9 @@ export const authRouter = router({
     }),
 
   removeAllowlistUser: adminProcedure
-    .input(z.object({email: z.string().email()}))
-    .mutation(async ({input}) => {
-      await AllowlistService.removeUser(input.email);
+    .input(z.object({email: safeEmailSchema}))
+    .mutation(async ({ctx, input}) => {
+      await AllowlistService.removeUser(input.email, ctx.user.email);
       return {success: true};
     }),
 

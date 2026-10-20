@@ -11,16 +11,14 @@ describe('PWA & Offline Configuration', () => {
     expect(html).toContain('<link rel="apple-touch-icon" href="/icon.png" />');
   });
 
-  it('configures VitePWA in vite.config.ts with devOptions and workbox runtime caching', () => {
+  it('prunes VitePWA from vite.config.ts and serves self-unregistering SW in server.ts', () => {
     const viteConfigPath = path.resolve(process.cwd(), 'vite.config.ts');
     const config = fs.readFileSync(viteConfigPath, 'utf-8');
+    expect(config).not.toContain('vite-plugin-pwa');
 
-    expect(config).toContain('devOptions:');
-    expect(config).toMatch(/enabled:\s*(true|false)/);
-    expect(config).toContain("start_url: '/'");
-    expect(config).toContain("display: 'standalone'");
-    expect(config).toContain('google-books-covers');
-    expect(config).toContain('openlibrary-covers');
-    expect(config).toContain('wikimedia-covers');
+    const serverPath = path.resolve(process.cwd(), 'server.ts');
+    const serverCode = fs.readFileSync(serverPath, 'utf-8');
+    expect(serverCode).toContain('SELF_DESTROYING_SW');
+    expect(serverCode).toContain("'/sw.js'");
   });
 });

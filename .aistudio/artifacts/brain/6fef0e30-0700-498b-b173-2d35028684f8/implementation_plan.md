@@ -1,169 +1,129 @@
-# Codebase Reorganization, Monolith Decomposition & 100% Strict Typing Plan
+# Personal Reading Room UX Redesign Plan
 
-A holistic architectural refactor of the **book(ish)** codebase to establish clean client/server module boundaries, decompose oversized `800–2,060`-line monolithic files into focused domain modules, co-locate all unit tests alongside their source files, and enforce 100% strict end-to-end TypeScript typing without `any` casts or loose `Record<string, unknown>` service return contracts.
+Transform the landing page from a flat grid of tracked books into a curated, editorial **Personal Reading Room** Bento experience. The new layout spotlights active reading, renders the last 5 finished books as a tactile, messy 2D canvas stack, surfaces an AI **Pick of the Day** from your reading history with 1-click Want-to-Read, and breaks down finished books by genre using a generic component shared with the Library Details page.
+
+## User Review & Critical Decisions
+
+> [!IMPORTANT]
+> The following UX and architectural decisions incorporate your preferences and establish how the redesigned Reading Room operates:
+
+- **Interactive 2D Canvas for Last 5 Read Books**: The last 5 finished books are rendered on a high-DPI HTML5 `<canvas>` laid out as an organic, slightly messy bedside stack with deterministic tilt angles, realistic paper/spine shadows, cover art (with typographic monograph fallback), smooth hover lift animation, and click-to-open navigation.
+- **Compact Want-to-Read Strip & View All Drawer/Modal**: Instead of dumping all tracked books onto the landing page, a compact horizontal **Up Next (Want to Read)** strip sits cleanly below the Bento overview, paired with a **Reading Lists Modal** to browse or manage the full shelves (`Want to Read`, `Currently Reading`, `Books I've Read`, `Abandoned`) whenever needed.
+- **Reading-History Pick of the Day with 1-Click Save**: The AI Curator analyzes your personal reading history (`finished` and `reading` books across all libraries and your virtual shelf) to recommend a new book, complete with a **+ Want to Read** button directly on the card.
+- **Unified Generic Genre Breakdown & Curator Components**: The genre distribution bar chart and Curator Pick card in the Library Overview are extracted into generic, reusable components shared between the Personal Reading Room and individual Library Details pages.
 
 ---
 
-## 1. Directory Architecture & Module Boundaries
+## 1. Overview & Core Concept
 
-### 1.1 Unify All Backend Code Under `src/server/`
-Currently, backend code is split between `src/server/` (`api/`, `auth/`, `trpc/`) and `src/services/server/`. We will move all backend domain services into `src/server/services/` so `src/server/` is the single home for 100% of server-side code, while `src/services/` contains strictly client-side services (`authListener.ts`, `bookApi.ts`, `wikipediaApi.ts`, `db/`):
+- **What It Does**: Replaces the crowded card dump at the top of the home page with a structured, asymmetric **Editorial Reading Room** Bento layout that celebrates what you are reading right now, what you recently finished, your reading taste by genre, and what you should read next.
+- **Target Audience / Persona**: Readers who want an inspiring, magazine-grade personal reading sanctuary that feels like a lived-in study—combining tactile visual delight with effortless tracking across owned and un-owned books.
+- **Key Value**: Eliminates visual clutter on the home screen while elevating high-signal reading habits (active books, recent finishes, genre taste, and next reads) into distinct, scannable focal points.
 
-```text
-src/server/
-├── api/v1/                        # Express REST v1 routes
-├── auth/                          # Auth context, token/API-key verifiers, RBAC/ABAC procedures
-├── trpc/                          # tRPC initialization & routers (_app, auth, libraryApi, metadata, gemini, user, apiKey)
-└── services/                      # Unified server domain services (moved from src/services/server/)
-    ├── firebaseAdmin.ts           # Admin SDK & Firestore error formatting
-    ├── limiters.ts                # Server-side Bottleneck rate limiters
-    ├── geolocation.ts             # Nominatim geocoding & Firestore geolocationCache
-    ├── apiKeyService.ts           # API key hashing, creation, revocation
-    ├── userService.ts             # User profile & allowlist/waitlist management
-    ├── enrichmentService.ts       # Background & batch metadata enrichment orchestration
-    ├── metadata/                  # Pluggable metadata provider registry & providers
-    ├── gemini/                    # Decomposed Gemini AI capability modules (formerly 1,203-line gemini.ts)
-    │   ├── index.ts               # Public barrel re-exporting all Gemini service functions
-    │   ├── client.ts              # Lazy GenAI initialization, retry wrapper, API key & quota error handlers
-    │   ├── vision.ts              # Bookshelf photo extraction, spine bounding boxes, CSV AI fallback
-    │   ├── covers.ts              # Imagen cover generation & book cover verification
-    │   ├── embeddings.ts          # Batch text-embedding-004 vector generation & thematic cluster naming
-    │   └── enrichment.ts          # Synopsis, author bio, genre taxonomy, geo & historical era extraction
-    ├── book/                      # Decomposed Book domain service (formerly 820-line bookService.ts)
-    │   ├── index.ts               # BookService facade & barrel exports
-    │   ├── bookReadService.ts     # getBook, listBooks (cursor pagination), getBookDetails, getBookDetailsChunk
-    │   ├── bookWriteService.ts    # createBook, updateBook, deleteBook, bulkUpsertBooks (400-op chunking)
-    │   └── bookReviewService.ts   # Review subcollection CRUD & status updates
-    └── library/                   # Decomposed Library domain service (formerly 1,005-line libraryService.ts)
-        ├── index.ts               # LibraryService facade & barrel exports
-        ├── libraryCrudService.ts  # getLibrariesForUser, getLibrary, createLibrary, updateLibrary, deleteLibrary
-        ├── libraryShareService.ts # Access control mutations, member invitations, role updates
-        └── librarySpruceService.ts# Duplicate detection, allowedDuplicates, metadata reset & storage upload
+---
+
+## 2. User Experience & Visual Design
+
+### Key User Flows
+
+1. **Arriving at the Reading Room (Bento Overview)**:
+   - **Header Bar**: Displays the reader's name, high-level reading pulse counters (`Currently Reading · Want to Read · Read`), a **"View All Lists"** button, and the primary **"Track a Book"** button.
+   - **Bento Row 1 (The Active Desk — 12-Column Asymmetric Split)**:
+     - **Currently Reading Spotlight (7 cols)**: Calls out the active book(s) in progress with framed 2:3 cover art, author, provenance label (`Un-owned` or `In {Library}`), a 1-click **"Mark Finished"** action, and a **"Continue / Details"** button. If multiple books are in progress, displays up to 2 side-by-side or stacked cleanly.
+     - **The Read Stack — Interactive 2D Canvas (5 cols)**: Displays the last 5 books marked as `Read (Finished)` as a messy, overlapping physical stack rendered on an HTML5 `<canvas>`. Hovering over any book in the pile smoothly lifts it, casts a deeper shadow, and reveals its title, author, and star rating in the card caption; clicking opens its Book Details page. Includes a **"View All {count} Read →"** trigger.
+   - **Bento Row 2 (Taste & Discovery — 12-Column Split)**:
+     - **Books Read by Genre (5 cols)**: Uses the shared generic genre breakdown component to chart the genre distribution of your finished books. Clicking any genre bar opens the Reading Lists Modal filtered to that genre.
+     - **Pick of the Day from Your Reading History (7 cols)**: Uses the shared Curator Pick component powered by your personal reading history. Displays cover art, title, author, the AI curator's literary rationale, a refresh button, and a **"+ Want to Read"** button that immediately saves the recommendation to your virtual `Want to Read` shelf.
+2. **Browsing Up Next & Full Reading Lists**:
+   - **Compact Want-to-Read Strip**: Directly below the Bento grid, if the user has books on their `Want to Read` shelf, a compact single-row strip displays up to 6 cover thumbnails with quick "Start Reading" hover actions and a **"View All ({count})"** link.
+   - **Reading Lists Modal**: Clicking **"View All Lists"**, **"View All Read"**, or a genre bar opens a clean modal with shelf tabs (`All`, `Currently Reading`, `Want to Read`, `Books I've Read`, `Abandoned`) and optional genre filter so the full catalog is always one click away without cluttering the landing page.
+3. **Compact Libraries Section**:
+   - Remains cleanly anchored below the Reading Room divider for managing owned and shared library collections.
+
+### Visual Identity & Theme
+
+- **Aesthetic Direction**: **Tactile Archival Studio & Literary Salon**—warm alabaster surfaces (`--surface`, `--surface-container-low`), deep espresso typography (`--on-surface`), and terracotta/forest accents (`--primary`, `--secondary`).
+- **Typography & Hierarchy**:
+  - Editorial serif (`Newsreader` / `font-serif`) for section headers, book titles, and curator pull-quotes.
+  - Clean humanist sans (`Plus Jakarta Sans` / `font-sans`) for controls and metadata labels.
+  - Tabular monospace (`JetBrains Mono` / `font-mono tabular-nums`) for volume counts, percentages, and ratings.
+- **Interactive Feedback & Motion**:
+  - **2D Canvas Physics**: 60fps `requestAnimationFrame` interpolation for hover elevation, slight un-tilting on hover (`angle * 0.4`), and drop-shadow expansion on the 5-book messy stack.
+  - **1-Click Want to Read**: Optimistic state transition from `+ Want to Read` to `On Want-to-Read Shelf ✓` with toast confirmation and instant shelf counter update.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: HTML5 2D Canvas for the Messy 5-Book Stack**
+  - *Chosen Approach*: Build a dedicated, DPI-aware 2D `<canvas>` renderer with rotated bounding-box hit testing, asynchronous cover image loading (`crossOrigin="anonymous"`), and procedural canvas fallback covers (warm paper texture, spine groove, serif title).
+  - *Why*: Fulfils the exact vision of a messy, tactile stack of the last 5 finished books on a desk while keeping DOM node count to a single `<canvas>` element and enabling rich shadow/rotation composition.
+  - *Alternatives Considered*: Pure CSS transforms or WebGL/Three.js. WebGL is overkill for a 5-book card widget, while 2D Canvas provides crisp custom rendering, procedural book thickness/page edges, and exact rotated hit-testing.
+- **Decision 2: Generic Shared Components for Genre Breakdown & Curator Pick**
+  - *Chosen Approach*: Extract reusable `GenreBreakdownCard` and `CuratorPickCard` components (and generalize `usePickOfTheDay` to accept any book list + cache scope key) so both the Personal Reading Room and the Library Overview share a single implementation.
+  - *Why*: Eliminates duplicated UI/logic, guarantees visual consistency across the app, and allows the Personal Reading Room to add a `+ Want to Read` action slot to `CuratorPickCard`.
+- **Decision 3: Progressive Disclosure for Full Reading Lists**
+  - *Chosen Approach*: Show the 4 high-signal Bento cards + a compact 6-book Want-to-Read strip on the landing page, and house the full filterable shelf grid inside a dedicated Reading Lists Modal/Drawer.
+  - *Why*: Prevents the landing page from becoming a vertical wall of book cards as a user tracks dozens or hundreds of books.
+
+---
+
+## 4. Technical Architecture & Data Strategy *(Technical Reference)*
+
+### Architecture & Component Diagram
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                        Personal Reading Room (Home)                        │
+│                                                                            │
+│  ┌─────────────────────────────────────────┬────────────────────────────┐  │
+│  │       CurrentlyReadingSpotlight         │    ReadStackCanvasCard     │  │
+│  │  • Active book(s) cover & provenance    │  • HTML5 2D HiDPI Canvas   │  │
+│  │  • 1-click "Mark Finished"              │  • Last 5 finished books   │  │
+│  │  • Click to open Book Details           │  • Hover lift & click open │  │
+│  └─────────────────────────────────────────┴────────────────────────────┘  │
+│                                                                            │
+│  ┌────────────────────────────┬─────────────────────────────────────────┐  │
+│  │     GenreBreakdownCard     │             CuratorPickCard             │  │
+│  │  (Shared Generic Component)│        (Shared Generic Component)       │  │
+│  │  • Scoped to finished books│  • Fed by personal reading history      │  │
+│  │  • Click genre -> opens    │  • 1-click "+ Want to Read" saves to    │  │
+│  │    filtered Lists Modal    │    virtual shelf via trackBook          │  │
+│  └────────────────────────────┴─────────────────────────────────────────┘  │
+│                                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                    Compact Want-to-Read Strip                        │  │
+│  │  • Up to 6 covers + quick "Start Reading" + "View All Lists" modal   │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+└───────────────┬────────────────────────────────────────┬───────────────────┘
+                │                                        │
+                ▼                                        ▼
+┌───────────────────────────────────┐    ┌───────────────────────────────────┐
+│      useReadingShelf Hook         │    │     usePickOfTheDay Hook          │
+│  • Partitions items into:         │    │  • Accepts (books, enabled,       │
+│    - readingItems                 │    │    scopeKey)                      │
+│    - finishedItems (sorted last 5)│    │  • Calls gemini.getPickOfTheDay   │
+│    - wantToReadItems              │    │  • Resolves cover via metadata    │
+└───────────────────────────────────┘    └───────────────────────────────────┘
 ```
 
-### 1.2 Group `src/components/` into Clear Domain Subfolders
-Instead of 39 flat files in `src/components/`, we will organize domain-specific components into focused subfolders while keeping core layout & book primitives easy to import:
+### Interactive Component & State Mapping
 
-```text
-src/components/
-├── ui/                            # Primitives (Button, Dialog, Input, Select, Badge, Tabs, etc.)
-├── admin/                         # Admin allowlist & waitlist tables
-├── layout/                        # App shell & navigation guards
-│   ├── AppLayout.tsx (+ .test.tsx)
-│   ├── BackToLibrary.tsx (+ .test.tsx)
-│   ├── ConnectivityBanner.tsx (+ .test.tsx)
-│   ├── ErrorBoundary.tsx (+ .test.tsx)
-│   ├── PageLoading.tsx
-│   ├── RequireLibraryPermission.tsx
-│   └── ScrollToTop.tsx
-├── book/                          # Shared book display & rating primitives
-│   ├── BookCard.tsx (+ .test.tsx)
-│   ├── BookLoader.tsx
-│   ├── GenreSelect.tsx (+ .test.tsx)
-│   ├── LibrarySkeletons.tsx
-│   ├── PrefetchAdjacentBooks.tsx
-│   └── StarRating.tsx (+ .test.tsx)
-├── import/                        # Scanners, camera capture, and bulk import workflows
-│   ├── BarcodeScanner.tsx
-│   ├── BookSearch.tsx
-│   ├── BulkEnrichmentBanner.tsx
-│   ├── BulkImport.tsx (+ .test.tsx)
-│   ├── CSVImportTab.tsx
-│   ├── CameraScanner.tsx
-│   ├── CoverCamera.tsx
-│   └── ExtractedBooksTable.tsx (+ .test.tsx)
-├── account/                       # User profile, API keys & waitlist screens
-│   ├── ApiKeyManagement.tsx (+ .test.tsx)
-│   ├── UserProfileDialog.tsx (+ .test.tsx)
-│   └── WaitlistScreen.tsx (+ .test.tsx)
-└── debug/                         # Decomposed Developer HUD & Telemetry panels
-    ├── DebugConsoleHUD.tsx (+ .test.tsx)
-    ├── DebugMetricsOverview.tsx
-    ├── DebugNetworkTab.tsx
-    ├── DebugConsoleLogsTab.tsx
-    ├── DebugStateInspectorTab.tsx
-    └── PersistenceTelemetryPanel.tsx
-```
-
----
-
-## 2. Decomposing Oversized Page & Visualization Monoliths
-
-Every complex page will follow the same clean subfolder pattern already used by `src/pages/library/` and `src/pages/book-details/`:
-
-### 2.1 Thematic Constellations (`src/pages/constellations/`)
-Decompose the 1,791-line `ConstellationChart.tsx` into modular cartographic, physics, and UI units under `src/pages/constellations/`:
-- `src/pages/ConstellationMap.tsx` (+ `ConstellationMap.test.tsx`): Top-level route container.
-- `src/pages/constellations/ConstellationChart.tsx`: Orchestrates state, keyboard shortcuts, and layout between toolbar, canvas, and side inspector.
-- `src/pages/constellations/ConstellationCanvasRenderer.ts`: Pure 2D HTML5 Canvas drawing functions for the 6 cartographic layers (parchment sky & graticule, watercolor nebula hulls, copperplate MST filaments, semantic kinship arcs, book star glyphs, and zoom-adaptive typography).
-- `src/pages/constellations/ConstellationToolbar.tsx`: Top search input, cluster filter selector, zoom controls, and archival status readout.
-- `src/pages/constellations/ConstellationInspector.tsx`: Right-hand Curatorial Side Inspector drawer (selected book details, semantic nearest neighbors list, cluster index).
-- `src/pages/constellations/types.ts`: Strongly-typed `ScatterPoint`, `ClusterData`, `CameraState`, `ClusterHullGeometry`, and pigment palette constants.
-
-### 2.2 Historical Timeline (`src/pages/timeline/`)
-Decompose the 2,064-line `TimelineView.tsx` into focused modules under `src/pages/timeline/`:
-- `src/pages/TimelineView.tsx` (+ `TimelineView.test.tsx`): Route wrapper and top-level view state.
-- `src/pages/timeline/timelineMath.ts`: Historical era classification, century/decade bucketing, year formatting (`BCE`/`CE`), and organic Bezier river path & tributary geometry calculations.
-- `src/pages/timeline/TimelineRiverCanvas.tsx`: Interactive SVG river visualization, era banners, tributary nodes, and pan/zoom viewport.
-- `src/pages/timeline/TimelineMinimap.tsx`: Overview brush/minimap scrubber and jump-to-era controls.
-- `src/pages/timeline/TimelineEraInspector.tsx`: Side/bottom drawer displaying books within the selected historical era or node, plus non-historical/mythic book shelf.
-- `src/pages/timeline/types.ts`: `TimelineNode`, `TimelineEraBucket`, `RiverPathSegment`, and filter types.
-
-### 2.3 Literary World Map (`src/pages/world-map/`)
-Decompose the 894-line `WorldMap.tsx` into `src/pages/world-map/`:
-- `src/pages/WorldMap.tsx` (+ `WorldMap.test.tsx`): Route page component.
-- `src/pages/world-map/worldMapMath.ts`: Geographic coordinate aggregation, clustering by administrative level (`city`, `state`, `country`, `region`), and projection helpers.
-- `src/pages/world-map/WorldMapCanvas.tsx`: SVG cartographic map renderer, markers, and zoom/pan controls.
-- `src/pages/world-map/WorldMapInspector.tsx`: Selected location drawer and non-Earth/speculative worlds catalog panel.
-- `src/pages/world-map/types.ts`: `LocationCluster`, `WorldMapFilterState`, and marker types.
-
----
-
-## 3. Co-Locating All Unit Tests (`Foo.test.ts` / `Foo.test.tsx`)
-
-We will standardize on co-located unit tests across the entire repository and delete all `__tests__/` subdirectories:
-- Move `src/components/__tests__/ConnectivityBanner.test.tsx` $\rightarrow$ `src/components/layout/ConnectivityBanner.test.tsx`
-- Move `src/hooks/__tests__/useOnlineStatus.test.ts` $\rightarrow$ `src/hooks/useOnlineStatus.test.ts`
-- Move `src/hooks/__tests__/usePWAInstall.test.ts` $\rightarrow$ `src/hooks/usePWAInstall.test.ts`
-- Move `src/lib/__tests__/clientCache.test.ts` $\rightarrow$ `src/lib/clientCache.test.ts`
-- Move `src/lib/__tests__/pwaConfig.test.ts` $\rightarrow$ `src/lib/pwaConfig.test.ts`
-- Move `src/services/server/__tests__/bookService.test.ts` $\rightarrow$ `src/server/services/book/bookService.test.ts`
-- Move `src/server/auth/__tests__/*.test.ts` $\rightarrow$ `src/server/auth/*.test.ts`
-- Remove all empty `__tests__/` directories.
-
----
-
-## 4. 100% Strict TypeScript Typing Overhaul
-
-### 4.1 Consolidate Canonical Domain Types (`src/types/`)
-Unify `src/types.ts` and `src/types/*` so `src/types/index.ts` (with `src/types.ts` re-exporting for backward compatibility) defines all core domain models:
-- **`BookRecord` & `BookDetailsPayload`**: Exact Firestore & tRPC wire shapes for books and heavy book details (`synopsis`, `authorBio`, `embedding`, `clusterCoordinates`).
-- **`LibraryRecord`**: Strongly-typed library document shape including `access`, `callerRole`, `ownershipType`, `bookCount`, and serialized ISO timestamps.
-- **`EnrichCreateBookResult`**: Typed result per book from `metadata.enrichCreate` (`{ id: string } & Partial<Record<MetadataKey, unknown>>`).
-- **`TelemetryLogPayload`**: Discriminated union / structured interface for `DebugLogEntry.payload` (`fromCache?: boolean`, `durationMs?: number`, `byteSize?: number`, `status?: string`, etc.).
-
-### 4.2 Eliminate All Explicit `any` Casts
-1. `src/components/debug/DebugNetworkTab.tsx` (formerly `DebugConsoleHUD.tsx:815`): Type `log.payload` using `TelemetryLogPayload` type guard instead of `as any`.
-2. `src/pages/add-book/useAddBooks.ts:62`: Use the strongly-typed `EnrichCreateBookResult` returned by `trpcVanilla.metadata.enrichCreate.mutate` instead of `(r: any)`.
-3. `src/server/trpc/routers/metadata.ts:63`: Type `MetadataBookInput` in `IMetadataProvider.bulkFetch` so `bookChunk` satisfies `provider.bulkFetch(bookChunk)` directly without `as any`.
-
-### 4.3 Replace `Record<string, unknown>` Return Contracts in Server Services
-- **`BookService` (`src/server/services/book/`)**:
-  - `createBook` $\rightarrow$ `Promise<{ success: true; id: string; book: Book }>`
-  - `getBook` $\rightarrow$ `Promise<Book>`
-  - `listBooks` $\rightarrow$ `Promise<{ books: Book[]; nextCursor?: string }>`
-  - `getBookDetails` $\rightarrow$ `Promise<BookDetailsPayload>`
-  - `getBookDetailsChunk` $\rightarrow$ `Promise<{ details: Record<string, BookDetailsPayload> }>`
-- **`LibraryService` (`src/server/services/library/`)**:
-  - `getLibrary` $\rightarrow$ `Promise<Library>`
-  - `createLibrary` $\rightarrow$ `Promise<{ id: string; library: Library }>`
-  - `getLibrariesForUser` $\rightarrow$ `Promise<Library[]>`
-- **`EnrichmentService` (`src/server/services/enrichmentService.ts`)**:
-  - Replace untyped `updatePayload: Record<string, unknown>` and `heavyPayload: Record<string, unknown>` with typed `Partial<Book>` and `Partial<BookDetailsPayload>` builders.
-
----
-
-## 5. Verification Strategy
-1. Run the full Vitest suite (`npx vitest run`) to verify all co-located unit and integration tests pass.
-2. Run `compile_applet` (`tsc --noEmit` & Vite production build) to verify zero TypeScript or bundle errors.
-3. Run `lint_applet` (`gts check`) to confirm 100% lint and formatting compliance across all moved and refactored files.
+1. **`ReadStackCanvasCard` (2D Canvas Stack)**:
+   - **Input**: `books: TrackedBookItem[]` (sliced to the 5 most recently finished volumes, rendered bottom-to-top so the newest finished book rests on top of the pile).
+   - **Canvas Rendering**:
+     - Computes deterministic pose per index: slight X/Y offset from center and rotation angle (e.g., `[-10°, +7°, -5°, +9°, -3°]`), plus 3D page-block thickness edge on the right/bottom of each book cover.
+     - Loads cover URLs into an image cache; if an image fails CORS or is missing, renders a bespoke archival monograph cover directly onto the canvas context (`ctx.fillText` with wrapped title/author, border rules, and spine shadow).
+   - **Interaction**:
+     - `onMouseMove`: Maps pointer `(clientX, clientY)` to canvas space, tests each book's rotated rectangle from top (`i = n - 1`) to bottom (`i = 0`), sets `hoveredIndex`, and updates cursor to `pointer`.
+     - Hover animation loop interpolates `liftProgress[i]` (`0 -> 1`), elevating the hovered book slightly, reducing its tilt angle toward `0°`, and displaying its title, author, and rating in an interactive footer bar below the canvas.
+     - `onClick`: If `hoveredIndex !== null`, navigates to `/library/${book.libraryId}/book/${book.id}`.
+2. **`GenreBreakdownCard` (Generic Shared Component)**:
+   - Extracted from `LibraryOverview` to accept any array of `Book` items, customizable header/eyebrow labels (`"Read by Genre"` on Home vs `"Top Categories"` in Library Overview), right-hand metadata label, and `onSelectGenre(genre)` callback.
+   - Both `LibraryOverview` and `Dashboard` render this component.
+3. **`CuratorPickCard` & Generalized `usePickOfTheDay`**:
+   - `usePickOfTheDay(books, isEnabled, scopeKey)` uses `['pickOfTheDay', scopeKey, books.length]` so personal reading history recommendations and per-library recommendations cache independently.
+   - `CuratorPickCard` renders the recommendation UI shared by both `LibraryOverview` and `Dashboard`, and accepts an optional `onAddToWantToRead` callback for the 1-click `+ Want to Read` button on the landing page.
+4. **`ReadingListsDialog` (Full Shelf Drawer/Modal)**:
+   - Opens when clicking `"View All Lists"`, `"View All Read"`, `"View All Want to Read"`, or any genre bar in `GenreBreakdownCard`.
+   - Provides full shelf tab switching (`All`, `Currently Reading`, `Want to Read`, `Books I've Read`, `Abandoned`), genre filtering, status updates, and navigation to book details/reviews.

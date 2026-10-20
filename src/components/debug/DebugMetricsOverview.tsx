@@ -7,9 +7,8 @@ import {
   WifiOff,
   Clock,
   HardDrive,
-  Layers,
   Maximize2,
-  ArrowUpRight,
+  AlertTriangle,
 } from 'lucide-react';
 import type {
   TelemetryMetrics,
@@ -40,8 +39,8 @@ export const DebugMetricsOverview: React.FC<DebugMetricsOverviewProps> = ({
   onMinimize,
 }) => {
   return (
-    <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 font-label-caps-sm text-label-caps-sm text-slate-400 select-none bg-slate-950/40">
-      <div className="flex items-center gap-4 flex-wrap">
+    <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 font-label-caps-sm text-label-caps-sm text-slate-400 select-none bg-slate-950/60 gap-3 flex-wrap">
+      <div className="flex items-center gap-3.5 flex-wrap">
         <div className="flex items-center gap-1.5 text-cyan-400 font-bold uppercase tracking-wider font-label-caps-xs text-label-caps-xs">
           <Bug size={12} />
           <span>Telemetry HUD</span>
@@ -49,88 +48,72 @@ export const DebugMetricsOverview: React.FC<DebugMetricsOverviewProps> = ({
 
         <div className="h-3 w-px bg-slate-800"></div>
 
+        {/* PWA Connectivity Status */}
         <div className="flex items-center gap-1.25">
-          <HardDrive size={12} className="text-cyan-400" />
+          {isOnline ? (
+            <Wifi size={12} className="text-emerald-400" />
+          ) : (
+            <WifiOff size={12} className="text-red-400" />
+          )}
           <span>
-            Transferred:{' '}
-            <strong className="text-cyan-300">
-              {(metrics.totalBytesTransferred / 1024).toFixed(1)} KB
+            PWA:{' '}
+            <strong className={isOnline ? 'text-emerald-400' : 'text-red-400'}>
+              {isOnline ? 'ONLINE' : 'OFFLINE'}
             </strong>
           </span>
         </div>
 
+        {/* tRPC Request Count & Latency */}
         <div className="flex items-center gap-1.25">
-          <ArrowUpRight size={12} className="text-amber-400" />
+          <Clock size={12} className="text-cyan-400" />
           <span>
-            Writes:{' '}
-            <strong className="text-amber-300">
-              {metrics.totalFirestoreWrites}
-            </strong>
+            tRPC:{' '}
+            <strong className="text-slate-200">
+              {metrics.totalApiRequests} req
+            </strong>{' '}
+            <span className="text-slate-500">
+              ({metrics.averageApiLatency}ms avg)
+            </span>
           </span>
         </div>
 
+        {/* Query Cache Hit Ratio & IDB Status */}
         <div className="flex items-center gap-1.25">
-          <Layers
-            size={12}
-            className={
-              metrics.activeFirestoreListeners > 2
-                ? 'text-amber-400'
-                : 'text-slate-500'
-            }
-          />
-          <span>
-            Listeners:{' '}
-            <strong
-              className={
-                metrics.activeFirestoreListeners > 2
-                  ? 'text-amber-300'
-                  : 'text-slate-300'
-              }
-            >
-              {metrics.activeFirestoreListeners}
-            </strong>
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1.25">
-          <Database size={12} className="text-slate-500" />
+          <Database size={12} className="text-emerald-400" />
           <span>
             Cache:{' '}
             <strong className="text-emerald-300">
               {fetchCacheHitRatio}% Hit
             </strong>{' '}
-            ({metrics.firestoreCacheHits}/{metrics.totalFirestoreReads})
+            <span className="text-slate-500">
+              ({metrics.firestoreCacheHits}/{metrics.totalFirestoreReads})
+            </span>
           </span>
         </div>
 
+        {/* Transferred Bytes */}
         <div className="flex items-center gap-1.25">
-          <Clock size={12} className="text-slate-500" />
+          <HardDrive size={12} className="text-purple-400" />
           <span>
-            Last API:{' '}
-            <strong className="text-slate-300">
-              {metrics.averageApiLatency}ms
+            Transferred:{' '}
+            <strong className="text-purple-300">
+              {(metrics.totalBytesTransferred / 1024).toFixed(1)} KB
             </strong>
           </span>
         </div>
 
-        <div className="flex items-center gap-1.25">
-          {isOnline ? (
-            <Wifi size={12} className="text-cyan-400" />
-          ) : (
-            <WifiOff size={12} className="text-red-400" />
-          )}
-          <span>
-            Net:{' '}
-            <strong className={isOnline ? 'text-cyan-400' : 'text-red-400'}>
-              {isOnline ? 'CONNECTED' : 'DISCONNECTED'}
-            </strong>
-          </span>
-        </div>
+        {/* Error Counter */}
+        {metrics.totalErrors > 0 && (
+          <div className="flex items-center gap-1 bg-red-950/70 border border-red-500/40 text-red-300 px-1.5 py-0.5 rounded font-label-caps-xs text-label-caps-xs">
+            <AlertTriangle size={11} className="text-red-400" />
+            <strong>{metrics.totalErrors} ERR</strong>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-1.5">
         <div
-          className="flex items-center gap-0.5 bg-slate-900 border border-slate-800 rounded-md p-0.5"
+          className="flex items-center gap-0.5 bg-slate-900 border border-slate-800 rounded p-0.5"
           title="Telemetry Profiling Level"
         >
           <button
@@ -140,7 +123,7 @@ export const DebugMetricsOverview: React.FC<DebugMetricsOverviewProps> = ({
                 ? 'bg-slate-700 text-slate-100 shadow-xs'
                 : 'text-slate-500 hover:text-slate-300'
             }`}
-            title="Off: Zero telemetry & byte counting overhead"
+            title="Off: Zero byte-sizing overhead"
           >
             Off
           </button>
@@ -162,7 +145,7 @@ export const DebugMetricsOverview: React.FC<DebugMetricsOverviewProps> = ({
                 ? 'bg-amber-950 text-amber-300 border border-amber-800/60 shadow-xs'
                 : 'text-slate-500 hover:text-slate-300'
             }`}
-            title="Deep: Exact JSON & byte calculation"
+            title="Deep: Exact JSON & cache hit/miss logging"
           >
             Deep
           </button>
@@ -172,7 +155,7 @@ export const DebugMetricsOverview: React.FC<DebugMetricsOverviewProps> = ({
 
         <button
           onClick={onCycleHeight}
-          className="text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 px-2 py-0.5 rounded-md transition-colors font-label-caps-xs text-label-caps-xs flex items-center gap-1 border border-slate-800/80"
+          className="text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 px-2 py-0.5 rounded transition-colors font-label-caps-xs text-label-caps-xs flex items-center gap-1 border border-slate-800/80"
           title="Toggle console height preset (compact 35vh / medium 50vh / tall 82vh)"
         >
           <Maximize2 size={11} />
@@ -180,7 +163,7 @@ export const DebugMetricsOverview: React.FC<DebugMetricsOverviewProps> = ({
         </button>
         <button
           onClick={onMinimize}
-          className="text-slate-500 hover:text-slate-200 hover:bg-slate-800/80 p-1 rounded-md transition-colors"
+          className="text-slate-500 hover:text-slate-200 hover:bg-slate-800/80 p-1 rounded transition-colors"
           title="Minimize"
         >
           <ChevronDown size={14} />

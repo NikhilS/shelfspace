@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {BookService} from '../bookService';
+import {BookService} from './index';
 import {TRPCError} from '@trpc/server';
 
 const mockSet = vi.fn();

@@ -65,7 +65,6 @@
     --color-success-base: #059669;
     --color-success-on: #ffffff;
     --color-auth-card-bg: #ffffff;
-    --color-auth-terminal-bg: #12100e;
   }
 
   .dark {
@@ -116,7 +115,6 @@
     --color-success-base: #34d399;
     --color-success-on: #064e3b;
     --color-auth-card-bg: #1c1917;
-    --color-auth-terminal-bg: #0d0b0a;
   }
 }
 
@@ -178,7 +176,6 @@
   --color-success: var(--color-success-base);
   --color-on-success: var(--color-success-on);
   --color-auth-card: var(--color-auth-card-bg);
-  --color-auth-terminal: var(--color-auth-terminal-bg);
 
   /* Warm Archival Multi-stop Ambient Diffusion Shadows */
   --shadow-elevation-1: 0 1px 3px rgba(28, 25, 23, 0.05), 0 1px 2px rgba(28, 25, 23, 0.03);

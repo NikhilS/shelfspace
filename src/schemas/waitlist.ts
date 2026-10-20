@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {safeEmailSchema, safeUrlSchema} from './common';
 
 export const waitlistStatusSchema = z.enum([
   'not_requested',
@@ -8,19 +9,21 @@ export const waitlistStatusSchema = z.enum([
 ]);
 
 export const waitlistEntrySchema = z.object({
-  email: z.string().email(),
-  displayName: z.string().optional(),
-  photoURL: z.string().nullable().optional(),
+  email: safeEmailSchema,
+  displayName: z.string().trim().max(120).optional(),
+  photoURL: safeUrlSchema.nullable().optional(),
   status: z.enum(['pending', 'approved', 'rejected']),
-  requestedAt: z.string(),
-  reviewedAt: z.string().nullable().optional(),
-  reviewedBy: z.string().email().nullable().optional(),
+  requestedAt: z.string().max(100),
+  reviewedAt: z.string().max(100).nullable().optional(),
+  reviewedBy: safeEmailSchema.nullable().optional(),
+  invitedBy: z.string().max(254).nullable().optional(),
+  invitedLibraryName: z.string().max(200).nullable().optional(),
 });
 
 export const joinWaitlistInputSchema = z
   .object({
-    displayName: z.string().optional(),
-    photoURL: z.string().nullable().optional(),
+    displayName: z.string().trim().max(120).optional(),
+    photoURL: safeUrlSchema.nullable().optional(),
   })
   .optional();
 
@@ -31,12 +34,9 @@ export const listWaitlistInputSchema = z
   .optional();
 
 export const reviewWaitlistInputSchema = z.object({
-  email: z.string().email(),
+  email: safeEmailSchema,
   action: z.enum(['approve', 'reject']),
 });
 
 export type WaitlistStatus = z.infer<typeof waitlistStatusSchema>;
 export type WaitlistEntry = z.infer<typeof waitlistEntrySchema>;
-export type JoinWaitlistInput = z.infer<typeof joinWaitlistInputSchema>;
-export type ListWaitlistInput = z.infer<typeof listWaitlistInputSchema>;
-export type ReviewWaitlistInput = z.infer<typeof reviewWaitlistInputSchema>;

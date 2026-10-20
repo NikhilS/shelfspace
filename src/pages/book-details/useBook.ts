@@ -1,10 +1,10 @@
 import {useState, useEffect, useMemo, useCallback} from 'react';
-import {uploadBase64Image} from '../../services/db/storage';
+import {uploadBase64Image} from '../../lib/storage';
 import {Book, BookDetailsPayload, FirestoreDate} from '../../types';
 export type {Book, BookDetailsPayload, FirestoreDate};
 import {useAuth} from '../../stores/authStore';
 import {useMutation} from '@tanstack/react-query';
-import {deleteBookAtomic} from '../../services/db/books';
+import {deleteBookAtomic} from '../../lib/bookActions';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {instrumentMutation} from '../../lib/telemetry';
 
@@ -87,7 +87,10 @@ export function useBook(
     if (!libraryQuery.data || !user) return;
 
     const data = libraryQuery.data as Record<string, unknown>;
-    const isOwner = data.callerRole === 'owner' || data.ownerId === user.uid;
+    const isOwner =
+      data.callerRole === 'owner' ||
+      data.callerRole === 'admin' ||
+      data.ownerId === user.uid;
     const isEditor = data.callerRole === 'editor' || data.canEdit === true;
     setCanEditLocal(isOwner || isEditor);
   }, [libraryQuery.data, user, passedCanEdit]);
@@ -219,7 +222,7 @@ export function useBook(
 
   const updateReadingStatusMutation = useMutation({
     mutationFn: async (
-      status: 'unset' | 'reading' | 'finished' | 'abandoned',
+      status: 'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned',
     ) => {
       if (!libraryId || !bookId || !user) return;
       const updates = {[`userStatuses.${user.uid}`]: status};
@@ -228,11 +231,17 @@ export function useBook(
         `libraries/${libraryId}/books/${bookId}`,
         updates,
         () =>
-          trpcVanilla.book.update.mutate({
-            libraryId,
-            bookId,
-            updates,
-          }),
+          trpcVanilla.book.updateStatus
+            ? trpcVanilla.book.updateStatus.mutate({
+                libraryId,
+                bookId,
+                status,
+              })
+            : trpcVanilla.book.update.mutate({
+                libraryId,
+                bookId,
+                updates,
+              }),
       );
     },
     onMutate: async newStatus => {
@@ -264,6 +273,9 @@ export function useBook(
       if (!libraryId || !bookId) return;
       void utils.book?.get?.invalidate?.({libraryId, bookId});
       void utils.book?.list?.invalidate?.({libraryId});
+      void (
+        utils as {readingTracker?: {getShelf?: {invalidate?: () => unknown}}}
+      ).readingTracker?.getShelf?.invalidate?.();
     },
   });
 
@@ -321,6 +333,10 @@ export function useBook(
       } else {
         void trpcReviewsQuery.refetch?.();
       }
+      void utils.book?.get?.invalidate?.({libraryId, bookId});
+      void (
+        utils as {readingTracker?: {getShelf?: {invalidate?: () => unknown}}}
+      ).readingTracker?.getShelf?.invalidate?.();
     },
   });
 
@@ -388,7 +404,7 @@ export function useBook(
     canEdit,
     deleteBook: () => deleteBookMutation.mutateAsync(),
     updateReadingStatus: (
-      status: 'unset' | 'reading' | 'finished' | 'abandoned',
+      status: 'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned',
     ) => updateReadingStatusMutation.mutateAsync(status),
     addReview: (rating: number, text: string) =>
       addReviewMutation.mutateAsync({rating, text}),

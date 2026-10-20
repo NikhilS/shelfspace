@@ -88,27 +88,6 @@ vi.mock('../lib/trpc', () => ({
         }),
       },
     },
-    apiKey: {
-      list: {
-        useQuery: () => ({
-          data: [],
-          isLoading: false,
-          refetch: vi.fn(),
-        }),
-      },
-      create: {
-        useMutation: () => ({
-          mutateAsync: vi.fn(),
-          isPending: false,
-        }),
-      },
-      revoke: {
-        useMutation: () => ({
-          mutateAsync: vi.fn(),
-          isPending: false,
-        }),
-      },
-    },
     settings: {
       getGeminiApiKeyStatus: {
         useQuery: () => ({

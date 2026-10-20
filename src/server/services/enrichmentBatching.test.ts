@@ -1,15 +1,14 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {EnrichmentService} from './enrichmentService';
-import {LibraryService} from './libraryService';
+import {LibraryService} from './library';
 import {
   extractBookGeoMetadataBatch,
   extractBookTemporalMetadataBatch,
   classifyBooks,
 } from './gemini';
-import {searchBookByTitleAndAuthor} from '../../services/bookApi';
-import {fetchAuthorBioFromWikipedia} from '../../services/wikipediaApi';
+import {catalogOrchestrator, wikipediaProvider} from './catalog';
 
-vi.mock('./libraryService');
+vi.mock('./library');
 
 vi.mock('./firebaseAdmin', () => {
   return {
@@ -41,25 +40,37 @@ vi.mock('./gemini', () => ({
   classifyBooks: vi.fn(),
 }));
 
-vi.mock('../../services/bookApi', () => ({
-  searchBookByIsbn: vi.fn().mockResolvedValue(null),
-  searchBookByTitleAndAuthor: vi.fn().mockResolvedValue([
-    {
-      coverUrl: 'https://example.com/cover.jpg',
-      synopsis: 'Found synopsis',
-    },
-  ]),
-}));
-
-vi.mock('../../services/wikipediaApi', () => ({
-  fetchAuthorBioFromWikipedia: vi
-    .fn()
-    .mockResolvedValue('Author biography text'),
+vi.mock('./catalog', () => ({
+  catalogOrchestrator: {
+    searchByIsbn: vi.fn().mockResolvedValue(null),
+    searchByQuery: vi.fn().mockResolvedValue({
+      books: [
+        {
+          title: 'Matched Book',
+          author: 'Matched Author',
+          coverUrl: 'https://example.com/cover.jpg',
+          synopsis: 'Found synopsis',
+        },
+      ],
+      skippedProviders: [],
+      respondedProviders: ['Apple Books'],
+    }),
+    fetchCoverCandidates: vi.fn().mockResolvedValue({
+      candidates: [],
+      skippedProviders: [],
+      respondedProviders: [],
+    }),
+  },
+  wikipediaProvider: {
+    fetchAuthorBio: vi.fn().mockResolvedValue('Author biography text'),
+  },
 }));
 
 vi.mock('./limiters', () => ({
-  googleBooksLimiter: {
-    schedule: vi.fn((fn: () => unknown) => fn()),
+  geminiLimiter: {
+    schedule: vi.fn((fnOrOpts: unknown, maybeFn?: () => unknown) =>
+      typeof fnOrOpts === 'function' ? fnOrOpts() : maybeFn?.(),
+    ),
   },
 }));
 
@@ -304,7 +315,7 @@ describe('Enrichment Public API Batching Behavior', () => {
         );
 
         expect(res.status).toBe('success');
-        expect(searchBookByTitleAndAuthor).toHaveBeenCalledTimes(5);
+        expect(catalogOrchestrator.searchByQuery).toHaveBeenCalledTimes(5);
       });
 
       it('makes requests equal to number of books (33 books -> 33 calls)', async () => {
@@ -321,7 +332,7 @@ describe('Enrichment Public API Batching Behavior', () => {
         );
 
         expect(res.status).toBe('success');
-        expect(searchBookByTitleAndAuthor).toHaveBeenCalledTimes(33);
+        expect(catalogOrchestrator.searchByQuery).toHaveBeenCalledTimes(33);
       });
     });
 
@@ -340,7 +351,7 @@ describe('Enrichment Public API Batching Behavior', () => {
         );
 
         expect(res.status).toBe('success');
-        expect(searchBookByTitleAndAuthor).toHaveBeenCalledTimes(5);
+        expect(catalogOrchestrator.searchByQuery).toHaveBeenCalledTimes(5);
       });
 
       it('makes requests equal to number of books (33 books -> 33 calls)', async () => {
@@ -357,7 +368,7 @@ describe('Enrichment Public API Batching Behavior', () => {
         );
 
         expect(res.status).toBe('success');
-        expect(searchBookByTitleAndAuthor).toHaveBeenCalledTimes(33);
+        expect(catalogOrchestrator.searchByQuery).toHaveBeenCalledTimes(33);
       });
     });
 
@@ -376,7 +387,7 @@ describe('Enrichment Public API Batching Behavior', () => {
         );
 
         expect(res.status).toBe('success');
-        expect(fetchAuthorBioFromWikipedia).toHaveBeenCalledTimes(5);
+        expect(wikipediaProvider.fetchAuthorBio).toHaveBeenCalledTimes(5);
       });
 
       it('makes requests equal to number of books (33 books -> 33 calls)', async () => {
@@ -393,7 +404,7 @@ describe('Enrichment Public API Batching Behavior', () => {
         );
 
         expect(res.status).toBe('success');
-        expect(fetchAuthorBioFromWikipedia).toHaveBeenCalledTimes(33);
+        expect(wikipediaProvider.fetchAuthorBio).toHaveBeenCalledTimes(33);
       });
     });
   });

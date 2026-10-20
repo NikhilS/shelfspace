@@ -28,6 +28,10 @@ export interface CoreBookData {
   [key: string]: unknown;
 }
 
+export interface MetadataBulkFetchOptions {
+  signal?: AbortSignal;
+}
+
 export interface IMetadataProvider<T = unknown> {
   // 1. Identification & Storage Mapping
   // Serves as both the unique identifier for the provider and the exact field name in the database model.
@@ -35,11 +39,14 @@ export interface IMetadataProvider<T = unknown> {
 
   // 2. Data Fetching
   // Fetch metadata for a single book. Return type `T` varies by provider.
-  fetch(book: CoreBookData): Promise<T>;
+  fetch(book: CoreBookData, options?: MetadataBulkFetchOptions): Promise<T>;
 
   // Fetch metadata for multiple books, optimizing for batch APIs or parallel limits.
   // Returns a map of Book ID -> Extracted Metadata (T).
-  bulkFetch(books: CoreBookData[]): Promise<Record<string, T>>;
+  bulkFetch(
+    books: CoreBookData[],
+    options?: MetadataBulkFetchOptions,
+  ): Promise<Record<string, T>>;
 
   // 3. Configuration
   // Should this metadata type be fetched synchronously/asynchronously the moment a new book is added?

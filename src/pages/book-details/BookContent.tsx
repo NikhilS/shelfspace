@@ -196,18 +196,24 @@ export function BookContent({
                 <div className="absolute top-3.5 right-3.5 shadow-xs swiper-no-swiping z-20">
                   <Badge
                     variant={
-                      book.userStatuses[user?.uid || ''] === 'reading'
-                        ? 'status-reading'
-                        : book.userStatuses[user?.uid || ''] === 'finished'
-                          ? 'status-read'
-                          : 'status-abandoned'
+                      book.userStatuses[user?.uid || ''] === 'want_to_read'
+                        ? 'status-to-read'
+                        : book.userStatuses[user?.uid || ''] === 'reading'
+                          ? 'status-reading'
+                          : book.userStatuses[user?.uid || ''] === 'finished' ||
+                              book.userStatuses[user?.uid || ''] === 'completed'
+                            ? 'status-read'
+                            : 'status-abandoned'
                     }
                   >
-                    {book.userStatuses[user?.uid || ''] === 'reading'
-                      ? 'READING'
-                      : book.userStatuses[user?.uid || ''] === 'finished'
-                        ? 'FINISHED'
-                        : 'ABANDONED'}
+                    {book.userStatuses[user?.uid || ''] === 'want_to_read'
+                      ? 'WANT TO READ'
+                      : book.userStatuses[user?.uid || ''] === 'reading'
+                        ? 'READING'
+                        : book.userStatuses[user?.uid || ''] === 'finished' ||
+                            book.userStatuses[user?.uid || ''] === 'completed'
+                          ? 'FINISHED'
+                          : 'ABANDONED'}
                   </Badge>
                 </div>
               )}
@@ -216,6 +222,15 @@ export function BookContent({
           {/* Archival Accession Ledger */}
           <dl className="bento-card p-4 w-full divide-y divide-outline-variant/50 text-xs font-sans">
             <div className="py-2 first:pt-0 flex items-center justify-between gap-3">
+              <dt className="metadata-eyebrow">Collection</dt>
+              <dd className="font-medium text-on-surface text-right">
+                {libraryId.startsWith('virtual_') ||
+                book.ownershipStatus === 'unowned'
+                  ? 'Un-owned'
+                  : 'Owned Library'}
+              </dd>
+            </div>
+            <div className="py-2 flex items-center justify-between gap-3">
               <dt className="metadata-eyebrow">Publication</dt>
               <dd className="font-mono tabular-nums font-medium text-on-surface text-right">
                 {book.publishedDate || 'Unknown'}
@@ -524,9 +539,11 @@ export function BookContent({
                         className="p-3.5 rounded-lg border border-outline-variant/50 bg-surface-container-low/60 space-y-2"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          {book.temporalMetadata.eraName && (
+                          {(book.temporalMetadata.eraName ||
+                            book.temporalMetadata.eraLabel) && (
                             <h4 className="font-sans font-semibold text-xs sm:text-sm text-on-surface">
-                              {book.temporalMetadata.eraName}
+                              {book.temporalMetadata.eraName ||
+                                book.temporalMetadata.eraLabel}
                             </h4>
                           )}
                           <div className="swiper-no-swiping">

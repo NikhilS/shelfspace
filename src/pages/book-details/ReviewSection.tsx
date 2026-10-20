@@ -6,14 +6,14 @@ import {Book, FirestoreDate} from '../../types';
 import {useAuth} from '../../stores/authStore';
 import {Button} from '@/components/ui/button';
 import {Textarea} from '@/components/ui/textarea';
-import {format} from 'date-fns';
+import {formatShortDate} from '../../lib/date';
 
 interface ReviewSectionProps {
   libraryId: string;
   book: Book;
   reviews: Review[];
   setReviewsOptimistically: (reviews: Review[]) => void;
-  canEdit: boolean;
+  canEdit?: boolean;
   addReview: (rating: number, text: string) => Promise<void>;
 }
 
@@ -22,7 +22,6 @@ export function ReviewSection({
   book,
   reviews,
   setReviewsOptimistically,
-  canEdit,
   addReview,
 }: ReviewSectionProps) {
   const {user} = useAuth();
@@ -74,50 +73,46 @@ export function ReviewSection({
         <h3 className="font-headline-md text-headline-md text-primary">
           Reviews
         </h3>
-        {canEdit &&
+        {Boolean(user) &&
           !isReviewing &&
-          !reviews.some(r => r.userId === user?.uid) &&
-          (book.userStatuses?.[user?.uid || ''] === 'finished' ||
-            book.userStatuses?.[user?.uid || ''] === 'abandoned') && (
+          !reviews.some(r => r.userId === user?.uid) && (
             <Button onClick={() => setIsReviewing(true)}>Write Review</Button>
           )}
       </div>
 
-      {isReviewing &&
-        (book.userStatuses?.[user?.uid || ''] === 'finished' ||
-          book.userStatuses?.[user?.uid || ''] === 'abandoned') && (
-          <div className="bg-surface-container rounded-lg p-6 mb-8 border border-surface-variant swiper-no-swiping">
-            <div className="mb-4 swiper-no-swiping">
-              <StarRating
-                interactive
-                rating={reviewRating}
-                onRatingChange={setReviewRating}
-                size="lg"
-              />
-            </div>
-            <Textarea
-              value={reviewText}
-              onChange={e => setReviewText(e.target.value)}
-              placeholder="What did you think of this book?"
-              className="w-full bg-surface-container-lowest border-outline-variant/60 rounded-md p-4 text-body-md text-on-surface min-h-[120px] mb-6 resize-y swiper-no-swiping"
+      {Boolean(user) && isReviewing && (
+        <div className="bg-surface-container rounded-lg p-6 mb-8 border border-surface-variant swiper-no-swiping">
+          <div className="mb-4 swiper-no-swiping">
+            <StarRating
+              interactive
+              rating={reviewRating}
+              onRatingChange={setReviewRating}
+              size="lg"
             />
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsReviewing(false);
-                  setReviewRating(0);
-                  setReviewText('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleSaveReview} disabled={isSavingReview}>
-                {isSavingReview ? 'Saving...' : 'Save Review'}
-              </Button>
-            </div>
           </div>
-        )}
+          <Textarea
+            value={reviewText}
+            onChange={e => setReviewText(e.target.value)}
+            placeholder="What did you think of this book?"
+            className="w-full bg-surface-container-lowest border-outline-variant/60 rounded-md p-4 text-body-md text-on-surface min-h-[120px] mb-6 resize-y swiper-no-swiping"
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsReviewing(false);
+                setReviewRating(0);
+                setReviewText('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveReview} disabled={isSavingReview}>
+              {isSavingReview ? 'Saving...' : 'Save Review'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-6">
         {reviews.length === 0 ? (
@@ -143,16 +138,21 @@ export function ReviewSection({
                   </div>
                 </div>
                 <span className="text-xs text-on-surface-variant uppercase tracking-wider">
-                  {typeof review.createdAt === 'object' &&
-                  review.createdAt !== null &&
-                  'toDate' in review.createdAt &&
-                  typeof (review.createdAt as {toDate: () => Date}).toDate ===
-                    'function'
-                    ? format(
-                        (review.createdAt as {toDate: () => Date}).toDate(),
-                        'MMM d, yyyy',
-                      )
-                    : 'Just now'}
+                  {typeof review.createdAt === 'string' &&
+                  !isNaN(new Date(review.createdAt).getTime())
+                    ? formatShortDate(new Date(review.createdAt))
+                    : review.createdAt instanceof Date &&
+                        !isNaN(review.createdAt.getTime())
+                      ? formatShortDate(review.createdAt)
+                      : typeof review.createdAt === 'object' &&
+                          review.createdAt !== null &&
+                          'toDate' in review.createdAt &&
+                          typeof (review.createdAt as {toDate: () => Date})
+                            .toDate === 'function'
+                        ? formatShortDate(
+                            (review.createdAt as {toDate: () => Date}).toDate(),
+                          )
+                        : 'Just now'}
                 </span>
               </div>
               <p className="text-on-surface leading-relaxed text-body-md whitespace-pre-wrap">

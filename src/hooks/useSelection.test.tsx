@@ -5,7 +5,6 @@ import {toast} from 'sonner';
 import React from 'react';
 import {Book} from '../types';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {trpcVanilla} from '../lib/trpc';
 
 const mockBatchUpsert = vi.fn().mockResolvedValue({
   createdCount: 0,

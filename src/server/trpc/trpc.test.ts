@@ -1,269 +1,217 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {
   createContext,
-  verifyLibraryWriteAccess,
-  verifyLibraryReadAccess,
-  ContextUser,
+  router,
+  publicProcedure,
+  protectedProcedure,
+  adminProcedure,
 } from './trpc';
-import {ApiKeyService} from '../services/apiKeyService';
-import {LibraryService} from '../services/libraryService';
-import admin from 'firebase-admin';
+import {SUPERADMIN_EMAIL} from '../../constants/auth';
+import {TRPCError} from '@trpc/server';
 
-vi.mock('../services/apiKeyService');
-vi.mock('../services/libraryService');
-vi.mock('../services/firebaseAdmin', () => ({
-  getAdminDb: () => mockFirestore(),
-}));
+const mockVerifyIdToken = vi.fn();
+const mockGetAllowlistDoc = vi.fn();
 
-const mockDocGet = vi.fn();
-const mockDoc = vi.fn((_path: string) => ({
-  get: mockDocGet,
-}));
-const mockFirestore = vi.fn(() => ({
-  doc: mockDoc,
-}));
+vi.mock('firebase-admin', () => {
+  return {
+    default: {
+      apps: [{}],
+      initializeApp: vi.fn(),
+      auth: () => ({
+        verifyIdToken: mockVerifyIdToken,
+      }),
+    },
+  };
+});
 
-vi.mock('firebase-admin', () => ({
-  default: {
-    apps: [],
-    initializeApp: vi.fn(),
-    app: vi.fn(),
-    auth: vi.fn(() => ({
-      verifyIdToken: vi.fn(),
-    })),
-    firestore: () => mockFirestore(),
-  },
-}));
+vi.mock('../services/firebaseAdmin', () => {
+  return {
+    getAdminApp: () => ({}),
+    getAdminDb: () => ({
+      collection: () => ({
+        doc: () => ({
+          get: mockGetAllowlistDoc,
+        }),
+      }),
+      doc: () => ({
+        get: mockGetAllowlistDoc,
+      }),
+    }),
+  };
+});
 
-describe('TRPC Context & Auth Middleware', () => {
+// Create a dummy test router to test middlewares
+const testRouter = router({
+  publicTest: publicProcedure.query(() => 'public ok'),
+  protectedTest: protectedProcedure.query(({ctx}) => `hello ${ctx.user.email}`),
+  adminTest: adminProcedure.query(({ctx}) => `admin ${ctx.user.email}`),
+});
+
+describe('tRPC Context & Middlewares (JWT Authentication)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDocGet.mockReset();
   });
 
-  describe('createContext', () => {
-    it('authenticates request via x-api-key header for superadmin', async () => {
-      const mockReq = {
-        headers: {
-          'x-api-key': 'lib_live_valid123',
-        },
-      } as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['req'];
+  describe('createContext - JWT Token Auth', () => {
+    it('returns null user when no authorization headers are present', async () => {
+      const ctx = await createContext({
+        req: {headers: {}} as any,
+        res: {} as any,
+      } as any);
 
-      const mockRes =
-        {} as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['res'];
+      expect(ctx.user).toBeNull();
+      expect(ctx.isAppAllowed).toBe(false);
+      expect(ctx.isAdmin).toBe(false);
+    });
 
-      vi.mocked(ApiKeyService.validateApiKey).mockResolvedValueOnce({
-        uid: 'api_user_1',
-        email: 'nikhil.singhal@gmail.com',
-        apiKeyId: 'hash1',
+    it('authenticates valid JWT and grants admin to SUPERADMIN_EMAIL', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({
+        uid: 'super_uid',
+        email: SUPERADMIN_EMAIL,
       });
 
-      const ctx = await createContext({req: mockReq, res: mockRes});
+      const ctx = await createContext({
+        req: {headers: {authorization: 'Bearer valid_jwt_token'}} as any,
+        res: {} as any,
+      } as any);
 
       expect(ctx.user).toEqual({
-        uid: 'api_user_1',
-        email: 'nikhil.singhal@gmail.com',
-        authType: 'api_key',
-        apiKeyId: 'hash1',
+        uid: 'super_uid',
+        email: SUPERADMIN_EMAIL,
       });
       expect(ctx.isAppAllowed).toBe(true);
       expect(ctx.isAdmin).toBe(true);
     });
 
-    it('authenticates standard allowlisted user via API key with isAdmin=false', async () => {
-      const mockReq = {
-        headers: {
-          authorization: 'Bearer lib_live_secretkey456',
-        },
-      } as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['req'];
-
-      const mockRes =
-        {} as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['res'];
-
-      vi.mocked(ApiKeyService.validateApiKey).mockResolvedValueOnce({
-        uid: 'bearer_user_2',
-        email: 'standard@example.com',
-        apiKeyId: 'hash2',
+    it('authenticates valid JWT and checks Firestore allowlist for regular users', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({
+        uid: 'user_123',
+        email: 'reader@example.com',
       });
-
-      mockDocGet.mockResolvedValueOnce({
+      mockGetAllowlistDoc.mockResolvedValueOnce({
         exists: true,
         data: () => ({role: 'user'}),
       });
 
-      const ctx = await createContext({req: mockReq, res: mockRes});
+      const ctx = await createContext({
+        req: {headers: {authorization: 'Bearer regular_jwt'}} as any,
+        res: {} as any,
+      } as any);
 
-      expect(ctx.user?.uid).toBe('bearer_user_2');
-      expect(ctx.user?.authType).toBe('api_key');
+      expect(ctx.user?.uid).toBe('user_123');
       expect(ctx.isAppAllowed).toBe(true);
       expect(ctx.isAdmin).toBe(false);
     });
 
-    it('authenticates allowlisted admin user via Firebase JWT with isAdmin=true', async () => {
-      const mockReq = {
-        headers: {
-          authorization: 'Bearer valid_firebase_jwt_token',
-        },
-      } as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['req'];
-
-      const mockRes =
-        {} as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['res'];
-
-      vi.mocked(ApiKeyService.validateApiKey).mockResolvedValueOnce(null);
-
-      const mockVerifyIdToken = vi.fn().mockResolvedValueOnce({
-        uid: 'jwt_admin_3',
-        email: 'admin@example.com',
+    it('denies app access if JWT user is not on the allowlist', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({
+        uid: 'stranger_999',
+        email: 'stranger@example.com',
       });
-      vi.mocked(admin.auth).mockReturnValueOnce({
-        verifyIdToken: mockVerifyIdToken,
-      } as unknown as ReturnType<typeof admin.auth>);
-
-      mockDocGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({role: 'admin'}),
-      });
-
-      const ctx = await createContext({req: mockReq, res: mockRes});
-
-      expect(ctx.user).toEqual({
-        uid: 'jwt_admin_3',
-        email: 'admin@example.com',
-        authType: 'jwt',
-      });
-      expect(ctx.isAppAllowed).toBe(true);
-      expect(ctx.isAdmin).toBe(true);
-    });
-
-    it('marks non-allowlisted user with isAppAllowed=false and isAdmin=false', async () => {
-      const mockReq = {
-        headers: {
-          authorization: 'Bearer non_allowlisted_token',
-        },
-      } as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['req'];
-
-      const mockRes =
-        {} as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['res'];
-
-      vi.mocked(ApiKeyService.validateApiKey).mockResolvedValueOnce(null);
-
-      const mockVerifyIdToken = vi.fn().mockResolvedValueOnce({
-        uid: 'jwt_random_4',
-        email: 'random@example.com',
-      });
-      vi.mocked(admin.auth).mockReturnValueOnce({
-        verifyIdToken: mockVerifyIdToken,
-      } as unknown as ReturnType<typeof admin.auth>);
-
-      mockDocGet.mockResolvedValueOnce({
+      mockGetAllowlistDoc.mockResolvedValueOnce({
         exists: false,
       });
 
-      const ctx = await createContext({req: mockReq, res: mockRes});
+      const ctx = await createContext({
+        req: {headers: {authorization: 'Bearer stranger_jwt'}} as any,
+        res: {} as any,
+      } as any);
 
-      expect(ctx.user?.uid).toBe('jwt_random_4');
+      expect(ctx.user?.uid).toBe('stranger_999');
       expect(ctx.isAppAllowed).toBe(false);
       expect(ctx.isAdmin).toBe(false);
-    });
-
-    it('handles unauthenticated or invalid token requests cleanly', async () => {
-      const mockReq = {
-        headers: {},
-      } as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['req'];
-
-      const mockRes =
-        {} as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['res'];
-
-      const ctx = await createContext({req: mockReq, res: mockRes});
-
-      expect(ctx.user).toBeNull();
-      expect(ctx.isAppAllowed).toBe(false);
-      expect(ctx.isAdmin).toBe(false);
-    });
-
-    it('handles invalid/expired JWT without throwing unhandled exception', async () => {
-      const consoleSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
-
-      const mockReq = {
-        headers: {
-          authorization: 'Bearer invalid_or_expired_jwt',
-        },
-      } as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['req'];
-
-      const mockRes =
-        {} as unknown as import('@trpc/server/adapters/express').CreateExpressContextOptions['res'];
-
-      vi.mocked(admin.auth).mockReturnValueOnce({
-        verifyIdToken: vi
-          .fn()
-          .mockRejectedValueOnce(new Error('Firebase ID Token expired')),
-      } as unknown as ReturnType<typeof admin.auth>);
-
-      const ctx = await createContext({req: mockReq, res: mockRes});
-
-      expect(ctx.user).toBeNull();
-      expect(ctx.isAppAllowed).toBe(false);
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Error verifying JWT token in TRPC context',
-        expect.any(Error),
-      );
-      consoleSpy.mockRestore();
     });
   });
 
-  describe('verifyLibraryWriteAccess & verifyLibraryReadAccess', () => {
-    it('verifyLibraryWriteAccess throws UNAUTHORIZED if user is null', async () => {
-      await expect(verifyLibraryWriteAccess('lib1', null)).rejects.toThrow(
-        'Not authenticated',
+  describe('Procedure Middlewares', () => {
+    it('allows publicProcedure for unauthenticated callers', async () => {
+      const caller = testRouter.createCaller({
+        req: {} as any,
+        res: {} as any,
+        user: null,
+        isAppAllowed: false,
+        isAdmin: false,
+      });
+
+      const res = await caller.publicTest();
+      expect(res).toBe('public ok');
+    });
+
+    it('throws UNAUTHORIZED on protectedProcedure when user is null', async () => {
+      const caller = testRouter.createCaller({
+        req: {} as any,
+        res: {} as any,
+        user: null,
+        isAppAllowed: false,
+        isAdmin: false,
+      });
+
+      await expect(caller.protectedTest()).rejects.toThrowError(
+        new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required. Provide a valid Bearer token.',
+        }),
       );
     });
 
-    it('verifyLibraryWriteAccess delegates required role editor to LibraryService', async () => {
-      const user: ContextUser = {
-        uid: 'u1',
-        email: 'test@example.com',
-        authType: 'jwt',
-      };
+    it('throws FORBIDDEN on protectedProcedure when user is not on allowlist', async () => {
+      const caller = testRouter.createCaller({
+        req: {} as any,
+        res: {} as any,
+        user: {uid: 'u1', email: 'unallowed@example.com'},
+        isAppAllowed: false,
+        isAdmin: false,
+      });
 
-      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
-
-      const result = await verifyLibraryWriteAccess('lib1', user);
-
-      expect(result).toBe(true);
-      expect(LibraryService.verifyLibraryAccess).toHaveBeenCalledWith(
-        'u1',
-        'test@example.com',
-        'lib1',
-        'editor',
+      await expect(caller.protectedTest()).rejects.toThrowError(
+        new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Forbidden: User is not authorized on the access allowlist.',
+        }),
       );
     });
 
-    it('verifyLibraryReadAccess throws UNAUTHORIZED if user is null', async () => {
-      await expect(verifyLibraryReadAccess('lib1', null)).rejects.toThrow(
-        'Not authenticated',
+    it('succeeds on protectedProcedure for allowlisted user', async () => {
+      const caller = testRouter.createCaller({
+        req: {} as any,
+        res: {} as any,
+        user: {uid: 'u1', email: 'allowed@example.com'},
+        isAppAllowed: true,
+        isAdmin: false,
+      });
+
+      const res = await caller.protectedTest();
+      expect(res).toBe('hello allowed@example.com');
+    });
+
+    it('throws FORBIDDEN on adminProcedure for non-admin user', async () => {
+      const caller = testRouter.createCaller({
+        req: {} as any,
+        res: {} as any,
+        user: {uid: 'u1', email: 'allowed@example.com'},
+        isAppAllowed: true,
+        isAdmin: false,
+      });
+
+      await expect(caller.adminTest()).rejects.toThrowError(
+        new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Forbidden: Administrative privileges required.',
+        }),
       );
     });
 
-    it('verifyLibraryReadAccess delegates required role viewer to LibraryService', async () => {
-      const user: ContextUser = {
-        uid: 'u2',
-        email: 'viewer@example.com',
-        authType: 'api_key',
-      };
+    it('succeeds on adminProcedure for admin user', async () => {
+      const caller = testRouter.createCaller({
+        req: {} as any,
+        res: {} as any,
+        user: {uid: 'admin1', email: SUPERADMIN_EMAIL},
+        isAppAllowed: true,
+        isAdmin: true,
+      });
 
-      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
-
-      const result = await verifyLibraryReadAccess('lib2', user);
-
-      expect(result).toBe(true);
-      expect(LibraryService.verifyLibraryAccess).toHaveBeenCalledWith(
-        'u2',
-        'viewer@example.com',
-        'lib2',
-        'viewer',
-      );
+      const res = await caller.adminTest();
+      expect(res).toBe(`admin ${SUPERADMIN_EMAIL}`);
     });
   });
 });

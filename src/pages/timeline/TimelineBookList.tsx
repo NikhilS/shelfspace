@@ -124,7 +124,8 @@ export const TimelineDesktopEpochDrawer: React.FC<TimelineEpochDrawerProps> = ({
                           <span>{endY - startY} yr span</span>
                         </>
                       )}
-                      {book.temporalMetadata?.eraName && (
+                      {(book.temporalMetadata?.eraName ||
+                        book.temporalMetadata?.eraLabel) && (
                         <>
                           <span
                             aria-hidden="true"
@@ -133,7 +134,8 @@ export const TimelineDesktopEpochDrawer: React.FC<TimelineEpochDrawerProps> = ({
                             ·
                           </span>
                           <span className="font-sans truncate">
-                            {book.temporalMetadata.eraName}
+                            {book.temporalMetadata.eraName ||
+                              book.temporalMetadata.eraLabel}
                           </span>
                         </>
                       )}

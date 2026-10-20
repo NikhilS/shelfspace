@@ -1,51 +1,33 @@
-import Bottleneck from 'bottleneck';
+import {ProviderQuotaScheduler} from './scheduler/providerQuotaScheduler';
+import {globalProviderGovernor} from './scheduler/globalProviderGovernor';
 
-// Google Books API is highly rate limited by IP
-export const googleBooksLimiter = new Bottleneck({
-  maxConcurrent: 3,
-  minTime: 200, // 5 requests per second max
-  reservoir: 100, // 100 requests per minute max...
-  reservoirRefreshAmount: 100,
-  reservoirRefreshInterval: 60 * 1000,
+/**
+ * First-class capacity-aware scheduler for Gemini Structured & Text Generation calls
+ * (`gemini-3-flash-preview` / `gemini-3.1-pro-preview`).
+ */
+export const geminiLimiter = new ProviderQuotaScheduler({
+  providerId: 'gemini-structured',
+  maxConcurrent: 4,
+  minSpacingMs: 250,
+  maxRequestsPerMinute: 60,
+  burstCapacity: 8,
+  defaultCooldownMs: 10_000,
+  maxRetries: 3,
 });
 
-googleBooksLimiter.on('failed', async (error, jobInfo) => {
-  const id = jobInfo.options.id || 'task';
-  const errMessage = error instanceof Error ? error.message : String(error);
-  if (jobInfo.retryCount < 3) {
-    const delay = 1000 * Math.pow(2, jobInfo.retryCount);
-    console.info(
-      `[googleBooksLimiter] Retrying job '${id}' (attempt ${jobInfo.retryCount + 1}/3) after error: ${errMessage}`,
-    );
-    return delay;
-  }
-  console.warn(
-    `[googleBooksLimiter] Job '${id}' failed after max retries: ${errMessage}`,
-  );
-  return undefined;
-});
-
-// Gemini API is also rate limited per tier
-export const geminiLimiter = new Bottleneck({
+/**
+ * First-class capacity-aware scheduler for Gemini Vector Embedding calls
+ * (`gemini-embedding-2-preview`).
+ */
+export const geminiEmbeddingLimiter = new ProviderQuotaScheduler({
+  providerId: 'gemini-embedding',
   maxConcurrent: 5,
-  minTime: 1000, // 1 request per second max depending on flash/pro
-  reservoir: 15, // 15 RPMin constraint to be safe against base tier quotas
-  reservoirRefreshAmount: 15,
-  reservoirRefreshInterval: 60 * 1000,
+  minSpacingMs: 150,
+  maxRequestsPerMinute: 120,
+  burstCapacity: 15,
+  defaultCooldownMs: 10_000,
+  maxRetries: 3,
 });
 
-geminiLimiter.on('failed', async (error, jobInfo) => {
-  const id = jobInfo.options.id || 'ai-task';
-  const errMessage = error instanceof Error ? error.message : String(error);
-  if (jobInfo.retryCount < 3) {
-    const delay = 2000 * Math.pow(2, jobInfo.retryCount);
-    console.info(
-      `[geminiLimiter] Retrying job '${id}' (attempt ${jobInfo.retryCount + 1}/3) after transient error (503/429/500): ${errMessage}`,
-    );
-    return delay;
-  }
-  console.warn(
-    `[geminiLimiter] Job '${id}' failed after max retries: ${errMessage}`,
-  );
-  return undefined;
-});
+globalProviderGovernor.registerScheduler(geminiLimiter);
+globalProviderGovernor.registerScheduler(geminiEmbeddingLimiter);

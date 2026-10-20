@@ -19,12 +19,15 @@ export function useLibraryPermissions(
     utils = undefined;
   }
 
-  // Fast-path for superadmin
+  // Fast-path for superadmin or user's own virtual reading shelf
   const isSuperAdmin = email === SUPERADMIN_EMAIL.toLowerCase().trim();
+  const isUserVirtualShelf = Boolean(
+    libraryId && userId && libraryId === `virtual_${userId}`,
+  );
 
-  const deriveFromCachedLibrary = () => {
+  const getCachedLibrary = (): Library | undefined => {
     if (!libraryId || !userId || !utils?.library) return undefined;
-    const cachedLib =
+    return (
       (utils.library.get?.getData?.({libraryId}) as Library | undefined) ||
       (
         utils.library.list?.getData?.({scopes: ['owned', 'shared']})
@@ -32,49 +35,87 @@ export function useLibraryPermissions(
       )?.find(l => l.id === libraryId) ||
       (
         utils.library.list?.getData?.()?.libraries as Library[] | undefined
-      )?.find(l => l.id === libraryId);
-
-    if (!cachedLib) return undefined;
-
-    const access = getAccessFromLibrary(cachedLib, userId, email);
-    const derivedRole: 'owner' | 'editor' | 'viewer' | null = access.role;
-
-    if (!derivedRole) return undefined;
-    return {
-      role: derivedRole,
-      isOwner: access.isOwner,
-      canEdit: access.canEdit,
-    };
+      )?.find(l => l.id === libraryId)
+    );
   };
 
-  const cachedAccess = deriveFromCachedLibrary();
+  const cachedLibrary = getCachedLibrary();
+  const cachedAccess = cachedLibrary
+    ? getAccessFromLibrary(cachedLibrary, userId, email)
+    : undefined;
 
-  const {data, isLoading} = trpc.library.getPermissions.useQuery(
-    {libraryId: libraryId || ''},
-    {
-      enabled: Boolean(isAuthReady && libraryId && userId && !isSuperAdmin),
-      initialData: () => cachedAccess,
-      staleTime: 1000 * 60 * 5,
-    },
+  const isQueryEnabled = Boolean(
+    isAuthReady && libraryId && userId && !isSuperAdmin && !isUserVirtualShelf,
   );
 
-  if (isSuperAdmin) {
+  // Share the canonical library.get query instead of firing a redundant library.getPermissions RPC
+  const hasLibraryGetQuery = Boolean(trpc?.library?.get?.useQuery);
+  const libraryQuery = hasLibraryGetQuery
+    ? trpc.library.get.useQuery(
+        {libraryId: libraryId || ''},
+        {
+          enabled: isQueryEnabled,
+          initialData: cachedLibrary,
+          staleTime: 1000 * 60 * 5,
+          gcTime: 1000 * 60 * 60 * 24,
+        },
+      )
+    : undefined;
+
+  // Fallback for isolated test mocks that only define library.getPermissions.useQuery
+  const legacyPermQuery =
+    !hasLibraryGetQuery && Boolean(trpc?.library?.getPermissions?.useQuery)
+      ? trpc.library.getPermissions.useQuery(
+          {libraryId: libraryId || ''},
+          {
+            enabled: isQueryEnabled,
+            staleTime: 1000 * 60 * 5,
+          },
+        )
+      : undefined;
+
+  if (isSuperAdmin || isUserVirtualShelf) {
     return {
       canEdit: true,
       isOwner: true,
       canDelete: true,
       canView: true,
-      role: 'owner',
+      role: 'owner' as const,
       loading: false,
+      isError: false,
     };
   }
 
-  const effective = data ?? cachedAccess;
+  const resolvedFromLibrary = libraryQuery?.data
+    ? getAccessFromLibrary(
+        libraryQuery.data as unknown as Library,
+        userId,
+        email,
+      )
+    : undefined;
+
+  const effective =
+    resolvedFromLibrary && resolvedFromLibrary.role
+      ? resolvedFromLibrary
+      : legacyPermQuery?.data
+        ? {
+            role: legacyPermQuery.data.role,
+            isOwner: legacyPermQuery.data.isOwner,
+            canEdit: legacyPermQuery.data.canEdit,
+          }
+        : cachedAccess && cachedAccess.role
+          ? cachedAccess
+          : undefined;
+
   const role = effective?.role ?? null;
   const isOwner = effective?.isOwner ?? false;
   const canEdit = effective?.canEdit ?? false;
   const canDelete = isOwner || canEdit;
   const canView = isOwner || canEdit || role === 'viewer';
+  const isQueryLoading = Boolean(
+    libraryQuery?.isLoading ?? legacyPermQuery?.isLoading,
+  );
+  const isError = Boolean(libraryQuery?.isError ?? legacyPermQuery?.isError);
 
   return {
     canEdit,
@@ -82,6 +123,7 @@ export function useLibraryPermissions(
     canDelete,
     canView,
     role,
-    loading: Boolean(libraryId && userId && isLoading && !effective),
+    loading: Boolean(libraryId && userId && isQueryLoading && !effective),
+    isError,
   };
 }

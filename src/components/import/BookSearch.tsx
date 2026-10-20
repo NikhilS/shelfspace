@@ -1,10 +1,7 @@
 import React, {useState, useRef, useEffect} from 'react';
 import {Loader2, BookPlus} from 'lucide-react';
-import {
-  searchBookByTitle,
-  searchBookByIsbn,
-  BookDetails,
-} from '../../services/bookApi';
+import {BookDetails} from '../../types';
+import {trpcVanilla} from '../../lib/trpc';
 import {toast} from 'sonner';
 import {
   toTitleCase,
@@ -49,17 +46,21 @@ export default function BookSearch({
     setIsSearching(true);
     setHasSearched(false);
     try {
-      const isIsbn = /^\d{10,13}$/.test(searchQuery.replace(/[- ]/g, ''));
+      const cleanQuery = searchQuery.trim();
+      const isIsbn = /^\d{10,13}$/.test(cleanQuery.replace(/[- ]/g, ''));
       let books: BookDetails[] = [];
       if (isIsbn) {
-        const book = await searchBookByIsbn(
-          searchQuery.replace(/[- ]/g, ''),
-          abortController.signal,
-        );
+        const book = await trpcVanilla.metadata.searchByIsbn.mutate({
+          isbn: cleanQuery.replace(/[- ]/g, ''),
+          priority: 'INTERACTIVE',
+        });
         if (book) books = [book];
       }
       if (books.length === 0) {
-        books = await searchBookByTitle(searchQuery, abortController.signal);
+        books = await trpcVanilla.metadata.searchByTitle.mutate({
+          query: cleanQuery,
+          limit: 15,
+        });
       }
       if (abortController.signal.aborted) return;
       setSearchResults(books);

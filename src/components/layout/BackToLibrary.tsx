@@ -20,12 +20,19 @@ export interface BackToLibraryProps {
 export const BackToLibrary: React.FC<BackToLibraryProps> = ({
   libraryId,
   customTo,
-  label = 'Back to Library',
+  label,
   className = '',
   onClick,
   'aria-label': ariaLabel,
 }) => {
-  const targetUrl = customTo || (libraryId ? `/library/${libraryId}` : '/');
+  const isVirtual = Boolean(libraryId?.startsWith('virtual_'));
+  const targetUrl =
+    customTo || (libraryId && !isVirtual ? `/library/${libraryId}` : '/');
+  const resolvedLabel =
+    label ||
+    (targetUrl === '/' || isVirtual
+      ? 'Back to Reading Room'
+      : 'Back to Library');
 
   const baseClasses = `group inline-flex items-center gap-2 min-h-[44px] px-3 py-1.5 -ml-3 rounded-full text-xs sm:text-sm font-sans font-medium text-on-surface-variant hover:text-primary active:text-primary hover:bg-surface-container-high/60 active:bg-surface-container-highest transition-all duration-150 border border-transparent hover:border-outline-variant/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1 cursor-pointer select-none ${className}`;
 
@@ -36,10 +43,10 @@ export const BackToLibrary: React.FC<BackToLibraryProps> = ({
         variant="ghost"
         onClick={onClick}
         className={baseClasses}
-        aria-label={ariaLabel || label}
+        aria-label={ariaLabel || resolvedLabel}
       >
         <ArrowLeft className="w-4 h-4 text-on-surface-variant group-hover:text-primary group-hover:-translate-x-1 transition-transform duration-150 shrink-0" />
-        <span className="truncate">{label}</span>
+        <span className="truncate">{resolvedLabel}</span>
       </Button>
     );
   }
@@ -49,10 +56,10 @@ export const BackToLibrary: React.FC<BackToLibraryProps> = ({
       to={targetUrl}
       onClick={onClick}
       className={baseClasses}
-      aria-label={ariaLabel || label}
+      aria-label={ariaLabel || resolvedLabel}
     >
       <ArrowLeft className="w-4 h-4 text-on-surface-variant group-hover:text-primary group-hover:-translate-x-1 transition-transform duration-150 shrink-0" />
-      <span className="truncate">{label}</span>
+      <span className="truncate">{resolvedLabel}</span>
     </Link>
   );
 };

@@ -173,5 +173,11 @@ describe('LibraryView', () => {
     const mobileAddLabel = await screen.findByText('Add');
     expect(addBooksLabel).toBeInTheDocument();
     expect(mobileAddLabel).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', {name: /Library Settings/i}),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTitle(/Share & Manage Collaborators/i),
+    ).not.toBeInTheDocument();
   });
 });

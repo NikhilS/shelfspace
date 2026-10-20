@@ -3,11 +3,6 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import React from 'react';
 import ExtractedBooksTable from './ExtractedBooksTable';
 
-vi.mock('../../services/bookApi', () => ({
-  searchBookByIsbn: vi.fn(),
-  searchBookByTitle: vi.fn(),
-}));
-
 describe('ExtractedBooksTable', () => {
   const mockBooks = [
     {title: 'Book 1', author: 'Author 1', isbn: '111'},

@@ -1,5 +1,6 @@
 import React, {useState, useRef, useMemo} from 'react';
-import {BookDetails, searchBookByIsbn} from '../../services/bookApi';
+import {BookDetails} from '../../types';
+import {trpcVanilla} from '../../lib/trpc';
 import BarcodeScanner from '../../components/import/BarcodeScanner';
 import {Loader2, X, BookPlus} from 'lucide-react';
 import {toast} from 'sonner';
@@ -19,9 +20,16 @@ import {
 interface ScanISBNTabProps {
   addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
   isAddingAll: boolean;
+  existingBooks?: BookDetails[];
+  allowDuplicates?: boolean;
 }
 
-function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
+function ScanISBNTab({
+  addBooks,
+  isAddingAll,
+  existingBooks = [],
+  allowDuplicates = false,
+}: ScanISBNTabProps) {
   const [processingIsbns, setProcessingIsbns] = useState<Set<string>>(
     new Set(),
   );
@@ -37,17 +45,36 @@ function ScanISBNTab({addBooks, isAddingAll}: ScanISBNTabProps) {
     if (processingRefs.current.has(isbn) || scannedRefs.current.has(isbn))
       return;
 
-    logger.info(`Detected ISBN: ${isbn}. Searching library database...`);
+    logger.info(`Detected ISBN: ${isbn}. Searching federated catalog...`);
     processingRefs.current.add(isbn);
     setProcessingIsbns(prev => new Set(prev).add(isbn));
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      const book = await searchBookByIsbn(isbn, controller.signal);
-      clearTimeout(timeoutId);
+      const book = await trpcVanilla.metadata.searchByIsbn.mutate({
+        isbn,
+        priority: 'INTERACTIVE',
+      });
 
       if (book) {
+        if (!allowDuplicates && existingBooks.length > 0) {
+          const cleanIsbn = isbn.replace(/[^0-9X]/gi, '');
+          const cleanTitle = (book.title || '').trim().toLowerCase();
+          const isDup = existingBooks.some(eb => {
+            const ebIsbn = (eb.isbn || '').replace(/[^0-9X]/gi, '');
+            const ebTitle = (eb.title || '').trim().toLowerCase();
+            return (
+              (cleanIsbn && ebIsbn === cleanIsbn) ||
+              (cleanTitle && ebTitle === cleanTitle)
+            );
+          });
+          if (isDup) {
+            triggerHaptics([50, 100, 50]);
+            toast.warning(
+              `"${book.title}" is already in your library (enable "Allow duplicate copies" to add again).`,
+            );
+            return;
+          }
+        }
         logger.info(`Found book: ${book.title} by ${book.author}`);
         triggerHaptics(50);
         scannedRefs.current.add(isbn);

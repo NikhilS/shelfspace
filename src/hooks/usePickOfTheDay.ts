@@ -1,21 +1,42 @@
 import {useQuery} from '@tanstack/react-query';
-import {Book} from '../types';
-import {searchBookByTitleAndAuthor} from '../services/bookApi';
 import {logger} from '../stores/debugStore';
-import {trpc} from '../lib/trpc';
+import {trpc, trpcVanilla} from '../lib/trpc';
 
-export function usePickOfTheDay(books: Book[], currentTab: string) {
-  const getPickOfTheDayMutation = trpc.gemini.getPickOfTheDay.useMutation();
+export interface PickSeedBook {
+  title: string;
+  author: string;
+  primaryGenre?: string | null;
+  subgenres?: string[];
+}
+
+export function usePickOfTheDay(
+  books: PickSeedBook[],
+  currentTabOrEnabled: string | boolean = 'overview',
+  scopeKey: string = 'library',
+) {
+  const getPickOfTheDayMutation =
+    trpc?.gemini?.getPickOfTheDay?.useMutation?.();
+
+  const isEnabled =
+    typeof currentTabOrEnabled === 'boolean'
+      ? currentTabOrEnabled
+      : currentTabOrEnabled === 'overview';
 
   const query = useQuery({
-    queryKey: ['pickOfTheDay', books.length],
-    enabled: books.length > 0 && currentTab === 'overview',
+    queryKey: ['pickOfTheDay', scopeKey, books.length],
+    enabled:
+      books.length > 0 &&
+      isEnabled &&
+      Boolean(getPickOfTheDayMutation?.mutateAsync),
     retry: false,
     staleTime: 1000 * 60 * 60 * 24, // 24 hours
     refetchOnWindowFocus: false,
     queryFn: async () => {
+      if (!getPickOfTheDayMutation?.mutateAsync) {
+        throw new Error('Recommendation service unavailable.');
+      }
       logger.info(
-        `[Curator pick] Starting AI Curator recommendation engine. Library size: ${books.length} books.`,
+        `[Curator pick] Starting AI Curator recommendation engine (${scopeKey}). Seed size: ${books.length} books.`,
       );
       const shuffled = [...books];
       for (let i = shuffled.length - 1; i > 0; i--) {
@@ -34,7 +55,7 @@ export function usePickOfTheDay(books: Book[], currentTab: string) {
         books: sample.map(b => ({
           title: b.title,
           author: b.author,
-          primaryGenre: b.primaryGenre,
+          primaryGenre: b.primaryGenre || undefined,
           subgenres: b.subgenres,
         })),
       });
@@ -64,11 +85,11 @@ export function usePickOfTheDay(books: Book[], currentTab: string) {
 
           if (alreadyExists) {
             logger.warn(
-              `[Curator pick] Duplicate! "${cTitle}" is already in your library. Looping to next recommendation...`,
+              `[Curator pick] Duplicate! "${cTitle}" is already in your collection. Looping to next recommendation...`,
             );
           } else {
             logger.info(
-              `[Curator pick] Match found! "${cTitle}" by ${cAuthor} is unique and not in your library.`,
+              `[Curator pick] Match found! "${cTitle}" by ${cAuthor} is unique and not in your collection.`,
             );
             finalPick = candidate;
             break;
@@ -77,7 +98,7 @@ export function usePickOfTheDay(books: Book[], currentTab: string) {
 
         if (!finalPick) {
           logger.warn(
-            '[Curator pick] Notice: All returned recommendations already exist in your library collection! Falling back to first recommendation as custom pick.',
+            '[Curator pick] Notice: All returned recommendations already exist in your collection! Falling back to first recommendation as custom pick.',
           );
           finalPick = picks[0];
         }
@@ -87,21 +108,23 @@ export function usePickOfTheDay(books: Book[], currentTab: string) {
         let coverUrl: string | undefined = undefined;
         try {
           logger.info(
-            `[Curator pick] Querying Book API to look up cover art for: "${finalPick.title}" by ${finalPick.author}...`,
+            `[Curator pick] Querying federated catalog to look up cover art for: "${finalPick.title}" by ${finalPick.author}...`,
           );
-          const results = await searchBookByTitleAndAuthor(
-            finalPick.title,
-            finalPick.author,
-          );
+          const result =
+            await trpcVanilla?.metadata?.searchByTitleAndAuthor?.mutate?.({
+              title: finalPick.title,
+              author: finalPick.author,
+              priority: 'INTERACTIVE',
+            });
 
-          if (results && results.length > 0 && results[0].coverUrl) {
-            coverUrl = results[0].coverUrl;
+          if (result && result.coverUrl) {
+            coverUrl = result.coverUrl;
             logger.info(
               `[Curator pick] Successfully resolved cover art URL: ${coverUrl}`,
             );
           } else {
             logger.info(
-              `[Curator pick] No cover art found in API for: "${finalPick.title}"`,
+              `[Curator pick] No cover art found in catalog for: "${finalPick.title}"`,
             );
           }
         } catch (err) {

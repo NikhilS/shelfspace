@@ -5,8 +5,8 @@ import type {
   Book,
   BookDetailsPayload,
   BookDetailsMetadata,
-  BookTemporalMetadata,
 } from '../../../types';
+import {BookPartitioner} from './bookPartitioner';
 
 /**
  * Retrieves a single book by ID, optionally merging partitioned heavy metadata.
@@ -17,12 +17,32 @@ export async function getBook(
   bookId: string,
 ): Promise<Book> {
   const db = getAdminDb();
-  const bookSnap = await db
+  const bookRef = db
     .collection('libraries')
     .doc(libraryId)
     .collection('books')
-    .doc(bookId)
-    .get();
+    .doc(bookId);
+  const detailRef = db
+    .collection('libraries')
+    .doc(libraryId)
+    .collection('bookDetails')
+    .doc(bookId);
+
+  let bookSnap: FirebaseFirestore.DocumentSnapshot;
+  let detailSnap: FirebaseFirestore.DocumentSnapshot | undefined;
+
+  if (typeof (db as {getAll?: unknown}).getAll === 'function') {
+    const [bSnap, dSnap] = await db.getAll(bookRef, detailRef);
+    bookSnap = bSnap;
+    detailSnap = dSnap;
+  } else {
+    bookSnap = await bookRef.get();
+    try {
+      detailSnap = await detailRef.get();
+    } catch {
+      detailSnap = undefined;
+    }
+  }
 
   if (!bookSnap.exists) {
     throw new TRPCError({
@@ -32,40 +52,16 @@ export async function getBook(
   }
 
   const bookData = (bookSnap.data() || {}) as Partial<Book>;
-  let heavyData: BookDetailsPayload = {};
+  const heavyData: BookDetailsPayload =
+    detailSnap && detailSnap.exists
+      ? ((detailSnap.data() || {}) as BookDetailsPayload)
+      : {};
 
-  try {
-    const detailSnap = await db
-      .collection('libraries')
-      .doc(libraryId)
-      .collection('bookDetails')
-      .doc(bookId)
-      .get();
-    if (detailSnap.exists) {
-      heavyData = (detailSnap.data() || {}) as BookDetailsPayload;
-    }
-  } catch {
-    // Non-critical if bookDetails subcollection doesn't exist
-  }
-
-  return {
-    title: bookData.title || 'Untitled Book',
-    author: bookData.author || 'Unknown Author',
-    addedBy: bookData.addedBy ?? null,
-    addedAt: bookData.addedAt || new Date().toISOString(),
-    ...bookData,
-    id: bookSnap.id,
-    ...(heavyData.synopsis ? {synopsis: heavyData.synopsis} : {}),
-    ...(heavyData.authorBio ? {authorBio: heavyData.authorBio} : {}),
-    ...(heavyData.embedding ? {embedding: heavyData.embedding} : {}),
-    ...(heavyData.clusterCoordinates
-      ? {clusterCoordinates: heavyData.clusterCoordinates}
-      : {}),
-  };
+  return BookPartitioner.mergeBookAndDetails(bookSnap.id, bookData, heavyData);
 }
 
 /**
- * Lists books in a library, applying optional filters and pagination.
+ * Lists books in a library, applying optional filters and cursor pagination.
  */
 export async function listBooks(
   _userId: string,
@@ -81,10 +77,11 @@ export async function listBooks(
   },
 ): Promise<{books: Book[]; nextCursor?: string}> {
   const db = getAdminDb();
-  let query: FirebaseFirestore.Query = db
+  const booksCollection = db
     .collection('libraries')
     .doc(libraryId)
     .collection('books');
+  let query: FirebaseFirestore.Query = booksCollection;
 
   try {
     query = query.orderBy('addedAt', 'desc');
@@ -92,48 +89,45 @@ export async function listBooks(
     // In tests or if index not configured
   }
 
+  if (options?.cursor && typeof query.startAfter === 'function') {
+    try {
+      const cursorSnap = await booksCollection.doc(options.cursor).get();
+      if (cursorSnap?.exists) {
+        query = query.startAfter(cursorSnap);
+      }
+    } catch {
+      // Fallback if cursor doc cannot be loaded in test mocks
+    }
+  }
+
   const limitCount = options?.limit ?? 1000;
-  query = query.limit(limitCount);
+  const hasMissingFilter = Boolean(options?.filters?.missingMetadata);
+  const fetchLimit = hasMissingFilter
+    ? Math.min(2000, limitCount * 3)
+    : limitCount;
+  query = query.limit(fetchLimit);
 
   const snapshot = await query.get();
   let books: Book[] = snapshot.docs.map(doc => {
     const data = (doc.data() || {}) as Partial<Book>;
-    const bookData: Book = {
-      title: data.title || 'Untitled Book',
-      author: data.author || 'Unknown Author',
-      addedBy: data.addedBy ?? null,
-      addedAt: data.addedAt || new Date().toISOString(),
-      ...data,
-      id: doc.id,
-      primaryGenre: data.primaryGenre || undefined,
-      subgenres: Array.isArray(data.subgenres) ? data.subgenres : [],
-      isCustomPrimary: Boolean(data.isCustomPrimary),
-    };
-
-    if (
-      bookData.temporalMetadata &&
-      typeof bookData.temporalMetadata === 'object'
-    ) {
-      const temporal: BookTemporalMetadata = {
-        ...bookData.temporalMetadata,
-      };
-      if (temporal.startYear !== undefined && temporal.endYear === undefined) {
-        temporal.endYear = temporal.startYear;
-      }
-      const start = temporal.startYear;
-      const end = temporal.endYear;
-      if (
-        (start !== undefined && (start < -10000 || start > 2100)) ||
-        (end !== undefined && (end < -10000 || end > 2100))
-      ) {
-        delete bookData.temporalMetadata;
-      } else {
-        bookData.temporalMetadata = temporal;
-      }
-    }
-
-    return bookData;
+    return BookPartitioner.mergeBookAndDetails(doc.id, data);
   });
+
+  if (options?.filters?.primaryGenre) {
+    const targetGenre = options.filters.primaryGenre.toLowerCase();
+    books = books.filter(
+      b => (b.primaryGenre || '').toLowerCase() === targetGenre,
+    );
+  }
+
+  if (options?.filters?.status) {
+    const targetStatus = options.filters.status;
+    books = books.filter(
+      b =>
+        b.status === targetStatus ||
+        (_userId && b.userStatuses?.[_userId] === targetStatus),
+    );
+  }
 
   if (options?.filters?.missingMetadata) {
     const missing = options.filters.missingMetadata;
@@ -148,35 +142,60 @@ export async function listBooks(
           !(b.bookDetailsMetadata as BookDetailsMetadata | undefined)
             ?.hasSynopsis
         );
+      if (missing === 'authorBio')
+        return (
+          !b.authorBio &&
+          !(b.bookDetailsMetadata as BookDetailsMetadata | undefined)
+            ?.hasAuthorBio
+        );
+      if (missing === 'embedding' || missing === 'embeddings')
+        return (
+          !b.embedding?.length &&
+          !(b.bookDetailsMetadata as BookDetailsMetadata | undefined)
+            ?.hasEmbedding
+        );
       if (missing === 'coverImage') return !b.coverUrl;
+      if (missing === 'series') return !b.series;
       return true;
     });
   }
 
+  const hasMore =
+    books.length > limitCount || snapshot.docs.length >= fetchLimit;
+  const slicedBooks = books.slice(0, limitCount);
+  const nextCursor = hasMore
+    ? slicedBooks[slicedBooks.length - 1]?.id ||
+      snapshot.docs[snapshot.docs.length - 1]?.id
+    : undefined;
+
   return {
-    books,
-    nextCursor:
-      snapshot.docs.length >= limitCount
-        ? snapshot.docs[snapshot.docs.length - 1]?.id
-        : undefined,
+    books: slicedBooks,
+    nextCursor,
   };
 }
 
 /**
- * Batches book details retrieval for constellation and graph views.
+ * Batches book details retrieval for constellation and graph views using db.getAll().
  */
 export async function getBookDetailsChunk(
   userId: string,
   userEmail: string | undefined,
   libraryId: string,
   bookIds: string[],
+  options?: {skipAccessCheck?: boolean},
 ): Promise<{details: Record<string, BookDetailsPayload>}> {
-  await LibraryService.verifyLibraryAccess(
-    userId,
-    userEmail,
-    libraryId,
-    'viewer',
-  );
+  if (!options?.skipAccessCheck) {
+    await LibraryService.verifyLibraryAccess(
+      userId,
+      userEmail,
+      libraryId,
+      'viewer',
+    );
+  }
+
+  if (bookIds.length === 0) {
+    return {details: {}};
+  }
 
   const db = getAdminDb();
   const detailsCollection = db
@@ -184,9 +203,11 @@ export async function getBookDetailsChunk(
     .doc(libraryId)
     .collection('bookDetails');
 
-  const snaps = await Promise.all(
-    bookIds.map(id => detailsCollection.doc(id).get()),
-  );
+  const docRefs = bookIds.map(id => detailsCollection.doc(id));
+  const snaps =
+    typeof (db as {getAll?: unknown}).getAll === 'function'
+      ? await db.getAll(...docRefs)
+      : await Promise.all(docRefs.map(ref => ref.get()));
 
   const details: Record<string, BookDetailsPayload> = {};
   snaps.forEach(snap => {

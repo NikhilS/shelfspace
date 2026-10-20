@@ -4,7 +4,7 @@ import type {AuthUser} from './types';
 export class TokenVerifier {
   /**
    * Extracts Firebase JWT token from 'Authorization: Bearer <token>' header.
-   * Returns null if not present or if it is an API key (lib_live_).
+   * Returns null if not present or malformed.
    */
   static extractTokenFromHeader(authHeader?: string): string | null {
     if (!authHeader || typeof authHeader !== 'string') {
@@ -16,12 +16,7 @@ export class TokenVerifier {
     }
 
     const token = authHeader.substring(7).trim();
-    if (
-      !token ||
-      token.startsWith('lib_live_') ||
-      token === 'undefined' ||
-      token === 'null'
-    ) {
+    if (!token || token === 'undefined' || token === 'null') {
       return null;
     }
 
@@ -39,14 +34,18 @@ export class TokenVerifier {
 
     try {
       const decoded = await admin.auth().verifyIdToken(token);
-      if (!decoded || !decoded.uid || !decoded.email) {
+      if (
+        !decoded ||
+        !decoded.uid ||
+        !decoded.email ||
+        decoded.email_verified === false
+      ) {
         return null;
       }
 
       return {
         uid: decoded.uid,
         email: decoded.email.toLowerCase(),
-        authType: 'jwt',
         displayName: (decoded.name as string | undefined) || undefined,
         photoURL: (decoded.picture as string | undefined) || undefined,
       };

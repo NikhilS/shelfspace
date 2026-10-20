@@ -3,6 +3,7 @@ import {useParams, useNavigate} from 'react-router-dom';
 import {Clock, Waves} from 'lucide-react';
 import {useAuth} from '../stores/authStore';
 import {useLibraryData} from '../hooks/useLibraryData';
+import {getAccessFromLibrary} from '../lib/permissions';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../components/import/BulkEnrichmentBanner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
@@ -12,19 +13,21 @@ import {Book} from '../types';
 import {
   PRESETS,
   formatYear,
-  TimelineCluster,
   TimelinePresetControls,
   TimelineScrubber,
 } from './timeline/TimelineControls';
-import {
-  computeRiverGeometry,
-  TimelineEraMarker,
-} from './timeline/TimelineEraMarker';
+import {computeRiverGeometry} from './timeline/TimelineEraMarker';
 import {
   TimelineDesktopEpochDrawer,
   TimelineMobileEpochSheet,
   TimelineNonHistoricalAnnex,
 } from './timeline/TimelineBookList';
+import {
+  partitionHistoricalBooks,
+  buildTimelineClusters,
+  computeTimelineStats,
+} from './timeline/timelineMath';
+import {TimelineRiverCanvas} from './timeline/TimelineRiverCanvas';
 
 export {formatYear};
 
@@ -33,11 +36,12 @@ export default function TimelineView() {
   const navigate = useNavigate();
   const {user} = useAuth();
 
-  const {books, isBooksLoading} = useLibraryData(
+  const {library, books, isBooksLoading} = useLibraryData(
     libraryId,
     user?.uid,
     navigate,
   );
+  const {canEdit} = getAccessFromLibrary(library, user?.uid, user?.email);
 
   const [zoomLevel, setZoomLevel] = useState<1 | 5 | 20>(1);
   const [selectedPreset, setSelectedPreset] = useState<string>('all');
@@ -89,6 +93,7 @@ export default function TimelineView() {
     providerKey: 'temporalMetadata',
     metadataField: 'temporalMetadata',
     filterPredicate: filterTemporalPredicate,
+    canEdit,
     successToastMessage: 'Historical temporal analysis complete!',
     errorToastMessage: 'Analysis backfill failed',
   });
@@ -126,133 +131,20 @@ export default function TimelineView() {
     }
   };
 
-  const historicalBooks = useMemo(() => {
-    return books.filter(
-      b => b.temporalMetadata && !b.temporalMetadata.isNonHistorical,
-    );
-  }, [books]);
+  const {historicalBooks, nonHistoricalBooks} = useMemo(
+    () => partitionHistoricalBooks(books),
+    [books],
+  );
 
-  const nonHistoricalBooks = useMemo(() => {
-    return books.filter(b => b.temporalMetadata?.isNonHistorical === true);
-  }, [books]);
+  const clusters = useMemo(
+    () => buildTimelineClusters(historicalBooks, zoomLevel, selectedPreset),
+    [historicalBooks, zoomLevel, selectedPreset],
+  );
 
-  const getClusterKey = (startYear: number, zoom: 1 | 5 | 20) => {
-    let interval = 500;
-    if (zoom === 5) interval = 100;
-    if (zoom === 20) interval = 10;
-    return Math.floor(startYear / interval) * interval;
-  };
-
-  const clusters = useMemo(() => {
-    const map: Record<number, Book[]> = {};
-
-    historicalBooks.forEach(b => {
-      const year = b.temporalMetadata?.startYear;
-      if (year !== undefined && year !== null) {
-        if (selectedPreset === 'bce' && year > 0) return;
-
-        const k = getClusterKey(year, zoomLevel);
-        if (!map[k]) map[k] = [];
-        map[k].push(b);
-      }
-    });
-
-    const list: TimelineCluster[] = Object.keys(map)
-      .map(Number)
-      .map(key => {
-        const cBooks = [...map[key]].sort(
-          (a, b) =>
-            (a.temporalMetadata?.startYear ?? 0) -
-            (b.temporalMetadata?.startYear ?? 0),
-        );
-
-        const eraNames = cBooks
-          .map(b => b.temporalMetadata?.eraName)
-          .filter(Boolean) as string[];
-
-        let eraLabel = '';
-        if (eraNames.length > 0) {
-          const counts: Record<string, number> = {};
-          let maxCount = 0;
-          eraNames.forEach(n => {
-            counts[n] = (counts[n] || 0) + 1;
-            if (counts[n] > maxCount) {
-              maxCount = counts[n];
-              eraLabel = n;
-            }
-          });
-        }
-
-        if (!eraLabel) {
-          const interval = zoomLevel === 1 ? 500 : zoomLevel === 5 ? 100 : 10;
-          if (zoomLevel === 20) {
-            eraLabel = `${formatYear(key)}s Era`;
-          } else {
-            eraLabel = `${formatYear(key)} – ${formatYear(key + interval - 1)}`;
-          }
-        }
-
-        const startYears = cBooks.map(
-          b => b.temporalMetadata?.startYear ?? key,
-        );
-        const endYears = cBooks.map(
-          b =>
-            b.temporalMetadata?.endYear ?? b.temporalMetadata?.startYear ?? key,
-        );
-        const minYear = Math.min(...startYears);
-        const maxYear = Math.max(...endYears);
-
-        const channelWidth = Math.min(
-          96,
-          Math.max(36, Math.round(32 + Math.log2(cBooks.length + 1) * 18)),
-        );
-
-        const spanningBooks = cBooks.filter(b => {
-          const s = b.temporalMetadata?.startYear;
-          const e = b.temporalMetadata?.endYear;
-          return s !== undefined && e !== undefined && e - s >= 15;
-        });
-
-        return {
-          key,
-          label: eraLabel,
-          books: cBooks,
-          minYear,
-          maxYear,
-          channelWidth,
-          spanningBooks,
-        };
-      });
-
-    return list.sort((a, b) => a.key - b.key);
-  }, [historicalBooks, zoomLevel, selectedPreset]);
-
-  const timelineStats = useMemo(() => {
-    if (clusters.length === 0) {
-      return {
-        totalHistorical: 0,
-        earliestYear: null as number | null,
-        latestYear: null as number | null,
-        totalSpanning: 0,
-      };
-    }
-    const earliestYear = Math.min(...clusters.map(c => c.minYear));
-    const latestYear = Math.max(...clusters.map(c => c.maxYear));
-    const totalHistorical = clusters.reduce(
-      (acc, c) => acc + c.books.length,
-      0,
-    );
-    const totalSpanning = clusters.reduce(
-      (acc, c) => acc + c.spanningBooks.length,
-      0,
-    );
-    return {
-      totalHistorical,
-      earliestYear,
-      latestYear,
-      totalSpanning,
-    };
-  }, [clusters]);
+  const timelineStats = useMemo(
+    () => computeTimelineStats(clusters),
+    [clusters],
+  );
 
   const riverGeometry = useMemo(
     () => computeRiverGeometry(clusters, stageWidth),
@@ -449,279 +341,15 @@ export default function TimelineView() {
                       </span>
                     </div>
 
-                    <div
-                      ref={stageContainerRef}
-                      className="relative w-full"
-                      style={{height: `${riverGeometry.totalHeight}px`}}
-                    >
-                      <svg
-                        viewBox={`0 0 ${riverGeometry.W} ${riverGeometry.totalHeight}`}
-                        className="block absolute inset-0 w-full h-full pointer-events-none select-none"
-                        aria-hidden="true"
-                      >
-                        <defs>
-                          <linearGradient
-                            id="alluvialValleyGrad"
-                            x1="0%"
-                            y1="0%"
-                            x2="100%"
-                            y2="100%"
-                          >
-                            <stop
-                              offset="0%"
-                              stopColor="#8ab0a6"
-                              stopOpacity="0.09"
-                            />
-                            <stop
-                              offset="50%"
-                              stopColor="#a8c3b8"
-                              stopOpacity="0.13"
-                            />
-                            <stop
-                              offset="100%"
-                              stopColor="#7da39b"
-                              stopOpacity="0.11"
-                            />
-                          </linearGradient>
-
-                          <linearGradient
-                            id="shallowShoalGrad"
-                            x1="0%"
-                            y1="0%"
-                            x2="0%"
-                            y2="100%"
-                          >
-                            <stop
-                              offset="0%"
-                              stopColor="#7fb8c9"
-                              stopOpacity="0.28"
-                            />
-                            <stop
-                              offset="50%"
-                              stopColor="#64a6ba"
-                              stopOpacity="0.34"
-                            />
-                            <stop
-                              offset="100%"
-                              stopColor="#5295ab"
-                              stopOpacity="0.38"
-                            />
-                          </linearGradient>
-
-                          <linearGradient
-                            id="midChannelGrad"
-                            x1="0%"
-                            y1="0%"
-                            x2="0%"
-                            y2="100%"
-                          >
-                            <stop
-                              offset="0%"
-                              stopColor="#488ea5"
-                              stopOpacity="0.32"
-                            />
-                            <stop
-                              offset="50%"
-                              stopColor="#367c94"
-                              stopOpacity="0.38"
-                            />
-                            <stop
-                              offset="100%"
-                              stopColor="#296b82"
-                              stopOpacity="0.44"
-                            />
-                          </linearGradient>
-
-                          <linearGradient
-                            id="deepThalwegGrad"
-                            x1="0%"
-                            y1="0%"
-                            x2="0%"
-                            y2="100%"
-                          >
-                            <stop
-                              offset="0%"
-                              stopColor="#1f5d73"
-                              stopOpacity="0.26"
-                            />
-                            <stop
-                              offset="100%"
-                              stopColor="#16495c"
-                              stopOpacity="0.35"
-                            />
-                          </linearGradient>
-                        </defs>
-
-                        <path
-                          d={riverGeometry.alluvialValleyPath}
-                          fill="url(#alluvialValleyGrad)"
-                          stroke="#7aa198"
-                          strokeOpacity="0.22"
-                          strokeWidth="1"
-                        />
-
-                        <path
-                          d={riverGeometry.riparianMarshPath}
-                          fill="#9cc2b8"
-                          fillOpacity="0.11"
-                          stroke="#68968d"
-                          strokeOpacity="0.24"
-                          strokeWidth="0.9"
-                        />
-
-                        {riverGeometry.tributaries.map(creek => {
-                          const isHighlighted =
-                            selectedClusterKey === creek.clusterKey ||
-                            hoveredClusterKey === creek.clusterKey;
-                          return (
-                            <g key={creek.id}>
-                              <path
-                                d={creek.ribbonPath}
-                                fill="url(#shallowShoalGrad)"
-                                stroke="#3b7e94"
-                                strokeOpacity={isHighlighted ? '0.55' : '0.32'}
-                                strokeWidth="1"
-                              />
-                              <path
-                                d={creek.waterLinePath}
-                                fill="none"
-                                stroke="#296b82"
-                                strokeOpacity={isHighlighted ? '0.45' : '0.22'}
-                                strokeWidth="0.8"
-                              />
-                            </g>
-                          );
-                        })}
-
-                        <path
-                          d={riverGeometry.shallowShoalPath}
-                          fill="url(#shallowShoalGrad)"
-                          stroke="#387b91"
-                          strokeOpacity="0.52"
-                          strokeWidth="1.25"
-                        />
-
-                        <path
-                          d={riverGeometry.waterLinePortPath}
-                          fill="none"
-                          stroke="#2d6d82"
-                          strokeOpacity="0.24"
-                          strokeWidth="0.75"
-                        />
-                        <path
-                          d={riverGeometry.waterLineStarboardPath}
-                          fill="none"
-                          stroke="#2d6d82"
-                          strokeOpacity="0.24"
-                          strokeWidth="0.75"
-                        />
-
-                        <path
-                          d={riverGeometry.midChannelPath}
-                          fill="url(#midChannelGrad)"
-                        />
-
-                        <path
-                          d={riverGeometry.deepThalwegPath}
-                          fill="url(#deepThalwegGrad)"
-                        />
-
-                        {riverGeometry.islands.map(island => (
-                          <g key={island.id}>
-                            <path
-                              d={island.outerPath}
-                              fill="var(--color-surface-container-low)"
-                              fillOpacity="0.92"
-                              stroke="#387b91"
-                              strokeOpacity="0.45"
-                              strokeWidth="1"
-                            />
-                            <path
-                              d={island.innerVegPath}
-                              fill="#8cb3a3"
-                              fillOpacity="0.35"
-                              stroke="#5c8a79"
-                              strokeOpacity="0.35"
-                              strokeWidth="0.75"
-                            />
-                          </g>
-                        ))}
-
-                        {riverGeometry.spanArcs.map(arc => {
-                          const parentCluster = clusters[arc.fromClusterIndex];
-                          const isHighlighted =
-                            parentCluster &&
-                            (selectedClusterKey === parentCluster.key ||
-                              hoveredClusterKey === parentCluster.key);
-
-                          return (
-                            <g key={arc.id}>
-                              <path
-                                d={arc.pathD}
-                                fill="none"
-                                stroke="#2d6d82"
-                                strokeOpacity={isHighlighted ? '0.75' : '0.32'}
-                                strokeWidth={isHighlighted ? '1.8' : '1.15'}
-                                strokeDasharray="3 4"
-                              />
-                              <circle
-                                cx={arc.midX}
-                                cy={arc.midY}
-                                r={isHighlighted ? 4 : 2.8}
-                                fill="#2d6d82"
-                                fillOpacity={isHighlighted ? '0.85' : '0.45'}
-                              />
-                            </g>
-                          );
-                        })}
-
-                        {riverGeometry.bendNodes.map(node => {
-                          const isSelected =
-                            selectedClusterKey === node.cluster.key;
-                          const isHovered =
-                            hoveredClusterKey === node.cluster.key;
-                          const active = isSelected || isHovered;
-                          const dockAnchorX = node.isRightApex
-                            ? riverGeometry.W * 0.56
-                            : riverGeometry.W * 0.44;
-
-                          return (
-                            <g key={`svg-bend-${node.cluster.key}`}>
-                              <circle
-                                cx={node.x}
-                                cy={node.y}
-                                r={node.width * 0.48}
-                                fill="none"
-                                stroke="#296b82"
-                                strokeOpacity={active ? '0.52' : '0.22'}
-                                strokeWidth={active ? '1.4' : '0.9'}
-                              />
-                              <line
-                                x1={node.x}
-                                y1={node.y}
-                                x2={dockAnchorX}
-                                y2={node.y}
-                                stroke="#2d6d82"
-                                strokeOpacity={active ? '0.55' : '0.25'}
-                                strokeWidth={active ? '1.5' : '1'}
-                              />
-                            </g>
-                          );
-                        })}
-                      </svg>
-
-                      {riverGeometry.bendNodes.map(node => (
-                        <TimelineEraMarker
-                          key={node.cluster.key}
-                          node={node}
-                          stageWidth={riverGeometry.W}
-                          selectedClusterKey={selectedClusterKey}
-                          hoveredClusterKey={hoveredClusterKey}
-                          onSelectCluster={setSelectedClusterKey}
-                          onHoverCluster={setHoveredClusterKey}
-                        />
-                      ))}
-                    </div>
+                    <TimelineRiverCanvas
+                      clusters={clusters}
+                      riverGeometry={riverGeometry}
+                      selectedClusterKey={selectedClusterKey}
+                      hoveredClusterKey={hoveredClusterKey}
+                      onSelectCluster={setSelectedClusterKey}
+                      onHoverCluster={setHoveredClusterKey}
+                      stageContainerRef={stageContainerRef}
+                    />
 
                     <div className="flex items-center justify-between text-xs font-mono tabular-nums text-on-surface-variant pt-4 mt-2 border-t border-outline-variant/30">
                       <span className="inline-flex items-center gap-1.5">

@@ -1,4 +1,4 @@
-import React, {useState, useMemo} from 'react';
+import React, {useState, useMemo, useEffect} from 'react';
 import {Book} from '../../types';
 import {Button} from '@/components/ui/button';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -9,10 +9,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {Play, LibraryBig, Square, CheckCircle2} from 'lucide-react';
+import {
+  Play,
+  LibraryBig,
+  Square,
+  CheckCircle2,
+  Loader2,
+  Activity,
+} from 'lucide-react';
 import {MetadataKey} from '../../types/metadata';
-import {useBulkEnrichment} from '../../hooks/useBulkEnrichment';
-import {BulkEnrichmentBanner} from '../../components/import/BulkEnrichmentBanner';
+import {
+  useBulkEnrichment,
+  BookJobTelemetry,
+  ProviderTelemetrySummary,
+} from '../../hooks/useBulkEnrichment';
 import {
   DataTable,
   DataTableColumn,
@@ -31,60 +41,190 @@ const ALL_METADATA_KEYS = [
   {id: MetadataKey.GEO, label: 'Settings & Places'},
   {id: MetadataKey.TEMPORAL, label: 'Historical Eras'},
   {id: MetadataKey.GENRE, label: 'Genres'},
+  {id: MetadataKey.SERIES, label: 'Series'},
   {id: MetadataKey.SYNOPSIS, label: 'Summaries'},
   {id: MetadataKey.AUTHOR_BIO, label: 'Author Bios'},
-  {id: MetadataKey.SERIES, label: 'Series'},
+  {id: MetadataKey.EMBEDDING, label: 'Embeddings'},
   {id: MetadataKey.COVER_IMAGE, label: 'Cover Art'},
 ];
 
 function isMetadataPresent(book: Book, key: MetadataKey): boolean {
+  const status = book.enrichmentStatus || {};
   if (key === MetadataKey.SYNOPSIS) {
     return Boolean(
       book.bookDetailsMetadata?.hasSynopsis ||
-      book.enrichmentStatus?.synopsis === 'completed',
+      status.synopsis === 'completed' ||
+      status.synopsis === 'unsupported',
     );
   }
   if (key === MetadataKey.AUTHOR_BIO) {
     return Boolean(
       book.bookDetailsMetadata?.hasAuthorBio ||
-      book.enrichmentStatus?.authorBio === 'completed',
+      status.authorBio === 'completed' ||
+      status.authorBio === 'unsupported',
     );
   }
   if (key === MetadataKey.EMBEDDING) {
     return Boolean(
+      book.embedding?.length ||
       book.bookDetailsMetadata?.hasEmbedding ||
-      book.enrichmentStatus?.embedding === 'completed',
+      status.embedding === 'completed' ||
+      status.embedding === 'unsupported',
     );
   }
   if (key === MetadataKey.GEO) {
     return Boolean(
-      book.geoMetadata?.locations &&
-      Array.isArray(book.geoMetadata.locations) &&
-      book.geoMetadata.locations.length > 0,
+      book.geoMetadata?.isNonEarth ||
+      (book.geoMetadata?.locations &&
+        Array.isArray(book.geoMetadata.locations) &&
+        book.geoMetadata.locations.length > 0) ||
+      status.geo === 'completed' ||
+      status.geo === 'unsupported',
     );
   }
   if (key === MetadataKey.TEMPORAL) {
     return Boolean(
-      book.temporalMetadata &&
-      (book.temporalMetadata.startYear !== undefined ||
-        book.temporalMetadata.eraName ||
-        book.temporalMetadata.rationale),
+      (book.temporalMetadata &&
+        (book.temporalMetadata.isNonHistorical ||
+          book.temporalMetadata.startYear !== undefined ||
+          book.temporalMetadata.eraName ||
+          book.temporalMetadata.eraLabel ||
+          book.temporalMetadata.rationale)) ||
+      status.temporal === 'completed' ||
+      status.temporal === 'unsupported',
     );
   }
   if (key === MetadataKey.GENRE) {
-    return Boolean(book.primaryGenre && book.primaryGenre.trim().length > 0);
+    return Boolean(
+      (book.primaryGenre && book.primaryGenre.trim().length > 0) ||
+      status.genre === 'completed' ||
+      status.genre === 'unsupported',
+    );
   }
   if (key === MetadataKey.COVER_IMAGE) {
-    return Boolean(book.coverUrl || book.coverUrlRaw);
+    return Boolean(
+      book.coverUrl ||
+      book.coverUrlRaw ||
+      status.coverImage === 'completed' ||
+      status.coverImage === 'unsupported',
+    );
   }
   if (key === MetadataKey.SERIES) {
-    return Boolean(book.series && book.series.trim().length > 0);
+    return Boolean(
+      (book.series && book.series.trim().length > 0) ||
+      status.series === 'completed' ||
+      status.series === 'unsupported',
+    );
   }
   const val = (book as unknown as Record<string, unknown>)[key];
   if (Array.isArray(val)) return val.length > 0;
   if (typeof val === 'object' && val !== null)
     return Object.keys(val).length > 0;
   return Boolean(val);
+}
+
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  open_library: 'Open Library',
+  google_books: 'Google Books',
+  isbn_db: 'ISBNdb',
+  library_of_congress: 'Library of Congress',
+  worldcat_classify: 'WorldCat',
+  wikidata: 'Wikidata',
+  wikipedia: 'Wikipedia',
+  hardcover: 'Hardcover',
+  crossref: 'Crossref',
+  gemini_structured: 'Gemini AI',
+  gemini_embedding: 'Gemini Embeddings',
+};
+
+function formatProviderName(rawId: string): string {
+  if (PROVIDER_DISPLAY_NAMES[rawId]) {
+    return PROVIDER_DISPLAY_NAMES[rawId];
+  }
+  return rawId
+    .split('_')
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function formatProviderList(ids: string[], maxVisible = 2): string {
+  const formatted = ids.map(formatProviderName);
+  if (formatted.length <= maxVisible) {
+    return formatted.join(', ');
+  }
+  const visible = formatted.slice(0, maxVisible).join(', ');
+  return `${visible} +${formatted.length - maxVisible} more`;
+}
+
+function renderBookLiveTelemetryBadge(state?: BookJobTelemetry) {
+  if (!state) return <span className="text-xs text-outline">—</span>;
+
+  const winningList = state.winningProviders
+    ? Array.from(new Set(Object.values(state.winningProviders)))
+    : [];
+  const providerTag =
+    winningList.length > 0 ? formatProviderName(winningList[0]) : null;
+
+  switch (state.stage) {
+    case 'queued':
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-on-surface-variant">
+          <span className="w-1.5 h-1.5 rounded-full bg-outline/50" />
+          Queued
+        </span>
+      );
+    case 'fetching_catalog':
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-primary">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Cataloging
+        </span>
+      );
+    case 'fetching_ai':
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          AI Enriching
+        </span>
+      );
+    case 'completed':
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
+          <span>Done</span>
+          {providerTag && (
+            <>
+              <span aria-hidden="true" className="text-outline">
+                ·
+              </span>
+              <span className="text-on-surface-variant font-normal">
+                {providerTag}
+              </span>
+            </>
+          )}
+        </span>
+      );
+    case 'skipped':
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-on-surface-variant">
+          <span className="w-1.5 h-1.5 rounded-full bg-outline/40" />
+          Unchanged
+        </span>
+      );
+    case 'failed':
+      return (
+        <span
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-error"
+          title={state.error}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-error" />
+          Failed
+        </span>
+      );
+    default:
+      return <span className="text-xs text-outline">—</span>;
+  }
 }
 
 export function ManualEnrichmentSection({
@@ -99,19 +239,22 @@ export function ManualEnrichmentSection({
   );
 
   const [isEnriching, setIsEnriching] = useState(false);
+  const [enrichmentBatchBooks, setEnrichmentBatchBooks] = useState<Book[]>([]);
+  const [enrichmentEffectiveOverwrite, setEnrichmentEffectiveOverwrite] =
+    useState(false);
   const [targetMetadata, setTargetMetadata] = useState<MetadataKey>(
     MetadataKey.GEO,
   );
   const [overwrite, setOverwrite] = useState(false);
+  const [liveBookStates, setLiveBookStates] = useState<
+    Record<string, BookJobTelemetry>
+  >({});
 
-  // Filter books based on missing metadata selection
   const filteredBooks = useMemo(() => {
     if (filterMissing === 'all') return books;
-
     return books.filter(b => !isMetadataPresent(b, filterMissing));
   }, [books, filterMissing]);
 
-  // Handle select all logic for currently filtered books
   const allFilteredSelected =
     filteredBooks.length > 0 &&
     filteredBooks.every(b => selectedBookIds.has(b.id));
@@ -129,12 +272,10 @@ export function ManualEnrichmentSection({
 
   const toggleSelectAll = () => {
     if (allFilteredSelected) {
-      // Deselect all filtered
       const next = new Set(selectedBookIds);
       filteredBooks.forEach(b => next.delete(b.id));
       setSelectedBookIds(next);
     } else {
-      // Select all filtered
       const next = new Set(selectedBookIds);
       filteredBooks.forEach(b => next.add(b.id));
       setSelectedBookIds(next);
@@ -148,17 +289,40 @@ export function ManualEnrichmentSection({
     setSelectedBookIds(next);
   };
 
+  const handleStartEnrichment = () => {
+    const selected = books.filter(b => selectedBookIds.has(b.id));
+    if (selected.length === 0) return;
+
+    const missingInSelection = selected.filter(
+      b => !isMetadataPresent(b, targetMetadata),
+    );
+    const shouldOverwriteAll = overwrite || missingInSelection.length === 0;
+    const batchToRun = shouldOverwriteAll ? selected : missingInSelection;
+
+    setEnrichmentBatchBooks(batchToRun);
+    setEnrichmentEffectiveOverwrite(shouldOverwriteAll);
+    setIsEnriching(true);
+  };
+
+  const handleRunnerComplete = React.useCallback(() => {
+    setIsEnriching(false);
+    setSelectedBookIds(new Set());
+  }, []);
+
   const selectedBooksCount = selectedBookIds.size;
   const showActionBar = selectedBooksCount > 0 && !isEnriching;
+  const hasAnyLiveBookState = Object.keys(liveBookStates).length > 0;
 
   const columns: DataTableColumn<Book>[] = useMemo(
     () => [
       {
         id: 'select',
         width: 48,
+        minWidth: 48,
+        maxWidth: 48,
         headerClassName:
-          'w-12 px-4 py-3 bg-surface-container-low border-b border-outline-variant/30 text-center',
-        cellClassName: 'w-12 px-4 py-3 text-center',
+          'w-[48px] px-3 py-3 bg-surface-container-low border-b border-outline-variant/30 text-center',
+        cellClassName: 'w-[48px] px-3 py-3 text-center',
         header: () => (
           <DataTableCheckboxHeader
             checked={selectAllState}
@@ -177,28 +341,59 @@ export function ManualEnrichmentSection({
       {
         id: 'book',
         header: 'Book',
+        width: 280,
+        minWidth: 280,
+        maxWidth: 280,
         headerClassName:
-          'px-4 py-3 bg-surface-container-low border-b border-outline-variant/30 font-medium font-sans text-on-surface-variant w-[240px] sm:w-[280px] max-w-[320px]',
-        cellClassName: 'px-4 py-3 w-[240px] sm:w-[280px] max-w-[320px]',
+          'w-[280px] px-4 py-3 bg-surface-container-low border-b border-outline-variant/30 font-medium font-sans text-on-surface-variant',
+        cellClassName: 'w-[280px] px-4 py-3 overflow-hidden',
         wrap: true,
-        maxWidth: 320,
         cell: book => (
           <BookTitleCell
             title={book.title}
             author={book.author}
             coverUrl={book.coverUrl}
             size="sm"
-            maxWidth={280}
+            maxWidth={248}
           />
         ),
       },
+      ...(hasAnyLiveBookState || isEnriching
+        ? [
+            {
+              id: 'liveStatus',
+              header: (
+                <span className="block text-center leading-tight whitespace-normal">
+                  Status & Source
+                </span>
+              ),
+              width: 148,
+              minWidth: 148,
+              maxWidth: 148,
+              align: 'center' as const,
+              headerClassName:
+                'w-[148px] h-auto px-2.5 py-2.5 border-b border-outline-variant/30 text-center whitespace-normal break-words leading-tight bg-surface-container-low font-medium font-sans text-primary align-middle',
+              cellClassName:
+                'w-[148px] px-2.5 py-3 text-center whitespace-nowrap overflow-hidden text-ellipsis',
+              cell: (book: Book) =>
+                renderBookLiveTelemetryBadge(liveBookStates[book.id]),
+            },
+          ]
+        : []),
       ...ALL_METADATA_KEYS.map(k => ({
         id: k.id,
-        header: k.label,
+        header: (
+          <span className="block text-center leading-tight whitespace-normal">
+            {k.label}
+          </span>
+        ),
+        width: 104,
+        minWidth: 104,
+        maxWidth: 104,
         align: 'center' as const,
         headerClassName:
-          'px-4 py-3 border-b border-outline-variant/30 text-center whitespace-nowrap bg-surface-container-low font-medium font-sans text-on-surface-variant',
-        cellClassName: 'px-4 py-3 text-center',
+          'w-[104px] h-auto px-2 py-2.5 border-b border-outline-variant/30 text-center whitespace-normal break-words leading-tight bg-surface-container-low font-medium font-sans text-on-surface-variant align-middle',
+        cellClassName: 'w-[104px] px-2 py-3 text-center',
         cell: (book: Book) => (
           <StatusDotCell
             present={isMetadataPresent(book, k.id)}
@@ -207,7 +402,15 @@ export function ManualEnrichmentSection({
         ),
       })),
     ],
-    [selectAllState, selectedBookIds, toggleSelectAll, toggleSelect],
+    [
+      selectAllState,
+      selectedBookIds,
+      toggleSelectAll,
+      toggleSelect,
+      hasAnyLiveBookState,
+      isEnriching,
+      liveBookStates,
+    ],
   );
 
   return (
@@ -309,7 +512,7 @@ export function ManualEnrichmentSection({
           </div>
         </div>
         <Button
-          onClick={() => setIsEnriching(true)}
+          onClick={handleStartEnrichment}
           size="sm"
           className="gap-2 w-full md:w-auto flex-shrink-0"
         >
@@ -319,21 +522,19 @@ export function ManualEnrichmentSection({
 
       {/* In-Progress Enrichment Runner view */}
       {isEnriching && (
-        <div className="p-6 bg-surface-container border-b border-outline-variant/30">
+        <div className="px-6 py-4 bg-surface-container border-b border-outline-variant/30">
           <EnrichmentRunner
-            books={books.filter(b => selectedBookIds.has(b.id))}
+            books={enrichmentBatchBooks}
             libraryId={libraryId}
             targetMetadata={targetMetadata}
-            overwrite={overwrite}
-            onComplete={() => {
-              setIsEnriching(false);
-              setSelectedBookIds(new Set());
-            }}
+            overwrite={enrichmentEffectiveOverwrite}
+            onBookStatesChange={setLiveBookStates}
+            onComplete={handleRunnerComplete}
           />
         </div>
       )}
 
-      {/* Table view - nested in a bounded scrollable container so users don't have to scroll far to reach functionality below */}
+      {/* Table view */}
       <div className="relative border-t border-outline-variant/30 bg-surface rounded-b-xl overflow-hidden">
         <div className="max-h-[500px] overflow-y-auto overflow-x-auto">
           <DataTable<Book>
@@ -341,6 +542,7 @@ export function ManualEnrichmentSection({
             columns={columns}
             keyExtractor={b => b.id}
             onRowClick={book => toggleSelect(book.id)}
+            tableClassName="table-fixed w-full min-w-[1160px]"
             rowClassName={item =>
               `transition-colors bg-surface ${selectedBookIds.has(item.id) ? 'bg-primary/5' : 'hover:bg-surface-container-lowest/50'}`
             }
@@ -354,7 +556,6 @@ export function ManualEnrichmentSection({
             }}
           />
         </div>
-        {/* Table footer bar showing count and scroll helper */}
         <div className="px-4 py-2.5 bg-surface-container-lowest border-t border-outline-variant/20 flex items-center justify-between text-xs text-on-surface-variant select-none">
           <span className="font-medium text-on-surface">
             {filteredBooks.length}{' '}
@@ -375,47 +576,67 @@ function EnrichmentRunner({
   libraryId,
   targetMetadata,
   overwrite,
+  onBookStatesChange,
   onComplete,
 }: {
   books: Book[];
   libraryId: string;
   targetMetadata: MetadataKey;
   overwrite: boolean;
+  onBookStatesChange: (states: Record<string, BookJobTelemetry>) => void;
   onComplete: () => void;
 }) {
-  const {isBackfilling, progress, inFlightCount, cancelEnrichment} =
-    useBulkEnrichment({
-      books,
-      isBooksLoading: false,
-      libraryId,
-      providerKey: targetMetadata,
-      metadataField: targetMetadata,
-      overwrite,
-      filterPredicate: b => {
-        if (overwrite) return true;
-        return !isMetadataPresent(b, targetMetadata);
-      },
-      successToastMessage: `Successfully enriched ${targetMetadata}`,
-      errorToastMessage: `Failed to enrich ${targetMetadata}`,
-    });
+  const metadataLabel =
+    ALL_METADATA_KEYS.find(k => k.id === targetMetadata)?.label ||
+    targetMetadata;
+
+  const alwaysIncludeSelected = React.useCallback(() => true, []);
+
+  const {
+    isBackfilling,
+    progress,
+    inFlightCount,
+    cancelEnrichment,
+    perBookStates,
+    providerTelemetry,
+  } = useBulkEnrichment({
+    books,
+    isBooksLoading: false,
+    libraryId,
+    providerKey: targetMetadata,
+    metadataField: targetMetadata,
+    overwrite,
+    ignoreUnsupportedStatus: true,
+    filterPredicate: alwaysIncludeSelected,
+    successToastMessage: `Finished enriching ${metadataLabel}`,
+    errorToastMessage: `Failed to enrich ${metadataLabel}`,
+  });
+
+  useEffect(() => {
+    onBookStatesChange(perBookStates);
+  }, [perBookStates, onBookStatesChange]);
+
+  const totalCount = progress.total || books.length;
+  const processedCount = progress.completed + progress.failed;
+  const percentage =
+    totalCount > 0 ? Math.min(100, (processedCount / totalCount) * 100) : 0;
 
   const isFinished =
-    !isBackfilling &&
-    progress.total > 0 &&
-    progress.completed + progress.failed >= progress.total;
+    !isBackfilling && totalCount > 0 && processedCount >= totalCount;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-between items-center">
-        <div>
+    <div className="flex flex-col gap-3">
+      {/* Top row: status title, compact progress count, and single action button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <h4 className="font-semibold text-on-surface text-sm flex items-center gap-2">
             {isBackfilling ? (
               <>
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
                 </span>
-                Enrichment in Progress...
+                Enriching {metadataLabel}
               </>
             ) : isFinished ? (
               <>
@@ -423,45 +644,198 @@ function EnrichmentRunner({
                 Enrichment Complete
               </>
             ) : (
-              'Enrichment Stopped / Ready'
+              'Enrichment Paused'
             )}
           </h4>
-          <p className="text-xs text-on-surface-variant mt-1">
-            {isBackfilling
-              ? 'Analyzing books and extracting rich metadata with Gemini AI.'
-              : `${progress.completed} of ${progress.total} enriched${progress.failed > 0 ? ` (${progress.failed} skipped/unsupported)` : ''}.`}
-          </p>
+          <span aria-hidden="true" className="text-outline-variant">
+            ·
+          </span>
+          <span className="text-xs text-on-surface-variant font-mono">
+            {progress.completed} enriched
+            {progress.failed > 0
+              ? `, ${progress.failed} unchanged`
+              : ''} of {totalCount} {totalCount === 1 ? 'volume' : 'volumes'}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2 self-end sm:self-auto">
           {isBackfilling ? (
             <Button
               size="sm"
               variant="outline"
-              onClick={cancelEnrichment}
-              className="text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 gap-1.5 cursor-pointer"
+              onClick={() => void cancelEnrichment()}
+              className="h-7 px-2.5 text-xs text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 gap-1.5 cursor-pointer"
             >
-              <Square className="w-3 h-3 fill-current" />
-              Stop Enrichment
+              <Square className="w-2.5 h-2.5 fill-current" />
+              Stop
             </Button>
           ) : (
-            <Button size="sm" variant="outline" onClick={onComplete}>
-              Close
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onComplete}
+              className="h-7 px-3 text-xs"
+            >
+              Dismiss
             </Button>
           )}
         </div>
       </div>
-      {(progress.total > 0 || isBackfilling) && (
-        <BulkEnrichmentBanner
-          isBackfilling={isBackfilling}
-          completed={progress.completed}
-          failed={progress.failed}
-          total={progress.total}
-          title="Curator Enrichment"
-          description="Extracting metadata..."
-          inFlightCount={inFlightCount}
-          onCancel={cancelEnrichment}
-          cancelLabel="Stop"
+
+      {/* Unified progress bar */}
+      <div className="w-full bg-surface-container-highest rounded-full h-1.5 overflow-hidden">
+        <div
+          className="h-1.5 rounded-full bg-primary transition-all duration-300"
+          style={{width: `${percentage}%`}}
         />
+      </div>
+
+      {/* Quiet, informative provider telemetry footer */}
+      {providerTelemetry && (
+        <ProviderTelemetryStrip
+          telemetry={providerTelemetry}
+          fallbackInFlight={inFlightCount}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProviderTelemetryStrip({
+  telemetry,
+  fallbackInFlight = 0,
+}: {
+  telemetry: ProviderTelemetrySummary;
+  fallbackInFlight?: number;
+}) {
+  const [showDetails, setShowDetails] = useState(false);
+
+  const inFlight =
+    telemetry.totalInFlight ??
+    (telemetry as {totalActiveRequests?: number}).totalActiveRequests ??
+    fallbackInFlight;
+  const maxSlots = telemetry.maxGlobalConcurrent ?? 24;
+
+  const readyCount = telemetry.activeProviders.length;
+  const delayedCount = telemetry.delayedProviders.length;
+  const cooldownCount = telemetry.cooldownProviders.length;
+  const allHealthy = delayedCount === 0 && cooldownCount === 0;
+
+  return (
+    <div
+      className="flex flex-col gap-2 text-xs text-on-surface-variant"
+      data-testid="provider-telemetry-strip"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="inline-flex items-center gap-1.5 text-on-surface font-medium">
+            <Activity className="w-3.5 h-3.5 text-primary" />
+            <span>
+              {inFlight > 0
+                ? `${inFlight} of ${maxSlots} active requests`
+                : `Idle (${maxSlots} slots available)`}
+            </span>
+          </span>
+
+          <span aria-hidden="true" className="text-outline-variant">
+            ·
+          </span>
+
+          {allHealthy ? (
+            <span>
+              {readyCount > 0
+                ? `All ${readyCount} catalog & AI sources ready`
+                : 'Catalog & AI sources ready'}
+            </span>
+          ) : (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {readyCount > 0 && <span>{readyCount} ready</span>}
+              {delayedCount > 0 && (
+                <>
+                  {readyCount > 0 && (
+                    <span aria-hidden="true" className="text-outline-variant">
+                      ·
+                    </span>
+                  )}
+                  <span className="text-amber-700 dark:text-amber-300">
+                    Paced: {formatProviderList(telemetry.delayedProviders)}
+                  </span>
+                </>
+              )}
+              {cooldownCount > 0 && (
+                <>
+                  {(readyCount > 0 || delayedCount > 0) && (
+                    <span aria-hidden="true" className="text-outline-variant">
+                      ·
+                    </span>
+                  )}
+                  <span className="text-error">
+                    Rate-limited:{' '}
+                    {telemetry.cooldownProviders
+                      .slice(0, 2)
+                      .map(c => {
+                        const ms =
+                          c.cooldownRemainingMs ??
+                          (c as {remainingMs?: number}).remainingMs ??
+                          0;
+                        return `${formatProviderName(c.providerId)} (${Math.ceil(ms / 1000)}s)`;
+                      })
+                      .join(', ')}
+                    {cooldownCount > 2 ? ` +${cooldownCount - 2} more` : ''}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {(readyCount > 0 || delayedCount > 0 || cooldownCount > 0) && (
+          <button
+            type="button"
+            onClick={() => setShowDetails(prev => !prev)}
+            className="text-xs text-primary hover:underline font-medium cursor-pointer select-none"
+          >
+            {showDetails ? 'Hide sources' : 'View sources'}
+          </button>
+        )}
+      </div>
+
+      {showDetails && (
+        <div className="pt-2 border-t border-outline-variant/20 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-1.5 text-[11px]">
+          {telemetry.activeProviders.map(id => (
+            <div key={id} className="flex items-center gap-1.5 truncate">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shrink-0" />
+              <span className="text-on-surface truncate">
+                {formatProviderName(id)}
+              </span>
+            </div>
+          ))}
+          {telemetry.delayedProviders.map(id => (
+            <div key={id} className="flex items-center gap-1.5 truncate">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+              <span className="text-amber-700 dark:text-amber-300 truncate">
+                {formatProviderName(id)} (paced)
+              </span>
+            </div>
+          ))}
+          {telemetry.cooldownProviders.map(c => {
+            const ms =
+              c.cooldownRemainingMs ??
+              (c as {remainingMs?: number}).remainingMs ??
+              0;
+            return (
+              <div
+                key={c.providerId}
+                className="flex items-center gap-1.5 truncate"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-error shrink-0" />
+                <span className="text-error truncate">
+                  {formatProviderName(c.providerId)} ({Math.ceil(ms / 1000)}s)
+                </span>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

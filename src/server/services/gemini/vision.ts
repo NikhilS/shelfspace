@@ -76,12 +76,12 @@ Important Directives:
 
     let response;
     try {
-      logger.info('Calling Gemini 3.8 Flash for book extraction...');
+      logger.info('Calling Gemini 3 Flash for book extraction...');
       response = await Promise.race([
-        generateCall('gemini-3.8-flash'),
+        generateCall('gemini-3-flash-preview'),
         timeoutPromise(25000),
       ]);
-      logger.info('Gemini 3.8 Flash response received.');
+      logger.info('Gemini 3 Flash response received.');
     } catch (e: unknown) {
       if (isApiKeyError(e)) {
         throw e;
@@ -105,10 +105,10 @@ Important Directives:
             (err instanceof Error ? err.message : String(err)),
         );
         response = await Promise.race([
-          generateCall('gemini-3.8-flash'),
+          generateCall('gemini-3-flash-preview'),
           timeoutPromise(25000),
         ]);
-        logger.info('Gemini 3.8 Flash backup response received.');
+        logger.info('Gemini 3 Flash backup response received.');
       }
     }
 
@@ -167,7 +167,6 @@ export async function extractBooksFromCsv(csvText: string): Promise<
         Papa.parse(csvText, {
           header: false,
           skipEmptyLines: true,
-          worker: true,
           complete: results => resolve(results),
           error: (error: unknown) => reject(error),
         });
@@ -180,7 +179,7 @@ export async function extractBooksFromCsv(csvText: string): Promise<
     const sampleRows = rows.slice(0, 5);
 
     const response = await generateContentWithLimiter({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-3-flash-preview',
       contents: `Analyze these sample rows from an uploaded book collection CSV file (parsed as an array of rows):
       
 CSV Sample Rows:

@@ -1,6 +1,5 @@
 import {describe, it, expect} from 'vitest';
 import {
-  BOOK_TAXONOMY,
   getCanonicalPrimaryGenres,
   getSubgenresFor,
   bookGenreSchema,

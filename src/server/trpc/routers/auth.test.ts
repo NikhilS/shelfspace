@@ -1,7 +1,6 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {authRouter} from './auth';
 import {WaitlistService} from '../../auth/waitlistService';
-import {AllowlistService} from '../../auth/allowlistService';
 import {TRPCError} from '@trpc/server';
 import type {SecurityContext} from '../../auth/types';
 
@@ -31,9 +30,21 @@ describe('authRouter', () => {
   });
 
   describe('getPermissions', () => {
-    it('returns caller context permissions', async () => {
+    it('throws UNAUTHORIZED when caller is not logged in', async () => {
       const api = caller({
-        user: {uid: 'u1', email: 'user@example.com', authType: 'jwt'},
+        user: null,
+        isAppAllowed: false,
+        isAdmin: false,
+      });
+      await expect(api.getPermissions()).rejects.toThrow(TRPCError);
+      await expect(api.getPermissions()).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+      });
+    });
+
+    it('returns caller context permissions for authenticated user', async () => {
+      const api = caller({
+        user: {uid: 'u1', email: 'user@example.com'},
         isAppAllowed: true,
         isAdmin: false,
       });
@@ -41,7 +52,7 @@ describe('authRouter', () => {
       expect(res).toEqual({
         isAppAllowed: true,
         isAdmin: false,
-        user: {uid: 'u1', email: 'user@example.com', authType: 'jwt'},
+        user: {uid: 'u1', email: 'user@example.com'},
       });
     });
   });
@@ -70,7 +81,7 @@ describe('authRouter', () => {
       });
 
       const api = caller({
-        user: {uid: 'u2', email: 'waiter@example.com', authType: 'jwt'},
+        user: {uid: 'u2', email: 'waiter@example.com'},
         isAppAllowed: false,
         isAdmin: false,
       });
@@ -111,7 +122,6 @@ describe('authRouter', () => {
         user: {
           uid: 'u3',
           email: 'applicant@example.com',
-          authType: 'jwt',
           displayName: 'Applicant Name',
           photoURL: 'https://example.com/avatar.jpg',
         },
@@ -132,7 +142,7 @@ describe('authRouter', () => {
   describe('listWaitlist', () => {
     it('throws FORBIDDEN when caller is not an admin', async () => {
       const api = caller({
-        user: {uid: 'u4', email: 'regular@example.com', authType: 'jwt'},
+        user: {uid: 'u4', email: 'regular@example.com'},
         isAppAllowed: true,
         isAdmin: false,
       });
@@ -155,7 +165,7 @@ describe('authRouter', () => {
       ]);
 
       const api = caller({
-        user: {uid: 'admin_1', email: 'admin@example.com', authType: 'jwt'},
+        user: {uid: 'admin_1', email: 'admin@example.com'},
         isAppAllowed: true,
         isAdmin: true,
       });
@@ -169,7 +179,7 @@ describe('authRouter', () => {
   describe('reviewWaitlistEntry', () => {
     it('throws FORBIDDEN when non-admin caller attempts review', async () => {
       const api = caller({
-        user: {uid: 'u5', email: 'user@example.com', authType: 'jwt'},
+        user: {uid: 'u5', email: 'user@example.com'},
         isAppAllowed: true,
         isAdmin: false,
       });
@@ -197,7 +207,7 @@ describe('authRouter', () => {
       });
 
       const api = caller({
-        user: {uid: 'admin_1', email: 'admin@example.com', authType: 'jwt'},
+        user: {uid: 'admin_1', email: 'admin@example.com'},
         isAppAllowed: true,
         isAdmin: true,
       });
@@ -223,7 +233,7 @@ describe('authRouter', () => {
       });
 
       const api = caller({
-        user: {uid: 'admin_1', email: 'admin@example.com', authType: 'jwt'},
+        user: {uid: 'admin_1', email: 'admin@example.com'},
         isAppAllowed: true,
         isAdmin: true,
       });

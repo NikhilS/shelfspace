@@ -1,7 +1,6 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {AllowlistService} from './allowlistService';
 import {SUPERADMIN_EMAIL} from '../../constants/auth';
-import admin from 'firebase-admin';
 
 const mockDocGet = vi.fn();
 const mockDoc = vi.fn((_path: string) => ({

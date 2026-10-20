@@ -9,7 +9,7 @@ import {
   Layers,
   Search,
 } from 'lucide-react';
-import {TelemetryPlugin, TelemetryPluginContext} from '../telemetry';
+import {TelemetryPlugin, TelemetryPluginContext} from './index';
 import {Input} from '@/components/ui/input';
 
 interface GeminiTelemetryPanelProps {

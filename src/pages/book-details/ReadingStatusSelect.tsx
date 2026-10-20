@@ -21,7 +21,7 @@ interface ReadingStatusSelectProps {
     partialBook: Partial<Book & BookDetailsPayload>,
   ) => void;
   updateReadingStatus: (
-    status: 'unset' | 'reading' | 'finished' | 'abandoned',
+    status: 'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned',
   ) => Promise<void>;
 }
 
@@ -32,13 +32,13 @@ export const ReadingStatusSelect = memo(
     book,
     bookBase,
     bookDetails,
-    canEdit,
     updateBookOptimistically,
     updateReadingStatus,
   }: ReadingStatusSelectProps) => {
     const {user} = useAuth();
 
-    const currentStatus = book.userStatuses?.[user?.uid || ''] || 'unset';
+    const rawStatus = book.userStatuses?.[user?.uid || ''] || 'unset';
+    const currentStatus = rawStatus === 'completed' ? 'finished' : rawStatus;
 
     return (
       <section className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bento-card p-3.5 sm:p-4 w-full sm:w-fit swiper-no-swiping">
@@ -52,7 +52,8 @@ export const ReadingStatusSelect = memo(
           value={currentStatus}
           onValueChange={async (val: string) => {
             if (!libraryId || !bookId || !user) return;
-            const newStatus = val as 'unset' | 'reading' | 'finished';
+            const newStatus = val as
+              'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned';
             const originalBookBase = bookBase ? {...bookBase} : null;
             const originalBookDetails = bookDetails ? {...bookDetails} : null;
 
@@ -75,7 +76,7 @@ export const ReadingStatusSelect = memo(
               toast.error('Failed to update status');
             }
           }}
-          disabled={!canEdit}
+          disabled={!user}
         >
           <SelectTrigger
             id="readingStatus"
@@ -85,6 +86,7 @@ export const ReadingStatusSelect = memo(
           </SelectTrigger>
           <SelectContent className="swiper-no-swiping">
             <SelectItem value="unset">Not Started</SelectItem>
+            <SelectItem value="want_to_read">Want to Read</SelectItem>
             <SelectItem value="reading">Currently Reading</SelectItem>
             <SelectItem value="finished">Finished</SelectItem>
             <SelectItem value="abandoned">Abandoned</SelectItem>

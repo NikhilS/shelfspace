@@ -13,11 +13,21 @@ if (hasIgnoresFile) {
 }
 
 const firebaseRulesPlugin = require('@firebase/eslint-plugin-security-rules');
+const unusedImportsPlugin = require('eslint-plugin-unused-imports');
 
 module.exports = [
   ...customConfig,
   ...require('gts'),
   firebaseRulesPlugin.flatRecommended,
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    plugins: {
+      'unused-imports': unusedImportsPlugin,
+    },
+    rules: {
+      'unused-imports/no-unused-imports': 'warn',
+    },
+  },
   {
     files: ['**/*.rules'],
     rules: {
@@ -29,6 +39,7 @@ module.exports = [
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
+      'unused-imports/no-unused-imports': 'off',
     },
   },
 ];

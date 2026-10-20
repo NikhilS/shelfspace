@@ -25,9 +25,9 @@ import {
   Database,
 } from 'lucide-react';
 import {toast} from 'sonner';
-import {trpcVanilla} from '../../lib/trpc';
+import {trpc, trpcVanilla} from '../../lib/trpc';
 import {Book} from '../../types';
-import {hasHeavyLeaks} from '../../services/db/sanitizeStorage';
+import {hasHeavyLeaks} from '../../lib/sanitizeStorage';
 
 interface ResetMetadataSectionProps {
   libraryId: string;
@@ -81,12 +81,29 @@ const RESETTABLE_METADATA_OPTIONS = [
       'Removes vector embeddings and cluster projection coordinates from all books.',
     isLegacy: false,
   },
+  {
+    id: 'coverImage',
+    label: 'Cover Art Images',
+    shortLabel: 'Cover Art',
+    description:
+      'Removes cover image URLs across all books so you can backfill fresh high-resolution covers.',
+    isLegacy: false,
+  },
 ];
 
 export function ResetMetadataSection({
   libraryId,
   books,
 }: ResetMetadataSectionProps) {
+  let utils: ReturnType<typeof trpc.useUtils> | undefined;
+  try {
+    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
+      utils = trpc.useUtils();
+    }
+  } catch {
+    utils = undefined;
+  }
+
   const [selectedType, setSelectedType] = useState<string>('genre');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -126,6 +143,8 @@ export function ResetMetadataSection({
         libraryId,
         metadataType: 'sanitize',
       });
+      void utils?.book?.list?.invalidate({libraryId});
+      void utils?.library?.get?.invalidate({libraryId});
       setLastSanitizeResult({
         scanned: books?.length || 0,
         sanitized: res.count,
@@ -151,6 +170,8 @@ export function ResetMetadataSection({
         libraryId,
         metadataType: selectedType,
       });
+      void utils?.book?.list?.invalidate({libraryId});
+      void utils?.library?.get?.invalidate({libraryId});
 
       toast.success(
         `Successfully reset ${currentOption.shortLabel} across ${res.count} book${res.count === 1 ? '' : 's'}.`,

@@ -1,528 +1,747 @@
-import {useState, useEffect, useMemo, useCallback, useRef} from 'react';
-import {useAuth} from '../stores/authStore';
-import {Book, BookEnrichmentStatus} from '../types';
+import {useState, useRef, useEffect, useCallback, useMemo} from 'react';
 import {toast} from 'sonner';
-import {DebugTelemetryEngine} from '../lib/telemetry';
+import {Book} from '../types';
 import {trpc, trpcVanilla} from '../lib/trpc';
-import {bulkEnrichmentClientLimiter} from '../lib/clientLimiters';
-import {ENRICHMENT_CONSTANTS} from '../constants/enrichment';
-import {ENRICHMENT_TYPE_LIST} from '../schemas/libraryApi';
+import {useAuth} from '../stores/authStore';
+import {auth} from '../firebase';
+import {CanonicalEnrichmentType} from '../schemas/libraryApi';
+import {createLogger, DebugTelemetryEngine} from '../lib/telemetry';
 
-export interface UseBulkEnrichmentConfig {
+const enrichmentLogger = createLogger('Enrichment');
+
+export type PerBookJobStage =
+  | 'queued'
+  | 'fetching_catalog'
+  | 'fetching_ai'
+  | 'completed'
+  | 'skipped'
+  | 'failed';
+
+export interface BookJobTelemetry {
+  bookId: string;
+  stage: PerBookJobStage;
+  winningProviders?: Record<string, string>;
+  updatedFields?: string[];
+  error?: string;
+  updatedAt: number;
+}
+
+export interface ProviderTelemetrySummary {
+  activeProviders: string[];
+  delayedProviders: string[];
+  cooldownProviders: Array<{providerId: string; cooldownRemainingMs: number}>;
+  exhaustedProviders: string[];
+  totalInFlight: number;
+  maxGlobalConcurrent: number;
+}
+
+export interface BulkEnrichmentProgress {
+  completed: number;
+  failed: number;
+  total: number;
+}
+
+export interface UseBulkEnrichmentOptions {
   books: Book[];
   isBooksLoading: boolean;
-  libraryId: string | undefined;
+  libraryId?: string | null;
   providerKey: string;
   metadataField: string;
-  batchSize?: number;
-  concurrencyLimit?: number;
   filterPredicate: (book: Book) => boolean;
+  overwrite?: boolean;
+  ignoreUnsupportedStatus?: boolean;
+  autoTrigger?: boolean;
+  canEdit?: boolean;
+  customGenres?: string[];
   successToastMessage?: string;
   errorToastMessage?: string;
-  autoTrigger?: boolean;
-  timeoutMs?: number;
-  overwrite?: boolean;
+  onComplete?: () => void;
 }
 
-function mergeUpdatesIntoListCache(
-  oldData: unknown,
-  updatesByBookId: Map<string, Record<string, unknown>>,
-): unknown {
-  if (!oldData || updatesByBookId.size === 0) return oldData;
-
-  const mergeBook = (book: Book): Book => {
-    const patch = updatesByBookId.get(book.id);
-    if (!patch) return book;
-    return {
-      ...book,
-      ...patch,
-      enrichmentStatus: {
-        ...(book.enrichmentStatus || {}),
-        ...((patch.enrichmentStatus as BookEnrichmentStatus | undefined) || {}),
-      },
-      bookDetailsMetadata: {
-        ...(book.bookDetailsMetadata || {}),
-        ...((patch.bookDetailsMetadata as Book['bookDetailsMetadata']) || {}),
-      },
-    };
-  };
-
-  if (Array.isArray(oldData)) {
-    return (oldData as Book[]).map(mergeBook);
+function mapToCanonicalType(raw: string): CanonicalEnrichmentType {
+  switch (raw) {
+    case 'geo':
+    case 'geoMetadata':
+      return 'geo';
+    case 'temporal':
+    case 'temporalMetadata':
+      return 'temporal';
+    case 'genre':
+    case 'primaryGenre':
+      return 'genre';
+    case 'synopsis':
+      return 'synopsis';
+    case 'authorBio':
+      return 'authorBio';
+    case 'coverImage':
+    case 'coverUrl':
+      return 'coverImage';
+    case 'series':
+      return 'series';
+    case 'embedding':
+    case 'embeddings':
+      return 'embedding';
+    default:
+      return 'geo';
   }
-
-  if (
-    typeof oldData === 'object' &&
-    Array.isArray((oldData as {books?: unknown}).books)
-  ) {
-    const container = oldData as {books: Book[]; [k: string]: unknown};
-    return {
-      ...container,
-      books: container.books.map(mergeBook),
-    };
-  }
-
-  return oldData;
 }
 
-export function useBulkEnrichment({
-  books,
-  isBooksLoading,
-  libraryId,
-  providerKey,
-  metadataField,
-  batchSize = ENRICHMENT_CONSTANTS.CLIENT_BATCH_SIZE,
-  concurrencyLimit = ENRICHMENT_CONSTANTS.CLIENT_LIMITER.maxConcurrent,
-  filterPredicate,
-  successToastMessage = 'Successfully enriched library books!',
-  errorToastMessage = 'Some books could not be analyzed.',
-  autoTrigger = true,
-  timeoutMs = ENRICHMENT_CONSTANTS.CLIENT_TIMEOUT_MS,
-  overwrite = false,
-}: UseBulkEnrichmentConfig) {
+export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
+  const {
+    books,
+    isBooksLoading,
+    libraryId,
+    providerKey,
+    metadataField,
+    filterPredicate,
+    overwrite = false,
+    ignoreUnsupportedStatus = false,
+    autoTrigger = true,
+    canEdit = true,
+    customGenres,
+    successToastMessage,
+    errorToastMessage,
+    onComplete,
+  } = options;
+
   const {user} = useAuth();
-  let utils: ReturnType<typeof trpc.useUtils> | undefined;
+  let utils: ReturnType<typeof trpc.useUtils> | null = null;
   try {
-    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
-      utils = trpc.useUtils();
-    }
+    utils = trpc.useUtils();
   } catch {
-    utils = undefined;
+    utils = null;
   }
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
+
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  const successToastRef = useRef(successToastMessage);
+  successToastRef.current = successToastMessage;
+
+  const errorToastRef = useRef(errorToastMessage);
+  errorToastRef.current = errorToastMessage;
+
+  const canonicalType = mapToCanonicalType(metadataField || providerKey);
+
+  const booksToBackfill = useMemo(() => {
+    if (isBooksLoading || !books) return [];
+    return books.filter(book => {
+      if (
+        !overwrite &&
+        !ignoreUnsupportedStatus &&
+        book.enrichmentStatus?.[canonicalType] === 'unsupported'
+      ) {
+        return false;
+      }
+      return filterPredicate(book);
+    });
+  }, [
+    books,
+    isBooksLoading,
+    overwrite,
+    ignoreUnsupportedStatus,
+    canonicalType,
+    filterPredicate,
+  ]);
 
   const [isBackfilling, setIsBackfilling] = useState(false);
-  const [inFlightCount, setInFlightCount] = useState(0);
-  const [backfillProgress, setBackfillProgress] = useState({
+  const [progress, setProgress] = useState<BulkEnrichmentProgress>({
     completed: 0,
     failed: 0,
     total: 0,
   });
+  const [inFlightCount, setInFlightCount] = useState(0);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [perBookStates, setPerBookStates] = useState<
+    Record<string, BookJobTelemetry>
+  >({});
+  const [providerTelemetry, setProviderTelemetry] =
+    useState<ProviderTelemetrySummary | null>(null);
 
-  // Track book IDs that have been attempted in this session to prevent infinite retry loops
-  const [attemptedBookIds, setAttemptedBookIds] = useState<Set<string>>(
-    () => new Set(),
+  const isRunningRef = useRef(false);
+  const cancelledRef = useRef(false);
+  const autoTriggeredForLibRef = useRef<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  const sseListenerUnregisterRef = useRef<(() => void) | null>(null);
+
+  const closeEventSource = useCallback(() => {
+    if (sseListenerUnregisterRef.current) {
+      sseListenerUnregisterRef.current();
+      sseListenerUnregisterRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+  }, []);
+
+  const connectSseStream = useCallback(
+    async (targetLibId: string, expectedJobId?: string) => {
+      if (typeof EventSource === 'undefined') return;
+      closeEventSource();
+
+      try {
+        const token =
+          (await (
+            auth as {currentUser?: {getIdToken?: () => Promise<string>}}
+          )?.currentUser?.getIdToken?.()) || '';
+        if (!token || cancelledRef.current) return;
+
+        const url = `/api/enrichment/stream?libraryId=${encodeURIComponent(
+          targetLibId,
+        )}&token=${encodeURIComponent(token)}`;
+        const es = new EventSource(url);
+        eventSourceRef.current = es;
+
+        if (DebugTelemetryEngine.isHudActive()) {
+          sseListenerUnregisterRef.current =
+            DebugTelemetryEngine.getInstance().registerListener(
+              `SSE:${canonicalType}`,
+              `/api/enrichment/stream?libraryId=${targetLibId}`,
+            );
+          enrichmentLogger.info(
+            `Connected SSE stream for ${canonicalType} on library ${targetLibId}`,
+            {libraryId: targetLibId, jobId: expectedJobId},
+          );
+        }
+
+        es.addEventListener('job:snapshot', (evt: MessageEvent) => {
+          try {
+            const snap = JSON.parse(evt.data);
+            if (expectedJobId && snap.jobId && snap.jobId !== expectedJobId) {
+              return;
+            }
+            setActiveJobId(snap.jobId || null);
+            if (snap.perBookStates) {
+              setPerBookStates(snap.perBookStates);
+            }
+            if (snap.providerTelemetry) {
+              setProviderTelemetry(snap.providerTelemetry);
+              setInFlightCount(snap.providerTelemetry.totalInFlight || 0);
+            }
+            if (typeof snap.totalBooks === 'number' && snap.totalBooks > 0) {
+              setProgress({
+                completed: snap.completedBooks || 0,
+                failed: (snap.failedBooks || 0) + (snap.skippedBooks || 0),
+                total: snap.totalBooks,
+              });
+            }
+            if (snap.status === 'running') {
+              isRunningRef.current = true;
+              setIsBackfilling(true);
+            } else if (
+              snap.status === 'completed' ||
+              snap.status === 'cancelled' ||
+              snap.status === 'failed'
+            ) {
+              isRunningRef.current = false;
+              setIsBackfilling(false);
+              setInFlightCount(0);
+              void utilsRef.current?.book?.list?.invalidate({
+                libraryId: targetLibId,
+              });
+              if (snap.status === 'completed' && successToastRef.current) {
+                toast.success(successToastRef.current);
+              }
+              onCompleteRef.current?.();
+              closeEventSource();
+            }
+          } catch {
+            // Ignore malformed SSE payload
+          }
+        });
+
+        es.addEventListener('book:progress', (evt: MessageEvent) => {
+          try {
+            const data = JSON.parse(evt.data);
+            if (expectedJobId && data.jobId && data.jobId !== expectedJobId) {
+              return;
+            }
+            if (data.book?.bookId) {
+              setPerBookStates(prev => ({
+                ...prev,
+                [data.book.bookId]: data.book,
+              }));
+            }
+            if (typeof data.totalBooks === 'number') {
+              setProgress({
+                completed: data.completedBooks || 0,
+                failed: (data.failedBooks || 0) + (data.skippedBooks || 0),
+                total: data.totalBooks,
+              });
+            }
+          } catch {
+            // Ignore malformed SSE payload
+          }
+        });
+
+        es.addEventListener('provider:telemetry', (evt: MessageEvent) => {
+          try {
+            const data = JSON.parse(evt.data);
+            if (data.telemetry) {
+              setProviderTelemetry(data.telemetry);
+              setInFlightCount(data.telemetry.totalInFlight || 0);
+            }
+          } catch {
+            // Ignore malformed SSE payload
+          }
+        });
+
+        es.addEventListener('batch:committed', (evt: MessageEvent) => {
+          try {
+            const data = JSON.parse(evt.data);
+            if (expectedJobId && data.jobId && data.jobId !== expectedJobId) {
+              return;
+            }
+            const results = Array.isArray(data.results)
+              ? (data.results as Array<Record<string, unknown> & {id: string}>)
+              : [];
+            enrichmentLogger.info(
+              `Micro-batch committed (${results.length} books patched in cache)`,
+              {
+                jobId: data.jobId,
+                committedCount: results.length,
+                completedBooks: data.completedBooks,
+                totalBooks: data.totalBooks,
+              },
+            );
+            if (results.length > 0 && utilsRef.current?.book?.list?.setData) {
+              const resultsById = new Map(results.map(r => [r.id, r]));
+              utilsRef.current.book.list.setData(
+                {libraryId: targetLibId},
+                old => {
+                  if (!old) return old;
+                  if (Array.isArray(old)) {
+                    return (old as Book[]).map(b => {
+                      const patch = resultsById.get(b.id);
+                      return patch ? ({...b, ...patch} as Book) : b;
+                    }) as unknown as typeof old;
+                  }
+                  return {
+                    ...old,
+                    books: (old.books || []).map(b => {
+                      const patch = resultsById.get(b.id);
+                      return patch ? ({...b, ...patch} as Book) : b;
+                    }),
+                  };
+                },
+              );
+            }
+          } catch {
+            // Ignore malformed SSE payload
+          }
+          void utilsRef.current?.book?.list?.invalidate({
+            libraryId: targetLibId,
+          });
+        });
+
+        es.addEventListener('job:completed', (evt: MessageEvent) => {
+          try {
+            const snap = JSON.parse(evt.data);
+            if (expectedJobId && snap.jobId && snap.jobId !== expectedJobId) {
+              return;
+            }
+            enrichmentLogger.info(
+              `Job ${snap.jobId || ''} completed (${snap.completedBooks || 0}/${snap.totalBooks || 0} books)`,
+              {
+                jobId: snap.jobId,
+                completedBooks: snap.completedBooks,
+                failedBooks: snap.failedBooks,
+                skippedBooks: snap.skippedBooks,
+              },
+            );
+            if (snap.perBookStates) {
+              setPerBookStates(snap.perBookStates);
+            }
+            if (snap.providerTelemetry) {
+              setProviderTelemetry(snap.providerTelemetry);
+            }
+            if (typeof snap.totalBooks === 'number') {
+              setProgress({
+                completed: snap.completedBooks || 0,
+                failed: (snap.failedBooks || 0) + (snap.skippedBooks || 0),
+                total: snap.totalBooks,
+              });
+            }
+          } catch {
+            // Ignore parse error
+          }
+          isRunningRef.current = false;
+          setIsBackfilling(false);
+          setInFlightCount(0);
+          void utilsRef.current?.book?.list?.invalidate({
+            libraryId: targetLibId,
+          });
+          if (successToastRef.current) {
+            toast.success(successToastRef.current);
+          }
+          onCompleteRef.current?.();
+          closeEventSource();
+        });
+
+        es.onerror = () => {
+          if (!isRunningRef.current) {
+            closeEventSource();
+          }
+        };
+      } catch {
+        // Non-fatal in test environments
+      }
+    },
+    [closeEventSource, canonicalType],
   );
 
-  // Cancellation tracking
-  const isCancelledRef = useRef(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  const cancelEnrichment = useCallback(() => {
-    isCancelledRef.current = true;
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+  const cancelEnrichment = useCallback(async () => {
+    cancelledRef.current = true;
+    isRunningRef.current = false;
     setIsBackfilling(false);
     setInFlightCount(0);
-    DebugTelemetryEngine.getInstance().addLog(
-      'warn',
-      `[BulkEnrichment] Enrichment process stopped by user for ${metadataField}`,
-      {
-        metadataField,
-        completed: backfillProgress.completed,
-        failed: backfillProgress.failed,
-        total: backfillProgress.total,
-      },
-    );
-    toast.info('Enrichment process stopped');
-  }, [metadataField, backfillProgress]);
+    closeEventSource();
 
-  const canonicalEnrichmentType = useMemo(() => {
-    return providerKey === 'geoMetadata' || providerKey === 'geo'
-      ? 'geo'
-      : providerKey === 'temporalMetadata' || providerKey === 'temporal'
-        ? 'temporal'
-        : providerKey === 'genre' || providerKey === 'primaryGenre'
-          ? 'genre'
-          : providerKey === 'coverUrl' || providerKey === 'coverImage'
-            ? 'coverImage'
-            : providerKey === 'embeddings' || providerKey === 'embedding'
-              ? 'embedding'
-              : providerKey;
-  }, [providerKey]);
+    const enrichmentClient = trpcVanilla.enrichment as unknown as {
+      cancelJob?: {
+        mutate: (input: {
+          libraryId: string;
+          jobId?: string;
+        }) => Promise<unknown>;
+      };
+    };
 
-  const statusKey = canonicalEnrichmentType;
-
-  // Compute books that need enrichment, factoring in persistent tombstoning
-  const booksToBackfill = useMemo(() => {
-    return books.filter(b => {
-      if (!filterPredicate(b)) return false;
-      if (attemptedBookIds.has(b.id)) return false;
-      if (!overwrite) {
-        const status =
-          b.enrichmentStatus?.[statusKey as keyof BookEnrichmentStatus];
-        if (status === 'unsupported' || status === 'failed') {
-          return false;
-        }
+    if (libraryId && enrichmentClient?.cancelJob?.mutate) {
+      try {
+        await enrichmentClient.cancelJob.mutate({
+          libraryId,
+          jobId: activeJobId || undefined,
+        });
+      } catch {
+        // Ignore cancellation errors
       }
-      return true;
-    });
-  }, [books, filterPredicate, attemptedBookIds, overwrite, statusKey]);
-
-  const backfillQuotaCount = booksToBackfill.length;
-
-  const triggerBatchBackfill = useCallback(async () => {
-    if (!libraryId || booksToBackfill.length === 0 || isBackfilling || !user) {
-      return;
     }
+  }, [libraryId, activeJobId, closeEventSource]);
 
-    isCancelledRef.current = false;
-    abortControllerRef.current = new AbortController();
+  const triggerBackfill = useCallback(async () => {
+    if (isRunningRef.current) return;
+    if (!user || !libraryId || !canEdit) return;
+    if (booksToBackfill.length === 0) return;
 
+    const bookIds = Array.from(
+      new Set(booksToBackfill.map(b => b.id).filter(Boolean)),
+    );
+    if (bookIds.length === 0) return;
+
+    cancelledRef.current = false;
+    isRunningRef.current = true;
     setIsBackfilling(true);
-    setBackfillProgress({
+    setInFlightCount(Math.min(bookIds.length, 5));
+    setProgress({
       completed: 0,
       failed: 0,
-      total: booksToBackfill.length,
+      total: bookIds.length,
     });
 
-    DebugTelemetryEngine.getInstance().addLog(
-      'worker',
-      `[BulkEnrichment] Starting server-authoritative backfill scan for ${metadataField} (${booksToBackfill.length} books queued)`,
-      {
-        libraryId,
-        totalToProcess: booksToBackfill.length,
-        batchSize,
-        concurrencyLimit,
-        providerKey,
-        overwrite,
-      },
-    );
+    const now = Date.now();
+    const initialStates: Record<string, BookJobTelemetry> = {};
+    for (const id of bookIds) {
+      initialStates[id] = {
+        bookId: id,
+        stage: 'queued',
+        updatedAt: now,
+      };
+    }
+    setPerBookStates(prev => ({...prev, ...initialStates}));
+
+    const enrichmentClient = trpcVanilla.enrichment as unknown as {
+      startJob?: {
+        mutate: (input: {
+          libraryId: string;
+          enrichmentType: CanonicalEnrichmentType;
+          bookIds: string[];
+          overwrite?: boolean;
+          customGenres?: string[];
+        }) => Promise<{
+          jobId: string;
+          status: string;
+          totalBooks: number;
+          completedBooks: number;
+          failedBooks: number;
+          skippedBooks: number;
+          perBookStates?: Record<string, BookJobTelemetry>;
+          providerTelemetry?: ProviderTelemetrySummary;
+        }>;
+      };
+      trigger?: {
+        mutate: (input: {
+          libraryId: string;
+          enrichmentType: CanonicalEnrichmentType;
+          bookIds: string[];
+          overwrite?: boolean;
+          customGenres?: string[];
+        }) => Promise<{
+          status: string;
+          enrichmentType: string;
+          processedCount: number;
+          results?: Array<Record<string, unknown> & {id: string}>;
+        }>;
+      };
+    };
 
     try {
-      const booksToProcess = [...booksToBackfill];
-      const total = booksToProcess.length;
+      const canUseSseJob =
+        typeof EventSource !== 'undefined' &&
+        Boolean(enrichmentClient?.startJob?.mutate) &&
+        Boolean(
+          (auth as {currentUser?: {getIdToken?: () => Promise<string>}})
+            ?.currentUser?.getIdToken,
+        );
 
-      // Group books into chunks of batchSize
-      const bookChunks: Book[][] = [];
-      for (let i = 0; i < booksToProcess.length; i += batchSize) {
-        bookChunks.push(booksToProcess.slice(i, i + batchSize));
-      }
+      if (canUseSseJob && enrichmentClient.startJob) {
+        const snap = await enrichmentClient.startJob.mutate({
+          libraryId,
+          enrichmentType: canonicalType,
+          bookIds,
+          overwrite,
+          customGenres,
+        });
 
-      // Helper to process a batch using the unified server-authoritative pipeline
-      const processBatch = async (chunk: Book[], chunkIndex: number) => {
-        if (isCancelledRef.current) {
-          return;
+        if (cancelledRef.current) return;
+
+        isRunningRef.current = true;
+        setIsBackfilling(true);
+        setActiveJobId(snap.jobId);
+        if (snap.perBookStates) {
+          setPerBookStates(prev => ({...prev, ...snap.perBookStates}));
+        }
+        if (snap.providerTelemetry) {
+          setProviderTelemetry(snap.providerTelemetry);
+          setInFlightCount(
+            snap.providerTelemetry.totalInFlight ??
+              (snap.providerTelemetry as {totalActiveRequests?: number})
+                .totalActiveRequests ??
+              0,
+          );
+        }
+        if (typeof snap.totalBooks === 'number' && snap.totalBooks > 0) {
+          setProgress({
+            completed: snap.completedBooks || 0,
+            failed: (snap.failedBooks || 0) + (snap.skippedBooks || 0),
+            total: snap.totalBooks,
+          });
         }
 
-        // Mark as attempted in-memory immediately to avoid double execution
-        setAttemptedBookIds(prev => {
-          const next = new Set(prev);
-          chunk.forEach(b => next.add(b.id));
+        if (
+          snap.status === 'completed' ||
+          snap.status === 'cancelled' ||
+          snap.status === 'failed'
+        ) {
+          closeEventSource();
+          isRunningRef.current = false;
+          setIsBackfilling(false);
+          setInFlightCount(0);
+          await utilsRef.current?.book?.list?.invalidate({libraryId});
+          if (successToastRef.current) {
+            toast.success(successToastRef.current);
+          }
+          onCompleteRef.current?.();
+        } else {
+          void connectSseStream(libraryId, snap.jobId);
+        }
+      } else if (enrichmentClient?.trigger?.mutate) {
+        const response = await enrichmentClient.trigger.mutate({
+          libraryId,
+          enrichmentType: canonicalType,
+          bookIds,
+          overwrite,
+          customGenres,
+        });
+
+        if (cancelledRef.current) return;
+
+        const results = response?.results || [];
+        const resultsById = new Map(results.map(r => [r.id, r]));
+
+        if (results.length > 0 && utilsRef.current?.book?.list?.setData) {
+          utilsRef.current.book.list.setData({libraryId}, old => {
+            if (!old) return old;
+            if (Array.isArray(old)) {
+              return (old as Book[]).map(b => {
+                const patch = resultsById.get(b.id);
+                return patch ? ({...b, ...patch} as Book) : b;
+              }) as unknown as typeof old;
+            }
+            return {
+              ...old,
+              books: (old.books || []).map(b => {
+                const patch = resultsById.get(b.id);
+                return patch ? ({...b, ...patch} as Book) : b;
+              }),
+            };
+          });
+        }
+
+        await utilsRef.current?.book?.list?.invalidate({libraryId});
+
+        const completedCount = response?.processedCount ?? results.length;
+        const failedCount = Math.max(0, bookIds.length - completedCount);
+        const doneAt = Date.now();
+
+        setPerBookStates(prev => {
+          const next = {...prev};
+          for (const id of bookIds) {
+            next[id] = {
+              bookId: id,
+              stage: resultsById.has(id) ? 'completed' : 'skipped',
+              updatedAt: doneAt,
+            };
+          }
           return next;
         });
 
-        setInFlightCount(prev => prev + chunk.length);
+        setProgress({
+          completed: completedCount,
+          failed: failedCount,
+          total: bookIds.length,
+        });
+        isRunningRef.current = false;
+        setIsBackfilling(false);
+        setInFlightCount(0);
 
-        let batchCompleted = 0;
-        let batchFailed = 0;
-        const startTime = performance.now();
-
-        DebugTelemetryEngine.getInstance().addLog(
-          'worker',
-          `[BulkEnrichment] Batch ${chunkIndex + 1}/${bookChunks.length}: Dispatching ${chunk.length} books for ${metadataField} (${chunk.map(b => b.title).join(', ')})`,
-          {
-            chunkIndex,
-            books: chunk.map(b => ({
-              id: b.id,
-              title: b.title,
-              author: b.author,
-            })),
-          },
-        );
-
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let onAbort: (() => void) | undefined;
-        try {
-          const bookIds = chunk.map(b => b.id);
-
-          const abortPromise = new Promise<never>((_, reject) => {
-            onAbort = () => reject(new Error('Enrichment stopped by user'));
-            if (abortControllerRef.current?.signal.aborted) {
-              onAbort();
-              return;
-            }
-            abortControllerRef.current?.signal.addEventListener(
-              'abort',
-              onAbort,
-              {once: true},
-            );
-          });
-
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(
-              () => reject(new Error('Batch processing timed out')),
-              timeoutMs,
-            );
-          });
-
-          const data = (await Promise.race([
-            trpcVanilla.enrichment.trigger.mutate({
-              libraryId,
-              bookIds,
-              books: chunk.map(b => ({
-                id: b.id,
-                title: b.title,
-                author: b.author || 'Unknown Author',
-                isbn: b.isbn,
-              })),
-              enrichmentType:
-                canonicalEnrichmentType as (typeof ENRICHMENT_TYPE_LIST)[number],
-              overwrite,
-            }),
-            timeoutPromise,
-            abortPromise,
-          ])) as {
-            status: string;
-            processedCount?: number;
-            results?: Record<string, unknown>[];
-            updates?: Array<{
-              bookId: string;
-              payload: Record<string, unknown>;
-              heavyPayload?: Record<string, unknown>;
-            }>;
-          };
-
-          const durationMs = Math.round(performance.now() - startTime);
-
-          if (isCancelledRef.current) {
-            DebugTelemetryEngine.getInstance().addLog(
-              'warn',
-              `[BulkEnrichment] Batch ${chunkIndex + 1} discarded due to cancellation`,
-            );
-            return;
-          }
-
-          DebugTelemetryEngine.getInstance().addLog(
-            'api_res',
-            `[BulkEnrichment API] Batch ${chunkIndex + 1} completed in ${durationMs}ms (status: ${data?.status || 'unknown'})`,
-            {
-              durationMs,
-              status: data?.status,
-              processedCount: data?.processedCount,
-              chunkLength: chunk.length,
-            },
-          );
-
-          if (data && data.status === 'success') {
-            // Record AI invocation so Gemini Telemetry profiler accurately reflects activity
-            DebugTelemetryEngine.getInstance().addLog(
-              'gen_ai',
-              `[BulkEnrichment AI] Gemini extracted ${metadataField} for batch ${chunkIndex + 1} (${chunk.length} volumes)`,
-              {
-                tokens: chunk.length * 160,
-                metadataField,
-                processedCount: data.processedCount,
-              },
-            );
-
-            const count =
-              typeof data.processedCount === 'number'
-                ? data.processedCount
-                : Array.isArray(data.results)
-                  ? data.results.length
-                  : 0;
-            batchCompleted = count;
-            batchFailed = chunk.length - batchCompleted;
-
-            // Log per-book diagnostics and build optimistic cache merge map
-            const updatesMap = new Map(
-              (data.updates || []).map(u => [u.bookId, u]),
-            );
-            const cachePatchMap = new Map<string, Record<string, unknown>>();
-
-            if (Array.isArray(data.updates) && data.updates.length > 0) {
-              for (const u of data.updates) {
-                cachePatchMap.set(u.bookId, u.payload);
-              }
-            } else if (Array.isArray(data.results)) {
-              for (const r of data.results) {
-                const rid = r.id as string | undefined;
-                if (rid) {
-                  const rest = {...r};
-                  delete rest.id;
-                  cachePatchMap.set(rid, rest);
-                }
-              }
-            }
-
-            if (cachePatchMap.size > 0) {
-              utils?.book?.list?.setData?.(
-                {libraryId},
-                old =>
-                  mergeUpdatesIntoListCache(old, cachePatchMap) as typeof old,
-              );
-            }
-
-            chunk.forEach(b => {
-              const update = updatesMap.get(b.id);
-              const statusObj = update?.payload?.enrichmentStatus as
-                Record<string, string> | undefined;
-              const enrichmentStatus = statusObj?.[statusKey];
-
-              if (enrichmentStatus === 'completed') {
-                DebugTelemetryEngine.getInstance().addLog(
-                  'info',
-                  `[BulkEnrichment] ✓ Enriched "${b.title}" with ${metadataField}`,
-                  {
-                    bookId: b.id,
-                    title: b.title,
-                    metadataField,
-                    status: 'completed',
-                  },
-                );
-              } else {
-                DebugTelemetryEngine.getInstance().addLog(
-                  'warn',
-                  `[BulkEnrichment] ⚠ No ${metadataField} found for "${b.title}" (marked unsupported)`,
-                  {
-                    bookId: b.id,
-                    title: b.title,
-                    metadataField,
-                    status: enrichmentStatus || 'unsupported',
-                  },
-                );
-              }
-            });
-          } else {
-            batchFailed = chunk.length;
-            DebugTelemetryEngine.getInstance().addLog(
-              'error',
-              `[BulkEnrichment] Batch ${chunkIndex + 1} returned unsuccessful status for ${chunk.length} books: ${JSON.stringify(data)}`,
-              data,
-            );
-          }
-        } catch (batchErr) {
-          batchFailed = chunk.length;
-          const errMsg =
-            batchErr instanceof Error ? batchErr.message : String(batchErr);
-
-          if (isCancelledRef.current || errMsg.includes('stopped by user')) {
-            DebugTelemetryEngine.getInstance().addLog(
-              'warn',
-              `[BulkEnrichment] Batch ${chunkIndex + 1} halted by user`,
-            );
-          } else {
-            DebugTelemetryEngine.getInstance().addLog(
-              'error',
-              `[BulkEnrichment Workers] Error processing batch of ${chunk.length} books for ${metadataField}: ${errMsg}`,
-              {
-                error: errMsg,
-                books: chunk.map(b => ({id: b.id, title: b.title})),
-              },
-            );
-          }
-        } finally {
-          if (timeoutId !== undefined) {
-            clearTimeout(timeoutId);
-          }
-          if (onAbort && abortControllerRef.current) {
-            abortControllerRef.current.signal.removeEventListener(
-              'abort',
-              onAbort,
-            );
-          }
-          setInFlightCount(prev => Math.max(0, prev - chunk.length));
-          setBackfillProgress(prev => ({
-            ...prev,
-            completed: prev.completed + batchCompleted,
-            failed: prev.failed + batchFailed,
-          }));
+        if (successToastRef.current) {
+          toast.success(successToastRef.current);
         }
-      };
-
-      // Schedule all batches using bottleneck
-      const promises = bookChunks.map((chunk, idx) =>
-        bulkEnrichmentClientLimiter.schedule(() => processBatch(chunk, idx)),
-      );
-      await Promise.all(promises);
-
-      if (!isCancelledRef.current) {
-        await utils?.book?.list?.invalidate?.({libraryId});
-        DebugTelemetryEngine.getInstance().addLog(
-          'info',
-          `[BulkEnrichment] Backfill run finished for ${metadataField} (Total processed: ${total})`,
-          {metadataField, processedCount: total},
-        );
-        toast.success(successToastMessage);
+        onCompleteRef.current?.();
       }
-    } catch (err) {
-      if (!isCancelledRef.current) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        DebugTelemetryEngine.getInstance().addLog(
-          'error',
-          `[BulkEnrichment] Overall run failed for ${metadataField}: ${errMsg}`,
-          {metadataField, error: errMsg},
-        );
-        console.error(
-          `[BulkEnrichment] Overall run failed for ${metadataField}:`,
-          err,
-        );
-        toast.error(errorToastMessage);
+    } catch {
+      closeEventSource();
+      if (!cancelledRef.current) {
+        isRunningRef.current = false;
+        setIsBackfilling(false);
+        setInFlightCount(0);
+        if (errorToastRef.current) {
+          toast.error(errorToastRef.current);
+        }
       }
-    } finally {
-      setIsBackfilling(false);
-      setInFlightCount(0);
     }
   }, [
-    libraryId,
-    booksToBackfill,
-    isBackfilling,
     user,
-    batchSize,
-    providerKey,
-    metadataField,
-    concurrencyLimit,
-    successToastMessage,
-    errorToastMessage,
-    timeoutMs,
+    libraryId,
+    canEdit,
+    booksToBackfill,
+    canonicalType,
     overwrite,
-    canonicalEnrichmentType,
-    statusKey,
-    utils,
+    customGenres,
+    connectSseStream,
+    closeEventSource,
   ]);
 
-  // Handle auto-triggering
   useEffect(() => {
-    if (
-      autoTrigger &&
-      !isBooksLoading &&
-      backfillQuotaCount > 0 &&
-      !isBackfilling &&
-      user
-    ) {
-      void triggerBatchBackfill();
-    }
+    if (!isBackfilling || !libraryId || !activeJobId) return;
+
+    const enrichmentClient = trpcVanilla.enrichment as unknown as {
+      getJobStatus?: {
+        query: (input: {libraryId: string}) => Promise<{
+          jobId: string;
+          status: string;
+          totalBooks: number;
+          completedBooks: number;
+          failedBooks: number;
+          skippedBooks: number;
+          perBookStates?: Record<string, BookJobTelemetry>;
+          providerTelemetry?: ProviderTelemetrySummary;
+        } | null>;
+      };
+    };
+
+    if (!enrichmentClient?.getJobStatus?.query) return;
+
+    const interval = setInterval(async () => {
+      if (cancelledRef.current || !isRunningRef.current) return;
+      try {
+        const snap = await enrichmentClient.getJobStatus!.query({libraryId});
+        if (!snap || (activeJobId && snap.jobId !== activeJobId)) return;
+
+        if (snap.perBookStates) {
+          setPerBookStates(snap.perBookStates);
+        }
+        if (snap.providerTelemetry) {
+          setProviderTelemetry(snap.providerTelemetry);
+          setInFlightCount(
+            snap.providerTelemetry.totalInFlight ??
+              (snap.providerTelemetry as {totalActiveRequests?: number})
+                .totalActiveRequests ??
+              0,
+          );
+        }
+        if (typeof snap.totalBooks === 'number' && snap.totalBooks > 0) {
+          setProgress({
+            completed: snap.completedBooks || 0,
+            failed: (snap.failedBooks || 0) + (snap.skippedBooks || 0),
+            total: snap.totalBooks,
+          });
+        }
+        if (
+          snap.status === 'completed' ||
+          snap.status === 'cancelled' ||
+          snap.status === 'failed'
+        ) {
+          isRunningRef.current = false;
+          setIsBackfilling(false);
+          setInFlightCount(0);
+          closeEventSource();
+          void utilsRef.current?.book?.list?.invalidate({libraryId});
+          if (snap.status === 'completed' && successToastRef.current) {
+            toast.success(successToastRef.current);
+          }
+          onCompleteRef.current?.();
+        }
+      } catch {
+        // Ignore transient poll errors
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [isBackfilling, libraryId, activeJobId, closeEventSource]);
+
+  useEffect(() => {
+    if (!autoTrigger) return;
+    if (isBooksLoading || !libraryId || !user || !canEdit) return;
+    if (isRunningRef.current) return;
+    if (booksToBackfill.length === 0) return;
+
+    const autoKey = `${libraryId}:${canonicalType}`;
+    if (autoTriggeredForLibRef.current === autoKey) return;
+    autoTriggeredForLibRef.current = autoKey;
+
+    void triggerBackfill();
   }, [
     autoTrigger,
     isBooksLoading,
-    backfillQuotaCount,
-    isBackfilling,
+    libraryId,
     user,
-    triggerBatchBackfill,
+    canEdit,
+    booksToBackfill.length,
+    canonicalType,
+    triggerBackfill,
   ]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (isBackfilling) {
-        isCancelledRef.current = true;
-        abortControllerRef.current?.abort();
-      }
+      closeEventSource();
+      isRunningRef.current = false;
     };
-  }, [isBackfilling]);
-
-  const resetBackfillTracker = useCallback(() => {
-    setAttemptedBookIds(new Set());
-  }, []);
+  }, [closeEventSource]);
 
   return {
-    isBackfilling,
-    progress: backfillProgress,
-    inFlightCount,
-    triggerBackfill: triggerBatchBackfill,
-    cancelEnrichment,
-    resetBackfillTracker,
     booksToBackfill,
+    isBackfilling,
+    progress,
+    inFlightCount,
+    triggerBackfill,
+    cancelEnrichment,
+    activeJobId,
+    perBookStates,
+    providerTelemetry,
   };
 }

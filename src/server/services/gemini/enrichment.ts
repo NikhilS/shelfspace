@@ -45,7 +45,7 @@ CRITICAL DIRECTIVES:
    **Key Themes**: 3-4 comma-separated tags (e.g., *Speculative Fiction, Found Family, Moral Ambiguity*).`;
 
     const response = await generateContentWithLimiter({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         systemInstruction:
@@ -102,7 +102,7 @@ For each recommendation, format with:
   while (retries > 0) {
     try {
       const response = await generateContentWithLimiter({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
         config: {
           systemInstruction:
@@ -194,7 +194,7 @@ CRITICAL RULES:
     let response;
     try {
       response = await generateContentWithLimiter({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
         config: {
           systemInstruction:
@@ -227,7 +227,7 @@ CRITICAL RULES:
         }
         console.warn('Fallback retry with Gemini 3.8 Flash model:', err);
         response = await generateContentWithLimiter({
-          model: 'gemini-3.8-flash',
+          model: 'gemini-3-flash-preview',
           contents: prompt,
           config: {
             responseMimeType: 'application/json',
@@ -285,6 +285,10 @@ export interface ClassifiedBookGenre {
 
 export async function classifyBooks(
   batch: {id: string; title: string; author: string; synopsis?: string}[],
+  options?: {
+    priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
+    signal?: AbortSignal;
+  },
 ): Promise<ClassifiedBookGenre[]> {
   try {
     if (!batch || batch.length === 0) return [];
@@ -317,40 +321,46 @@ Directives:
 Books to classify:
 ${JSON.stringify(booksPromptData, null, 2)}`;
 
-    const response = await generateContentWithLimiter({
-      model: 'gemini-3.8-flash',
-      contents: prompt,
-      config: {
-        systemInstruction:
-          'You are an expert library cataloger and bibliographer specializing in literary taxonomy and genre classification.',
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          description: 'Classified books with standardized taxonomy',
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: {
-                type: Type.STRING,
-                description: 'The exact input ID of the book',
+    const response = await generateContentWithLimiter(
+      {
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: {
+          systemInstruction:
+            'You are an expert library cataloger and bibliographer specializing in literary taxonomy and genre classification.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.ARRAY,
+            description: 'Classified books with standardized taxonomy',
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: {
+                  type: Type.STRING,
+                  description: 'The exact input ID of the book',
+                },
+                primaryGenre: {
+                  type: Type.STRING,
+                  description: 'The chosen canonical primary genre or Other',
+                },
+                subgenres: {
+                  type: Type.ARRAY,
+                  items: {type: Type.STRING},
+                  description:
+                    '0 to 3 valid subgenres from the chosen primary genre',
+                },
               },
-              primaryGenre: {
-                type: Type.STRING,
-                description: 'The chosen canonical primary genre or Other',
-              },
-              subgenres: {
-                type: Type.ARRAY,
-                items: {type: Type.STRING},
-                description:
-                  '0 to 3 valid subgenres from the chosen primary genre',
-              },
+              required: ['id', 'primaryGenre'],
             },
-            required: ['id', 'primaryGenre'],
           },
+          temperature: 0.1,
         },
-        temperature: 0.1,
       },
-    });
+      {
+        priority: options?.priority ?? 'BATCH',
+        signal: options?.signal,
+      },
+    );
 
     const text = response.text;
     if (!text) return [];
@@ -401,11 +411,6 @@ export interface ExtractedGeoLocation {
   rationale: string;
 }
 
-export interface ExtractedGeoResponse {
-  isNonEarth: boolean;
-  locations: ExtractedGeoLocation[];
-}
-
 export interface BatchExtractedGeoBookResult {
   id: string;
   isNonEarth: boolean;
@@ -418,6 +423,10 @@ export interface BatchExtractedGeoResponse {
 
 export async function extractBookGeoMetadataBatch(
   books: {id: string; title: string; author: string; synopsis?: string}[],
+  options?: {
+    priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
+    signal?: AbortSignal;
+  },
 ): Promise<BatchExtractedGeoResponse | null> {
   const batchSchema = {
     type: Type.OBJECT,
@@ -487,6 +496,7 @@ Directives:
     prompt,
     batchSchema,
     'You are an authoritative literary geographer with deep knowledge of world literature, non-fiction contexts, and global historical geography.',
+    options,
   );
 }
 
@@ -505,6 +515,10 @@ export interface BatchTemporalResponse {
 
 export async function extractBookTemporalMetadataBatch(
   books: {id: string; title: string; author: string; synopsis?: string}[],
+  options?: {
+    priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
+    signal?: AbortSignal;
+  },
 ): Promise<BatchTemporalResponse | null> {
   const batchSchema = {
     type: Type.OBJECT,
@@ -571,6 +585,7 @@ Directives:
     prompt,
     batchSchema,
     'You are an academic bibliophile historian with encyclopedic knowledge of world history, literary chronology, and historical eras.',
+    options,
   );
 
   if (result?.enrichment) {
@@ -586,4 +601,176 @@ Directives:
   }
 
   return result;
+}
+
+export async function generateBookSynopsesBatch(
+  books: {id: string; title: string; author: string}[],
+  options?: {
+    priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
+    signal?: AbortSignal;
+  },
+): Promise<Record<string, string>> {
+  if (!books || books.length === 0) return {};
+
+  const schema = {
+    type: Type.ARRAY,
+    description: 'Concise literary synopses for the requested books',
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        id: {
+          type: Type.STRING,
+          description: 'Exact book ID from the input',
+        },
+        synopsis: {
+          type: Type.STRING,
+          description:
+            'Compelling, spoiler-free 1-2 paragraph literary summary of the book.',
+        },
+      },
+      required: ['id', 'synopsis'],
+    },
+  };
+
+  const prompt =
+    'Provide a compelling, accurate, spoiler-free literary summary (1 to 2 concise paragraphs) for each book in the provided list. Preserve the exact input "id" for each book.';
+
+  const res = await batchGeminiOperation<
+    Array<{id: string; synopsis?: string}>
+  >(
+    books,
+    prompt,
+    schema,
+    'You are an insightful literary scholar and librarian who writes accurate, spoiler-free book summaries.',
+    options,
+  );
+
+  const map: Record<string, string> = {};
+  if (Array.isArray(res)) {
+    for (const item of res) {
+      if (item?.id && item?.synopsis && item.synopsis.trim()) {
+        map[item.id] = item.synopsis.trim();
+      }
+    }
+  }
+  return map;
+}
+
+export async function generateAuthorBiosBatch(
+  books: {id: string; title: string; author: string}[],
+  options?: {
+    priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
+    signal?: AbortSignal;
+  },
+): Promise<Record<string, string>> {
+  if (!books || books.length === 0) return {};
+
+  const schema = {
+    type: Type.ARRAY,
+    description: 'Author biographical profiles for the requested books',
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        id: {
+          type: Type.STRING,
+          description: 'Exact book ID from the input',
+        },
+        authorBio: {
+          type: Type.STRING,
+          description:
+            'Authoritative 1-2 paragraph biographical profile of the book author.',
+        },
+      },
+      required: ['id', 'authorBio'],
+    },
+  };
+
+  const prompt =
+    'Provide an authoritative, concise 1-2 paragraph biographical profile for the author of each book in the provided list, focusing on their literary career, major themes, and notable works. Preserve the exact input "id" for each book.';
+
+  const res = await batchGeminiOperation<
+    Array<{id: string; authorBio?: string}>
+  >(
+    books,
+    prompt,
+    schema,
+    'You are an insightful literary scholar and biographer.',
+    options,
+  );
+
+  const map: Record<string, string> = {};
+  if (Array.isArray(res)) {
+    for (const item of res) {
+      if (item?.id && item?.authorBio && item.authorBio.trim()) {
+        map[item.id] = item.authorBio.trim();
+      }
+    }
+  }
+  return map;
+}
+
+export async function extractBookSeriesBatch(
+  books: {id: string; title: string; author: string; synopsis?: string}[],
+  options?: {
+    priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
+    signal?: AbortSignal;
+  },
+): Promise<Record<string, string>> {
+  if (!books || books.length === 0) return {};
+
+  const schema = {
+    type: Type.ARRAY,
+    description: 'Series name and book number for books belonging to a series',
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        id: {
+          type: Type.STRING,
+          description: 'Exact book ID from the input',
+        },
+        isPartOfSeries: {
+          type: Type.BOOLEAN,
+          description:
+            'True ONLY if the book is genuinely part of a named literary series, trilogy, or multi-volume cycle.',
+        },
+        series: {
+          type: Type.STRING,
+          description:
+            'Formatted series name and volume number (e.g., "Dune Chronicles #1", "The Lord of the Rings #2", "Neapolitan Novels #1"). Empty string if standalone.',
+        },
+      },
+      required: ['id', 'isPartOfSeries'],
+    },
+  };
+
+  const prompt = `Determine whether each book in the provided list belongs to a known literary series, trilogy, or multi-volume sequence.
+Directives:
+1. If a book belongs to a series, set "isPartOfSeries: true" and format "series" cleanly as "Series Name #N" (e.g., "Foundation #1", "The Stormlight Archive #2", "Wolf Hall Trilogy #1").
+2. If the book is a standalone work, set "isPartOfSeries: false" and omit "series".
+3. Preserve the exact input "id" for each book.`;
+
+  const res = await batchGeminiOperation<
+    Array<{id: string; isPartOfSeries?: boolean; series?: string}>
+  >(
+    books,
+    prompt,
+    schema,
+    'You are a meticulous bibliographer and literary archivist specializing in book series and edition numbering.',
+    options,
+  );
+
+  const map: Record<string, string> = {};
+  if (Array.isArray(res)) {
+    for (const item of res) {
+      if (
+        item?.id &&
+        item?.isPartOfSeries &&
+        item?.series &&
+        item.series.trim()
+      ) {
+        map[item.id] = item.series.trim();
+      }
+    }
+  }
+  return map;
 }

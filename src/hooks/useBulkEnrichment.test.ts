@@ -121,6 +121,38 @@ describe('useBulkEnrichment', () => {
     expect(result.current.booksToBackfill.map(b => b.id)).toEqual(['b1', 'b2']);
   });
 
+  it('includes unsupported books when ignoreUnsupportedStatus is true (manual Shelf Care selection)', () => {
+    const books: Book[] = [
+      {
+        ...baseBook,
+        id: 'b1',
+        title: 'Previously Unsupported Cover Book',
+        enrichmentStatus: {coverImage: 'unsupported'},
+      },
+      {
+        ...baseBook,
+        id: 'b2',
+        title: 'Fresh Missing Cover Book',
+      },
+    ];
+
+    const {result} = renderHook(() =>
+      useBulkEnrichment({
+        books,
+        isBooksLoading: false,
+        libraryId: 'lib1',
+        providerKey: 'coverUrl',
+        metadataField: 'coverUrl',
+        filterPredicate: () => true,
+        autoTrigger: false,
+        overwrite: false,
+        ignoreUnsupportedStatus: true,
+      }),
+    );
+
+    expect(result.current.booksToBackfill.map(b => b.id)).toEqual(['b1', 'b2']);
+  });
+
   it('dispatches to trpcVanilla.enrichment.trigger.mutate during triggerBackfill', async () => {
     const books: Book[] = [
       {
@@ -247,8 +279,8 @@ describe('useBulkEnrichment', () => {
 
     expect(result.current.isBackfilling).toBe(true);
 
-    act(() => {
-      result.current.cancelEnrichment();
+    await act(async () => {
+      await result.current.cancelEnrichment();
     });
 
     expect(result.current.isBackfilling).toBe(false);

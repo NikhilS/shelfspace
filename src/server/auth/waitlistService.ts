@@ -1,5 +1,10 @@
+import {TRPCError} from '@trpc/server';
 import {getAdminDb} from '../services/firebaseAdmin';
 import {AllowlistService} from './allowlistService';
+import {
+  validateAndNormalizeEmail,
+  isSafeImageOrHttpUrl,
+} from '../../schemas/common';
 import type {WaitlistEntry, WaitlistStatus} from '../../schemas/waitlist';
 
 export class WaitlistService {
@@ -15,8 +20,10 @@ export class WaitlistService {
       return {status: 'not_requested'};
     }
 
-    const normalized = email.toLowerCase().trim();
-    if (!normalized) {
+    let normalized: string;
+    try {
+      normalized = validateAndNormalizeEmail(email);
+    } catch {
       return {status: 'not_requested'};
     }
 
@@ -46,6 +53,10 @@ export class WaitlistService {
         requestedAt: data.requestedAt || new Date().toISOString(),
         reviewedAt: data.reviewedAt || null,
         reviewedBy: data.reviewedBy || null,
+        ...(data.invitedBy ? {invitedBy: data.invitedBy} : {}),
+        ...(data.invitedLibraryName
+          ? {invitedLibraryName: data.invitedLibraryName}
+          : {}),
       };
 
       return {
@@ -70,7 +81,23 @@ export class WaitlistService {
     displayName?: string;
     photoURL?: string | null;
   }): Promise<WaitlistEntry> {
-    const normalized = params.email.toLowerCase().trim();
+    let normalized: string;
+    try {
+      normalized = validateAndNormalizeEmail(params.email);
+    } catch (err) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: err instanceof Error ? err.message : 'Invalid email address',
+      });
+    }
+
+    if (params.photoURL && !isSafeImageOrHttpUrl(params.photoURL)) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Invalid photoURL protocol',
+      });
+    }
+
     const db = getAdminDb();
     const docRef = db
       .collection('appSettings/waitlist/entries')
@@ -94,6 +121,10 @@ export class WaitlistService {
         requestedAt: existing.requestedAt || now,
         reviewedAt: existing.reviewedAt || null,
         reviewedBy: existing.reviewedBy || null,
+        ...(existing.invitedBy ? {invitedBy: existing.invitedBy} : {}),
+        ...(existing.invitedLibraryName
+          ? {invitedLibraryName: existing.invitedLibraryName}
+          : {}),
       };
       await docRef.set(entry, {merge: true});
     } else {
@@ -109,6 +140,66 @@ export class WaitlistService {
       await docRef.set(entry);
     }
 
+    return entry;
+  }
+
+  /**
+   * Ensures an invited collaborator who is not yet on the global allowlist
+   * has a pending waitlist entry with invitation context for admin review.
+   */
+  static async ensureInvitedEntry(params: {
+    email: string;
+    invitedByEmail?: string;
+    libraryName?: string;
+  }): Promise<WaitlistEntry> {
+    let normalized: string;
+    try {
+      normalized = validateAndNormalizeEmail(params.email);
+    } catch (err) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: err instanceof Error ? err.message : 'Invalid email address',
+      });
+    }
+
+    const db = getAdminDb();
+    const docRef = db
+      .collection('appSettings/waitlist/entries')
+      .doc(normalized);
+
+    const existingSnap = await docRef.get();
+    const now = new Date().toISOString();
+    const invitedBy = params.invitedByEmail?.toLowerCase().trim() || null;
+    const invitedLibraryName = params.libraryName?.trim() || null;
+
+    if (existingSnap && existingSnap.exists) {
+      const existing = (existingSnap.data() || {}) as Partial<WaitlistEntry>;
+      const entry: WaitlistEntry = {
+        email: normalized,
+        displayName: existing.displayName || undefined,
+        photoURL: existing.photoURL || null,
+        status: existing.status === 'approved' ? 'approved' : 'pending',
+        requestedAt: existing.requestedAt || now,
+        reviewedAt: existing.reviewedAt || null,
+        reviewedBy: existing.reviewedBy || null,
+        invitedBy: invitedBy || existing.invitedBy || null,
+        invitedLibraryName:
+          invitedLibraryName || existing.invitedLibraryName || null,
+      };
+      await docRef.set(entry, {merge: true});
+      return entry;
+    }
+
+    const entry: WaitlistEntry = {
+      email: normalized,
+      status: 'pending',
+      requestedAt: now,
+      reviewedAt: null,
+      reviewedBy: null,
+      invitedBy,
+      invitedLibraryName,
+    };
+    await docRef.set(entry);
     return entry;
   }
 
@@ -132,6 +223,10 @@ export class WaitlistService {
         requestedAt: data.requestedAt || '',
         reviewedAt: data.reviewedAt || null,
         reviewedBy: data.reviewedBy || null,
+        ...(data.invitedBy ? {invitedBy: data.invitedBy} : {}),
+        ...(data.invitedLibraryName
+          ? {invitedLibraryName: data.invitedLibraryName}
+          : {}),
       };
     });
 
@@ -156,7 +251,16 @@ export class WaitlistService {
     action: 'approve' | 'reject';
     adminEmail: string;
   }): Promise<{success: boolean; status: 'approved' | 'rejected'}> {
-    const normalized = params.email.toLowerCase().trim();
+    let normalized: string;
+    try {
+      normalized = validateAndNormalizeEmail(params.email);
+    } catch (err) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: err instanceof Error ? err.message : 'Invalid email address',
+      });
+    }
+
     const db = getAdminDb();
     const reviewedAt = new Date().toISOString();
     const reviewedBy = params.adminEmail.toLowerCase().trim();

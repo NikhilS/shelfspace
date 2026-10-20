@@ -1,6 +1,6 @@
 {
-  "summary": "Comprehensive codebase cleanup, directory reorganization, monolith decomposition, test co-location, and 100% strict TypeScript typing plan across server services, pages, and shared components.",
-  "updatedAt": "2026-10-17T18:13:21.417274216Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "UX redesign plan for the Personal Reading Room landing page featuring a Currently Reading spotlight, an interactive 2D Canvas messy stack of the last 5 read books, an AI Pick of the Day with 1-click Want-to-Read, a generic reusable Genre Breakdown component, and a compact Want-to-Read strip with a View All modal.",
+  "updatedAt":  "2026-10-20T20:02:21.808439883Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

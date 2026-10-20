@@ -24,7 +24,9 @@ export default function BookDetailsView() {
 
   const {user} = useAuth();
 
-  const backUrl = location.state?.from || `/library/${libraryId}`;
+  const backUrl =
+    location.state?.from ||
+    (libraryId?.startsWith('virtual_') ? '/' : `/library/${libraryId}`);
 
   // Fetch only library permissions for canEdit; do NOT subscribe to the entire books collection
   const {canEdit} = useLibraryPermissions(libraryId, user?.uid);

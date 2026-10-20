@@ -1,5 +1,10 @@
 import {describe, it, expect} from 'vitest';
-import {formatFirestoreDate, formatDateTime} from './date';
+import {
+  formatFirestoreDate,
+  formatDateTime,
+  formatShortDate,
+  formatFullDateTime,
+} from './date';
 
 describe('Date utilities', () => {
   it('formats Firestore toDate object correctly', () => {
@@ -32,5 +37,13 @@ describe('Date utilities', () => {
     expect(formatDateTime(null)).toBe('Never');
     expect(formatDateTime('', 'No Record')).toBe('No Record');
     expect(formatDateTime('invalid-date')).toBe('Never');
+  });
+
+  it('formats short dates and full date-times via Intl.DateTimeFormat', () => {
+    const ts = new Date('2026-10-17T16:30:00.000Z');
+    expect(formatShortDate(ts)).toContain('2026');
+    expect(formatShortDate(Number.NaN)).toBe('Unknown');
+    expect(formatFullDateTime(ts)).toContain('2026');
+    expect(formatFullDateTime(Number.NaN)).toBe('');
   });
 });

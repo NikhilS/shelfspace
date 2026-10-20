@@ -1,19 +1,13 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {createSecurityContext} from './context';
-import {ApiKeyVerifier} from './apiKeyVerifier';
 import {TokenVerifier} from './tokenVerifier';
 import {AllowlistService} from './allowlistService';
 import type express from 'express';
 
-vi.mock('./apiKeyVerifier');
 vi.mock('./tokenVerifier');
 vi.mock('./allowlistService');
 
 describe('createSecurityContext', () => {
-  const mockReq = {
-    headers: {},
-  } as unknown as express.Request;
-
   const mockRes = {} as unknown as express.Response;
 
   beforeEach(() => {
@@ -21,7 +15,6 @@ describe('createSecurityContext', () => {
   });
 
   it('builds unauthenticated context when no auth headers are provided', async () => {
-    vi.mocked(ApiKeyVerifier.extractKeyFromHeaders).mockReturnValue(null);
     vi.mocked(TokenVerifier.extractTokenFromHeader).mockReturnValue(null);
 
     const ctx = await createSecurityContext({
@@ -35,15 +28,13 @@ describe('createSecurityContext', () => {
     expect(AllowlistService.getPermissions).not.toHaveBeenCalled();
   });
 
-  it('authenticates via API key and resolves allowlist permissions', async () => {
-    vi.mocked(ApiKeyVerifier.extractKeyFromHeaders).mockReturnValue(
-      'lib_live_valid',
+  it('authenticates via Firebase JWT and resolves allowlist permissions', async () => {
+    vi.mocked(TokenVerifier.extractTokenFromHeader).mockReturnValue(
+      'jwt_token_123',
     );
-    vi.mocked(ApiKeyVerifier.verify).mockResolvedValueOnce({
-      uid: 'api_uid',
-      email: 'api@example.com',
-      authType: 'api_key',
-      apiKeyId: 'hash_123',
+    vi.mocked(TokenVerifier.verify).mockResolvedValueOnce({
+      uid: 'jwt_uid',
+      email: 'reader@example.com',
     });
     vi.mocked(AllowlistService.getPermissions).mockResolvedValueOnce({
       isAppAllowed: true,
@@ -52,33 +43,29 @@ describe('createSecurityContext', () => {
 
     const ctx = await createSecurityContext({
       req: {
-        headers: {'x-api-key': 'lib_live_valid'},
+        headers: {authorization: 'Bearer jwt_token_123'},
       } as unknown as express.Request,
       res: mockRes,
     });
 
     expect(ctx.user).toEqual({
-      uid: 'api_uid',
-      email: 'api@example.com',
-      authType: 'api_key',
-      apiKeyId: 'hash_123',
+      uid: 'jwt_uid',
+      email: 'reader@example.com',
     });
     expect(ctx.isAppAllowed).toBe(true);
     expect(ctx.isAdmin).toBe(false);
     expect(AllowlistService.getPermissions).toHaveBeenCalledWith(
-      'api@example.com',
+      'reader@example.com',
     );
   });
 
-  it('authenticates via JWT and resolves admin permissions', async () => {
-    vi.mocked(ApiKeyVerifier.extractKeyFromHeaders).mockReturnValue(null);
+  it('authenticates via Firebase JWT and resolves admin permissions', async () => {
     vi.mocked(TokenVerifier.extractTokenFromHeader).mockReturnValue(
-      'jwt_token_123',
+      'jwt_admin_token',
     );
     vi.mocked(TokenVerifier.verify).mockResolvedValueOnce({
-      uid: 'jwt_uid',
+      uid: 'jwt_admin_uid',
       email: 'admin@example.com',
-      authType: 'jwt',
     });
     vi.mocked(AllowlistService.getPermissions).mockResolvedValueOnce({
       isAppAllowed: true,
@@ -87,7 +74,7 @@ describe('createSecurityContext', () => {
 
     const ctx = await createSecurityContext({
       req: {
-        headers: {authorization: 'Bearer jwt_token_123'},
+        headers: {authorization: 'Bearer jwt_admin_token'},
       } as unknown as express.Request,
       res: mockRes,
     });

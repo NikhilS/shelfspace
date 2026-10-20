@@ -23,23 +23,29 @@ export function getAccessFromLibrary(
     };
   }
 
-  // Check ABAC map first
   let role: 'owner' | 'editor' | 'viewer' | null = null;
+  const normalizedEmail = userEmail?.trim().toLowerCase();
+
   if (library.ownerId === userId) {
     role = 'owner';
   } else if (
-    userEmail &&
+    normalizedEmail &&
     library.access &&
-    library.access[userEmail.toLowerCase()]
+    (library.access[normalizedEmail] ||
+      (userEmail && library.access[userEmail]))
   ) {
-    role = library.access[userEmail.toLowerCase()];
+    role =
+      library.access[normalizedEmail] ||
+      (userEmail ? library.access[userEmail] : null);
+  } else if (library.callerRole) {
+    role = library.callerRole === 'admin' ? 'owner' : library.callerRole;
   }
 
   return {
     role,
     isOwner: role === 'owner',
     canEdit: role === 'owner' || role === 'editor',
-    canDelete: role === 'owner' || role === 'editor', // According to spec, editor can delete books. Owner can delete library
+    canDelete: role === 'owner' || role === 'editor',
     canView: role === 'owner' || role === 'editor' || role === 'viewer',
   };
 }

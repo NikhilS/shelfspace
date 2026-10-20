@@ -1,16 +1,17 @@
 import {useState, useEffect, useRef} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {
+  Point2D,
+  SemanticNeighborIndex,
   optimalKMeans,
   normalizeAndRelaxPositions,
   computeSemanticNeighbors,
 } from '../lib/clustering';
-import {BookDetails} from '../services/bookApi';
 import {trpc, trpcVanilla} from '../lib/trpc';
 import {useAuth} from '../stores/authStore';
 import {useLibraryData} from './useLibraryData';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../lib/telemetry';
-import {BookDetailsMetadata} from '../types';
+import {BookDetails, BookDetailsMetadata} from '../types';
 
 export interface BookDoc extends Omit<
   BookDetails,
@@ -49,28 +50,48 @@ export interface ScatterPoint {
   neighbors: ConstellationNeighbor[];
 }
 
-function buildScatterPointsWithGeometry(
+interface WorkerTopologyResponse {
+  reduced?: number[][];
+  labels?: number[];
+  relaxedCoords?: Point2D[];
+  neighborIndexLists?: SemanticNeighborIndex[][];
+  error?: string;
+}
+
+function assembleScatterPoints(
   rawItems: Array<{
     rawX: number;
     rawY: number;
     book: BookDoc;
     clusterId: number;
   }>,
+  precomputed?: {
+    relaxedCoords?: Point2D[];
+    neighborIndexLists?: SemanticNeighborIndex[][];
+  },
 ): ScatterPoint[] {
   if (rawItems.length === 0) return [];
 
-  const relaxedCoords = normalizeAndRelaxPositions(
-    rawItems.map(item => ({x: item.rawX, y: item.rawY})),
-    {
-      clusterIds: rawItems.map(item => item.clusterId),
-    },
-  );
+  const relaxedCoords =
+    precomputed?.relaxedCoords &&
+    precomputed.relaxedCoords.length === rawItems.length
+      ? precomputed.relaxedCoords
+      : normalizeAndRelaxPositions(
+          rawItems.map(item => ({x: item.rawX, y: item.rawY})),
+          {
+            clusterIds: rawItems.map(item => item.clusterId),
+          },
+        );
 
-  const neighborIndexLists = computeSemanticNeighbors(
-    relaxedCoords,
-    rawItems.map(item => item.book.embedding),
-    5,
-  );
+  const neighborIndexLists =
+    precomputed?.neighborIndexLists &&
+    precomputed.neighborIndexLists.length === rawItems.length
+      ? precomputed.neighborIndexLists
+      : computeSemanticNeighbors(
+          relaxedCoords,
+          rawItems.map(item => item.book.embedding),
+          5,
+        );
 
   return rawItems.map((item, idx) => {
     const pos = relaxedCoords[idx] || {x: item.rawX, y: item.rawY};
@@ -120,13 +141,63 @@ export function useConstellationData(libraryId: string | undefined) {
   const [reclusterTrigger, setReclusterTrigger] = useState(0);
   const activeWorkerRef = useRef<Worker | null>(null);
 
-  const generateBookEmbeddingsMutation =
-    trpc.gemini.generateBookEmbeddings.useMutation();
   const generateClusterNamesMutation =
     trpc.gemini.generateClusterNames.useMutation();
 
   useEffect(() => {
     let isMounted = true;
+
+    async function runWorkerGeometryOnly(
+      rawItems: Array<{
+        rawX: number;
+        rawY: number;
+        book: BookDoc;
+        clusterId: number;
+      }>,
+    ): Promise<ScatterPoint[]> {
+      if (typeof Worker === 'undefined') {
+        return assembleScatterPoints(rawItems);
+      }
+
+      try {
+        const workerRes = await new Promise<WorkerTopologyResponse>(
+          (resolve, reject) => {
+            const worker = new Worker(
+              new URL('../workers/umap.worker.ts', import.meta.url),
+              {type: 'module'},
+            );
+            activeWorkerRef.current = worker;
+            worker.onmessage = (e: MessageEvent<WorkerTopologyResponse>) => {
+              worker.terminate();
+              activeWorkerRef.current = null;
+              if (e.data.error) {
+                reject(new Error(e.data.error));
+              } else {
+                resolve(e.data);
+              }
+            };
+            worker.onerror = err => {
+              worker.terminate();
+              activeWorkerRef.current = null;
+              reject(err);
+            };
+            worker.postMessage({
+              mode: 'geometryOnly',
+              rawCoords: rawItems.map(item => ({x: item.rawX, y: item.rawY})),
+              clusterIds: rawItems.map(item => item.clusterId),
+              embeddings: rawItems.map(item => item.book.embedding),
+            });
+          },
+        );
+
+        return assembleScatterPoints(rawItems, {
+          relaxedCoords: workerRes.relaxedCoords,
+          neighborIndexLists: workerRes.neighborIndexLists,
+        });
+      } catch {
+        return assembleScatterPoints(rawItems);
+      }
+    }
 
     async function processMap() {
       if (!libraryId) return;
@@ -160,6 +231,8 @@ export function useConstellationData(libraryId: string | undefined) {
         }
 
         let completedCount = 0;
+        const isTelemetryActive = DebugTelemetryEngine.isHudActive();
+
         await Promise.all(
           chunks.map(async chunk => {
             const res = await trpcVanilla.book.getBookDetailsChunk.mutate({
@@ -172,7 +245,9 @@ export function useConstellationData(libraryId: string | undefined) {
             if (res?.details) {
               for (const [id, data] of Object.entries(res.details)) {
                 detailsMap.set(id, data);
-                chunkBytes += calculatePayloadBytes(data);
+                if (isTelemetryActive) {
+                  chunkBytes += calculatePayloadBytes(data);
+                }
                 docCount++;
               }
             }
@@ -184,16 +259,18 @@ export function useConstellationData(libraryId: string | undefined) {
               );
             }
 
-            DebugTelemetryEngine.getInstance().addLog(
-              'db_read',
-              `Queried bookDetails chunk (${chunk.length} docs, ${(chunkBytes / 1024).toFixed(1)} KB)`,
-              {
-                path: `libraries/${libraryId}/bookDetails`,
-                size: chunk.length,
-                bytes: chunkBytes,
-                docCount,
-              },
-            );
+            if (isTelemetryActive) {
+              DebugTelemetryEngine.getInstance().addLog(
+                'db_read',
+                `Queried bookDetails chunk (${chunk.length} docs, ${(chunkBytes / 1024).toFixed(1)} KB)`,
+                {
+                  path: `libraries/${libraryId}/bookDetails`,
+                  size: chunk.length,
+                  bytes: chunkBytes,
+                  docCount,
+                },
+              );
+            }
           }),
         );
 
@@ -216,7 +293,7 @@ export function useConstellationData(libraryId: string | undefined) {
         }
 
         // Fast-path: If every book already has persisted clusterCoordinates (and we are not re-clustering),
-        // relax positions and compute nearest-neighbor graph immediately in O(N^2) without re-running UMAP or Gemini.
+        // relax positions and compute nearest-neighbor graph off the main thread in the Web Worker.
         const allHaveSavedClusters =
           reclusterTrigger === 0 &&
           allBooks.every(
@@ -244,7 +321,8 @@ export function useConstellationData(libraryId: string | undefined) {
           });
 
           if (Object.keys(cachedNames).length > 0 && isMounted) {
-            const cachedPlotData = buildScatterPointsWithGeometry(rawItems);
+            const cachedPlotData = await runWorkerGeometryOnly(rawItems);
+            if (!isMounted) return;
             setClusterNames(cachedNames);
             setPlotData(cachedPlotData);
             setLoading(false);
@@ -258,64 +336,31 @@ export function useConstellationData(libraryId: string | undefined) {
 
         if (toEmbed.length > 0) {
           setProgress(
-            `Generating AI embeddings for ${toEmbed.length} books... (0%)`,
+            `Generating AI embeddings for ${toEmbed.length} books on server...`,
           );
-          const texts = toEmbed.map(b => {
-            const parts = [b.title];
-            if (b.author) parts.push(`by ${b.author}`);
-            if (b.primaryGenre) {
-              const genreStr =
-                b.subgenres && b.subgenres.length > 0
-                  ? `${b.primaryGenre}: ${b.subgenres.join(', ')}`
-                  : b.primaryGenre;
-              parts.push(`[${genreStr}]`);
-            }
-            if (b.synopsis) parts.push(b.synopsis);
-            return parts.join(' - ');
-          });
 
-          const embeddings = await generateBookEmbeddingsMutation.mutateAsync(
-            {texts},
-            {
-              onSuccess: () => {
-                setProgress('Generating AI embeddings... (100%)');
-              },
-            },
-          );
-          if (!embeddings || embeddings.length !== toEmbed.length) {
-            throw new Error('Failed to generate correct number of embeddings.');
-          }
-
-          setProgress(`Saving embeddings to library... (0/${toEmbed.length})`);
-
-          await trpcVanilla.book.batchUpsert.mutate({
+          await trpcVanilla.enrichment.trigger.mutate({
             libraryId,
-            operations: toEmbed.map((b, j) => ({
-              type: 'update',
-              bookId: b.id,
-              data: {
-                bookDetailsMetadata: {
-                  ...(b.bookDetailsMetadata || {}),
-                  hasEmbedding: true,
-                },
-              },
-              heavyData: {
-                embedding: embeddings[j],
-              },
-            })),
+            enrichmentType: 'embedding',
+            bookIds: toEmbed.map(b => b.id),
+            overwrite: false,
           });
 
-          for (let j = 0; j < toEmbed.length; j++) {
-            toEmbed[j].embedding = embeddings[j];
+          const refreshedDetails =
+            await trpcVanilla.book.getBookDetailsChunk.mutate({
+              libraryId,
+              bookIds: toEmbed.map(b => b.id),
+            });
+
+          if (refreshedDetails?.details) {
+            for (const b of toEmbed) {
+              const detail = refreshedDetails.details[b.id];
+              if (detail?.embedding) {
+                b.embedding = detail.embedding;
+              }
+            }
           }
-
-          setProgress(
-            `Saving embeddings to library... (${toEmbed.length}/${toEmbed.length})`,
-          );
         }
-
-        setProgress('Running UMAP dimensionality reduction...');
-        await new Promise(r => setTimeout(r, 60));
 
         const validBooks = allBooks.filter(
           b => b.embedding && b.embedding.length > 0,
@@ -330,39 +375,86 @@ export function useConstellationData(libraryId: string | undefined) {
         const embeddingData = validBooks.map(b => b.embedding as number[]);
         const umapSeed = 42 + reclusterTrigger * 97;
 
-        setProgress('Projecting semantic space with UMAP...');
-        await new Promise(r => setTimeout(r, 40));
+        setProgress(
+          'Projecting semantic space & clustering constellations in background worker...',
+        );
 
-        const fittings = await new Promise<number[][]>((resolve, reject) => {
-          try {
-            if (typeof Worker !== 'undefined') {
-              const worker = new Worker(
-                new URL('../workers/umapWorker.ts', import.meta.url),
-                {type: 'module'},
-              );
-              activeWorkerRef.current = worker;
-              worker.onmessage = e => {
-                worker.terminate();
-                activeWorkerRef.current = null;
-                if (e.data.error) {
-                  reject(new Error(e.data.error));
-                } else if (e.data.reduced) {
-                  resolve(e.data.reduced);
-                } else {
-                  reject(new Error('Invalid response from UMAP worker'));
+        const workerResult = await new Promise<WorkerTopologyResponse>(
+          (resolve, reject) => {
+            try {
+              if (typeof Worker !== 'undefined') {
+                const workerStart = performance.now();
+                if (DebugTelemetryEngine.isHudActive()) {
+                  DebugTelemetryEngine.getInstance().addLog(
+                    'worker',
+                    `[Constellation] Spawned UMAP Web Worker (${validBooks.length} embeddings, nNeighbors=${nNeighbors})`,
+                    {activeCount: 1, count: validBooks.length, nNeighbors},
+                    {scope: 'Constellation'},
+                  );
                 }
-              };
-              worker.onerror = err => {
-                worker.terminate();
-                activeWorkerRef.current = null;
-                reject(err);
-              };
-              worker.postMessage({
-                embeddings: embeddingData,
-                nNeighbors,
-                seed: umapSeed,
-              });
-            } else {
+                const worker = new Worker(
+                  new URL('../workers/umap.worker.ts', import.meta.url),
+                  {type: 'module'},
+                );
+                activeWorkerRef.current = worker;
+                worker.onmessage = (
+                  e: MessageEvent<WorkerTopologyResponse>,
+                ) => {
+                  worker.terminate();
+                  activeWorkerRef.current = null;
+                  const durationMs = Math.round(
+                    performance.now() - workerStart,
+                  );
+                  if (DebugTelemetryEngine.isHudActive()) {
+                    DebugTelemetryEngine.getInstance().addLog(
+                      'worker',
+                      `[Constellation] UMAP Web Worker completed (${durationMs}ms)`,
+                      {activeCount: 0, durationMs, count: validBooks.length},
+                      {scope: 'Constellation', durationMs, status: 'ok'},
+                    );
+                  }
+                  if (e.data.error) {
+                    reject(new Error(e.data.error));
+                  } else if (e.data.reduced) {
+                    resolve(e.data);
+                  } else {
+                    reject(new Error('Invalid response from UMAP worker'));
+                  }
+                };
+                worker.onerror = err => {
+                  worker.terminate();
+                  activeWorkerRef.current = null;
+                  if (DebugTelemetryEngine.isHudActive()) {
+                    DebugTelemetryEngine.getInstance().addLog(
+                      'worker',
+                      '[Constellation] UMAP Web Worker error',
+                      {activeCount: 0},
+                      {scope: 'Constellation', status: 'error'},
+                    );
+                  }
+                  reject(err);
+                };
+                worker.postMessage({
+                  mode: 'full',
+                  embeddings: embeddingData,
+                  nNeighbors,
+                  seed: umapSeed,
+                });
+              } else {
+                import('umap-js')
+                  .then(({UMAP}) => {
+                    const umap = new UMAP({
+                      nNeighbors,
+                      minDist: 0.18,
+                      spread: 1.15,
+                      nComponents: 2,
+                      nEpochs: 400,
+                    });
+                    resolve({reduced: umap.fit(embeddingData)});
+                  })
+                  .catch(reject);
+              }
+            } catch {
               import('umap-js')
                 .then(({UMAP}) => {
                   const umap = new UMAP({
@@ -372,30 +464,18 @@ export function useConstellationData(libraryId: string | undefined) {
                     nComponents: 2,
                     nEpochs: 400,
                   });
-                  resolve(umap.fit(embeddingData));
+                  resolve({reduced: umap.fit(embeddingData)});
                 })
                 .catch(reject);
             }
-          } catch {
-            import('umap-js')
-              .then(({UMAP}) => {
-                const umap = new UMAP({
-                  nNeighbors,
-                  minDist: 0.18,
-                  spread: 1.15,
-                  nComponents: 2,
-                  nEpochs: 400,
-                });
-                resolve(umap.fit(embeddingData));
-              })
-              .catch(reject);
-          }
-        });
+          },
+        );
 
-        setProgress('Evaluating optimal constellations via K-Means++...');
-        await new Promise(r => setTimeout(r, 50));
-
-        const {labels: clusters} = optimalKMeans(fittings, umapSeed);
+        const fittings = workerResult.reduced!;
+        const clusters =
+          workerResult.labels && workerResult.labels.length === fittings.length
+            ? workerResult.labels
+            : optimalKMeans(fittings, umapSeed).labels;
 
         const rawItems = validBooks.map((book, idx) => ({
           rawX: fittings[idx][0],
@@ -404,10 +484,12 @@ export function useConstellationData(libraryId: string | undefined) {
           clusterId: clusters[idx],
         }));
 
-        const newPlotData = buildScatterPointsWithGeometry(rawItems);
+        const newPlotData = assembleScatterPoints(rawItems, {
+          relaxedCoords: workerResult.relaxedCoords,
+          neighborIndexLists: workerResult.neighborIndexLists,
+        });
 
         setProgress('Naming constellations with AI...');
-        await new Promise(r => setTimeout(r, 50));
         const groupedClusters: Record<number, BookDoc[]> = {};
         newPlotData.forEach(p => {
           if (p.clusterId !== -1) {

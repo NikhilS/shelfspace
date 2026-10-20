@@ -64,16 +64,6 @@ vi.mock('../../lib/nanobanana', () => ({
     .mockResolvedValue('data:image/jpeg;base64,enhanced'),
 }));
 
-// Mock bookApi services
-vi.mock('../../services/bookApi', () => ({
-  searchBookByIsbn: vi.fn().mockResolvedValue({
-    coverUrl: 'https://images.example/isbn-cover.jpg',
-  }),
-  searchBookByTitleAndAuthor: vi
-    .fn()
-    .mockResolvedValue([{coverUrl: 'https://images.example/search-cover.jpg'}]),
-}));
-
 describe('EditBookForm', () => {
   const mockBook: Book = {
     id: 'b1',

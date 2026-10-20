@@ -7,15 +7,23 @@ import type {
   BookDeleteInput,
   BookBatchUpsertInput,
 } from '../../../schemas/book';
-import type {Book, BookDetailsPayload, UserStatuses} from '../../../types';
+import type {Book} from '../../../types';
+import {BookPartitioner, HEAVY_FIELDS} from './bookPartitioner';
+import {metadataRegistry} from '../metadata/registry';
+import {safeIdSchema} from '../../../schemas/common';
 
-export const HEAVY_FIELDS = new Set([
-  'synopsis',
-  'authorBio',
-  'embedding',
-  'clusterCoordinates',
-  'description',
-]);
+export {HEAVY_FIELDS};
+
+function assertSafeDocId(id: string, label: string): string {
+  const parsed = safeIdSchema.safeParse(id);
+  if (!parsed.success) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `Invalid ${label}: ${parsed.error.issues[0]?.message || 'invalid identifier'}`,
+    });
+  }
+  return parsed.data;
+}
 
 /**
  * Creates a single book and stores heavy metadata (synopsis, embeddings) in bookDetails.
@@ -25,14 +33,17 @@ export async function createBook(
   userId: string,
   input: BookCreateInput,
 ): Promise<{success: true; id: string; book?: Book}> {
-  const {libraryId} = input;
+  const libraryId = assertSafeDocId(input.libraryId, 'libraryId');
 
   const db = getAdminDb();
   const booksCollection = db
     .collection('libraries')
     .doc(libraryId)
     .collection('books');
-  const bookId = input.bookId || input.id || booksCollection.doc().id;
+  const rawBookId = input.bookId || input.id;
+  const bookId = rawBookId
+    ? assertSafeDocId(rawBookId, 'bookId')
+    : booksCollection.doc().id;
 
   const bookRef = booksCollection.doc(bookId);
   const detailRef = db
@@ -42,80 +53,11 @@ export async function createBook(
     .doc(bookId);
   const libraryRef = db.collection('libraries').doc(libraryId);
 
-  // Partition heavy vs core fields
-  const rawInput: Record<string, unknown> = {...input};
-  delete rawInput.libraryId;
-  delete rawInput.bookId;
-  delete rawInput.id;
-
-  const heavyData: Record<string, unknown> = {
-    ...(input.heavyDetails || {}),
-  };
-
-  if (input.synopsis !== undefined && input.synopsis !== null) {
-    heavyData.synopsis = input.synopsis;
-  }
-  if (input.authorBio !== undefined && input.authorBio !== null) {
-    heavyData.authorBio = input.authorBio;
-  }
-  if (input.embedding !== undefined && input.embedding !== null) {
-    heavyData.embedding = input.embedding;
-  }
-  if (
-    input.clusterCoordinates !== undefined &&
-    input.clusterCoordinates !== null
-  ) {
-    heavyData.clusterCoordinates = input.clusterCoordinates;
-  }
-
-  // Clean undefined/null heavy fields
-  const cleanHeavy = Object.fromEntries(
-    Object.entries(heavyData).filter(
-      ([, v]) => v !== undefined && v !== null && v !== '',
-    ),
-  ) as BookDetailsPayload;
-
-  // Compute bookDetailsMetadata
-  const bookDetailsMetadata = {
-    ...(input.bookDetailsMetadata || {}),
-    hasSynopsis: Boolean(cleanHeavy.synopsis),
-    hasAuthorBio: Boolean(cleanHeavy.authorBio),
-    hasEmbedding: Boolean(
-      Array.isArray(cleanHeavy.embedding) && cleanHeavy.embedding.length > 0,
-    ),
-    hasClusterCoordinates: Boolean(cleanHeavy.clusterCoordinates),
-  };
-
-  // Construct core payload
-  const coreData: Record<string, unknown> = {
-    ...rawInput,
-    id: bookId,
-    title: input.title,
-    author: input.author || 'Unknown Author',
-    format: input.format || 'physical',
-    addedBy: userId || (rawInput.addedBy as string | null | undefined) || null,
-    addedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    bookDetailsMetadata,
-  };
-
-  if (input.status && userId) {
-    coreData.userStatuses = {
-      ...((input.userStatuses as UserStatuses | undefined) || {}),
-      [userId]: input.status,
-    };
-    delete coreData.status;
-  }
-
-  // Remove heavy fields from core document
-  HEAVY_FIELDS.forEach(f => {
-    delete coreData[f];
-  });
-  delete coreData.heavyDetails;
-
-  // Remove undefined values
-  const cleanCore = Object.fromEntries(
-    Object.entries(coreData).filter(([, v]) => v !== undefined),
+  const {cleanCore, cleanHeavy} = BookPartitioner.partitionCreatePayload(
+    input as Record<string, unknown>,
+    bookId,
+    userId,
+    FieldValue.serverTimestamp(),
   );
 
   const batch = db.batch();
@@ -162,10 +104,12 @@ export async function createBook(
  * Updates an existing book and propagates heavy updates to bookDetails.
  */
 export async function updateBook(
-  _userId: string,
+  userId: string,
   input: BookUpdateInput,
 ): Promise<{success: true; id?: string}> {
-  const {libraryId, bookId, updates} = input;
+  const libraryId = assertSafeDocId(input.libraryId, 'libraryId');
+  const bookId = assertSafeDocId(input.bookId, 'bookId');
+  const {updates} = input;
 
   const db = getAdminDb();
   const bookRef = db
@@ -180,47 +124,11 @@ export async function updateBook(
     .doc(bookId);
   const libraryRef = db.collection('libraries').doc(libraryId);
 
-  const coreUpdates: Record<string, unknown> = {};
-  const heavyUpdates: Record<string, unknown> = {};
-
-  for (const [key, value] of Object.entries(updates)) {
-    if (value === undefined) continue;
-
-    if (HEAVY_FIELDS.has(key)) {
-      heavyUpdates[key] = value;
-    } else if (key === 'heavyDetails' && typeof value === 'object' && value) {
-      Object.assign(heavyUpdates, value);
-    } else {
-      coreUpdates[key] = value;
-    }
-  }
-
-  // Maintain bookDetailsMetadata if heavy fields are touched
-  if (Object.keys(heavyUpdates).length > 0) {
-    if (heavyUpdates.synopsis !== undefined) {
-      coreUpdates['bookDetailsMetadata.hasSynopsis'] = Boolean(
-        heavyUpdates.synopsis,
-      );
-    }
-    if (heavyUpdates.authorBio !== undefined) {
-      coreUpdates['bookDetailsMetadata.hasAuthorBio'] = Boolean(
-        heavyUpdates.authorBio,
-      );
-    }
-    if (heavyUpdates.embedding !== undefined) {
-      coreUpdates['bookDetailsMetadata.hasEmbedding'] = Boolean(
-        Array.isArray(heavyUpdates.embedding) &&
-        heavyUpdates.embedding.length > 0,
-      );
-    }
-    if (heavyUpdates.clusterCoordinates !== undefined) {
-      coreUpdates['bookDetailsMetadata.hasClusterCoordinates'] = Boolean(
-        heavyUpdates.clusterCoordinates,
-      );
-    }
-  }
-
-  coreUpdates.updatedAt = FieldValue.serverTimestamp();
+  const {coreUpdates, heavyUpdates} = BookPartitioner.partitionUpdatePayload(
+    updates as Record<string, unknown>,
+    FieldValue.serverTimestamp(),
+    {callerUserId: userId},
+  );
 
   const batch = db.batch();
   batch.update(bookRef, coreUpdates);
@@ -258,6 +166,51 @@ export async function updateBook(
 }
 
 /**
+ * Updates only the caller's personal reading status on a book (accessible to any library viewer).
+ */
+export async function updateBookStatus(
+  userId: string,
+  libraryIdRaw: string,
+  bookIdRaw: string,
+  status:
+    | 'unset'
+    | 'want_to_read'
+    | 'reading'
+    | 'finished'
+    | 'completed'
+    | 'abandoned',
+): Promise<{success: true; id: string; status: string}> {
+  const libraryId = assertSafeDocId(libraryIdRaw, 'libraryId');
+  const bookId = assertSafeDocId(bookIdRaw, 'bookId');
+
+  const db = getAdminDb();
+  const bookRef = db
+    .collection('libraries')
+    .doc(libraryId)
+    .collection('books')
+    .doc(bookId);
+
+  try {
+    await bookRef.update({
+      [`userStatuses.${userId}`]: status,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  } catch (err: unknown) {
+    const errMsg = formatFirestoreAdminError(err);
+    console.error(
+      `[BookService.updateBookStatus] Error updating status for book '${bookId}':`,
+      errMsg,
+    );
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: `Failed to update reading status: ${errMsg}`,
+    });
+  }
+
+  return {success: true, id: bookId, status};
+}
+
+/**
  * Atomically deletes a book, its heavy metadata sub-record, associated reviews,
  * and decrements the library bookCount.
  */
@@ -265,7 +218,8 @@ export async function deleteBook(
   _userId: string,
   input: BookDeleteInput,
 ): Promise<{success: true; id?: string}> {
-  const {libraryId, bookId} = input;
+  const libraryId = assertSafeDocId(input.libraryId, 'libraryId');
+  const bookId = assertSafeDocId(input.bookId, 'bookId');
 
   const db = getAdminDb();
   const bookRef = db
@@ -340,7 +294,7 @@ export async function batchUpsert(
   updated: number;
   deleted: number;
 }> {
-  const {libraryId} = input;
+  const libraryId = assertSafeDocId(input.libraryId, 'libraryId');
 
   const db = getAdminDb();
   const libraryRef = db.collection('libraries').doc(libraryId);
@@ -355,26 +309,225 @@ export async function batchUpsert(
 
   const ops: NormalizedOp[] = [];
 
+  if (input.enrichOnCreate && input.operations && input.operations.length > 0) {
+    const booksToEnrich: Array<{
+      id: string;
+      title: string;
+      author: string;
+      isbn?: string;
+      [key: string]: unknown;
+    }> = [];
+    const opById = new Map<string, (typeof input.operations)[number]>();
+
+    input.operations.forEach((op, idx) => {
+      if (
+        (op.type === 'create' || (op.type === 'set' && !op.merge)) &&
+        op.data &&
+        typeof op.data.title === 'string'
+      ) {
+        const tempId =
+          op.bookId ||
+          (op.data.id as string) ||
+          db.collection('libraries').doc(libraryId).collection('books').doc()
+            .id ||
+          `temp_${idx}`;
+        op.bookId = tempId;
+        opById.set(tempId, op);
+        booksToEnrich.push({
+          ...op.data,
+          id: tempId,
+          title: op.data.title,
+          author:
+            typeof op.data.author === 'string'
+              ? op.data.author
+              : 'Unknown Author',
+        });
+      }
+    });
+
+    if (booksToEnrich.length > 0) {
+      const enrichmentPromise =
+        metadataRegistry.enrichBooksOnCreate(booksToEnrich);
+
+      // For small interactive creates (<= 2 books), wait up to 2.5s so fast enrichments
+      // land in the initial commit. For larger batches (e.g. Shelf Capture / CSV import)
+      // or slow upstream providers, commit immediately and apply enrichment in the background
+      // so the HTTP request never hits reverse-proxy timeouts.
+      const SYNC_BUDGET_MS = booksToEnrich.length <= 2 ? 2500 : 0;
+      let syncCompleted = false;
+
+      if (SYNC_BUDGET_MS > 0) {
+        let timerId: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const raceResult = await Promise.race([
+            enrichmentPromise.then(map => ({status: 'done' as const, map})),
+            new Promise<{status: 'timeout'}>(resolve => {
+              timerId = setTimeout(
+                () => resolve({status: 'timeout'}),
+                SYNC_BUDGET_MS,
+              );
+            }),
+          ]);
+          if (raceResult.status === 'done') {
+            syncCompleted = true;
+            for (const [tempId, patch] of raceResult.map.entries()) {
+              const targetOp = opById.get(tempId);
+              if (targetOp && targetOp.data && Object.keys(patch).length > 0) {
+                targetOp.data = {
+                  ...targetOp.data,
+                  ...patch,
+                };
+              }
+            }
+          }
+        } catch (err) {
+          syncCompleted = true;
+          console.warn(
+            '[BookWriteService] Server-side enrichOnCreate encountered partial error, continuing with base payload:',
+            err,
+          );
+        } finally {
+          if (timerId !== undefined) clearTimeout(timerId);
+        }
+      }
+
+      if (!syncCompleted) {
+        void enrichmentPromise
+          .then(async enrichedMap => {
+            const bgBatch = db.batch();
+            let bgOps = 0;
+            for (const [bookId, patch] of enrichedMap.entries()) {
+              if (!patch || Object.keys(patch).length === 0) continue;
+              const {coreUpdates, heavyUpdates} =
+                BookPartitioner.partitionUpdatePayload(
+                  patch,
+                  FieldValue.serverTimestamp(),
+                );
+              const bRef = db
+                .collection('libraries')
+                .doc(libraryId)
+                .collection('books')
+                .doc(bookId);
+              const dRef = db
+                .collection('libraries')
+                .doc(libraryId)
+                .collection('bookDetails')
+                .doc(bookId);
+
+              const cleanCoreUpdates = Object.fromEntries(
+                Object.entries(coreUpdates).filter(([, v]) => v !== undefined),
+              );
+              if (Object.keys(cleanCoreUpdates).length > 0) {
+                const nestedMeta: Record<string, unknown> = {};
+                for (const k of Object.keys(cleanCoreUpdates)) {
+                  if (k.startsWith('bookDetailsMetadata.')) {
+                    const subKey = k.slice('bookDetailsMetadata.'.length);
+                    nestedMeta[subKey] = cleanCoreUpdates[k];
+                    delete cleanCoreUpdates[k];
+                  }
+                }
+                if (Object.keys(nestedMeta).length > 0) {
+                  cleanCoreUpdates.bookDetailsMetadata = nestedMeta;
+                }
+                bgBatch.set(bRef, cleanCoreUpdates, {merge: true});
+                bgOps++;
+              }
+
+              if (Object.keys(heavyUpdates).length > 0) {
+                const cleanHeavyUpdates = Object.fromEntries(
+                  Object.entries(heavyUpdates).filter(
+                    ([, v]) => v !== undefined,
+                  ),
+                );
+                bgBatch.set(
+                  dRef,
+                  {
+                    ...cleanHeavyUpdates,
+                    updatedAt: FieldValue.serverTimestamp(),
+                  },
+                  {merge: true},
+                );
+                bgOps++;
+              }
+            }
+            if (bgOps > 0) {
+              await bgBatch.commit();
+            }
+          })
+          .catch(err => {
+            console.warn(
+              '[BookWriteService] Background enrichOnCreate failed:',
+              err,
+            );
+          });
+      }
+    }
+  }
+
   if (input.operations && input.operations.length > 0) {
     for (const op of input.operations) {
-      const bookId =
-        op.bookId ||
-        (op.data?.id as string) ||
-        db.collection('libraries').doc(libraryId).collection('books').doc().id;
-      ops.push({
-        type: op.type,
-        bookId,
-        coreData: op.data,
-        heavyData: op.heavyData,
-        merge: op.merge,
-      });
+      const rawBookId = op.bookId || (op.data?.id as string | undefined);
+      const bookId = rawBookId
+        ? assertSafeDocId(rawBookId, 'bookId')
+        : db.collection('libraries').doc(libraryId).collection('books').doc()
+            .id;
+
+      if (op.type === 'delete') {
+        ops.push({type: 'delete', bookId});
+      } else if (
+        op.type === 'create' ||
+        (op.type === 'set' && !op.merge && !op.heavyData)
+      ) {
+        const combinedInput: Record<string, unknown> = {
+          ...(op.data || {}),
+          ...(op.heavyData ? {heavyData: op.heavyData} : {}),
+        };
+        const {cleanCore, cleanHeavy} = BookPartitioner.partitionCreatePayload(
+          combinedInput,
+          bookId,
+          userId,
+          FieldValue.serverTimestamp(),
+        );
+        ops.push({
+          type: op.type,
+          bookId,
+          coreData: cleanCore,
+          heavyData:
+            Object.keys(cleanHeavy).length > 0
+              ? (cleanHeavy as Record<string, unknown>)
+              : (op.heavyData as Record<string, unknown> | undefined),
+          merge: op.merge,
+        });
+      } else {
+        const combinedUpdates: Record<string, unknown> = {
+          ...(op.data || {}),
+          ...(op.heavyData ? {heavyData: op.heavyData} : {}),
+        };
+        const {coreUpdates, heavyUpdates} =
+          BookPartitioner.partitionUpdatePayload(
+            combinedUpdates,
+            FieldValue.serverTimestamp(),
+            {callerUserId: userId},
+          );
+        ops.push({
+          type: op.type,
+          bookId,
+          coreData: coreUpdates,
+          heavyData:
+            Object.keys(heavyUpdates).length > 0
+              ? heavyUpdates
+              : (op.heavyData as Record<string, unknown> | undefined),
+          merge: op.merge,
+        });
+      }
     }
   } else if (input.books && input.books.length > 0) {
     for (const b of input.books) {
-      const bookId =
-        b.id ||
-        b.bookId ||
-        db.collection('libraries').doc(libraryId).collection('books').doc().id;
+      const rawBookId = b.id || b.bookId;
+      const bookId = rawBookId
+        ? assertSafeDocId(rawBookId, 'bookId')
+        : db.collection('libraries').doc(libraryId).collection('books').doc()
+            .id;
       const action = b.action || b.operation || (b.id ? 'upsert' : 'create');
 
       if (action === 'delete') {
@@ -385,32 +538,35 @@ export async function batchUpsert(
         delete raw.operation;
         delete raw.id;
         delete raw.bookId;
-        ops.push({type: 'update', bookId, coreData: raw});
+        const {coreUpdates, heavyUpdates} =
+          BookPartitioner.partitionUpdatePayload(
+            raw,
+            FieldValue.serverTimestamp(),
+            {callerUserId: userId},
+          );
+        ops.push({
+          type: 'update',
+          bookId,
+          coreData: coreUpdates,
+          heavyData:
+            Object.keys(heavyUpdates).length > 0 ? heavyUpdates : undefined,
+        });
       } else {
-        // create or upsert
-        const raw: Record<string, unknown> = {...b};
-        delete raw.action;
-        delete raw.operation;
-        delete raw.id;
-        delete raw.bookId;
-
-        const heavyData: Record<string, unknown> = {
-          ...(b.heavyDetails || {}),
-        };
-        if (b.synopsis) heavyData.synopsis = b.synopsis;
-        if (b.authorBio) heavyData.authorBio = b.authorBio;
-        if (b.embedding) heavyData.embedding = b.embedding;
-        if (b.clusterCoordinates)
-          heavyData.clusterCoordinates = b.clusterCoordinates;
-
-        HEAVY_FIELDS.forEach(f => delete raw[f]);
-        delete raw.heavyDetails;
+        const {cleanCore, cleanHeavy} = BookPartitioner.partitionCreatePayload(
+          b as Record<string, unknown>,
+          bookId,
+          userId,
+          FieldValue.serverTimestamp(),
+        );
 
         ops.push({
           type: action === 'upsert' ? 'set' : 'create',
           bookId,
-          coreData: raw,
-          heavyData: Object.keys(heavyData).length > 0 ? heavyData : undefined,
+          coreData: cleanCore,
+          heavyData:
+            Object.keys(cleanHeavy).length > 0
+              ? (cleanHeavy as Record<string, unknown>)
+              : undefined,
           merge: action === 'upsert',
         });
       }
@@ -442,6 +598,18 @@ export async function batchUpsert(
       currentBatch.delete(detailRef);
       currentBatchOps += 2;
       deletedCount++;
+
+      try {
+        if (typeof bookRef?.collection === 'function') {
+          const reviewsSnap = await bookRef.collection('reviews').get();
+          reviewsSnap.forEach(reviewDoc => {
+            currentBatch.delete(reviewDoc.ref);
+            currentBatchOps++;
+          });
+        }
+      } catch {
+        // Non-fatal if reviews subcollection is empty or mocked
+      }
     } else if (op.type === 'create' || (op.type === 'set' && !op.merge)) {
       const cleanCore = Object.fromEntries(
         Object.entries(op.coreData || {}).filter(
@@ -470,13 +638,39 @@ export async function batchUpsert(
         currentBatchOps++;
       }
     } else {
-      // update or set with merge
       const cleanUpdates = Object.fromEntries(
         Object.entries(op.coreData || {}).filter(([, v]) => v !== undefined),
       );
       cleanUpdates.updatedAt = FieldValue.serverTimestamp();
 
       if (op.merge) {
+        const nestedMeta: Record<string, unknown> =
+          cleanUpdates.bookDetailsMetadata &&
+          typeof cleanUpdates.bookDetailsMetadata === 'object'
+            ? {...(cleanUpdates.bookDetailsMetadata as Record<string, unknown>)}
+            : {};
+        const nestedStatuses: Record<string, unknown> =
+          cleanUpdates.userStatuses &&
+          typeof cleanUpdates.userStatuses === 'object'
+            ? {...(cleanUpdates.userStatuses as Record<string, unknown>)}
+            : {};
+        for (const k of Object.keys(cleanUpdates)) {
+          if (k.startsWith('bookDetailsMetadata.')) {
+            const subKey = k.slice('bookDetailsMetadata.'.length);
+            nestedMeta[subKey] = cleanUpdates[k];
+            delete cleanUpdates[k];
+          } else if (k.startsWith('userStatuses.')) {
+            const subKey = k.slice('userStatuses.'.length);
+            nestedStatuses[subKey] = cleanUpdates[k];
+            delete cleanUpdates[k];
+          }
+        }
+        if (Object.keys(nestedMeta).length > 0) {
+          cleanUpdates.bookDetailsMetadata = nestedMeta;
+        }
+        if (Object.keys(nestedStatuses).length > 0) {
+          cleanUpdates.userStatuses = nestedStatuses;
+        }
         currentBatch.set(bookRef, cleanUpdates, {merge: true});
       } else {
         currentBatch.update(bookRef, cleanUpdates);
@@ -529,5 +723,221 @@ export async function batchUpsert(
     added: addedCount,
     updated: updatedCount,
     deleted: deletedCount,
+  };
+}
+
+const STATUS_RANK: Record<string, number> = {
+  completed: 5,
+  finished: 5,
+  reading: 4,
+  abandoned: 3,
+  want_to_read: 2,
+  unset: 1,
+};
+
+/**
+ * Atomically merges a duplicate book group into a single survivor book:
+ * 1. Unions `userStatuses` across all members (preserving highest-progress status per user).
+ * 2. Migrates any `reviews` subcollection documents from duplicate books onto the survivor.
+ * 3. Updates `books/{survivorBookId}` and `bookDetails/{survivorBookId}` with the user-selected `mergedFields`.
+ * 4. Deletes all `duplicateBookIds` (plus their `bookDetails` and `reviews`) and decrements `bookCount`.
+ */
+export async function mergeDuplicates(
+  _userId: string,
+  input: import('../../../schemas/book').BookMergeDuplicatesInput,
+): Promise<{
+  success: true;
+  survivorBookId: string;
+  deletedCount: number;
+}> {
+  const libraryId = assertSafeDocId(input.libraryId, 'libraryId');
+  const survivorBookId = assertSafeDocId(
+    input.survivorBookId,
+    'survivorBookId',
+  );
+  const {duplicateBookIds, mergedFields} = input;
+  const cleanDupIds = Array.from(
+    new Set(
+      duplicateBookIds
+        .filter(id => id && id !== survivorBookId)
+        .map(id => assertSafeDocId(id, 'duplicateBookId')),
+    ),
+  );
+  if (cleanDupIds.length === 0) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message:
+        'At least one duplicateBookId distinct from survivorBookId is required.',
+    });
+  }
+
+  const db = getAdminDb();
+  const libraryRef = db.collection('libraries').doc(libraryId);
+  const booksCol = libraryRef.collection('books');
+  const detailsCol = libraryRef.collection('bookDetails');
+
+  const allBookIds = [survivorBookId, ...cleanDupIds];
+  const bookDocs = await Promise.all(
+    allBookIds.map(id => booksCol.doc(id).get()),
+  );
+
+  const survivorSnap = bookDocs[0];
+  if (!survivorSnap?.exists) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: `Survivor book '${survivorBookId}' not found in library '${libraryId}'`,
+    });
+  }
+
+  // Union userStatuses across survivor and all duplicates (highest progress wins)
+  const mergedUserStatuses: Record<string, string> = {};
+  for (const snap of bookDocs) {
+    if (!snap?.exists) continue;
+    const data = (snap.data() || {}) as Record<string, unknown>;
+    const statuses =
+      data.userStatuses && typeof data.userStatuses === 'object'
+        ? (data.userStatuses as Record<string, string>)
+        : {};
+    for (const [uidKey, st] of Object.entries(statuses)) {
+      if (!st) continue;
+      const existingSt = mergedUserStatuses[uidKey];
+      const existingRank = existingSt ? STATUS_RANK[existingSt] || 0 : 0;
+      const nextRank = STATUS_RANK[st] || 0;
+      if (nextRank >= existingRank) {
+        mergedUserStatuses[uidKey] = st;
+      }
+    }
+  }
+
+  const combinedUpdates: Record<string, unknown> = {
+    ...mergedFields,
+  };
+  if (Object.keys(mergedUserStatuses).length > 0) {
+    combinedUpdates.userStatuses = mergedUserStatuses;
+  }
+
+  const {coreUpdates, heavyUpdates} = BookPartitioner.partitionUpdatePayload(
+    combinedUpdates,
+    FieldValue.serverTimestamp(),
+    {allowFullUserStatuses: true},
+  );
+
+  const BATCH_LIMIT = 400;
+  let batch = db.batch();
+  let batchOps = 0;
+
+  const commitBatchIfNeeded = async (force = false) => {
+    if (batchOps >= BATCH_LIMIT || (force && batchOps > 0)) {
+      await batch.commit();
+      batch = db.batch();
+      batchOps = 0;
+    }
+  };
+
+  const survivorBookRef = booksCol.doc(survivorBookId);
+  const survivorDetailRef = detailsCol.doc(survivorBookId);
+
+  const cleanCoreUpdates = Object.fromEntries(
+    Object.entries(coreUpdates).filter(([, v]) => v !== undefined),
+  );
+  const nestedMeta: Record<string, unknown> =
+    cleanCoreUpdates.bookDetailsMetadata &&
+    typeof cleanCoreUpdates.bookDetailsMetadata === 'object'
+      ? {...(cleanCoreUpdates.bookDetailsMetadata as Record<string, unknown>)}
+      : {};
+  for (const k of Object.keys(cleanCoreUpdates)) {
+    if (k.startsWith('bookDetailsMetadata.')) {
+      const subKey = k.slice('bookDetailsMetadata.'.length);
+      nestedMeta[subKey] = cleanCoreUpdates[k];
+      delete cleanCoreUpdates[k];
+    }
+  }
+  if (Object.keys(nestedMeta).length > 0) {
+    cleanCoreUpdates.bookDetailsMetadata = nestedMeta;
+  }
+
+  batch.set(survivorBookRef, cleanCoreUpdates, {merge: true});
+  batchOps++;
+
+  if (Object.keys(heavyUpdates).length > 0) {
+    const cleanHeavy = Object.fromEntries(
+      Object.entries(heavyUpdates).filter(([, v]) => v !== undefined),
+    );
+    batch.set(
+      survivorDetailRef,
+      {
+        ...cleanHeavy,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+    );
+    batchOps++;
+  }
+
+  let deletedCount = 0;
+  try {
+    for (let i = 0; i < cleanDupIds.length; i++) {
+      const dupId = cleanDupIds[i];
+      const dupBookRef = booksCol.doc(dupId);
+      const dupDetailRef = detailsCol.doc(dupId);
+
+      // Migrate reviews from duplicate to survivor before deleting
+      try {
+        if (
+          typeof dupBookRef?.collection === 'function' &&
+          typeof survivorBookRef?.collection === 'function'
+        ) {
+          const reviewsSnap = await dupBookRef.collection('reviews').get();
+          const reviewDocs: Array<{
+            id: string;
+            data: () => Record<string, unknown>;
+            ref: FirebaseFirestore.DocumentReference;
+          }> = [];
+          reviewsSnap.forEach(reviewDoc => {
+            reviewDocs.push(
+              reviewDoc as unknown as (typeof reviewDocs)[number],
+            );
+          });
+          for (const reviewDoc of reviewDocs) {
+            const targetReviewRef = survivorBookRef
+              .collection('reviews')
+              .doc(reviewDoc.id);
+            batch.set(targetReviewRef, reviewDoc.data(), {merge: true});
+            batch.delete(reviewDoc.ref);
+            batchOps += 2;
+            await commitBatchIfNeeded();
+          }
+        }
+      } catch {
+        // Non-fatal if reviews subcollection is empty or mocked
+      }
+
+      batch.delete(dupBookRef);
+      batch.delete(dupDetailRef);
+      batchOps += 2;
+      deletedCount++;
+      await commitBatchIfNeeded();
+    }
+
+    batch.update(libraryRef, {
+      bookCount: FieldValue.increment(-deletedCount),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    batchOps++;
+
+    await commitBatchIfNeeded(true);
+  } catch (err: unknown) {
+    const errMsg = formatFirestoreAdminError(err);
+    console.error('[BookService.mergeDuplicates] Error merging books:', errMsg);
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: `Failed to merge duplicate books: ${errMsg}`,
+    });
+  }
+
+  return {
+    success: true,
+    survivorBookId,
+    deletedCount,
   };
 }

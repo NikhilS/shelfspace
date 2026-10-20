@@ -2,8 +2,21 @@ import React from 'react';
 import {useForm} from 'react-hook-form';
 import {zodResolver} from '@hookform/resolvers/zod';
 import {z} from 'zod';
-import {X, Share2, Settings, Download, Trash2, Shield} from 'lucide-react';
+import {
+  X,
+  Share2,
+  Settings,
+  Download,
+  Trash2,
+  Shield,
+  Copy,
+  Check,
+  Clock,
+  CheckCircle2,
+} from 'lucide-react';
 import {Library} from '../../types';
+import {trpc} from '../../lib/trpc';
+import {toast} from 'sonner';
 import {Dialog, DialogContent, DialogTitle} from '@/components/ui/dialog';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
@@ -31,6 +44,7 @@ interface LibrarySettingsModalsProps {
     email: string,
     role: 'editor' | 'viewer',
   ) => Promise<void>;
+  handleRenameLibrary?: (newName: string) => Promise<void>;
   handleExportToCSV: () => void;
   handleDeleteLibrary: () => void;
   confirmDeleteLibrary: () => void;
@@ -56,11 +70,39 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
   addShareEmail,
   handleRemoveShare,
   handleUpdateRole,
+  handleRenameLibrary,
   handleExportToCSV,
   handleDeleteLibrary,
   confirmDeleteLibrary,
 }) => {
   const [isSharing, setIsSharing] = React.useState(false);
+  const [copiedLink, setCopiedLink] = React.useState(false);
+  const [libraryNameInput, setLibraryNameInput] = React.useState(
+    library.name || '',
+  );
+  const [isSavingName, setIsSavingName] = React.useState(false);
+
+  React.useEffect(() => {
+    setLibraryNameInput(library.name || '');
+  }, [library.name, isAdvancedSettingsOpen]);
+
+  const collaboratorsQuery = trpc.library?.getCollaborators?.useQuery
+    ? trpc.library.getCollaborators.useQuery(
+        {libraryId: library.id},
+        {
+          enabled: Boolean(isSettingsOpen && isOwner && library.id),
+          staleTime: 1000 * 30,
+        },
+      )
+    : undefined;
+
+  const statusByEmail = React.useMemo(() => {
+    const map: Record<string, 'approved' | 'pending_approval'> = {};
+    for (const c of collaboratorsQuery?.data?.collaborators || []) {
+      map[c.email.toLowerCase()] = c.allowlistStatus;
+    }
+    return map;
+  }, [collaboratorsQuery?.data]);
 
   const {
     register,
@@ -82,8 +124,33 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
     try {
       await addShareEmail(data.email, data.role);
       reset();
+      void collaboratorsQuery?.refetch?.();
     } finally {
       setIsSharing(false);
+    }
+  };
+
+  const handleCopyLibraryLink = async () => {
+    try {
+      const shareUrl = `${window.location.origin}/library/${library.id}`;
+      await navigator.clipboard.writeText(shareUrl);
+      setCopiedLink(true);
+      toast.success('Library link copied to clipboard');
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const onRenameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = libraryNameInput.trim();
+    if (!trimmed || trimmed === library.name || !handleRenameLibrary) return;
+    setIsSavingName(true);
+    try {
+      await handleRenameLibrary(trimmed);
+    } finally {
+      setIsSavingName(false);
     }
   };
 
@@ -108,24 +175,48 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
           showCloseButton={false}
           className="w-full max-w-md bg-surface p-8 rounded-[32px] shadow-xl border border-outline-variant/30 gap-0"
         >
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between mb-6">
             <DialogTitle className="text-2xl font-sans font-bold flex items-center gap-3 text-on-surface">
               <div className="w-10 h-10 bg-surface-container rounded-full flex items-center justify-center text-primary border border-outline-variant/30">
                 <Share2 size={20} />
               </div>
-              Share Access
+              Share Library
             </DialogTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsSettingsOpen(false)}
-              className="p-2.5 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors h-10 w-10 min-w-[44px] min-h-[44px]"
-              aria-label="Close dialog"
-            >
-              <X size={20} />
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void handleCopyLibraryLink()}
+                className="h-9 px-3 rounded-xl text-xs font-medium gap-1.5"
+                title="Copy link to this library"
+              >
+                {copiedLink ? (
+                  <Check size={14} className="text-emerald-600" />
+                ) : (
+                  <Copy size={14} />
+                )}
+                <span>{copiedLink ? 'Copied' : 'Copy Link'}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsSettingsOpen(false)}
+                className="p-2.5 text-on-surface-variant hover:bg-surface-container rounded-full transition-colors h-10 w-10 min-w-[44px] min-h-[44px]"
+                aria-label="Close dialog"
+              >
+                <X size={20} />
+              </Button>
+            </div>
           </div>
+
+          <p className="text-xs text-on-surface-variant mb-5 leading-relaxed">
+            Invite collaborators by email. New readers not yet on the global
+            allowlist are placed in the administrator approval queue before
+            entering the app.
+          </p>
+
           <div className="mb-6">
             <form
               onSubmit={handleSubmit(onShareSubmit)}
@@ -171,7 +262,7 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
               Current Access
             </h4>
 
-            <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar pb-4">
+            <div className="space-y-3 max-h-56 overflow-y-auto pr-2 custom-scrollbar pb-4">
               <div className="flex items-center justify-between bg-surface-container/50 border border-outline-variant/30 px-4 py-3 rounded-xl text-sm">
                 <span className="truncate mr-3 font-medium text-on-surface flex items-center gap-2">
                   <Shield size={16} className="text-primary" />
@@ -182,48 +273,64 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
                 </span>
               </div>
 
-              {sharedEmails.map(email => (
-                <div
-                  key={email}
-                  className="flex items-center justify-between bg-surface-container border border-outline-variant/50 px-4 py-3 rounded-xl text-sm group hover:border-outline-variant transition-colors"
-                >
-                  <span className="truncate mr-3 font-medium text-on-surface">
-                    {email}
-                  </span>
+              {sharedEmails.map(email => {
+                const allowlistStatus = statusByEmail[email.toLowerCase()];
+                return (
+                  <div
+                    key={email}
+                    className="flex items-center justify-between bg-surface-container border border-outline-variant/50 px-4 py-3 rounded-xl text-sm group hover:border-outline-variant transition-colors gap-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium text-on-surface">
+                        {email}
+                      </div>
+                      {allowlistStatus === 'pending_approval' ? (
+                        <div className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                          <Clock size={11} />
+                          <span>Pending Admin Approval</span>
+                        </div>
+                      ) : allowlistStatus === 'approved' ? (
+                        <div className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">
+                          <CheckCircle2 size={11} />
+                          <span>Active</span>
+                        </div>
+                      ) : null}
+                    </div>
 
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={getRoleForEmail(email)}
-                      onValueChange={val => {
-                        void handleUpdateRole?.(
-                          email,
-                          val as 'editor' | 'viewer',
-                        );
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-[100px] border-none bg-transparent text-xs text-on-surface-variant focus:outline-none focus:ring-0">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="viewer">Viewer</SelectItem>
-                        <SelectItem value="editor">Editor</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Select
+                        value={getRoleForEmail(email)}
+                        onValueChange={val => {
+                          void handleUpdateRole?.(
+                            email,
+                            val as 'editor' | 'viewer',
+                          );
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-[100px] border-none bg-transparent text-xs text-on-surface-variant focus:outline-none focus:ring-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="viewer">Viewer</SelectItem>
+                          <SelectItem value="editor">Editor</SelectItem>
+                        </SelectContent>
+                      </Select>
 
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveShare(email)}
-                      className="text-on-surface-variant hover:text-error h-8 w-8 p-1.5 rounded-md hover:bg-error-container transition-colors"
-                      title="Remove access"
-                      aria-label={`Remove access for ${email}`}
-                    >
-                      <X size={16} />
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveShare(email)}
+                        className="text-on-surface-variant hover:text-error h-8 w-8 p-1.5 rounded-md hover:bg-error-container transition-colors"
+                        title="Remove access"
+                        aria-label={`Remove access for ${email}`}
+                      >
+                        <X size={16} />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </DialogContent>
@@ -242,7 +349,7 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
               <div className="w-10 h-10 bg-surface-container rounded-full flex items-center justify-center text-primary border border-outline-variant/30">
                 <Settings size={20} />
               </div>
-              Advanced Settings
+              Library Settings
             </DialogTitle>
             <Button
               type="button"
@@ -255,6 +362,36 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
               <X size={20} />
             </Button>
           </div>
+
+          {handleRenameLibrary && (
+            <form onSubmit={onRenameSubmit} className="mb-8">
+              <h4 className="text-sm font-medium text-on-surface-variant mb-3 uppercase tracking-wider">
+                Collection Name
+              </h4>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  value={libraryNameInput}
+                  onChange={e => setLibraryNameInput(e.target.value)}
+                  maxLength={120}
+                  placeholder="Library name"
+                  className="flex-1 bg-surface-container border-outline-variant/50 rounded-xl px-3 py-2 text-sm text-on-surface"
+                />
+                <Button
+                  type="submit"
+                  disabled={
+                    isSavingName ||
+                    !libraryNameInput.trim() ||
+                    libraryNameInput.trim() === library.name
+                  }
+                  className="shrink-0"
+                >
+                  {isSavingName ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
+            </form>
+          )}
+
           <div className="mb-10">
             <h4 className="text-sm font-medium text-on-surface-variant mb-4 uppercase tracking-wider">
               Export Data

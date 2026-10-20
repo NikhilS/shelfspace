@@ -3,11 +3,6 @@ export interface Point2D {
   y: number;
 }
 
-export interface SemanticNeighborIndex {
-  index: number;
-  similarity: number;
-}
-
 /**
  * Deterministic Mulberry32 PRNG so K-Means++ and force relaxation
  * produce stable, repeatable results across runs.
@@ -30,23 +25,6 @@ export function euclideanDistance(a: number[], b: number[]): number {
     sum += diff * diff;
   }
   return Math.sqrt(sum);
-}
-
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (!a.length || !b.length || a.length !== b.length) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    const va = a[i];
-    const vb = b[i];
-    dot += va * vb;
-    normA += va * va;
-    normB += vb * vb;
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denom <= 1e-12) return 0;
-  return Math.max(-1, Math.min(1, dot / denom));
 }
 
 /**
@@ -787,6 +765,25 @@ export function computePaddedConvexHull(
   lower.pop();
   upper.pop();
   return [...lower, ...upper];
+}
+
+export interface SemanticNeighborIndex {
+  index: number;
+  similarity: number;
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom <= 1e-12 ? 0 : dot / denom;
 }
 
 /**

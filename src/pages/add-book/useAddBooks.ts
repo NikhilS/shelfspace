@@ -1,228 +1,161 @@
-import {trpc, trpcVanilla} from '../../lib/trpc';
 import {useState} from 'react';
-import {uploadBase64Image} from '../../services/db/storage';
-import {BookDetails} from '../../services/bookApi';
-import {useAuth} from '../../stores/authStore';
-import {logger} from '../../stores/debugStore';
+import {BookDetails} from '../../types';
 import {toast} from 'sonner';
+import {triggerHaptics, normalizeBookDetails} from '../../lib/utils';
+import {uploadBase64Image} from '../../lib/storage';
+import {trpc, trpcVanilla} from '../../lib/trpc';
+import {useAuth} from '../../stores/authStore';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 
-function generateId(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+const MAX_CONCURRENT_IMAGE_UPLOADS = 3;
+
+function generateBookId(index: number): string {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
     return crypto.randomUUID().replace(/-/g, '').slice(0, 20);
   }
-  return (
-    Math.random().toString(36).substring(2, 12) +
-    Math.random().toString(36).substring(2, 12)
+  return `book_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  const runLane = async () => {
+    while (nextIndex < items.length) {
+      const current = nextIndex++;
+      results[current] = await worker(items[current], current);
+    }
+  };
+
+  const lanes = Array.from({length: Math.min(concurrency, items.length)}, () =>
+    runLane(),
   );
+  await Promise.all(lanes);
+  return results;
 }
 
 export function useAddBooks(libraryId?: string) {
   const {user} = useAuth();
+  const isOnline = useOnlineStatus();
   const utils = trpc.useUtils();
   const [isAddingAll, setIsAddingAll] = useState(false);
 
-  const addBooks = async (books: BookDetails[]) => {
-    if (!libraryId || !user) {
-      console.error('Library ID or User missing', {libraryId, user: !!user});
-      throw new Error('Access denied or library not found');
+  const addBooks = async (booksToAdd: BookDetails[]) => {
+    if (!user?.uid || !libraryId || booksToAdd.length === 0) return [];
+
+    if (!isOnline) {
+      toast.error('Network required: Connect to the internet to add books.');
+      return [];
     }
-    if (books.length === 0) return [];
 
     setIsAddingAll(true);
-    logger.info(`[useAddBooks] Starting addBooks for ${books.length} books`);
-
-    const toastId = toast.loading(
-      `Preparing to add ${books.length} book${books.length === 1 ? '' : 's'} to your library...`,
-      {
-        description: 'Starting background sync...',
-      },
-    );
-
     try {
-      // 1. Give each new book an ID first so we can map results back correctly
-      const booksWithIds = books.map(b => ({
-        id: generateId(),
-        ...b,
-      }));
+      const validBooksToAdd = booksToAdd.map(b => normalizeBookDetails(b));
 
-      // 2. Fetch all initial metadata from the unified layer
-      const enrichedDataMap: Record<string, unknown> = {};
-      try {
-        logger.info(
-          `[useAddBooks] Requesting TRPC server-side enrich-create for ${booksWithIds.length} books...`,
-        );
+      // Upload any base64 camera photos with bounded concurrency before sending to server
+      const preparedOperations = await mapWithConcurrency(
+        validBooksToAdd,
+        MAX_CONCURRENT_IMAGE_UPLOADS,
+        async (book, idx) => {
+          const bookId = generateBookId(idx);
+          let finalCoverUrl = book.coverUrl;
+          let finalCoverUrlRaw = (book as BookDetails & {coverUrlRaw?: string})
+            .coverUrlRaw;
 
-        const data = await trpcVanilla.metadata.enrichCreate.mutate({
-          libraryId,
-          books: booksWithIds,
-        });
+          if (finalCoverUrl && finalCoverUrl.startsWith('data:image/')) {
+            try {
+              const path = `libraries/${libraryId}/covers/${bookId}.jpg`;
+              finalCoverUrl = await uploadBase64Image(
+                finalCoverUrl,
+                path,
+                libraryId,
+              );
+            } catch (e) {
+              console.error('Failed to upload base64 cover image', e);
+            }
+          }
 
-        if (data.status === 'success' && data.results) {
-          data.results.forEach(r => {
-            enrichedDataMap[r.id] = r;
-          });
-        }
-      } catch (err) {
-        logger.error(`[useAddBooks] Failed to fetch enrich-create: ${err}`);
-      }
+          if (finalCoverUrlRaw && finalCoverUrlRaw.startsWith('data:image/')) {
+            try {
+              const rawPath = `libraries/${libraryId}/covers/${bookId}_raw.jpg`;
+              finalCoverUrlRaw = await uploadBase64Image(
+                finalCoverUrlRaw,
+                rawPath,
+                libraryId,
+              );
+            } catch (e) {
+              console.error('Failed to upload raw base64 cover image', e);
+            }
+          }
 
-      const booksToUpsert: Array<Record<string, unknown>> = [];
+          const rawRecord: Record<string, unknown> = {
+            ...book,
+            ...(finalCoverUrl !== undefined ? {coverUrl: finalCoverUrl} : {}),
+            ...(finalCoverUrlRaw !== undefined
+              ? {coverUrlRaw: finalCoverUrlRaw}
+              : {}),
+            format: book.format || 'physical',
+          };
+          delete rawRecord.coverCandidates;
+          delete rawRecord.sources;
+          delete rawRecord.skippedProviders;
 
-      for (let i = 0; i < booksWithIds.length; i++) {
-        const book = booksWithIds[i];
-        const added = i;
-        const remaining = booksWithIds.length - i;
-
-        toast.loading(`Processing "${book.title || 'Untitled Book'}"...`, {
-          id: toastId,
-          description: `Added: ${added} | Remaining: ${remaining} (Working...)`,
-        });
-
-        const cleanBook = Object.fromEntries(
-          Object.entries(book).filter(
-            ([, v]) => v !== undefined && v !== null && v !== '',
-          ),
-        ) as Record<string, string | string[] | undefined>;
-
-        const bookId = book.id;
-
-        if (typeof cleanBook.title === 'string')
-          cleanBook.title = cleanBook.title.slice(0, 500);
-        if (typeof cleanBook.author === 'string')
-          cleanBook.author = cleanBook.author.slice(0, 500);
-
-        if (
-          cleanBook.coverUrl &&
-          typeof cleanBook.coverUrl === 'string' &&
-          cleanBook.coverUrl.startsWith('data:')
-        ) {
-          const storagePath = `libraries/${libraryId}/books/${bookId}/cover.png`;
-          cleanBook.coverUrl = await uploadBase64Image(
-            cleanBook.coverUrl,
-            storagePath,
+          const bookData = Object.fromEntries(
+            Object.entries(rawRecord).filter(([, val]) => val !== undefined),
           );
-        }
 
-        if (
-          cleanBook.coverUrlRaw &&
-          typeof cleanBook.coverUrlRaw === 'string' &&
-          cleanBook.coverUrlRaw.startsWith('data:')
-        ) {
-          const storagePath = `libraries/${libraryId}/books/${bookId}/cover_raw.png`;
-          cleanBook.coverUrlRaw = await uploadBase64Image(
-            cleanBook.coverUrlRaw,
-            storagePath,
-          );
-        }
-
-        const enrichedForBook = (enrichedDataMap[bookId] || {}) as Record<
-          string,
-          unknown
-        >;
-
-        const {
-          synopsis = (enrichedForBook.synopsis as string) || undefined,
-          authorBio = (enrichedForBook.authorBio as string) || undefined,
-          embedding = (enrichedForBook.embeddings as number[]) || undefined,
-          clusterCoordinates = undefined,
-          ...otherEnrichedFields
-        } = enrichedForBook;
-
-        const {
-          synopsis: _cleanSynopsis,
-          authorBio: _cleanBio,
-          embedding: _cleanEmbed,
-          clusterCoordinates: _cleanCluster,
-          ...lightweightData
-        } = cleanBook;
-
-        const hasSynopsis = Boolean(_cleanSynopsis || synopsis);
-        const hasAuthorBio = Boolean(_cleanBio || authorBio);
-        const embedCandidate = _cleanEmbed || embedding;
-        const hasEmbedding = Boolean(
-          Array.isArray(embedCandidate) && embedCandidate.length > 0,
-        );
-        const hasCluster = Boolean(_cleanCluster || clusterCoordinates);
-
-        const coreBookData = {
-          ...otherEnrichedFields, // Enriched fields at the base
-          ...lightweightData, // Existing UI fields take precedence so user uploads aren't overwritten
-          bookDetailsMetadata: {
-            hasSynopsis,
-            hasAuthorBio,
-            hasEmbedding,
-            hasClusterCoordinates: hasCluster,
-          },
-          addedBy: user.uid,
-          format: lightweightData.format || 'physical',
-        };
-
-        const heavyData = {
-          synopsis: _cleanSynopsis || synopsis,
-          authorBio: _cleanBio || authorBio,
-          embedding: _cleanEmbed || embedding,
-          clusterCoordinates: _cleanCluster || clusterCoordinates,
-        };
-        const cleanHeavy = Object.fromEntries(
-          Object.entries(heavyData).filter(([, v]) => v !== undefined),
-        );
-
-        booksToUpsert.push({
-          id: bookId,
-          action: 'create',
-          ...coreBookData,
-          heavyDetails:
-            Object.keys(cleanHeavy).length > 0 ? cleanHeavy : undefined,
-        });
-      }
-
-      toast.loading(
-        `Committing ${books.length} book${books.length === 1 ? '' : 's'}...`,
-        {
-          id: toastId,
-          description: 'Writing securely to cloud...',
+          return {
+            type: 'create' as const,
+            bookId,
+            data: bookData,
+          };
         },
       );
 
-      logger.info(
-        `[useAddBooks] Committing additions for ${booksToUpsert.length} books via tRPC batchUpsert...`,
-      );
+      // Single-pass server ingestion + server-side catalog & metadata hydration
       await trpcVanilla.book.batchUpsert.mutate({
         libraryId,
-        books: booksToUpsert,
-      });
-      void utils.book.list.invalidate({libraryId});
-      logger.info('[useAddBooks] Batch commit successful.');
-
-      const successTitle =
-        books.length === 1
-          ? `Successfully added "${books[0].title}"!`
-          : `Successfully added ${books.length} books!`;
-      const successDesc =
-        books.length === 1
-          ? 'Your book is now on your shelves.'
-          : `Added: ${books.length} | Remaining: 0 (Done)`;
-
-      toast.success(successTitle, {
-        id: toastId,
-        description: successDesc,
+        operations: preparedOperations,
+        enrichOnCreate: true,
       });
 
-      logger.info(`[useAddBooks] Successfully added ${books.length} books.`);
-      return books;
+      await Promise.allSettled([
+        utils.book?.list?.invalidate({libraryId}),
+        utils.library?.list?.invalidate?.(),
+      ]);
+
+      // Schedule a follow-up refresh to pick up any background server-side enrichment
+      setTimeout(() => {
+        void utils.book?.list?.invalidate?.({libraryId});
+      }, 4500);
+
+      triggerHaptics(20);
+      if (validBooksToAdd.length === 1) {
+        toast.success(`Added "${validBooksToAdd[0].title}" to library!`);
+      } else {
+        toast.success(`Added ${validBooksToAdd.length} books to library!`);
+      }
+
+      return validBooksToAdd;
     } catch (err) {
-      logger.error(
-        `[useAddBooks] Failed to add books: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      toast.error('Failed to add books', {
-        id: toastId,
-        description: err instanceof Error ? err.message : String(err),
-      });
+      console.error('Failed to add books:', err);
+      triggerHaptics([50, 100, 50]);
+      toast.error('Failed to save books to library.');
       throw err;
     } finally {
       setIsAddingAll(false);
     }
   };
 
-  return {addBooks, isAddingAll};
+  return {
+    addBooks,
+    isAddingAll,
+  };
 }
