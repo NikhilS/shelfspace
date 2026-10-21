@@ -25,6 +25,7 @@ export interface DataTableColumn<T> {
         onSort?: (columnId: string) => void;
       }) => React.ReactNode);
   cell: (item: T, index: number) => React.ReactNode;
+  colClassName?: string;
   headerClassName?: string;
   cellClassName?: string;
   width?: string | number;
@@ -90,6 +91,22 @@ export function DataTable<T>({
   const isVirtualized =
     mode === 'virtualized' || (mode !== 'static' && data.length > threshold);
 
+  const renderColGroup = () => (
+    <colgroup>
+      {columns.map(col => (
+        <col
+          key={col.id}
+          style={{
+            ...(col.width !== undefined ? {width: col.width} : {}),
+            ...(col.minWidth !== undefined ? {minWidth: col.minWidth} : {}),
+            ...(col.maxWidth !== undefined ? {maxWidth: col.maxWidth} : {}),
+          }}
+          className={col.colClassName}
+        />
+      ))}
+    </colgroup>
+  );
+
   const renderHeaderCell = (col: DataTableColumn<T>) => {
     const isSorted = sortColumn === col.id;
     return (
@@ -131,7 +148,7 @@ export function DataTable<T>({
             ? col.header({column: col, sortColumn, sortDirection, onSort})
             : col.header}
           {col.sortable && (
-            <span className="inline-flex text-on-surface-variant">
+            <span className="inline-flex text-on-surface-variant shrink-0">
               {isSorted ? (
                 sortDirection === 'asc' ? (
                   <ArrowUp className="w-3.5 h-3.5 text-primary" />
@@ -158,6 +175,7 @@ export function DataTable<T>({
           ...(col.maxWidth !== undefined ? {maxWidth: col.maxWidth} : {}),
         }}
         className={cn(
+          'overflow-hidden',
           col.align === 'center'
             ? 'text-center'
             : col.align === 'right'
@@ -165,7 +183,6 @@ export function DataTable<T>({
               : 'text-left',
           col.wrap && 'whitespace-normal break-words',
           col.truncate && 'truncate overflow-hidden max-w-[260px]',
-          col.maxWidth !== undefined && 'overflow-hidden',
           col.cellClassName,
         )}
       >
@@ -177,7 +194,8 @@ export function DataTable<T>({
   // Empty state handling
   if (data.length === 0) {
     return (
-      <Table className={tableClassName}>
+      <Table className={cn('table-fixed w-full', tableClassName)}>
+        {renderColGroup()}
         <TableHeader className={headerClassName}>
           <TableRow className={headerRowClassName}>
             {columns.map(col => renderHeaderCell(col))}
@@ -206,13 +224,19 @@ export function DataTable<T>({
         style={style}
         className={cn('w-full text-left border-collapse', className)}
         components={{
-          Table: ({style, ...props}) => (
+          Table: ({style: tableStyle, children, ...props}) => (
             <table
               data-slot="table"
               {...props}
-              style={style}
-              className={cn('w-full caption-bottom text-sm', tableClassName)}
-            />
+              style={tableStyle}
+              className={cn(
+                'w-full table-fixed caption-bottom text-sm border-collapse',
+                tableClassName,
+              )}
+            >
+              {renderColGroup()}
+              {children}
+            </table>
           ),
           TableHead: forwardRef<
             HTMLTableSectionElement,
@@ -282,7 +306,8 @@ export function DataTable<T>({
 
   // Standard Semantic Mode (<= 50 rows)
   return (
-    <Table className={tableClassName}>
+    <Table className={cn('table-fixed w-full', tableClassName)}>
+      {renderColGroup()}
       <TableHeader className={headerClassName}>
         <TableRow className={headerRowClassName}>
           {columns.map(col => renderHeaderCell(col))}
@@ -415,20 +440,14 @@ export function BookTitleCell({
 
   const coverSizes = {
     sm: 'h-9 w-6 rounded-xs',
-    md: 'h-12 w-8 rounded-sm',
+    md: 'h-11 w-7 sm:h-12 sm:w-8 rounded-sm',
     lg: 'h-14 w-9 rounded-sm',
   };
 
   const titleSizes = {
     sm: 'font-serif text-sm font-semibold text-on-surface leading-tight',
-    md: 'font-serif text-base sm:text-lg font-semibold text-on-surface leading-snug',
-    lg: 'font-serif text-lg sm:text-xl font-bold text-on-surface leading-snug',
-  };
-
-  const defaultMaxWidths = {
-    sm: 'max-w-[200px] sm:max-w-[260px] md:max-w-[320px]',
-    md: 'max-w-[240px] sm:max-w-[320px] md:max-w-[400px]',
-    lg: 'max-w-[280px] sm:max-w-[380px] md:max-w-[460px]',
+    md: 'font-serif text-sm sm:text-base font-semibold text-on-surface leading-snug',
+    lg: 'font-serif text-base sm:text-lg font-bold text-on-surface leading-snug',
   };
 
   const formattedTitle = toTitleCase(title || 'Untitled');
@@ -452,9 +471,8 @@ export function BookTitleCell({
   return (
     <div
       className={cn(
-        'flex items-center group/cover min-w-0',
-        size === 'sm' ? 'gap-2.5 sm:gap-3' : 'gap-3 sm:gap-4',
-        maxWidth === undefined && defaultMaxWidths[size],
+        'flex items-center group/cover min-w-0 w-full',
+        size === 'sm' ? 'gap-2.5 sm:gap-3' : 'gap-2.5 sm:gap-4',
         className,
       )}
       style={containerStyle}
@@ -515,12 +533,12 @@ export function BookTitleCell({
         </div>
       )}
       <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
-        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+        <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 min-w-0 w-full">
           <span
             className={cn(
               titleSizes[size],
               clampClass,
-              'min-w-0 flex-1',
+              'min-w-0 w-full sm:flex-1',
               titleClassName,
             )}
             title={title}
@@ -535,15 +553,19 @@ export function BookTitleCell({
                   ? 'status-reading'
                   : userStatus === 'finished'
                     ? 'status-read'
-                    : 'status-abandoned'
+                    : userStatus === 'want_to_read'
+                      ? 'status-to-read'
+                      : 'status-abandoned'
               }
-              className="shrink-0"
+              className="shrink-0 self-start sm:self-center"
             >
               {userStatus === 'reading'
                 ? 'READING'
                 : userStatus === 'finished'
                   ? 'FINISHED'
-                  : 'ABANDONED'}
+                  : userStatus === 'want_to_read'
+                    ? 'WANT TO READ'
+                    : 'ABANDONED'}
             </Badge>
           )}
         </div>
@@ -570,14 +592,16 @@ export function BookAuthorCell({
   author: string;
   className?: string;
 }) {
+  const formattedAuthor = author ? toTitleCase(author) : '—';
   return (
     <span
       className={cn(
-        'font-body-md text-body-md text-on-surface-variant',
+        'font-sans text-xs sm:text-sm text-on-surface-variant leading-snug line-clamp-2 whitespace-normal break-words overflow-hidden block',
         className,
       )}
+      title={formattedAuthor}
     >
-      {toTitleCase(author)}
+      {formattedAuthor}
     </span>
   );
 }

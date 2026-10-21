@@ -92,10 +92,10 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
       {
         id: 'title',
         header: () => (
-          <div className="flex items-center gap-4">
-            {canEdit && user && (
+          <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
+            {canEdit && user && isSelectMode && (
               <div
-                className={`w-8 flex items-center justify-center flex-shrink-0 transition-opacity ${isSelectMode ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                className="w-7 sm:w-8 flex items-center justify-center flex-shrink-0"
                 onClick={e => {
                   e.stopPropagation();
                   toggleAllBooks(books);
@@ -108,13 +108,16 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
                 />
               </div>
             )}
-            <div className="flex items-center gap-2">Title</div>
+            <div className="flex items-center gap-2 truncate">Title</div>
           </div>
         ),
         sortable: true,
+        wrap: true,
+        colClassName: 'w-[64%] sm:w-[52%] md:w-[54%]',
         headerClassName:
-          'py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-2/3 sm:w-1/2',
-        cellClassName: 'py-4 px-6',
+          'w-[64%] sm:w-[52%] md:w-[54%] py-3 px-3.5 sm:py-4 sm:px-6 font-label-caps text-label-caps text-on-surface-variant uppercase',
+        cellClassName:
+          'w-[64%] sm:w-[52%] md:w-[54%] py-3 px-3.5 sm:py-4 sm:px-6 whitespace-normal overflow-hidden',
         cell: book => (
           <BookTitleCell
             title={book.title}
@@ -133,9 +136,12 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
         id: 'author',
         header: 'Author',
         sortable: true,
+        wrap: true,
+        colClassName: 'w-[36%] sm:w-[28%] md:w-[28%]',
         headerClassName:
-          'py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase w-1/3 sm:w-1/4',
-        cellClassName: 'py-4 px-6',
+          'w-[36%] sm:w-[28%] md:w-[28%] py-3 px-3.5 sm:py-4 sm:px-6 font-label-caps text-label-caps text-on-surface-variant uppercase',
+        cellClassName:
+          'w-[36%] sm:w-[28%] md:w-[28%] py-3 px-3.5 sm:py-4 sm:px-6 whitespace-normal overflow-hidden',
         cell: book => <BookAuthorCell author={book.author} />,
       },
       {
@@ -143,14 +149,17 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
         header: 'Added',
         sortable: true,
         align: 'right',
+        colClassName: 'hidden sm:table-column sm:w-[20%] md:w-[18%]',
         headerClassName:
-          'hidden sm:table-cell sm:w-1/4 py-4 px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right',
-        cellClassName: 'hidden sm:table-cell py-4 px-6 text-right',
+          'hidden sm:table-cell sm:w-[20%] md:w-[18%] py-3 px-3.5 sm:py-4 sm:px-6 font-label-caps text-label-caps text-on-surface-variant uppercase text-right',
+        cellClassName:
+          'hidden sm:table-cell sm:w-[20%] md:w-[18%] py-3 px-3.5 sm:py-4 sm:px-6 text-right whitespace-nowrap overflow-hidden',
         cell: book => <BookDateCell date={book.addedAt} />,
       },
     ],
     [
       books,
+      canEdit,
       user,
       selectedBooks,
       isSelectMode,
@@ -163,7 +172,7 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
   if (viewMode === 'table') {
     return (
       <div className="bg-surface-container-lowest rounded-xl border border-surface-variant overflow-hidden shadow-elevation-1">
-        <div className="overflow-x-auto min-h-[500px]">
+        <div className="w-full min-h-[500px]">
           <DataTable<Book>
             data={books}
             columns={tableColumns}
@@ -172,10 +181,11 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
             sortDirection={sortOrder}
             onSort={colId => handleSort(colId as SortOption)}
             onRowClick={book => handleNavigateBook(book.id)}
+            tableClassName="table-fixed w-full"
             rowClassName={() =>
               'group hover:bg-surface-container-low/50 transition-colors cursor-pointer border-b border-surface-variant/60'
             }
-            headerRowClassName="bg-surface-container-low border-b border-surface-variant shadow-sm h-14"
+            headerRowClassName="bg-surface-container-low border-b border-surface-variant shadow-sm h-12 sm:h-14"
             emptyPlaceholder={
               <div className="px-6 py-8 text-center text-on-surface-variant italic font-body-md text-sm">
                 {emptyMessage}

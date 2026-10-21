@@ -214,4 +214,41 @@ describe('Shared cell formatting components', () => {
     expect(checkboxes).toHaveLength(2);
     expect(checkboxes[1]).toBeChecked();
   });
+
+  it('renders WANT TO READ badge when userStatus is want_to_read and avoids flex-wrap jumping', () => {
+    const {container} = render(
+      <BookTitleCell
+        title="The Left Hand of Darkness"
+        userStatus="want_to_read"
+      />,
+    );
+
+    expect(screen.getByText('WANT TO READ')).toBeInTheDocument();
+    const titleRow = container.querySelector('.sm\\:flex-row');
+    expect(titleRow).toBeInTheDocument();
+    expect(titleRow?.className).not.toContain('flex-wrap');
+  });
+
+  it('enforces table-fixed and renders colgroup with colClassName in DataTable', () => {
+    const cols: DataTableColumn<{id: string; title: string}>[] = [
+      {
+        id: 'title',
+        header: 'Title',
+        colClassName: 'w-[64%] sm:w-[52%]',
+        cell: item => item.title,
+      },
+    ];
+    const {container} = render(
+      <DataTable
+        data={[{id: '1', title: 'Book 1'}]}
+        columns={cols}
+        keyExtractor={item => item.id}
+      />,
+    );
+
+    const table = container.querySelector('table');
+    expect(table?.className).toContain('table-fixed');
+    const col = container.querySelector('colgroup col');
+    expect(col?.className).toContain('w-[64%]');
+  });
 });
