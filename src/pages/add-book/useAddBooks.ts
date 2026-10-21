@@ -6,6 +6,7 @@ import {uploadBase64Image} from '../../lib/storage';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {useAuth} from '../../stores/authStore';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
+import type {TrackedShelfStatus} from '../../server/services/readingTracker';
 
 const MAX_CONCURRENT_IMAGE_UPLOADS = 3;
 
@@ -41,19 +42,37 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-export function useAddBooks(libraryId?: string) {
+export interface UseAddBooksOptions {
+  mode?: 'library' | 'reading';
+  initialStatus?: TrackedShelfStatus | 'unset';
+}
+
+export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
   const {user} = useAuth();
   const isOnline = useOnlineStatus();
   const utils = trpc.useUtils();
   const [isAddingAll, setIsAddingAll] = useState(false);
 
+  const isReadingMode =
+    options?.mode === 'reading' ||
+    !libraryId ||
+    libraryId.startsWith('virtual_');
+  const effectiveLibraryId =
+    libraryId || (user?.uid ? `virtual_${user.uid}` : undefined);
+
   const addBooks = async (booksToAdd: BookDetails[]) => {
-    if (!user?.uid || !libraryId || booksToAdd.length === 0) return [];
+    if (!user?.uid || !effectiveLibraryId || booksToAdd.length === 0) return [];
 
     if (!isOnline) {
       toast.error('Network required: Connect to the internet to add books.');
       return [];
     }
+
+    const ownershipStatus: 'owned' | 'unowned' = isReadingMode
+      ? 'unowned'
+      : 'owned';
+    const targetStatus: TrackedShelfStatus | 'unset' =
+      options?.initialStatus ?? (isReadingMode ? 'want_to_read' : 'unset');
 
     setIsAddingAll(true);
     try {
@@ -71,11 +90,11 @@ export function useAddBooks(libraryId?: string) {
 
           if (finalCoverUrl && finalCoverUrl.startsWith('data:image/')) {
             try {
-              const path = `libraries/${libraryId}/covers/${bookId}.jpg`;
+              const path = `libraries/${effectiveLibraryId}/covers/${bookId}.jpg`;
               finalCoverUrl = await uploadBase64Image(
                 finalCoverUrl,
                 path,
-                libraryId,
+                effectiveLibraryId,
               );
             } catch (e) {
               console.error('Failed to upload base64 cover image', e);
@@ -84,11 +103,11 @@ export function useAddBooks(libraryId?: string) {
 
           if (finalCoverUrlRaw && finalCoverUrlRaw.startsWith('data:image/')) {
             try {
-              const rawPath = `libraries/${libraryId}/covers/${bookId}_raw.jpg`;
+              const rawPath = `libraries/${effectiveLibraryId}/covers/${bookId}_raw.jpg`;
               finalCoverUrlRaw = await uploadBase64Image(
                 finalCoverUrlRaw,
                 rawPath,
-                libraryId,
+                effectiveLibraryId,
               );
             } catch (e) {
               console.error('Failed to upload raw base64 cover image', e);
@@ -102,6 +121,8 @@ export function useAddBooks(libraryId?: string) {
               ? {coverUrlRaw: finalCoverUrlRaw}
               : {}),
             format: book.format || 'physical',
+            ownershipStatus,
+            ...(targetStatus !== 'unset' ? {status: targetStatus} : {}),
           };
           delete rawRecord.coverCandidates;
           delete rawRecord.sources;
@@ -121,33 +142,44 @@ export function useAddBooks(libraryId?: string) {
 
       // Single-pass server ingestion + server-side catalog & metadata hydration
       await trpcVanilla.book.batchUpsert.mutate({
-        libraryId,
+        libraryId: effectiveLibraryId,
         operations: preparedOperations,
         enrichOnCreate: true,
       });
 
       await Promise.allSettled([
-        utils.book?.list?.invalidate({libraryId}),
+        utils.book?.list?.invalidate?.({libraryId: effectiveLibraryId}),
         utils.library?.list?.invalidate?.(),
+        utils.readingTracker?.getShelf?.invalidate?.(),
       ]);
 
       // Schedule a follow-up refresh to pick up any background server-side enrichment
       setTimeout(() => {
-        void utils.book?.list?.invalidate?.({libraryId});
+        void utils.book?.list?.invalidate?.({libraryId: effectiveLibraryId});
+        void utils.readingTracker?.getShelf?.invalidate?.();
       }, 4500);
 
       triggerHaptics(20);
+      const destinationLabel = isReadingMode ? 'reading list' : 'library';
       if (validBooksToAdd.length === 1) {
-        toast.success(`Added "${validBooksToAdd[0].title}" to library!`);
+        toast.success(
+          `Added "${validBooksToAdd[0].title}" to ${destinationLabel}!`,
+        );
       } else {
-        toast.success(`Added ${validBooksToAdd.length} books to library!`);
+        toast.success(
+          `Added ${validBooksToAdd.length} books to ${destinationLabel}!`,
+        );
       }
 
       return validBooksToAdd;
     } catch (err) {
       console.error('Failed to add books:', err);
       triggerHaptics([50, 100, 50]);
-      toast.error('Failed to save books to library.');
+      toast.error(
+        isReadingMode
+          ? 'Failed to save books to reading list.'
+          : 'Failed to save books to library.',
+      );
       throw err;
     } finally {
       setIsAddingAll(false);

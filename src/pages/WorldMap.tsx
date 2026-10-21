@@ -1,12 +1,11 @@
 import React, {useState, useMemo, useCallback, useEffect} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
-import {useAuth} from '../stores/authStore';
-import {useLibraryData} from '../hooks/useLibraryData';
-import {getAccessFromLibrary} from '../lib/permissions';
+import {useCollectionScope} from '../hooks/useCollectionScope';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../components/import/BulkEnrichmentBanner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
 import {BackToLibrary} from '../components/layout/BackToLibrary';
+import {ReadingScopeToggle} from '../components/book/ReadingScopeToggle';
 import {Flame, Grid, Search} from 'lucide-react';
 import {Input} from '@/components/ui/input';
 import {
@@ -38,15 +37,19 @@ const GOOGLE_MAPS_KEY =
 export default function WorldMap() {
   const {id: libraryId} = useParams<{id: string}>();
   const navigate = useNavigate();
-  const {user} = useAuth();
 
-  // 1. Fetch library core data using existing hook
-  const {library, books, isBooksLoading} = useLibraryData(
-    libraryId,
-    user?.uid,
-    navigate,
-  );
-  const {canEdit} = getAccessFromLibrary(library, user?.uid, user?.email);
+  // 1. Fetch collection or reading scope data using unified hook
+  const {
+    isReadingMode,
+    books,
+    isBooksLoading,
+    canEdit,
+    includeWantToRead,
+    setIncludeWantToRead,
+    readAndReadingCount,
+    wantToReadCount,
+    refetchShelf,
+  } = useCollectionScope(libraryId);
 
   // Map settings and presentation controls
   const [zoom, setZoom] = useState<number>(1.5);
@@ -70,14 +73,31 @@ export default function WorldMap() {
   // 2. Scan and check for books needing automated backfill enrichment via our unified hook
   const filterGeoPredicate = useCallback((b: Book) => !b.geoMetadata, []);
 
+  const targetEnrichmentLibId = useMemo(() => {
+    if (libraryId) return libraryId;
+    const missing = books.find(
+      b =>
+        b.libraryId &&
+        b.enrichmentStatus?.geo !== 'unsupported' &&
+        filterGeoPredicate(b),
+    );
+    return missing?.libraryId;
+  }, [libraryId, books, filterGeoPredicate]);
+
+  const enrichmentScopedBooks = useMemo(() => {
+    if (libraryId) return books;
+    if (!targetEnrichmentLibId) return [];
+    return books.filter(b => b.libraryId === targetEnrichmentLibId);
+  }, [libraryId, books, targetEnrichmentLibId]);
+
   const {
     isBackfilling,
     progress: backfillProgress,
     inFlightCount,
   } = useBulkEnrichment({
-    books,
+    books: enrichmentScopedBooks,
     isBooksLoading,
-    libraryId,
+    libraryId: targetEnrichmentLibId,
     providerKey: 'geoMetadata',
     metadataField: 'geoMetadata',
     filterPredicate: filterGeoPredicate,
@@ -86,6 +106,7 @@ export default function WorldMap() {
       'Successfully backfilled literary settings map references!',
     errorToastMessage:
       'Gaps were found in geocoding; some settings could not be loaded.',
+    onComplete: isReadingMode ? () => void refetchShelf() : undefined,
   });
 
   // Telemetry logs for integration with the Debug Console
@@ -171,17 +192,29 @@ export default function WorldMap() {
       {/* Dynamic header information block */}
       <div className="layout-header border-none flex flex-col md:flex-row md:justify-between md:items-start gap-4">
         <div>
-          <BackToLibrary libraryId={libraryId} className="mb-2" />
+          <BackToLibrary
+            libraryId={libraryId}
+            label={isReadingMode ? 'Back to Reading Room' : 'Back to Library'}
+            className="mb-2"
+          />
           <h1 className="layout-header-title">Literary World Map</h1>
           <p className="layout-header-subtitle max-w-3xl">
-            Visualize the settings, narrative regions, and historical backdrops
-            discussed in your books. Grouped dynamically and colored based on
-            real-time geographical coordinates.
+            {isReadingMode
+              ? 'Visualize the settings, narrative regions, and historical backdrops across the books in your personal reading life. Grouped dynamically and colored based on real-time geographical coordinates.'
+              : 'Visualize the settings, narrative regions, and historical backdrops discussed in your books. Grouped dynamically and colored based on real-time geographical coordinates.'}
           </p>
         </div>
 
         {/* Presentation and Map settings toggles */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-col items-start md:items-end gap-2.5">
+          {isReadingMode && (
+            <ReadingScopeToggle
+              readAndReadingCount={readAndReadingCount}
+              wantToReadCount={wantToReadCount}
+              includeWantToRead={includeWantToRead}
+              onToggleWantToRead={setIncludeWantToRead}
+            />
+          )}
           <div className="bg-surface-variant p-1 rounded-lg flex border border-outline-variant">
             <button
               onClick={() => setActiveTab('map')}
@@ -289,9 +322,12 @@ export default function WorldMap() {
             setIsNonEarthExpanded(!isNonEarthExpanded)
           }
           onClearSelection={() => setSelectedCluster(null)}
-          onNavigateToBook={bookId =>
-            navigate(`/library/${libraryId}/book/${bookId}`)
-          }
+          onNavigateToBook={(bookId, bookLibId) => {
+            const targetLibId = bookLibId || libraryId;
+            if (targetLibId) {
+              void navigate(`/library/${targetLibId}/book/${bookId}`);
+            }
+          }}
         />
       </div>
     </div>

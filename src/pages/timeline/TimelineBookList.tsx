@@ -79,7 +79,7 @@ export const TimelineDesktopEpochDrawer: React.FC<TimelineEpochDrawerProps> = ({
               return (
                 <Link
                   key={book.id}
-                  to={`/library/${libraryId}/book/${book.id}`}
+                  to={`/library/${book.libraryId || libraryId}/book/${book.id}`}
                   className="flex gap-3.5 p-3.5 rounded-2xl bg-background/70 hover:bg-surface-container transition-all border border-outline-variant/40 hover:border-[#2d6d82]/45 group"
                 >
                   {book.coverUrl ? (
@@ -231,7 +231,7 @@ export const TimelineMobileEpochSheet: React.FC<TimelineEpochDrawerProps> = ({
                 return (
                   <Link
                     key={`sheet-${book.id}`}
-                    to={`/library/${libraryId}/book/${book.id}`}
+                    to={`/library/${book.libraryId || libraryId}/book/${book.id}`}
                     className="flex gap-3 p-3 rounded-2xl bg-background/80 hover:bg-surface-container transition-all border border-outline-variant/40 group"
                   >
                     {book.coverUrl ? (
@@ -356,7 +356,7 @@ export const TimelineNonHistoricalAnnex: React.FC<
               {filteredNonHistorical.map(book => (
                 <Link
                   key={book.id}
-                  to={`/library/${libraryId}/book/${book.id}`}
+                  to={`/library/${book.libraryId || libraryId}/book/${book.id}`}
                   className="flex gap-3 p-3 rounded-2xl bg-background/60 border border-outline-variant/40 hover:border-[#2d6d82]/40 hover:bg-surface-container transition-all group"
                 >
                   {book.coverUrl ? (

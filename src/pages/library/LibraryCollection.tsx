@@ -67,6 +67,12 @@ interface LibraryCollectionProps {
   handleSort: (option: SortOption) => void;
   user: User | null;
   navigate: NavigateFunction;
+  headerSlot?: React.ReactNode;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  onEmptyAction?: () => void;
+  emptyActionLabel?: string;
+  disablePaddingTop?: boolean;
 }
 
 export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
@@ -103,6 +109,12 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
   handleSort,
   user,
   navigate,
+  headerSlot,
+  emptyTitle,
+  emptyDescription,
+  onEmptyAction,
+  emptyActionLabel,
+  disablePaddingTop = false,
 }) => {
   const hasActiveFilters = Boolean(
     filterGenre ||
@@ -124,8 +136,15 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
 
   return (
     <>
-      <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 pt-2">
+      <div
+        className={
+          disablePaddingTop
+            ? 'w-full'
+            : 'w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 pt-2'
+        }
+      >
         <div className="bento-card p-3 sm:p-4 flex flex-col gap-3">
+          {headerSlot}
           {/* Main Controls Row: Unified Search, Filter/Sort Drawer, and View Mode */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
             {/* Search Input with clear button */}
@@ -450,7 +469,13 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
         </DialogContent>
       </Dialog>
 
-      <main className="layout-page-content flex flex-col lg:flex-row gap-6 sm:gap-8 pt-6 sm:pt-8">
+      <main
+        className={
+          disablePaddingTop
+            ? 'w-full flex flex-col lg:flex-row gap-6 sm:gap-8 pt-5'
+            : 'layout-page-content flex flex-col lg:flex-row gap-6 sm:gap-8 pt-6 sm:pt-8'
+        }
+      >
         <div className="flex-1 min-w-0">
           {sortedBooks.length === 0 ? (
             <div className="text-center py-24 px-6 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
@@ -461,19 +486,26 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
                   strokeWidth={1.5}
                 />
               </div>
-              <h3 className="empty-state-title">No books found</h3>
+              <h3 className="empty-state-title">
+                {emptyTitle || 'No books found'}
+              </h3>
               <p className="empty-state-description">
                 {books.length === 0
-                  ? "This library is empty. Let's add some great reads to your collection."
+                  ? emptyDescription ||
+                    "This library is empty. Let's add some great reads to your collection."
                   : 'No books match your current filters.'}
               </p>
-              {books.length === 0 && canEdit && (
+              {books.length === 0 && (onEmptyAction || canEdit) && (
                 <Button
-                  onClick={() => navigate(`/library/${libraryId}/add`)}
+                  onClick={() =>
+                    onEmptyAction
+                      ? onEmptyAction()
+                      : navigate(`/library/${libraryId}/add`)
+                  }
                   className="mt-8 flex items-center gap-2 mx-auto"
                 >
                   <Plus size={18} strokeWidth={2.5} />
-                  Add Your First Book
+                  {emptyActionLabel || 'Add Your First Book'}
                 </Button>
               )}
             </div>

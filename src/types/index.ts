@@ -73,6 +73,10 @@ export interface Book extends Omit<
 > {
   id: string;
   libraryId?: string;
+  libraryName?: string;
+  isVirtual?: boolean;
+  readingStatus?: ReadingStatusValue;
+  userRating?: number;
   isbn?: string;
   coverUrl?: string;
   publishedDate?: string;

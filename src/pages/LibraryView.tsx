@@ -42,6 +42,7 @@ import {LibraryOverview} from './library/LibraryOverview';
 import {LibraryCollection} from './library/LibraryCollection';
 import {LibrarySettingsModals} from './library/LibrarySettingsModals';
 import {BulkActionsBar} from './library/BulkActionsBar';
+import {QuickAddBookDialog} from '../components/book/QuickAddBookDialog';
 import {ErrorBoundary} from '../components/layout/ErrorBoundary';
 import {useDebug} from '../stores/debugStore';
 import {
@@ -89,6 +90,7 @@ export default function LibraryView() {
   });
 
   // Local state for modals and UI
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
   const [libraryToDelete, setLibraryToDelete] = useState(false);
@@ -610,19 +612,20 @@ export default function LibraryView() {
                 )}
               </div>
 
-              {/* Right Action: Primary Add Books Action */}
+              {/* Right Action: Primary Add Books Action (Opens shared Quick Search Dialog) */}
               {canEdit && (
-                <Link
-                  to={`/library/${id}/add`}
+                <button
+                  type="button"
+                  onClick={() => setIsQuickAddOpen(true)}
                   onMouseEnter={() => preloadRouteChunk('addBook')}
                   onFocus={() => preloadRouteChunk('addBook')}
-                  className="flex items-center gap-1.5 px-3 sm:px-4 h-9 rounded-lg bg-primary text-on-primary hover:bg-primary/90 text-xs font-sans font-semibold transition-all shadow-xs shrink-0"
+                  className="flex items-center gap-1.5 px-3 sm:px-4 h-9 rounded-lg bg-primary text-on-primary hover:bg-primary/90 text-xs font-sans font-semibold transition-all shadow-xs shrink-0 cursor-pointer"
                   title="Add Books"
                 >
                   <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                   <span className="hidden sm:inline">Add Books</span>
                   <span className="sm:hidden">Add</span>
-                </Link>
+                </button>
               )}
             </div>
           </div>
@@ -656,6 +659,7 @@ export default function LibraryView() {
                           filters.selectGenreAndGoToCollection
                         }
                         pickError={picker.error}
+                        onAddBook={() => setIsQuickAddOpen(true)}
                       />
                     )}
                   </ErrorBoundary>
@@ -708,6 +712,9 @@ export default function LibraryView() {
                         handleSort={filters.setSortBy}
                         user={user}
                         navigate={navigate}
+                        onEmptyAction={
+                          canEdit ? () => setIsQuickAddOpen(true) : undefined
+                        }
                       />
                     )}
                   </ErrorBoundary>
@@ -715,6 +722,16 @@ export default function LibraryView() {
               )}
             </AnimatePresence>
           </div>
+
+          {canEdit && (
+            <QuickAddBookDialog
+              isOpen={isQuickAddOpen}
+              onClose={() => setIsQuickAddOpen(false)}
+              mode="library"
+              libraryId={id}
+              libraryName={library.name}
+            />
+          )}
 
           <LibrarySettingsModals
             isSettingsOpen={isSettingsOpen}

@@ -11,7 +11,7 @@ interface WorldMapInspectorProps {
   isNonEarthExpanded: boolean;
   onToggleNonEarthExpanded: () => void;
   onClearSelection: () => void;
-  onNavigateToBook: (bookId: string) => void;
+  onNavigateToBook: (bookId: string, bookLibraryId?: string) => void;
 }
 
 export const WorldMapInspector: React.FC<WorldMapInspectorProps> = ({
@@ -65,7 +65,9 @@ export const WorldMapInspector: React.FC<WorldMapInspectorProps> = ({
                 <div
                   key={i}
                   className="bg-surface/50 border border-outline-variant/60 rounded-2xl p-3.5 space-y-3 hover:border-primary/50 transition cursor-pointer"
-                  onClick={() => onNavigateToBook(pin.book.id)}
+                  onClick={() =>
+                    onNavigateToBook(pin.book.id, pin.book.libraryId)
+                  }
                 >
                   <div className="flex gap-3">
                     {pin.book.coverUrl ? (
@@ -162,7 +164,7 @@ export const WorldMapInspector: React.FC<WorldMapInspectorProps> = ({
                   <div
                     key={b.id}
                     className="flex items-center justify-between text-xs py-2 px-3 bg-surface/50 border rounded-xl hover:border-primary/50 cursor-pointer transition"
-                    onClick={() => onNavigateToBook(b.id)}
+                    onClick={() => onNavigateToBook(b.id, b.libraryId)}
                   >
                     <div className="min-w-0 pr-2">
                       <p className="font-bold text-on-surface truncate leading-tight">

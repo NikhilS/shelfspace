@@ -206,6 +206,14 @@ function AnimatedRoutes() {
             }
           />
 
+          <Route path="/reading/add" element={<AddBookView />} />
+
+          <Route path="/reading/constellation" element={<ConstellationMap />} />
+
+          <Route path="/reading/map" element={<WorldMap />} />
+
+          <Route path="/reading/timeline" element={<TimelineView />} />
+
           <Route
             path="/library/:libraryId/book/:bookId"
             element={

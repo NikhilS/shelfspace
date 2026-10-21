@@ -22,9 +22,10 @@ const EMPTY_SUMMARY: ReadingShelfSummary = {
   },
 };
 
-export function useReadingShelf() {
+export function useReadingShelf(options?: {enabled?: boolean}) {
   const {user} = useAuth();
   const [activeShelf, setActiveShelf] = useState<ShelfFilterTab>('all');
+  const isEnabled = options?.enabled ?? true;
 
   let utils: ReturnType<typeof trpc.useUtils> | undefined;
   try {
@@ -40,7 +41,7 @@ export function useReadingShelf() {
     ? trpc.readingTracker.getShelf.useQuery(
         {shelf: 'all'},
         {
-          enabled: Boolean(user),
+          enabled: Boolean(user) && isEnabled,
           staleTime: 1000 * 60 * 2,
         },
       )

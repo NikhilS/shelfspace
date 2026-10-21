@@ -198,10 +198,10 @@ export const ConstellationInspector: React.FC<ConstellationInspectorProps> = ({
             </div>
           </div>
 
-          {libraryId && (
+          {(selectedStar.book.libraryId || libraryId) && (
             <div className="pt-2 border-t border-outline-variant/40">
               <Link
-                to={`/library/${libraryId}/book/${selectedStar.book.id}`}
+                to={`/library/${selectedStar.book.libraryId || libraryId}/book/${selectedStar.book.id}`}
                 className="block w-full"
               >
                 <Button className="w-full rounded-lg gap-2">

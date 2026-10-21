@@ -30,11 +30,11 @@ export function useBookFilters(books: Book[]) {
   const navigate = useNavigate();
   const {id} = useParams<{id: string}>();
 
-  const currentTab: 'overview' | 'collection' = location.pathname.endsWith(
-    '/collection',
-  )
-    ? 'collection'
-    : 'overview';
+  const currentTab: 'overview' | 'collection' =
+    location.pathname.endsWith('/collection') ||
+    (!id && searchParams.get('tab') === 'collection')
+      ? 'collection'
+      : 'overview';
   const sortBy = (searchParams.get('sort') as SortOption) || 'added';
   const sortOrder = (searchParams.get('order') as 'asc' | 'desc') || 'desc';
   const viewMode =
@@ -281,6 +281,10 @@ export function useBookFilters(books: Book[]) {
   return {
     currentTab,
     setCurrentTab: (tab: 'overview' | 'collection') => {
+      if (!id) {
+        setSearchParamsValue('tab', tab === 'collection' ? 'collection' : null);
+        return;
+      }
       void navigate(
         tab === 'collection' ? `/library/${id}/collection` : `/library/${id}`,
       );
@@ -329,6 +333,11 @@ export function useBookFilters(books: Book[]) {
       else params.delete('genre');
       if (subgenre) params.set('subgenre', subgenre);
       else params.delete('subgenre');
+      if (!id) {
+        params.set('tab', 'collection');
+        setSearchParams(params, {replace: true});
+        return;
+      }
       params.set('filters', 'true');
       params.delete('tab');
       void navigate(`/library/${id}/collection?${params.toString()}`);

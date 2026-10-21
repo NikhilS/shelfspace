@@ -478,8 +478,15 @@ export async function batchUpsert(
         op.type === 'create' ||
         (op.type === 'set' && !op.merge && !op.heavyData)
       ) {
+        const isVirtualLib = libraryId.startsWith('virtual_');
+        const rawData = (op.data || {}) as Record<string, unknown>;
         const combinedInput: Record<string, unknown> = {
-          ...(op.data || {}),
+          ...rawData,
+          ownershipStatus:
+            rawData.ownershipStatus || (isVirtualLib ? 'unowned' : 'owned'),
+          ...(isVirtualLib && !rawData.status && !rawData.userStatuses
+            ? {status: 'want_to_read'}
+            : {}),
           ...(op.heavyData ? {heavyData: op.heavyData} : {}),
         };
         const {cleanCore, cleanHeavy} = BookPartitioner.partitionCreatePayload(

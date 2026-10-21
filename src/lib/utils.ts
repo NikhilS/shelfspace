@@ -1,9 +1,38 @@
 import {FirestoreDate, BookDetails, CoverCandidate} from '../types';
 import {clsx, type ClassValue} from 'clsx';
-import {twMerge} from 'tailwind-merge';
+import {extendTailwindMerge} from 'tailwind-merge';
+
+const customTwMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [
+        {
+          text: [
+            'headline-2xl',
+            'headline-xl',
+            'headline-lg',
+            'headline-md',
+            'headline-sm',
+            'title-lg',
+            'title-md',
+            'title-sm',
+            'title-xs',
+            'body-lg',
+            'body-md',
+            'body-sm',
+            'body-xs',
+            'label-caps',
+            'label-caps-sm',
+            'label-caps-xs',
+          ],
+        },
+      ],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+  return customTwMerge(clsx(inputs));
 }
 
 export function toTitleCase(str: string) {

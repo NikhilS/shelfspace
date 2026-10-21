@@ -200,9 +200,23 @@ describe('Dashboard', () => {
     expect(
       screen.getByLabelText(/Interactive stack of your last 1 finished books/i),
     ).toBeInTheDocument();
+    expect(screen.getByText('Explore Your Reading')).toBeInTheDocument();
+    expect(screen.getByRole('tab', {name: /Overview/i})).toBeInTheDocument();
+    expect(screen.getByRole('tab', {name: /All Books/i})).toBeInTheDocument();
+    expect(screen.queryByText('Shelf Care')).not.toBeInTheDocument();
+
+    // Switch to the shared All Books collection tab
+    fireEvent.click(screen.getByRole('tab', {name: /All Books/i}));
+    expect(
+      await screen.findByRole('tab', {name: /All Tracked/i}),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {name: 'In Libraries'}),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Un-owned'})).toBeInTheDocument();
   });
 
-  it('navigates to the library view when clicking a library card', async () => {
+  it('navigates to the library view when clicking a library card and opens QuickAddBookDialog with Advanced link when clicking Track a Book', async () => {
     (
       useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
     ).mockReturnValue({
@@ -212,6 +226,17 @@ describe('Dashboard', () => {
     const cardTitle = await screen.findByText('Test Library');
     fireEvent.click(cardTitle);
     expect(mockNavigate).toHaveBeenCalledWith('/library/lib1');
+
+    const trackBtn = screen.getByRole('button', {name: /Track a Book/i});
+    fireEvent.click(trackBtn);
+
+    expect(
+      await screen.findByTestId('quick-add-book-dialog'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('quick-add-advanced-link'));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/reading/add?status=want_to_read',
+    );
   });
 
   it('can create a new library', async () => {

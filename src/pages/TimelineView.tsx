@@ -1,13 +1,12 @@
 import React, {useState, useMemo, useCallback, useEffect, useRef} from 'react';
-import {useParams, useNavigate} from 'react-router-dom';
+import {useParams} from 'react-router-dom';
 import {Clock, Waves} from 'lucide-react';
-import {useAuth} from '../stores/authStore';
-import {useLibraryData} from '../hooks/useLibraryData';
-import {getAccessFromLibrary} from '../lib/permissions';
+import {useCollectionScope} from '../hooks/useCollectionScope';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../components/import/BulkEnrichmentBanner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
 import {BackToLibrary} from '../components/layout/BackToLibrary';
+import {ReadingScopeToggle} from '../components/book/ReadingScopeToggle';
 import {BookLoader} from '../components/book/BookLoader';
 import {Book} from '../types';
 import {
@@ -33,15 +32,18 @@ export {formatYear};
 
 export default function TimelineView() {
   const {id: libraryId} = useParams<{id: string}>();
-  const navigate = useNavigate();
-  const {user} = useAuth();
 
-  const {library, books, isBooksLoading} = useLibraryData(
-    libraryId,
-    user?.uid,
-    navigate,
-  );
-  const {canEdit} = getAccessFromLibrary(library, user?.uid, user?.email);
+  const {
+    isReadingMode,
+    books,
+    isBooksLoading,
+    canEdit,
+    includeWantToRead,
+    setIncludeWantToRead,
+    readAndReadingCount,
+    wantToReadCount,
+    refetchShelf,
+  } = useCollectionScope(libraryId);
 
   const [zoomLevel, setZoomLevel] = useState<1 | 5 | 20>(1);
   const [selectedPreset, setSelectedPreset] = useState<string>('all');
@@ -82,20 +84,38 @@ export default function TimelineView() {
     [],
   );
 
+  const targetEnrichmentLibId = useMemo(() => {
+    if (libraryId) return libraryId;
+    const missing = books.find(
+      b =>
+        b.libraryId &&
+        b.enrichmentStatus?.temporal !== 'unsupported' &&
+        filterTemporalPredicate(b),
+    );
+    return missing?.libraryId;
+  }, [libraryId, books, filterTemporalPredicate]);
+
+  const enrichmentScopedBooks = useMemo(() => {
+    if (libraryId) return books;
+    if (!targetEnrichmentLibId) return [];
+    return books.filter(b => b.libraryId === targetEnrichmentLibId);
+  }, [libraryId, books, targetEnrichmentLibId]);
+
   const {
     isBackfilling,
     progress: backfillProgress,
     inFlightCount,
   } = useBulkEnrichment({
-    books,
+    books: enrichmentScopedBooks,
     isBooksLoading,
-    libraryId,
+    libraryId: targetEnrichmentLibId,
     providerKey: 'temporalMetadata',
     metadataField: 'temporalMetadata',
     filterPredicate: filterTemporalPredicate,
     canEdit,
     successToastMessage: 'Historical temporal analysis complete!',
     errorToastMessage: 'Analysis backfill failed',
+    onComplete: isReadingMode ? () => void refetchShelf() : undefined,
   });
 
   useEffect(() => {
@@ -186,16 +206,20 @@ export default function TimelineView() {
         <div>
           <BackToLibrary
             libraryId={libraryId}
-            label="Back to Library Overview"
+            label={
+              isReadingMode
+                ? 'Back to Reading Room'
+                : 'Back to Library Overview'
+            }
             className="mb-2"
           />
           <h1 className="layout-header-title text-balance">
             Historical Temporal Timeline
           </h1>
           <p className="layout-header-subtitle max-w-2xl">
-            A hydrographic survey of your library across time. Narrow riffles
-            widen into alluvial pools and river islands at each historical bend,
-            while tributary arcs trace narratives across centuries.
+            {isReadingMode
+              ? 'A hydrographic survey of your reading life across time. Narrow riffles widen into alluvial pools and river islands at each historical bend, while tributary arcs trace narratives across centuries.'
+              : 'A hydrographic survey of your library across time. Narrow riffles widen into alluvial pools and river islands at each historical bend, while tributary arcs trace narratives across centuries.'}
           </p>
 
           {/* Unboxed Archival Metrics Strip (Zero-Pill Discipline) */}
@@ -256,15 +280,25 @@ export default function TimelineView() {
           )}
         </div>
 
-        <TimelinePresetControls
-          selectedPreset={selectedPreset}
-          zoomLevel={zoomLevel}
-          onPresetSelect={handlePresetSelect}
-          onZoomChange={z => {
-            setZoomLevel(z);
-            setSelectedClusterKey(null);
-          }}
-        />
+        <div className="flex flex-col items-start lg:items-end gap-2.5">
+          {isReadingMode && (
+            <ReadingScopeToggle
+              readAndReadingCount={readAndReadingCount}
+              wantToReadCount={wantToReadCount}
+              includeWantToRead={includeWantToRead}
+              onToggleWantToRead={setIncludeWantToRead}
+            />
+          )}
+          <TimelinePresetControls
+            selectedPreset={selectedPreset}
+            zoomLevel={zoomLevel}
+            onPresetSelect={handlePresetSelect}
+            onZoomChange={z => {
+              setZoomLevel(z);
+              setSelectedClusterKey(null);
+            }}
+          />
+        </div>
       </div>
 
       {/* Backfilling and Sync progress loader indicator */}

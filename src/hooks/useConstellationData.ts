@@ -1,5 +1,4 @@
 import {useState, useEffect, useRef} from 'react';
-import {useNavigate} from 'react-router-dom';
 import {
   Point2D,
   SemanticNeighborIndex,
@@ -8,8 +7,7 @@ import {
   computeSemanticNeighbors,
 } from '../lib/clustering';
 import {trpc, trpcVanilla} from '../lib/trpc';
-import {useAuth} from '../stores/authStore';
-import {useLibraryData} from './useLibraryData';
+import {useCollectionScope} from './useCollectionScope';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../lib/telemetry';
 import {BookDetails, BookDetailsMetadata} from '../types';
 
@@ -18,6 +16,8 @@ export interface BookDoc extends Omit<
   'isbn' | 'coverUrl' | 'publishedDate'
 > {
   id: string;
+  libraryId?: string;
+  libraryName?: string;
   isbn?: string;
   coverUrl?: string;
   publishedDate?: string;
@@ -123,15 +123,15 @@ function assembleScatterPoints(
 }
 
 export function useConstellationData(libraryId: string | undefined) {
-  const {user} = useAuth();
-  const navigate = useNavigate();
-
-  // Consume the canonical ['books', libraryId] query provided by useLibraryData
-  const {books: libraryBooks, isBooksLoading} = useLibraryData(
-    libraryId,
-    user?.uid,
-    navigate,
-  );
+  const {
+    isReadingMode,
+    books: libraryBooks,
+    isBooksLoading,
+    includeWantToRead,
+    setIncludeWantToRead,
+    readAndReadingCount,
+    wantToReadCount,
+  } = useCollectionScope(libraryId);
 
   const [, setBooks] = useState<BookDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -200,7 +200,7 @@ export function useConstellationData(libraryId: string | undefined) {
     }
 
     async function processMap() {
-      if (!libraryId) return;
+      if (!libraryId && !isReadingMode) return;
 
       if (isBooksLoading) {
         setLoading(true);
@@ -210,6 +210,7 @@ export function useConstellationData(libraryId: string | undefined) {
 
       if (!libraryBooks || libraryBooks.length < 3) {
         setBooks([]);
+        setPlotData([]);
         setProgress(
           'Not enough books to form a constellation (minimum 3 needed).',
         );
@@ -221,22 +222,37 @@ export function useConstellationData(libraryId: string | undefined) {
         setLoading(true);
         setProgress('Fetching book details...');
 
-        // Query bookDetails in chunks of 50 in parallel for fast initial load
+        // Group books by their source libraryId and query bookDetails in chunks of 50
         const detailsMap = new Map<string, Record<string, unknown>>();
         const chunkSize = 50;
-        const chunks: Array<typeof libraryBooks> = [];
+        const chunks: Array<{targetLibId: string; items: typeof libraryBooks}> =
+          [];
 
-        for (let i = 0; i < libraryBooks.length; i += chunkSize) {
-          chunks.push(libraryBooks.slice(i, i + chunkSize));
+        const booksByLib = new Map<string, typeof libraryBooks>();
+        for (const book of libraryBooks) {
+          const targetLibId = book.libraryId || libraryId;
+          if (!targetLibId) continue;
+          const list = booksByLib.get(targetLibId) || [];
+          list.push(book);
+          booksByLib.set(targetLibId, list);
+        }
+
+        for (const [targetLibId, items] of booksByLib.entries()) {
+          for (let i = 0; i < items.length; i += chunkSize) {
+            chunks.push({
+              targetLibId,
+              items: items.slice(i, i + chunkSize),
+            });
+          }
         }
 
         let completedCount = 0;
         const isTelemetryActive = DebugTelemetryEngine.isHudActive();
 
         await Promise.all(
-          chunks.map(async chunk => {
+          chunks.map(async ({targetLibId, items: chunk}) => {
             const res = await trpcVanilla.book.getBookDetailsChunk.mutate({
-              libraryId,
+              libraryId: targetLibId,
               bookIds: chunk.map(b => b.id),
             });
 
@@ -244,6 +260,7 @@ export function useConstellationData(libraryId: string | undefined) {
             let docCount = 0;
             if (res?.details) {
               for (const [id, data] of Object.entries(res.details)) {
+                detailsMap.set(`${targetLibId}:${id}`, data);
                 detailsMap.set(id, data);
                 if (isTelemetryActive) {
                   chunkBytes += calculatePayloadBytes(data);
@@ -264,7 +281,7 @@ export function useConstellationData(libraryId: string | undefined) {
                 'db_read',
                 `Queried bookDetails chunk (${chunk.length} docs, ${(chunkBytes / 1024).toFixed(1)} KB)`,
                 {
-                  path: `libraries/${libraryId}/bookDetails`,
+                  path: `libraries/${targetLibId}/bookDetails`,
                   size: chunk.length,
                   bytes: chunkBytes,
                   docCount,
@@ -276,8 +293,17 @@ export function useConstellationData(libraryId: string | undefined) {
 
         const allBooks: BookDoc[] = [];
         libraryBooks.forEach(b => {
-          const detail = detailsMap.get(b.id) || {};
-          const merged = {...b, ...detail, id: b.id};
+          const targetLibId = b.libraryId || libraryId || '';
+          const detail =
+            detailsMap.get(`${targetLibId}:${b.id}`) ||
+            detailsMap.get(b.id) ||
+            {};
+          const merged = {
+            ...b,
+            ...detail,
+            id: b.id,
+            libraryId: targetLibId || b.libraryId,
+          };
           allBooks.push(merged as BookDoc);
         });
 
@@ -285,6 +311,7 @@ export function useConstellationData(libraryId: string | undefined) {
         setBooks(allBooks);
 
         if (allBooks.length < 3) {
+          setPlotData([]);
           setProgress(
             'Not enough books to form a constellation (minimum 3 needed).',
           );
@@ -292,9 +319,10 @@ export function useConstellationData(libraryId: string | undefined) {
           return;
         }
 
-        // Fast-path: If every book already has persisted clusterCoordinates (and we are not re-clustering),
+        // Fast-path: In single-library mode, if every book already has persisted clusterCoordinates (and we are not re-clustering),
         // relax positions and compute nearest-neighbor graph off the main thread in the Web Worker.
         const allHaveSavedClusters =
+          !isReadingMode &&
           reclusterTrigger === 0 &&
           allBooks.every(
             b =>
@@ -339,27 +367,46 @@ export function useConstellationData(libraryId: string | undefined) {
             `Generating AI embeddings for ${toEmbed.length} books on server...`,
           );
 
-          await trpcVanilla.enrichment.trigger.mutate({
-            libraryId,
-            enrichmentType: 'embedding',
-            bookIds: toEmbed.map(b => b.id),
-            overwrite: false,
-          });
-
-          const refreshedDetails =
-            await trpcVanilla.book.getBookDetailsChunk.mutate({
-              libraryId,
-              bookIds: toEmbed.map(b => b.id),
-            });
-
-          if (refreshedDetails?.details) {
-            for (const b of toEmbed) {
-              const detail = refreshedDetails.details[b.id];
-              if (detail?.embedding) {
-                b.embedding = detail.embedding;
-              }
-            }
+          const toEmbedByLib = new Map<string, BookDoc[]>();
+          for (const b of toEmbed) {
+            const targetLibId = b.libraryId || libraryId;
+            if (!targetLibId) continue;
+            const list = toEmbedByLib.get(targetLibId) || [];
+            list.push(b);
+            toEmbedByLib.set(targetLibId, list);
           }
+
+          await Promise.all(
+            Array.from(toEmbedByLib.entries()).map(
+              async ([targetLibId, booksGroup]) => {
+                try {
+                  await trpcVanilla.enrichment.trigger.mutate({
+                    libraryId: targetLibId,
+                    enrichmentType: 'embedding',
+                    bookIds: booksGroup.map(b => b.id),
+                    overwrite: false,
+                  });
+
+                  const refreshedDetails =
+                    await trpcVanilla.book.getBookDetailsChunk.mutate({
+                      libraryId: targetLibId,
+                      bookIds: booksGroup.map(b => b.id),
+                    });
+
+                  if (refreshedDetails?.details) {
+                    for (const b of booksGroup) {
+                      const detail = refreshedDetails.details[b.id];
+                      if (detail?.embedding) {
+                        b.embedding = detail.embedding;
+                      }
+                    }
+                  }
+                } catch {
+                  // Ignore enrichment errors on read-only shared libraries
+                }
+              },
+            ),
+          );
         }
 
         const validBooks = allBooks.filter(
@@ -514,35 +561,37 @@ export function useConstellationData(libraryId: string | undefined) {
           if (isMounted) setClusterNames(resolvedNames);
         }
 
-        // Persist computed clusterCoordinates and clusterNames so subsequent visits load in O(N)
-        try {
-          await trpcVanilla.book.batchUpsert.mutate({
-            libraryId,
-            operations: newPlotData.map(p => ({
-              type: 'update',
-              bookId: p.book.id,
-              data: {
-                bookDetailsMetadata: {
-                  ...(p.book.bookDetailsMetadata || {}),
-                  hasEmbedding: true,
-                  hasClusterCoordinates: true,
+        // Persist computed clusterCoordinates and clusterNames in single-library mode so subsequent visits load in O(N)
+        if (libraryId && !isReadingMode) {
+          try {
+            await trpcVanilla.book.batchUpsert.mutate({
+              libraryId,
+              operations: newPlotData.map(p => ({
+                type: 'update',
+                bookId: p.book.id,
+                data: {
+                  bookDetailsMetadata: {
+                    ...(p.book.bookDetailsMetadata || {}),
+                    hasEmbedding: true,
+                    hasClusterCoordinates: true,
+                  },
                 },
-              },
-              heavyData: {
-                clusterCoordinates: {
-                  x: p.x,
-                  y: p.y,
-                  clusterId: p.clusterId,
-                  clusterName: resolvedNames[p.clusterId] || undefined,
+                heavyData: {
+                  clusterCoordinates: {
+                    x: p.x,
+                    y: p.y,
+                    clusterId: p.clusterId,
+                    clusterName: resolvedNames[p.clusterId] || undefined,
+                  },
                 },
-              },
-            })),
-          });
-        } catch (persistErr) {
-          console.warn(
-            'Could not persist constellation coordinates to server:',
-            persistErr,
-          );
+              })),
+            });
+          } catch (persistErr) {
+            console.warn(
+              'Could not persist constellation coordinates to server:',
+              persistErr,
+            );
+          }
         }
 
         if (isMounted) {
@@ -571,15 +620,32 @@ export function useConstellationData(libraryId: string | undefined) {
         activeWorkerRef.current = null;
       }
     };
-  }, [libraryId, isBooksLoading, libraryBooks, reclusterTrigger]);
+  }, [
+    libraryId,
+    isReadingMode,
+    isBooksLoading,
+    libraryBooks,
+    reclusterTrigger,
+  ]);
 
   const handleRecluster = async () => {
-    if (!libraryId || loading) return;
+    if ((!libraryId && !isReadingMode) || loading) return;
     setLoading(true);
     setProgress('Re-computing constellation topology...');
     setClusterNames({});
     setReclusterTrigger(prev => prev + 1);
   };
 
-  return {loading, progress, plotData, clusterNames, handleRecluster};
+  return {
+    loading,
+    progress,
+    plotData,
+    clusterNames,
+    handleRecluster,
+    isReadingMode,
+    includeWantToRead,
+    setIncludeWantToRead,
+    readAndReadingCount,
+    wantToReadCount,
+  };
 }

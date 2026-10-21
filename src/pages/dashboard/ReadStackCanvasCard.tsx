@@ -1,6 +1,13 @@
 import React, {useEffect, useRef, useState, useMemo, useCallback} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {Layers, Star, ArrowRight, BookOpen} from 'lucide-react';
+import {
+  Layers,
+  Star,
+  ArrowRight,
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
 import type {TrackedBookItem} from '../../server/services/readingTracker';
@@ -17,13 +24,13 @@ interface StackPose {
   angleDeg: number;
 }
 
-// Deterministic messy bedside-table stack poses (bottom of stack -> top of stack)
+// Deterministic messy bedside-table stack poses (slot 0 = bottom of pile -> slot 4 = top of pile)
 const MESSY_STACK_POSES: StackPose[] = [
-  {dxRatio: -0.14, dyRatio: 0.08, angleDeg: -13},
-  {dxRatio: 0.13, dyRatio: 0.05, angleDeg: 10},
-  {dxRatio: -0.09, dyRatio: -0.04, angleDeg: -7},
-  {dxRatio: 0.08, dyRatio: -0.02, angleDeg: 6},
-  {dxRatio: -0.01, dyRatio: 0.01, angleDeg: -2.5},
+  {dxRatio: -0.15, dyRatio: 0.07, angleDeg: -13.5},
+  {dxRatio: 0.14, dyRatio: 0.05, angleDeg: 10.5},
+  {dxRatio: -0.1, dyRatio: -0.04, angleDeg: -7.5},
+  {dxRatio: 0.09, dyRatio: -0.02, angleDeg: 6.5},
+  {dxRatio: 0.0, dyRatio: 0.01, angleDeg: -2.0},
 ];
 
 const MONOGRAPH_PALETTES = [
@@ -33,6 +40,13 @@ const MONOGRAPH_PALETTES = [
   {bgTop: '#FDF8F3', bgBottom: '#EFE4D8', accent: '#9A3412', ink: '#2A221E'},
   {bgTop: '#F4F6F8', bgBottom: '#E1E6EC', accent: '#1E3A8A', ink: '#1E2530'},
 ];
+
+interface AnimatedBookPose {
+  dxRatio: number;
+  dyRatio: number;
+  angleDeg: number;
+  lift: number;
+}
 
 function drawRoundedRect(
   ctx: CanvasRenderingContext2D,
@@ -99,28 +113,36 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
   const imageCacheRef = useRef<Map<string, HTMLImageElement | 'error'>>(
     new Map(),
   );
-  const liftValuesRef = useRef<number[]>([0, 0, 0, 0, 0]);
+  const animatedPosesRef = useRef<AnimatedBookPose[]>([]);
   const rafRef = useRef<number | null>(null);
+  const touchStartRef = useRef<{x: number; y: number} | null>(null);
+  const didSwipeRef = useRef(false);
 
-  // Take the 5 most recently read books, ordered bottom-to-top so the newest sits on top
+  // stackBooks[0] is #1 (most recently read), up to stackBooks[4] (#5 most recent)
   const stackBooks = useMemo(() => {
-    return finishedBooks.slice(0, 5).reverse();
+    return finishedBooks.slice(0, 5);
   }, [finishedBooks]);
 
+  const [activeIndex, setActiveIndex] = useState<number>(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [imageTick, setImageTick] = useState(0);
 
-  const activeIndex =
-    hoveredIndex !== null
-      ? hoveredIndex
-      : selectedIndex !== null && selectedIndex < stackBooks.length
-        ? selectedIndex
-        : stackBooks.length > 0
-          ? stackBooks.length - 1
-          : null;
+  const safeActiveIndex = activeIndex < stackBooks.length ? activeIndex : 0;
+  const activeBook = stackBooks[safeActiveIndex] || null;
 
-  const activeBook = activeIndex !== null ? stackBooks[activeIndex] : null;
+  // Draw order from bottom of pile (slot 0) to top of pile (slot N-1):
+  // All non-active books sit underneath in chronological order, and safeActiveIndex sits on top!
+  const drawOrder = useMemo(() => {
+    const total = stackBooks.length;
+    if (total === 0) return [];
+    const others: number[] = [];
+    for (let i = total - 1; i >= 0; i--) {
+      if (i !== safeActiveIndex) {
+        others.push(i);
+      }
+    }
+    return [...others, safeActiveIndex];
+  }, [stackBooks.length, safeActiveIndex]);
 
   // Preload cover images for the 5 books in the stack
   useEffect(() => {
@@ -137,7 +159,6 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
         if (isMounted) setImageTick(t => t + 1);
       };
       img.onerror = () => {
-        // Retry without crossOrigin if CORS header isn't present (still allows drawing on non-readback canvas)
         const fallbackImg = new Image();
         fallbackImg.referrerPolicy = 'no-referrer';
         fallbackImg.onload = () => {
@@ -157,22 +178,45 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
     };
   }, [stackBooks]);
 
-  const getBookGeometry = useCallback(
-    (index: number, total: number, width: number, height: number) => {
-      const poseOffset = MESSY_STACK_POSES.length - total + index;
-      const pose =
+  // Compute target pose for a given book index based on its current slot in drawOrder
+  const getTargetPoseForBook = useCallback(
+    (bookIndex: number): AnimatedBookPose => {
+      const total = stackBooks.length;
+      const slotIndex = drawOrder.indexOf(bookIndex);
+      const effectiveSlot = slotIndex >= 0 ? slotIndex : 0;
+      const poseOffset = MESSY_STACK_POSES.length - total + effectiveSlot;
+      const basePose =
         MESSY_STACK_POSES[
           Math.max(0, Math.min(MESSY_STACK_POSES.length - 1, poseOffset))
         ];
 
+      const isTopBook = bookIndex === safeActiveIndex;
+      const isHovered = hoveredIndex === bookIndex;
+      const lift = isHovered ? 1 : isTopBook ? 0.35 : 0;
+
+      return {
+        dxRatio: basePose.dxRatio,
+        dyRatio: basePose.dyRatio,
+        angleDeg: basePose.angleDeg * (isHovered ? 0.55 : 1),
+        lift,
+      };
+    },
+    [stackBooks.length, drawOrder, safeActiveIndex, hoveredIndex],
+  );
+
+  const getBookGeometry = useCallback(
+    (bookIndex: number, width: number, height: number) => {
+      const currentPose =
+        animatedPosesRef.current[bookIndex] || getTargetPoseForBook(bookIndex);
+
       const bookH = Math.min(height * 0.68, 156);
       const bookW = bookH * 0.67;
-      const lift = liftValuesRef.current[index] || 0;
+      const lift = currentPose.lift;
 
-      const cx = width * 0.5 + pose.dxRatio * width;
-      const cy = height * 0.52 + pose.dyRatio * height - lift * 9;
-      const angleRad = (pose.angleDeg * (1 - lift * 0.45) * Math.PI) / 180;
-      const scale = 1 + lift * 0.055;
+      const cx = width * 0.5 + currentPose.dxRatio * width;
+      const cy = height * 0.52 + currentPose.dyRatio * height - lift * 7;
+      const angleRad = (currentPose.angleDeg * Math.PI) / 180;
+      const scale = 1 + lift * 0.045;
 
       return {
         cx,
@@ -183,7 +227,7 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
         lift,
       };
     },
-    [],
+    [getTargetPoseForBook],
   );
 
   // Render the 2D Canvas scene
@@ -240,17 +284,20 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
     );
     ctx.fill();
 
-    // Draw books from bottom of stack to top
-    stackBooks.forEach((book, idx) => {
+    // Draw books in drawOrder (bottom of pile -> top of pile)
+    drawOrder.forEach(bookIndex => {
+      const book = stackBooks[bookIndex];
+      if (!book) return;
+
       const {cx, cy, bookW, bookH, angleRad, lift} = getBookGeometry(
-        idx,
-        stackBooks.length,
+        bookIndex,
         width,
         height,
       );
       const halfW = bookW / 2;
       const halfH = bookH / 2;
       const pageBlockDepth = 6;
+      const isTopBook = bookIndex === safeActiveIndex;
 
       ctx.save();
       ctx.translate(cx, cy);
@@ -259,10 +306,12 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
       // 1. Ambient & elevation drop shadow
       ctx.save();
       ctx.shadowColor =
-        lift > 0.1 ? 'rgba(28, 25, 23, 0.34)' : 'rgba(28, 25, 23, 0.22)';
-      ctx.shadowBlur = 14 + lift * 12;
+        isTopBook || lift > 0.2
+          ? 'rgba(28, 25, 23, 0.32)'
+          : 'rgba(28, 25, 23, 0.20)';
+      ctx.shadowBlur = 13 + lift * 12;
       ctx.shadowOffsetX = 3 + lift * 2;
-      ctx.shadowOffsetY = 6 + lift * 6;
+      ctx.shadowOffsetY = 5 + lift * 6;
       drawRoundedRect(
         ctx,
         -halfW,
@@ -307,23 +356,21 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
         }
       } else {
         // Bespoke Archival Monograph Cover on Canvas
-        const palette = MONOGRAPH_PALETTES[idx % MONOGRAPH_PALETTES.length];
+        const palette =
+          MONOGRAPH_PALETTES[bookIndex % MONOGRAPH_PALETTES.length];
         const bgGrad = ctx.createLinearGradient(-halfW, -halfH, halfW, halfH);
         bgGrad.addColorStop(0, palette.bgTop);
         bgGrad.addColorStop(1, palette.bgBottom);
         ctx.fillStyle = bgGrad;
         ctx.fillRect(-halfW, -halfH, bookW, bookH);
 
-        // Editorial frame border inside cover
         ctx.strokeStyle = 'rgba(120, 113, 108, 0.28)';
         ctx.lineWidth = 1;
         ctx.strokeRect(-halfW + 7, -halfH + 7, bookW - 14, bookH - 14);
 
-        // Top accent bar
         ctx.fillStyle = palette.accent;
         ctx.fillRect(-halfW + 12, -halfH + 13, bookW - 24, 2);
 
-        // Wrapped Serif Title
         ctx.fillStyle = palette.ink;
         ctx.font = '600 11px Georgia, "Newsreader", serif';
         ctx.textAlign = 'left';
@@ -338,7 +385,6 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
           ctx.fillText(line, -halfW + 12, -halfH + 22 + lineIdx * 13.5);
         });
 
-        // Author at bottom
         ctx.fillStyle = 'rgba(68, 64, 60, 0.85)';
         ctx.font = '500 8.5px system-ui, sans-serif';
         const authorLines = wrapCanvasText(
@@ -365,33 +411,47 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
 
       // 5. Outer Cover Rim & Active Highlight Ring
       drawRoundedRect(ctx, -halfW, -halfH, bookW, bookH, 5);
-      ctx.strokeStyle =
-        idx === activeIndex
-          ? 'rgba(154, 52, 18, 0.75)'
-          : 'rgba(68, 64, 60, 0.25)';
-      ctx.lineWidth = idx === activeIndex ? 1.6 : 0.9;
+      ctx.strokeStyle = isTopBook
+        ? 'rgba(154, 52, 18, 0.78)'
+        : 'rgba(68, 64, 60, 0.25)';
+      ctx.lineWidth = isTopBook ? 1.6 : 0.9;
       ctx.stroke();
 
       ctx.restore();
     });
 
     ctx.restore();
-  }, [stackBooks, getBookGeometry, activeIndex]);
+  }, [stackBooks, drawOrder, getBookGeometry, safeActiveIndex]);
 
-  // Smoothly animate lift values toward target hovered index
+  // Smoothly animate book positions, angles, and lift when activeIndex or hoveredIndex changes
   useEffect(() => {
     let needsMoreFrames = false;
     const step = () => {
       needsMoreFrames = false;
-      for (let i = 0; i < 5; i++) {
-        const target = hoveredIndex === i ? 1 : 0;
-        const current = liftValuesRef.current[i] || 0;
-        const diff = target - current;
-        if (Math.abs(diff) > 0.01) {
-          liftValuesRef.current[i] = current + diff * 0.25;
+      for (let i = 0; i < stackBooks.length; i++) {
+        const target = getTargetPoseForBook(i);
+        const current = animatedPosesRef.current[i] || {...target};
+
+        const dDx = target.dxRatio - current.dxRatio;
+        const dDy = target.dyRatio - current.dyRatio;
+        const dAngle = target.angleDeg - current.angleDeg;
+        const dLift = target.lift - current.lift;
+
+        if (
+          Math.abs(dDx) > 0.002 ||
+          Math.abs(dDy) > 0.002 ||
+          Math.abs(dAngle) > 0.08 ||
+          Math.abs(dLift) > 0.01
+        ) {
+          animatedPosesRef.current[i] = {
+            dxRatio: current.dxRatio + dDx * 0.24,
+            dyRatio: current.dyRatio + dDy * 0.24,
+            angleDeg: current.angleDeg + dAngle * 0.24,
+            lift: current.lift + dLift * 0.24,
+          };
           needsMoreFrames = true;
         } else {
-          liftValuesRef.current[i] = target;
+          animatedPosesRef.current[i] = target;
         }
       }
       renderStackCanvas();
@@ -406,7 +466,14 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
         window.cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [hoveredIndex, stackBooks, imageTick, renderStackCanvas]);
+  }, [
+    safeActiveIndex,
+    hoveredIndex,
+    stackBooks,
+    imageTick,
+    getTargetPoseForBook,
+    renderStackCanvas,
+  ]);
 
   // Repaint on resize
   useEffect(() => {
@@ -415,7 +482,7 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, [renderStackCanvas]);
 
-  // Hit-test pointer coordinates against rotated books from top of pile to bottom
+  // Hit-test pointer coordinates in reverse drawOrder (from visually top-most book down to bottom)
   const hitTestStack = (clientX: number, clientY: number): number | null => {
     const canvas = canvasRef.current;
     if (!canvas || stackBooks.length === 0) return null;
@@ -425,10 +492,10 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
     const width = rect.width || 320;
     const height = rect.height || 220;
 
-    for (let idx = stackBooks.length - 1; idx >= 0; idx--) {
+    for (let s = drawOrder.length - 1; s >= 0; s--) {
+      const bookIndex = drawOrder[s];
       const {cx, cy, bookW, bookH, angleRad} = getBookGeometry(
-        idx,
-        stackBooks.length,
+        bookIndex,
         width,
         height,
       );
@@ -443,7 +510,7 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
         Math.abs(localX) <= bookW / 2 + 4 &&
         Math.abs(localY) <= bookH / 2 + 4
       ) {
-        return idx;
+        return bookIndex;
       }
     }
     return null;
@@ -456,18 +523,70 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
     }
   };
 
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 1) {
+      touchStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+      };
+      didSwipeRef.current = false;
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!touchStartRef.current || e.changedTouches.length === 0) return;
+    const deltaX = e.changedTouches[0].clientX - touchStartRef.current.x;
+    const deltaY = e.changedTouches[0].clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+
+    if (
+      stackBooks.length > 1 &&
+      Math.abs(deltaX) > 30 &&
+      Math.abs(deltaX) > Math.abs(deltaY) * 1.2
+    ) {
+      didSwipeRef.current = true;
+      if (deltaX < 0) {
+        setActiveIndex(prev => (prev + 1) % stackBooks.length);
+      } else {
+        setActiveIndex(
+          prev => (prev - 1 + stackBooks.length) % stackBooks.length,
+        );
+      }
+    }
+  };
+
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (didSwipeRef.current) {
+      didSwipeRef.current = false;
+      return;
+    }
+
     const hit = hitTestStack(e.clientX, e.clientY);
-    const targetBook =
-      hit !== null
-        ? stackBooks[hit]
-        : activeBook || stackBooks[stackBooks.length - 1];
+    if (hit !== null && hit !== safeActiveIndex) {
+      // Tapping a peeking book underneath brings it to the top of the stack first
+      setActiveIndex(hit);
+      return;
+    }
+
+    const targetBook = activeBook || stackBooks[0];
     if (targetBook) {
       void navigate(
         `/library/${encodeURIComponent(targetBook.libraryId)}/book/${encodeURIComponent(targetBook.id)}`,
         {state: {from: '/'}},
       );
     }
+  };
+
+  const handleStepPrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (stackBooks.length <= 1) return;
+    setActiveIndex(prev => (prev - 1 + stackBooks.length) % stackBooks.length);
+  };
+
+  const handleStepNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (stackBooks.length <= 1) return;
+    setActiveIndex(prev => (prev + 1) % stackBooks.length);
   };
 
   return (
@@ -529,43 +648,46 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
               ref={canvasRef}
               onMouseMove={handleMouseMove}
               onMouseLeave={() => setHoveredIndex(null)}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
               onClick={handleCanvasClick}
               aria-label={`Interactive stack of your last ${stackBooks.length} finished books`}
-              className={`w-full h-full block transition-transform ${
-                hoveredIndex !== null ? 'cursor-pointer' : 'cursor-pointer'
-              }`}
+              className="w-full h-full block cursor-pointer touch-pan-y"
             />
 
-            {/* Accessible Layer Selector Dots (1..N) */}
+            {/* Touch-Friendly Stack Shuffle Stepper (‹ 1 / 5 ›) */}
             {stackBooks.length > 1 && (
               <div
-                className="absolute bottom-1.5 right-1.5 flex items-center gap-1 bg-surface/85 backdrop-blur-xs px-2 py-1 rounded-full border border-outline-variant/50 shadow-2xs"
-                aria-label="Inspect book in stack"
+                className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5 bg-surface/92 backdrop-blur-md px-1 py-0.5 rounded-full border border-outline-variant/60 shadow-xs"
+                role="group"
+                aria-label="Cycle through stacked books"
               >
-                {stackBooks.map((b, idx) => {
-                  const isCurrent = idx === activeIndex;
-                  return (
-                    <button
-                      key={`${b.libraryId}-${b.id}`}
-                      type="button"
-                      onClick={() => setSelectedIndex(idx)}
-                      onMouseEnter={() => setHoveredIndex(idx)}
-                      onMouseLeave={() => setHoveredIndex(null)}
-                      title={`${toTitleCase(b.title)} (${idx === stackBooks.length - 1 ? 'Top of stack' : `#${stackBooks.length - idx} in stack`})`}
-                      aria-label={`Inspect ${b.title}`}
-                      className={`w-2 h-2 rounded-full transition-all cursor-pointer ${
-                        isCurrent
-                          ? 'w-4 bg-primary'
-                          : 'bg-outline-variant hover:bg-primary/50'
-                      }`}
-                    />
-                  );
-                })}
+                <button
+                  type="button"
+                  onClick={handleStepPrev}
+                  aria-label="Previous book in stack"
+                  title="Previous book in stack"
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="font-mono tabular-nums text-[11px] font-semibold text-on-surface px-1.5 select-none">
+                  {safeActiveIndex + 1} / {stackBooks.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleStepNext}
+                  aria-label="Next book in stack"
+                  title="Next book in stack"
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors cursor-pointer"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
           </div>
 
-          {/* Active Hovered / Top-of-Stack Book Callout Footer */}
+          {/* Active Top-of-Stack Book Callout Footer */}
           {activeBook && (
             <div
               onClick={() =>
@@ -579,9 +701,9 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[10px] uppercase tracking-wider text-on-surface-variant">
-                    {activeIndex === stackBooks.length - 1
-                      ? 'Top of Stack'
-                      : `#${stackBooks.length - (activeIndex ?? 0)} in Stack`}
+                    {safeActiveIndex === 0
+                      ? 'Most Recent Read'
+                      : `#${safeActiveIndex + 1} in Recent Stack`}
                   </span>
                   {typeof activeBook.userRating === 'number' &&
                     activeBook.userRating > 0 && (

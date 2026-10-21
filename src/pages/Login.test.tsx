@@ -1,85 +1,94 @@
 import React from 'react';
 import {describe, it, expect, vi} from 'vitest';
-import {render, screen} from '@testing-library/react';
+import {render, screen, fireEvent} from '@testing-library/react';
 import Login from './Login';
 import {MemoryRouter} from 'react-router-dom';
 
-const mockSignInWithPopup = vi.fn();
-
-vi.mock('firebase/auth', () => ({
-  signInWithPopup: (...args: unknown[]) => mockSignInWithPopup(...args),
-  GoogleAuthProvider: class {},
-}));
-
-vi.mock('../firebase', () => ({
-  auth: {},
-}));
+const mockSignIn = vi.fn();
 
 vi.mock('../stores/authStore', () => ({
-  useAuth: () => ({user: null, isAuthReady: true}),
+  useAuth: () => ({user: null, isAuthReady: true, signIn: mockSignIn}),
 }));
 
 describe('Login', () => {
-  it('renders login button', () => {
+  it('renders high-contrast sign-in and get-started buttons that trigger signIn', () => {
     render(
       <MemoryRouter>
         <Login />
       </MemoryRouter>,
     );
-    expect(screen.getByText('Sign-In')).toBeInTheDocument();
-    expect(screen.getByText('Open Your Vault')).toBeInTheDocument();
+
+    const signInButton = screen.getByRole('button', {name: /^Sign In$/i});
+    const getStartedButton = screen.getByRole('button', {
+      name: /^Get Started$/i,
+    });
+
+    expect(signInButton).toBeInTheDocument();
+    expect(getStartedButton).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', {name: /Sign In with Google/i}),
+    ).not.toBeInTheDocument();
+    expect(signInButton.className).toContain('bg-primary');
+    expect(signInButton.className).toContain('text-on-primary');
+    expect(getStartedButton.className).toContain('bg-primary');
+    expect(getStartedButton.className).toContain('text-on-primary');
+
+    fireEvent.click(getStartedButton);
+    expect(mockSignIn).toHaveBeenCalled();
   });
 
-  it('renders marketing landing page sections and core value propositions', () => {
+  it('renders the interactive hero Bento preview and 4-card visual feature grid without a comparison table', () => {
     render(
       <MemoryRouter>
         <Login />
       </MemoryRouter>,
     );
 
-    // Hero headline and copy
-    expect(screen.getByText(/The digital ledger your/i)).toBeInTheDocument();
-    expect(screen.getByText(/physical library deserves/i)).toBeInTheDocument();
-
-    // Ingestion mechanisms
-    expect(screen.getByText(/Continuous Spine Vision/i)).toBeInTheDocument();
-    expect(screen.getByText(/Rapid Barcode Scanner/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/1-Click Goodreads & CSV Import/i),
-    ).toBeInTheDocument();
-
-    // The Dimensions Bento
-    expect(
-      screen.getByRole('heading', {name: /Not just shelves. Dimensions./i}),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', {name: /Semantic Constellations/i}),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', {name: /Self-Healing Spruce-Up/i}),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', {name: /Narrative Geography/i}),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', {name: /Deep-Time Timeline/i}),
-    ).toBeInTheDocument();
-
-    // AI Curator section
+    // Equal billing headline
     expect(
       screen.getByRole('heading', {
-        name: /Never stare blankly at your bookshelves again./i,
+        name: /Your physical bookshelves and your reading life/i,
+      }),
+    ).toBeInTheDocument();
+
+    // Interactive Hero Bento showcase
+    expect(screen.getByTestId('hero-bento-showcase')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {name: 'Currently Reading'}),
+    ).toBeInTheDocument();
+    expect(screen.getByText('14 Books Read')).toBeInTheDocument();
+    expect(screen.getByText('Pick of the Day')).toBeInTheDocument();
+
+    // Switch hero preview tab to Living Room Shelf
+    fireEvent.click(screen.getByRole('tab', {name: /Living Room Shelf/i}));
+    expect(screen.getByText('142 Owned Volumes')).toBeInTheDocument();
+
+    // 4-Card Feature Bento Grid
+    expect(screen.getByTestId('features-bento-section')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        name: /Quick search, barcode scan, or snap a whole shelf/i,
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', {name: /The Left Hand of Darkness/i}),
-    ).toBeInTheDocument();
-
-    // Comparison table
-    expect(
       screen.getByRole('heading', {
-        name: /Built for book lovers, not social feeds./i,
+        name: /Organize your rooms, share shelves, and auto-spruce covers/i,
       }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        name: /Track what you’re reading—even if it’s not on your shelf/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        name: /See your books as a 3D constellation, a world map, or a timeline/i,
+      }),
+    ).toBeInTheDocument();
+
+    // Comparison table is dropped
+    expect(
+      screen.queryByText(/Built for book lovers, not social feeds/i),
+    ).not.toBeInTheDocument();
   });
 });

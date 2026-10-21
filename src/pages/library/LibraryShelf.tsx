@@ -48,21 +48,31 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Precompute ordered bookIds array once per books change rather than inside every card click handler
+  // Precompute ordered bookIds array and book lookup map once per books change
   const bookIds = useMemo(() => books.map(b => b.id), [books]);
+  const booksById = useMemo(() => new Map(books.map(b => [b.id, b])), [books]);
   const isSelectMode = selectedBooks.size > 0;
 
   const handleNavigateBook = useCallback(
     (bookId: string) => {
       preloadRouteChunk('bookDetails');
-      void navigate(`/library/${libraryId}/book/${bookId}`, {
+      const targetBook = booksById.get(bookId);
+      const targetLibraryId = targetBook?.libraryId || libraryId;
+      void navigate(`/library/${targetLibraryId}/book/${bookId}`, {
         state: {
           from: location.pathname + location.search,
           bookList: bookIds,
         },
       });
     },
-    [navigate, libraryId, location.pathname, location.search, bookIds],
+    [
+      navigate,
+      booksById,
+      libraryId,
+      location.pathname,
+      location.search,
+      bookIds,
+    ],
   );
 
   const allBooksSelected =
@@ -109,7 +119,10 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
           <BookTitleCell
             title={book.title}
             coverUrl={book.coverUrl}
-            userStatus={user ? book.userStatuses?.[user.uid] : undefined}
+            userStatus={
+              book.readingStatus ||
+              (user ? book.userStatuses?.[user.uid] : undefined)
+            }
             isSelected={selectedBooks.has(book.id)}
             showCheckbox={Boolean(canEdit && user)}
             onToggleSelect={e => toggleBookSelection(e, book.id)}

@@ -8,6 +8,30 @@ import {BrowserRouter} from 'react-router-dom';
 
 const mockExtractBooksFromImage = vi.fn();
 const mockBatchUpsertMutate = vi.fn().mockResolvedValue({success: true});
+const mockSearchUnifiedQuery = vi.fn().mockResolvedValue({
+  libraryMatches: [
+    {
+      bookId: 'existing-lib-book-1',
+      libraryId: 'lib123',
+      libraryName: 'Living Room Shelf',
+      isVirtual: false,
+      ownershipStatus: 'owned',
+      title: 'The Left Hand of Darkness',
+      author: 'Ursula K. Le Guin',
+      readingStatus: 'unset',
+    },
+  ],
+  externalMatches: [
+    {
+      title: 'Piranesi',
+      author: 'Susanna Clarke',
+      isbn: '9781635575637',
+    },
+  ],
+});
+const mockTrackBookMutate = vi.fn().mockResolvedValue({success: true});
+
+let mockRouteParams: {id?: string} = {id: 'lib123'};
 
 vi.mock('../lib/trpc', () => ({
   trpc: {
@@ -19,6 +43,9 @@ vi.mock('../lib/trpc', () => ({
         list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
         get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
       },
+      readingTracker: {
+        getShelf: {invalidate: vi.fn()},
+      },
     }),
     book: {
       list: {
@@ -26,6 +53,23 @@ vi.mock('../lib/trpc', () => ({
           data: {books: []},
           isLoading: false,
           isFetching: false,
+        })),
+      },
+    },
+    readingTracker: {
+      getShelf: {
+        useQuery: vi.fn(() => ({
+          data: {
+            items: [],
+            counts: {
+              all: 0,
+              want_to_read: 0,
+              reading: 0,
+              finished: 0,
+              abandoned: 0,
+            },
+          },
+          isLoading: false,
         })),
       },
     },
@@ -46,6 +90,14 @@ vi.mock('../lib/trpc', () => ({
         mutate: (...args: unknown[]) => mockBatchUpsertMutate(...args),
       },
     },
+    readingTracker: {
+      searchUnified: {
+        query: (...args: unknown[]) => mockSearchUnifiedQuery(...args),
+      },
+      trackBook: {
+        mutate: (...args: unknown[]) => mockTrackBookMutate(...args),
+      },
+    },
     metadata: {
       enrichCreate: {
         mutate: vi.fn(() => Promise.resolve({status: 'success', results: []})),
@@ -62,7 +114,7 @@ vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
     ...(actual as Record<string, unknown>),
-    useParams: () => ({id: 'lib123'}),
+    useParams: () => mockRouteParams,
     useNavigate: () => vi.fn(),
   };
 });
@@ -96,6 +148,7 @@ vi.mock('../lib/storage', () => ({
 describe('AddBookView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRouteParams = {id: 'lib123'};
     (
       useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
     ).mockReturnValue({
@@ -120,7 +173,7 @@ describe('AddBookView', () => {
     });
   });
 
-  it('can add multiple books sequentially from the camera', async () => {
+  it('can add multiple books sequentially from the camera in Library Mode (marked as owned)', async () => {
     mockExtractBooksFromImage.mockResolvedValueOnce([
       {title: 'Book One', author: 'Author One'},
     ]);
@@ -133,6 +186,10 @@ describe('AddBookView', () => {
           <AddBookView />
         </BrowserRouter>
       </QueryClientProvider>,
+    );
+
+    expect(screen.getByTestId('add-book-context-badge')).toHaveTextContent(
+      'Owned · Library Collection',
     );
 
     // Switch to camera tab
@@ -183,6 +240,20 @@ describe('AddBookView', () => {
     await waitFor(() => {
       expect(mockBatchUpsertMutate).toHaveBeenCalledTimes(1);
     });
+    expect(mockBatchUpsertMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        libraryId: 'lib123',
+        operations: [
+          expect.objectContaining({
+            type: 'create',
+            data: expect.objectContaining({
+              title: 'Book One',
+              ownershipStatus: 'owned',
+            }),
+          }),
+        ],
+      }),
+    );
 
     await waitFor(() => {
       expect(screen.queryByText('Found 1 Books')).not.toBeInTheDocument();
@@ -216,6 +287,94 @@ describe('AddBookView', () => {
 
     await waitFor(() => {
       expect(mockBatchUpsertMutate).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('defaults to Scan ISBN on the Advanced page, hides Capture Shelf, and saves external books as unowned in Reading Mode (/reading/add)', async () => {
+    mockRouteParams = {};
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AddBookView />
+        </BrowserRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(
+      screen.getByRole('heading', {name: 'Track a Book'}),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('add-book-context-badge')).toHaveTextContent(
+      'Un-owned · Personal Reading Shelf',
+    );
+
+    // Capture Shelf is hidden in Reading Mode
+    fireEvent.click(screen.getByTestId('method-selector-trigger'));
+    expect(
+      screen.queryByTestId('method-option-camera'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('method-option-search')).toBeInTheDocument();
+    expect(screen.getByTestId('method-option-scan')).toBeInTheDocument();
+    expect(screen.getByTestId('method-option-csv')).toBeInTheDocument();
+    expect(screen.getByTestId('method-option-manual')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('method-option-search'));
+
+    // Switch target status to "Currently Reading"
+    fireEvent.click(screen.getByRole('radio', {name: 'Currently Reading'}));
+
+    // Perform unified search
+    const searchInput = screen.getByPlaceholderText(
+      /Search by title, author, or ISBN/i,
+    );
+    fireEvent.change(searchInput, {target: {value: 'Piranesi'}});
+    fireEvent.submit(searchInput.closest('form')!);
+
+    await waitFor(() => {
+      expect(mockSearchUnifiedQuery).toHaveBeenCalledWith({query: 'Piranesi'});
+    });
+
+    // Shows both accessible library match and external catalog match
+    expect(
+      await screen.findByText('The Left Hand Of Darkness'),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('Piranesi')).toBeInTheDocument();
+
+    // Clicking Track on existing library match tracks it in place
+    fireEvent.click(
+      screen.getByRole('button', {name: /Track as Currently Reading/i}),
+    );
+    await waitFor(() => {
+      expect(mockTrackBookMutate).toHaveBeenCalledWith({
+        source: 'library',
+        libraryId: 'lib123',
+        bookId: 'existing-lib-book-1',
+        status: 'reading',
+      });
+    });
+
+    // Clicking Add on external match saves as unowned in virtual_user1 with status 'reading'
+    const addButtons = screen.getAllByRole('button', {
+      name: /Add to Currently Reading/i,
+    });
+    fireEvent.click(addButtons[0]);
+
+    await waitFor(() => {
+      expect(mockBatchUpsertMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          libraryId: 'virtual_user1',
+          operations: [
+            expect.objectContaining({
+              type: 'create',
+              data: expect.objectContaining({
+                title: 'Piranesi',
+                ownershipStatus: 'unowned',
+                status: 'reading',
+              }),
+            }),
+          ],
+        }),
+      );
     });
   });
 });

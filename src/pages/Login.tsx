@@ -2,24 +2,12 @@ import React from 'react';
 import {useAuth} from '../stores/authStore';
 import {Navigate} from 'react-router-dom';
 import {motion} from 'motion/react';
-import {
-  ArrowRight,
-  Sparkles,
-  Database,
-  BookOpen,
-  ScanBarcode,
-  ShieldCheck,
-  CheckCircle2,
-} from 'lucide-react';
+import {ArrowRight, BookOpen, Library, Camera, Compass} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {BookLoader} from '../components/book/BookLoader';
 
-// Subcomponents
 import {HeroShowcaseCard} from './marketing/HeroShowcaseCard';
-import {IngestionRibbon} from './marketing/IngestionRibbon';
 import {DimensionsBento} from './marketing/DimensionsBento';
-import {CuratorSpotlightSection} from './marketing/CuratorSpotlightSection';
-import {ComparisonTable} from './marketing/ComparisonTable';
 
 export default function Login() {
   const {user, isAuthReady, signIn} = useAuth();
@@ -32,7 +20,7 @@ export default function Login() {
           className="mb-4 animate-in fade-in zoom-in-95 duration-500"
         />
         <span className="metadata-eyebrow text-on-surface-variant animate-pulse">
-          Consulting Archives...
+          Opening your shelves...
         </span>
       </div>
     );
@@ -43,197 +31,127 @@ export default function Login() {
   }
 
   return (
-    <div className="bg-background text-on-background antialiased selection:bg-primary/20 selection:text-primary min-h-screen flex flex-col overflow-x-hidden">
-      {/* Navigation */}
-      <nav className="bg-surface/90 backdrop-blur-md text-on-surface w-full top-0 sticky border-b border-outline-variant/30 z-50 flex justify-between items-center px-6 sm:px-12 py-4 transition-all">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-surface-container border border-outline-variant/50 flex items-center justify-center text-primary">
-            <BookOpen className="w-5 h-5" />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-sans text-2xl font-extrabold tracking-tight text-primary leading-none">
+    <div className="bg-background text-on-background font-body-md text-body-md antialiased selection:bg-primary/20 selection:text-primary min-h-screen flex flex-col overflow-x-hidden">
+      {/* Top Header — Matches signed-in AppLayout */}
+      <header className="sticky top-0 w-full z-30 bg-background/92 backdrop-blur-xl border-b border-outline-variant/60 transition-all">
+        <div className="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8 w-full max-w-[1280px] mx-auto gap-6">
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="font-brand italic text-2xl sm:text-[28px] font-bold tracking-tight text-primary leading-none select-none inline-flex items-center">
               book(ish)
             </span>
-            <span className="font-label-caps-xs text-[9px] text-on-surface-variant/70 uppercase tracking-widest font-semibold mt-0.5">
-              Physical Vault Archive
+            <span
+              className="hidden sm:inline-block h-4 w-px bg-outline-variant/70 shrink-0 self-center"
+              aria-hidden="true"
+            />
+            <span className="hidden sm:inline-flex items-center font-sans font-semibold text-[11px] tracking-widest uppercase text-on-surface-variant select-none leading-none">
+              Shelves & Reading Life
             </span>
           </div>
-        </div>
 
-        {/* Center Desktop Links */}
-        <div className="hidden lg:flex items-center gap-8 text-xs font-sans font-medium text-on-surface-variant">
-          <a href="#ingestion" className="hover:text-primary transition-colors">
-            Ingestion Speed
-          </a>
-          <a
-            href="#dimensions"
-            className="hover:text-primary transition-colors"
-          >
-            The Dimensions
-          </a>
-          <a href="#curator" className="hover:text-primary transition-colors">
-            AI Curator
-          </a>
-          <a href="#compare" className="hover:text-primary transition-colors">
-            Why book(ish)
-          </a>
+          <div className="flex items-center shrink-0">
+            <Button
+              type="button"
+              onClick={signIn}
+              variant="editorial"
+              className="bg-primary text-on-primary hover:bg-primary/90 font-sans text-xs sm:text-sm font-semibold px-4 sm:px-5 rounded-lg shadow-elevation-1"
+            >
+              <span>Sign In</span>
+              <ArrowRight className="w-4 h-4 ml-1.5" />
+            </Button>
+          </div>
         </div>
-
-        {/* Action CTAs */}
-        <div className="flex items-center gap-3">
-          <Button
-            onClick={signIn}
-            variant="ghost"
-            className="hidden sm:flex text-on-surface-variant hover:text-primary hover:bg-surface-container font-label-caps-sm text-label-caps-sm font-bold uppercase tracking-wider"
-          >
-            Sign-In
-          </Button>
-          <Button
-            onClick={signIn}
-            className="bg-primary hover:bg-primary/90 text-on-primary font-label-caps-sm text-label-caps-sm font-bold uppercase tracking-wider px-5 sm:px-6 shadow-elevation-1 hover:shadow-elevation-2 transition-all rounded-lg"
-          >
-            Get Started
-            <ArrowRight className="w-4 h-4 ml-1.5" />
-          </Button>
-        </div>
-      </nav>
+      </header>
 
       <main className="flex-grow flex flex-col items-center w-full">
-        {/* HERO SECTION */}
-        <section className="w-full max-w-[1200px] px-6 sm:px-12 pt-16 sm:pt-24 pb-16 lg:pb-24 flex flex-col items-center text-center">
+        {/* SECTION 1: HERO + INTERACTIVE MINI BENTO PREVIEW */}
+        <section className="w-full max-w-[1200px] px-6 sm:px-12 pt-12 sm:pt-16 pb-14 sm:pb-20 flex flex-col items-center text-center">
           <motion.div
-            initial={{opacity: 0, y: 20}}
+            initial={{opacity: 0, y: 14}}
             animate={{opacity: 1, y: 0}}
-            transition={{duration: 0.6, ease: 'easeOut'}}
+            transition={{duration: 0.45, ease: 'easeOut'}}
             className="flex flex-col items-center w-full"
           >
-            {/* Archival Eyebrow */}
-            <div className="inline-flex items-center gap-2 bg-surface-container border border-outline-variant/60 px-4 py-1.5 rounded-full mb-8">
-              <Sparkles className="w-3.5 h-3.5 text-primary" />
-              <span className="font-label-caps-sm text-[11px] text-on-surface-variant font-bold uppercase tracking-widest">
-                Archival Intelligence for Physical Collectors
+            {/* Light, Informal Headline */}
+            <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold text-on-surface leading-[1.08] tracking-tight max-w-3xl">
+              Your physical bookshelves and your reading life,{' '}
+              <span className="font-brand italic font-bold text-primary">
+                finally in the same room.
               </span>
-            </div>
-
-            {/* Display Headline */}
-            <h1 className="font-sans text-4xl sm:text-6xl lg:text-7xl font-extrabold text-primary leading-[1.08] tracking-tight max-w-4xl">
-              The digital ledger your <br className="hidden sm:block" />
-              <span className="font-sans font-extrabold text-primary">
-                physical library deserves
-              </span>
-              .
             </h1>
 
-            {/* Subtitle */}
-            <p className="font-sans text-base sm:text-lg text-on-surface-variant max-w-2xl leading-relaxed mt-6">
-              Catalog hundreds of physical volumes in minutes. Rediscover your
-              shelves through 3D thematic constellations, narrative geography
-              maps, deep-time timelines, and an autonomous AI literary curator.
+            {/* Crisp Subtitle */}
+            <p className="font-sans text-base sm:text-lg text-on-surface-variant max-w-2xl leading-relaxed mt-4">
+              Catalog the books on your shelves at home and track everything
+              you’re reading, borrowing, or saving for later—with 1-click
+              search, shelf photo scanning, and visual maps of your books.
             </p>
 
-            {/* Hero CTAs */}
-            <div className="flex flex-col sm:flex-row items-center gap-4 mt-10 w-full sm:w-auto">
-              <Button
-                onClick={signIn}
-                className="bg-primary hover:bg-primary/90 text-on-primary h-14 px-8 sm:px-10 rounded-xl font-label-caps font-bold uppercase tracking-wider flex items-center justify-center gap-3 shadow-elevation-2 hover:-translate-y-0.5 transition-all w-full sm:w-auto"
-              >
-                <Database className="w-5 h-5 text-on-primary/80" />
-                Open Your Vault
-              </Button>
-            </div>
-
-            {/* Reassurance Badges */}
-            <div className="flex flex-wrap items-center justify-center gap-6 mt-6 text-xs text-on-surface-variant font-sans">
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                Continuous Spine & Barcode Ingest
+            {/* Quick Capability Strip */}
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mt-6 text-xs text-on-surface-variant font-sans font-medium">
+              <span className="inline-flex items-center gap-1.5">
+                <Library className="w-3.5 h-3.5 text-primary" />
+                Physical libraries + personal reading list
               </span>
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                1-Click Goodreads Migration
+              <span className="inline-flex items-center gap-1.5">
+                <Camera className="w-3.5 h-3.5 text-primary" />
+                Search, barcode scan & shelf camera
               </span>
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                Private & Free for Collectors
+              <span className="inline-flex items-center gap-1.5">
+                <Compass className="w-3.5 h-3.5 text-primary" />
+                3D stack, constellations, map & timeline
               </span>
             </div>
 
-            {/* Interactive Showcase Card */}
+            {/* Interactive Mini App Bento Showcase */}
             <HeroShowcaseCard />
           </motion.div>
         </section>
 
-        {/* INGESTION SPEED SECTION */}
-        <div id="ingestion" className="w-full">
-          <IngestionRibbon />
-        </div>
+        {/* SECTION 2: VISUAL 4-CARD FEATURE BENTO GRID */}
+        <DimensionsBento />
 
-        {/* DIMENSIONS BENTO SECTION */}
-        <div id="dimensions" className="w-full">
-          <DimensionsBento />
-        </div>
-
-        {/* AI CURATOR SECTION */}
-        <div id="curator" className="w-full">
-          <CuratorSpotlightSection />
-        </div>
-
-        {/* COMPARISON MATRIX */}
-        <div id="compare" className="w-full">
-          <ComparisonTable />
-        </div>
-
-        {/* FINAL CONVERSION SECTION */}
-        <section className="w-full py-28 sm:py-36 bg-surface-container-low/40 border-t border-outline-variant/30 relative overflow-hidden">
-          <div className="max-w-[800px] mx-auto px-6 text-center relative z-10 flex flex-col items-center">
-            <div className="w-16 h-16 bg-surface-container-lowest rounded-3xl flex items-center justify-center mb-8 border border-outline-variant/40 shadow-elevation-1 text-primary">
-              <ScanBarcode className="w-8 h-8" />
-            </div>
-
-            <h2 className="font-sans text-4xl sm:text-5xl font-extrabold text-primary max-w-2xl mx-auto leading-[1.15] tracking-tight">
-              Give your physical library the home it deserves.
-            </h2>
-
-            <p className="font-sans text-base sm:text-lg text-on-surface-variant max-w-md mx-auto leading-relaxed mt-6">
-              Connect securely with Google to scan your first shelf, run the
-              Spruce-Up engine, and explore your collection in 3D.
-            </p>
-
-            <div className="pt-10 flex flex-col items-center gap-4">
-              <Button
-                onClick={signIn}
-                className="bg-primary hover:bg-primary/90 text-on-primary font-label-caps font-bold uppercase tracking-wider h-14 px-10 rounded-xl shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 transition-all flex items-center gap-3"
-              >
-                Sign In & Start Scanning
-                <ArrowRight className="w-4 h-4 ml-1" />
-              </Button>
-              <span className="text-xs text-on-surface-variant/70 font-sans">
-                No credit card required • Instant setup • 100% Free
-              </span>
+        {/* SECTION 3: CLOSING SIGN-IN CTA */}
+        <section className="w-full py-16 sm:py-20 border-t border-outline-variant/40">
+          <div className="max-w-3xl mx-auto px-6 sm:px-12">
+            <div className="rounded-2xl bg-surface border border-outline-variant/60 p-8 sm:p-10 text-center shadow-elevation-2 flex flex-col items-center">
+              <div className="w-11 h-11 rounded-xl bg-surface-container border border-outline-variant/50 flex items-center justify-center text-primary mb-4">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-on-surface tracking-tight">
+                Start your first shelf in 30 seconds.
+              </h2>
+              <p className="font-sans text-sm sm:text-base text-on-surface-variant max-w-md mt-2 leading-relaxed">
+                Sign in with Google to track what you’re reading right now,
+                search for a book, or snap a photo of a bookshelf.
+              </p>
+              <div className="mt-6">
+                <Button
+                  type="button"
+                  onClick={signIn}
+                  variant="editorial"
+                  size="lg"
+                  className="bg-primary text-on-primary hover:bg-primary/90 h-12 px-7 rounded-xl font-sans text-sm font-semibold flex items-center gap-2 shadow-elevation-1"
+                >
+                  <span>Get Started</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </section>
       </main>
 
-      {/* FOOTER */}
-      <footer className="bg-surface-container py-12 border-t border-outline-variant/30">
-        <div className="max-w-[1200px] mx-auto px-6 sm:px-12 flex flex-col sm:flex-row items-center justify-between gap-6 text-center sm:text-left">
-          <div className="flex items-center gap-3 justify-center sm:justify-start">
-            <div className="w-7 h-7 rounded-lg bg-surface-container-high border border-outline-variant/50 flex items-center justify-center text-primary">
-              <BookOpen className="w-4 h-4" />
-            </div>
-            <span className="font-sans text-xl font-extrabold text-primary">
+      {/* Minimal Footer */}
+      <footer className="py-8 border-t border-outline-variant/40 bg-surface-container-low/50">
+        <div className="max-w-[1280px] mx-auto px-6 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-sans text-on-surface-variant">
+          <div className="flex items-center gap-2.5">
+            <span className="font-brand italic text-lg font-bold text-primary leading-none">
               book(ish)
             </span>
-            <span className="font-label-caps-xs text-[10px] text-on-surface-variant/70 uppercase tracking-widest font-semibold ml-3 border-l border-outline-variant/40 pl-3">
-              Physical Library Architecture
-            </span>
+            <span className="text-outline-variant">·</span>
+            <span>For people who love their bookshelves</span>
           </div>
-
-          <div className="text-xs font-sans text-on-surface-variant/80 flex items-center gap-6">
-            <span>© {new Date().getFullYear()} book(ish)</span>
-            <span>Crafted for Physical Book Collectors</span>
-          </div>
+          <span>© {new Date().getFullYear()} book(ish)</span>
         </div>
       </footer>
     </div>

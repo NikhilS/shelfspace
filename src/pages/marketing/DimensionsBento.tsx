@@ -1,365 +1,247 @@
-import React, {useState} from 'react';
+import React from 'react';
 import {
-  Network,
+  Search,
+  ScanBarcode,
+  Camera,
+  FileSpreadsheet,
+  Library,
   Sparkles,
-  MapPin,
+  Compass,
+  Globe,
   Clock,
-  CheckCircle2,
-  AlertTriangle,
-  ArrowRight,
-  Globe2,
+  Check,
 } from 'lucide-react';
-import {Badge} from '@/components/ui/badge';
 
 export function DimensionsBento() {
-  const [spruceMode, setSpruceMode] = useState<'before' | 'after'>('after');
-
   return (
-    <section className="w-full py-24 sm:py-32 bg-background">
+    <section
+      className="w-full py-16 sm:py-20 border-t border-outline-variant/40 bg-surface-container-low/40"
+      data-testid="features-bento-section"
+    >
       <div className="max-w-[1200px] mx-auto px-6 sm:px-12">
-        {/* Section Header */}
-        <div className="text-center max-w-2xl mx-auto mb-16 sm:mb-20">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container border border-outline-variant/40 mb-4">
-            <Sparkles className="w-3.5 h-3.5 text-primary" />
-            <span className="font-label-caps-sm text-[11px] text-on-surface-variant font-bold uppercase tracking-widest">
-              Four Spatial Dimensions
-            </span>
-          </div>
-          <h2 className="font-sans text-3xl sm:text-4xl lg:text-5xl font-extrabold text-primary tracking-tight mb-4">
-            Not just shelves. Dimensions.
+        {/* Crisp Section Header */}
+        <div className="max-w-2xl mb-10 sm:mb-12">
+          <span className="text-xs font-sans font-bold uppercase tracking-widest text-tertiary">
+            What’s Inside
+          </span>
+          <h2 className="font-serif text-3xl sm:text-4xl font-bold text-on-surface tracking-tight mt-1.5 leading-tight">
+            Built for your real shelves and everything you read.
           </h2>
-          <p className="font-sans text-base sm:text-lg text-on-surface-variant leading-relaxed">
-            Alphabetical ordering flattens your collection. book(ish) constructs
-            a multi-dimensional relational model that reveals how your library
-            truly connects.
+          <p className="font-sans text-sm sm:text-base text-on-surface-variant mt-2.5 leading-relaxed">
+            Whether you’re cataloging a wall of books at home or tracking a
+            borrowed novel from a friend, everything stays fast, visual, and
+            organized.
           </p>
         </div>
 
-        {/* Bento Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 auto-rows-fr">
-          {/* Card 1: 3D Constellations (8-cols) */}
-          <div className="md:col-span-8 rounded-3xl bg-[#031527] text-white p-8 sm:p-10 relative overflow-hidden border border-white/10 shadow-elevation-2 flex flex-col justify-between group">
-            {/* Visual Constellation Canvas Mock */}
-            <div className="absolute inset-0 pointer-events-none opacity-40 group-hover:opacity-60 transition-opacity duration-700">
-              <svg
-                className="w-full h-full"
-                viewBox="0 0 600 400"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Filaments */}
-                <line
-                  x1="120"
-                  y1="140"
-                  x2="260"
-                  y2="100"
-                  stroke="#8397b8"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 4"
-                />
-                <line
-                  x1="260"
-                  y1="100"
-                  x2="400"
-                  y2="160"
-                  stroke="#d4e3ff"
-                  strokeWidth="2"
-                />
-                <line
-                  x1="260"
-                  y1="100"
-                  x2="290"
-                  y2="280"
-                  stroke="#8397b8"
-                  strokeWidth="1"
-                />
-                <line
-                  x1="400"
-                  y1="160"
-                  x2="480"
-                  y2="240"
-                  stroke="#fcc79c"
-                  strokeWidth="1.5"
-                />
-                <line
-                  x1="290"
-                  y1="280"
-                  x2="480"
-                  y2="240"
-                  stroke="#8397b8"
-                  strokeWidth="1"
-                  strokeDasharray="3 3"
-                />
-
-                {/* Nodes */}
-                <circle cx="120" cy="140" r="8" fill="#8397b8" />
-                <circle cx="260" cy="100" r="14" fill="#d4e3ff" />
-                <circle cx="400" cy="160" r="18" fill="#fcc79c" />
-                <circle cx="290" cy="280" r="10" fill="#adcebd" />
-                <circle cx="480" cy="240" r="12" fill="#d4e3ff" />
-
-                {/* Micro Node Labels */}
-                <text
-                  x="260"
-                  y="75"
-                  fill="#ffffff"
-                  fontSize="11"
-                  textAnchor="middle"
-                  fontFamily="sans-serif"
-                >
-                  Dune (Anchor)
-                </text>
-                <text
-                  x="400"
-                  y="200"
-                  fill="#fcc79c"
-                  fontSize="11"
-                  textAnchor="middle"
-                  fontFamily="sans-serif"
-                >
-                  Foundation
-                </text>
-                <text
-                  x="120"
-                  y="170"
-                  fill="#8397b8"
-                  fontSize="10"
-                  textAnchor="middle"
-                  fontFamily="sans-serif"
-                >
-                  Solaris
-                </text>
-                <text
-                  x="480"
-                  y="270"
-                  fill="#d4e3ff"
-                  fontSize="10"
-                  textAnchor="middle"
-                  fontFamily="sans-serif"
-                >
-                  Hyperion
-                </text>
-              </svg>
-            </div>
-
-            <div className="relative z-10">
-              <div className="flex items-center justify-between gap-3 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white">
-                  <Network className="w-6 h-6" />
-                </div>
-                <Badge
-                  variant="outline"
-                  className="bg-white/5 text-white/90 border-white/20 font-label-caps-xs uppercase tracking-wider text-[10px]"
-                >
-                  Force-Directed 3D Graph
-                </Badge>
+        {/* 4-Card Visual Bento Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+          {/* Card 1: Unified Quick Search + Advanced Adding (6 cols) */}
+          <div className="md:col-span-6 rounded-2xl bg-surface border border-outline-variant/60 p-6 sm:p-7 shadow-elevation-1 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <span className="text-[11px] font-sans font-bold uppercase tracking-wider text-on-surface-variant">
+                  1 · Add Books Your Way
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-surface-container text-[11px] font-sans font-semibold text-primary">
+                  1-Click or Bulk
+                </span>
               </div>
-
-              <h3 className="font-sans text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-3">
-                Semantic Constellations
+              <h3 className="font-serif text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
+                Quick search, barcode scan, or snap a whole shelf.
               </h3>
-              <p className="font-sans text-sm sm:text-base text-white/80 max-w-xl leading-relaxed">
-                Break out of rigid alphabetical shelves. Using vector
-                embeddings, book(ish) plots your books in an interactive 3D
-                universe where proximity reflects thematic kinships, shared
-                philosophies, and narrative tone.
+              <p className="font-sans text-sm text-on-surface-variant mt-2 leading-relaxed">
+                Start with a fast 1-click search dialog anywhere in the app, or
+                jump into advanced tools to scan ISBN barcodes, photograph a
+                bookshelf to extract every spine, or import a Goodreads CSV.
               </p>
             </div>
 
-            <div className="relative z-10 pt-8 mt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs text-white/70">
-              <div className="flex items-center gap-4">
-                <span>• Live Force Physics</span>
-                <span>• Genre Orbit Clustered</span>
-                <span>• Cross-Era Bridges</span>
+            {/* Visual Miniature: Search + 4 Ingestion Modes */}
+            <div className="mt-6 space-y-2.5 pt-4 border-t border-outline-variant/40">
+              <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-container-low border border-outline-variant/50 text-xs font-sans">
+                <span className="flex items-center gap-2 text-on-surface font-medium">
+                  <Search className="w-3.5 h-3.5 text-primary" />
+                  “Piranesi” — Susanna Clarke
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-primary text-on-primary text-[11px] font-semibold">
+                  + Add
+                </span>
               </div>
-              <span className="text-primary font-semibold flex items-center gap-1">
-                Explore The Galaxy <ArrowRight className="w-3 h-3" />
-              </span>
+              <div className="grid grid-cols-3 gap-2 text-xs font-sans">
+                <div className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/40 flex items-center gap-2 text-on-surface font-medium">
+                  <Camera className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span className="truncate">Shelf Photo</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/40 flex items-center gap-2 text-on-surface font-medium">
+                  <ScanBarcode className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span className="truncate">ISBN Scan</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/40 flex items-center gap-2 text-on-surface font-medium">
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span className="truncate">CSV Import</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Card 2: The Self-Healing Spruce-Up Engine (4-cols) */}
-          <div className="md:col-span-4 rounded-3xl bg-surface-container-lowest border border-outline-variant/40 p-8 flex flex-col justify-between shadow-elevation-1 hover:shadow-elevation-2 transition-all">
+          {/* Card 2: Physical Libraries & Auto Spruce-Up (6 cols) */}
+          <div className="md:col-span-6 rounded-2xl bg-surface border border-outline-variant/60 p-6 sm:p-7 shadow-elevation-1 flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between gap-2 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-surface-container border border-outline-variant/40 flex items-center justify-center text-primary">
-                  <Sparkles className="w-6 h-6" />
-                </div>
-                {/* Before / After Switcher */}
-                <div className="flex items-center p-0.5 rounded-lg bg-surface-container border border-outline-variant/30 text-[11px] font-sans">
-                  <button
-                    type="button"
-                    onClick={() => setSpruceMode('before')}
-                    className={`px-2.5 py-1 rounded-md transition-all ${
-                      spruceMode === 'before'
-                        ? 'bg-surface text-primary font-bold shadow-xs'
-                        : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
-                  >
-                    Raw Ingest
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSpruceMode('after')}
-                    className={`px-2.5 py-1 rounded-md transition-all ${
-                      spruceMode === 'after'
-                        ? 'bg-primary text-on-primary font-bold shadow-xs'
-                        : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
-                  >
-                    Healed
-                  </button>
-                </div>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <span className="text-[11px] font-sans font-bold uppercase tracking-wider text-on-surface-variant">
+                  2 · Physical Shelves & Spruce-Up
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-surface-container text-[11px] font-sans font-semibold text-primary">
+                  Multi-Library
+                </span>
               </div>
-
-              <h3 className="font-sans text-2xl font-bold text-primary tracking-tight mb-2">
-                Self-Healing Spruce-Up
+              <h3 className="font-serif text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
+                Organize your rooms, share shelves, and auto-spruce covers.
               </h3>
-              <p className="font-sans text-xs sm:text-sm text-on-surface-variant leading-relaxed mb-6">
-                An autonomous background engine that heals damaged covers,
-                expands missing blurbs, and cleans legacy catalog tags into a
-                unified literary taxonomy.
+              <p className="font-sans text-sm text-on-surface-variant mt-2 leading-relaxed">
+                Keep separate libraries for your living room, office, or family
+                cabin. The Spruce-Up engine automatically fills in missing
+                high-res covers, genres, story settings, and publication years.
               </p>
-
-              {/* State Comparison Mock */}
-              {spruceMode === 'before' ? (
-                <div className="p-4 rounded-2xl bg-surface-container-low border border-amber-300/40 space-y-2.5 animate-in fade-in duration-200">
-                  <div className="flex items-center gap-2 text-xs font-sans text-amber-800">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>Generic low-res cover</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-sans text-amber-800">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>Genre: "General Fiction / Misc"</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-sans text-amber-800">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>Missing setting & timeline epoch</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 rounded-2xl bg-surface-container-low border border-emerald-300/40 space-y-2.5 animate-in fade-in duration-200">
-                  <div className="flex items-center gap-2 text-xs font-sans text-emerald-800 font-medium">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Original first-edition cover restored</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-sans text-emerald-800 font-medium">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Standardized canonical taxonomy</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-sans text-emerald-800 font-medium">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Geocoded: Venice, Italy (13th Century)</span>
-                  </div>
-                </div>
-              )}
             </div>
 
-            <div className="pt-6 border-t border-outline-variant/20 mt-6 flex items-center justify-between text-xs text-on-surface-variant">
-              <span>Autonomous Gemini Engine</span>
-              <span className="font-semibold text-primary">
-                Zero Manual Cleanup
-              </span>
+            {/* Visual Miniature: Libraries + Spruce-Up Status */}
+            <div className="mt-6 space-y-2.5 pt-4 border-t border-outline-variant/40">
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/50">
+                  <div className="flex items-center justify-between text-xs font-sans font-bold text-on-surface">
+                    <span className="flex items-center gap-1.5">
+                      <Library className="w-3.5 h-3.5 text-primary" />
+                      Living Room
+                    </span>
+                    <span className="font-mono text-on-surface-variant">
+                      142
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-sans text-on-surface-variant mt-1">
+                    Shared with household
+                  </div>
+                </div>
+                <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/50">
+                  <div className="flex items-center justify-between text-xs font-sans font-bold text-on-surface">
+                    <span className="flex items-center gap-1.5">
+                      <Library className="w-3.5 h-3.5 text-primary" />
+                      Study Shelf
+                    </span>
+                    <span className="font-mono text-on-surface-variant">
+                      68
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-sans text-on-surface-variant mt-1">
+                    Private collection
+                  </div>
+                </div>
+              </div>
+              <div className="px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/50 flex items-center justify-between text-xs font-sans">
+                <span className="flex items-center gap-1.5 text-on-surface font-medium">
+                  <Sparkles className="w-3.5 h-3.5 text-tertiary" />
+                  Auto-enriched covers, settings & themes
+                </span>
+                <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-semibold">
+                  <Check className="w-3.5 h-3.5" /> Ready
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Card 3: Narrative World Map (6-cols) */}
-          <div className="md:col-span-6 rounded-3xl bg-surface-container-lowest border border-outline-variant/40 p-8 sm:p-10 flex flex-col justify-between shadow-elevation-1 hover:shadow-elevation-2 transition-all">
+          {/* Card 3: Personal Reading Room (6 cols) */}
+          <div className="md:col-span-6 rounded-2xl bg-surface border border-outline-variant/60 p-6 sm:p-7 shadow-elevation-1 flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between gap-2 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                  <Globe2 className="w-6 h-6" />
-                </div>
-                <Badge
-                  variant="outline"
-                  className="bg-primary/5 text-primary border-primary/20 font-label-caps-xs uppercase tracking-wider text-[10px]"
-                >
-                  Geographic Intelligence
-                </Badge>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <span className="text-[11px] font-sans font-bold uppercase tracking-wider text-on-surface-variant">
+                  3 · Personal Reading Room
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-surface-container text-[11px] font-sans font-semibold text-primary">
+                  Owned + Un-owned
+                </span>
               </div>
-
-              <h3 className="font-sans text-2xl font-bold text-primary tracking-tight mb-2">
-                Narrative Geography
+              <h3 className="font-serif text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
+                Track what you’re reading—even if it’s not on your shelf.
               </h3>
-              <p className="font-sans text-sm text-on-surface-variant leading-relaxed mb-6">
-                Pinpoint where every story takes place. An interactive global
-                atlas plots the physical settings of your books—from Victorian
-                London and feudal Kyoto to Alexandria and Buenos Aires.
+              <p className="font-sans text-sm text-on-surface-variant mt-2 leading-relaxed">
+                Log books you’re reading, want to read, or finished across both
+                your physical shelves and borrowed or audio books. Watch your 3D
+                Read Stack grow and get a daily Pick of the Day.
               </p>
-
-              {/* World Map Pin Mock */}
-              <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/30 grid grid-cols-2 gap-3">
-                <div className="flex items-center gap-2 text-xs font-sans text-on-surface">
-                  <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <span className="font-medium">London, UK (34 books)</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs font-sans text-on-surface">
-                  <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <span className="font-medium">Kyoto, Japan (18 books)</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs font-sans text-on-surface">
-                  <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <span className="font-medium">Buenos Aires (9 books)</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs font-sans text-on-surface">
-                  <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <span className="font-medium">Cairo, Egypt (12 books)</span>
-                </div>
-              </div>
             </div>
 
-            <div className="pt-6 border-t border-outline-variant/20 mt-6 flex items-center justify-between text-xs text-on-surface-variant">
-              <span>Spot global reading blind spots</span>
-              <span className="font-semibold text-primary">
-                Interactive Map View
-              </span>
+            {/* Visual Miniature: Reading Statuses */}
+            <div className="mt-6 pt-4 border-t border-outline-variant/40 flex flex-wrap items-center justify-between gap-2">
+              {[
+                {label: 'Currently Reading', count: 2, active: true},
+                {label: 'Want to Read', count: 18, active: false},
+                {label: 'Read', count: 47, active: false},
+              ].map(shelf => (
+                <div
+                  key={shelf.label}
+                  className={`flex-1 min-w-[110px] p-2.5 rounded-lg border text-xs font-sans ${
+                    shelf.active
+                      ? 'bg-primary text-on-primary border-primary font-semibold'
+                      : 'bg-surface-container-low text-on-surface border-outline-variant/50 font-medium'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="truncate">{shelf.label}</span>
+                    <span className="font-mono text-[11px] opacity-85 ml-1">
+                      {shelf.count}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Card 4: Chronological History Timeline (6-cols) */}
-          <div className="md:col-span-6 rounded-3xl bg-surface-container-lowest border border-outline-variant/40 p-8 sm:p-10 flex flex-col justify-between shadow-elevation-1 hover:shadow-elevation-2 transition-all">
+          {/* Card 4: Constellations, World Map & Timeline (6 cols) */}
+          <div className="md:col-span-6 rounded-2xl bg-surface border border-outline-variant/60 p-6 sm:p-7 shadow-elevation-1 flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between gap-2 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-surface-container border border-outline-variant/40 flex items-center justify-center text-primary">
-                  <Clock className="w-6 h-6" />
-                </div>
-                <Badge
-                  variant="outline"
-                  className="bg-surface-container text-on-surface-variant border-outline-variant/30 font-label-caps-xs uppercase tracking-wider text-[10px]"
-                >
-                  Epoch Traversal
-                </Badge>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <span className="text-[11px] font-sans font-bold uppercase tracking-wider text-on-surface-variant">
+                  4 · Visual Perspectives
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-surface-container text-[11px] font-sans font-semibold text-primary">
+                  3 Views
+                </span>
               </div>
-
-              <h3 className="font-sans text-2xl font-bold text-primary tracking-tight mb-2">
-                Deep-Time Timeline
+              <h3 className="font-serif text-xl sm:text-2xl font-bold text-on-surface tracking-tight">
+                See your books as a 3D constellation, a world map, or a
+                timeline.
               </h3>
-              <p className="font-sans text-sm text-on-surface-variant leading-relaxed mb-6">
-                Publication dates only tell part of the story. book(ish) parses
-                the narrative setting so you can walk through centuries of human
-                history and future speculation.
+              <p className="font-sans text-sm text-on-surface-variant mt-2 leading-relaxed">
+                Zoom through a 3D galaxy of shared themes, see pins for every
+                city and region your books take place in, or scrub through
+                centuries of story eras and publication dates.
               </p>
-
-              {/* Timeline Track Mock */}
-              <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/30 space-y-3">
-                <div className="w-full h-1.5 bg-outline-variant/40 relative rounded-full my-4">
-                  <div className="absolute top-1/2 left-[10%] w-3.5 h-3.5 bg-primary/70 rounded-full transform -translate-y-1/2 border-2 border-surface" />
-                  <div className="absolute top-1/2 left-[45%] w-3.5 h-3.5 bg-primary rounded-full transform -translate-y-1/2 border-2 border-surface" />
-                  <div className="absolute top-1/2 left-[90%] w-3.5 h-3.5 bg-emerald-600 rounded-full transform -translate-y-1/2 border-2 border-surface" />
-                </div>
-                <div className="flex justify-between text-[11px] font-mono text-on-surface-variant/80">
-                  <span>800 BCE (Iliad)</span>
-                  <span>1920s (Gatsby)</span>
-                  <span>10,191 AG (Dune)</span>
-                </div>
-              </div>
             </div>
 
-            <div className="pt-6 border-t border-outline-variant/20 mt-6 flex items-center justify-between text-xs text-on-surface-variant">
-              <span>Narrative setting alignment</span>
-              <span className="font-semibold text-primary">
-                Temporal Synchrony
-              </span>
+            {/* Visual Miniature: 3 Perspectives Triptych */}
+            <div className="mt-6 pt-4 border-t border-outline-variant/40 grid grid-cols-3 gap-2.5 text-xs font-sans">
+              <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/50">
+                <Compass className="w-4 h-4 text-primary mb-1.5" />
+                <div className="font-bold text-on-surface">Constellations</div>
+                <div className="text-[11px] text-on-surface-variant mt-0.5">
+                  3D theme clusters
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/50">
+                <Globe className="w-4 h-4 text-primary mb-1.5" />
+                <div className="font-bold text-on-surface">World Map</div>
+                <div className="text-[11px] text-on-surface-variant mt-0.5">
+                  Story locations
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/50">
+                <Clock className="w-4 h-4 text-primary mb-1.5" />
+                <div className="font-bold text-on-surface">Timeline</div>
+                <div className="text-[11px] text-on-surface-variant mt-0.5">
+                  Eras & years
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 {
-  "summary":  "UX redesign plan for the Personal Reading Room landing page featuring a Currently Reading spotlight, an interactive 2D Canvas messy stack of the last 5 read books, an AI Pick of the Day with 1-click Want-to-Read, a generic reusable Genre Breakdown component, and a compact Want-to-Read strip with a View All modal.",
-  "updatedAt":  "2026-10-20T20:02:21.808439883Z",
+  "summary":  "Implementation plan for redesigning the unauthenticated Login & Marketing page into a tight, visual 3-section experience that matches the app's design system, reflects both physical shelves and personal reading tracking, removes the comparison table, adopts a warm informal tone, and fixes the primary button text contrast bug.",
+  "updatedAt":  "2026-10-21T02:27:42.821806698Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
