@@ -3,6 +3,7 @@ import {Library, Book} from '../types';
 import {toast} from 'sonner';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../lib/telemetry';
 import {trpc} from '../lib/trpc';
+import {markLibraryVisited} from '../components/layout/SuspenseFallbackRouter';
 
 export interface UseLibraryDataResult {
   library: Library | null;
@@ -119,6 +120,12 @@ export function useLibraryData(
   const library = useMemo(() => {
     return (libraryQuery.data as unknown as Library) ?? cachedLibrary ?? null;
   }, [libraryQuery.data, cachedLibrary]);
+
+  useEffect(() => {
+    if (library && libraryId) {
+      markLibraryVisited(libraryId);
+    }
+  }, [library, libraryId]);
 
   const books = useMemo(() => {
     if (!booksQuery.data) return [];

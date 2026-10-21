@@ -84,9 +84,18 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
         MAX_CONCURRENT_IMAGE_UPLOADS,
         async (book, idx) => {
           const bookId = generateBookId(idx);
-          let finalCoverUrl = book.coverUrl;
-          let finalCoverUrlRaw = (book as BookDetails & {coverUrlRaw?: string})
-            .coverUrlRaw;
+          let finalCoverUrl = book.coverUrl?.trim() || '';
+          let finalCoverUrlRaw =
+            (
+              book as BookDetails & {coverUrlRaw?: string}
+            ).coverUrlRaw?.trim() || undefined;
+
+          if (finalCoverUrl.startsWith('//')) {
+            finalCoverUrl = `https:${finalCoverUrl}`;
+          }
+          if (finalCoverUrlRaw?.startsWith('//')) {
+            finalCoverUrlRaw = `https:${finalCoverUrlRaw}`;
+          }
 
           if (finalCoverUrl && finalCoverUrl.startsWith('data:image/')) {
             try {
@@ -98,6 +107,9 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
               );
             } catch (e) {
               console.error('Failed to upload base64 cover image', e);
+              if (finalCoverUrl.length > 2048) {
+                finalCoverUrl = '';
+              }
             }
           }
 
@@ -111,22 +123,48 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
               );
             } catch (e) {
               console.error('Failed to upload raw base64 cover image', e);
+              if (finalCoverUrlRaw.length > 2048) {
+                finalCoverUrlRaw = undefined;
+              }
             }
           }
 
+          if (finalCoverUrl.length > 2048) {
+            finalCoverUrl = '';
+          }
+          if (finalCoverUrlRaw && finalCoverUrlRaw.length > 2048) {
+            finalCoverUrlRaw = undefined;
+          }
+
           const rawRecord: Record<string, unknown> = {
-            ...book,
-            ...(finalCoverUrl !== undefined ? {coverUrl: finalCoverUrl} : {}),
+            title: (book.title?.trim() || 'Unknown Title').slice(0, 500),
+            author: (book.author?.trim() || 'Unknown Author').slice(0, 500),
+            isbn: (book.isbn?.trim() || '').slice(0, 64),
+            coverUrl: finalCoverUrl,
             ...(finalCoverUrlRaw !== undefined
               ? {coverUrlRaw: finalCoverUrlRaw}
               : {}),
-            format: book.format || 'physical',
+            publishedDate: (book.publishedDate?.trim() || '').slice(0, 100),
+            primaryGenre: book.primaryGenre
+              ? book.primaryGenre.trim().slice(0, 200)
+              : undefined,
+            subgenres: Array.isArray(book.subgenres)
+              ? book.subgenres
+                  .map(s => String(s).trim().slice(0, 200))
+                  .filter(Boolean)
+                  .slice(0, 50)
+              : [],
+            isCustomPrimary: Boolean(book.isCustomPrimary),
+            series: book.series ? book.series.trim().slice(0, 300) : '',
+            synopsis: book.synopsis ? book.synopsis.slice(0, 50000) : '',
+            authorBio: book.authorBio ? book.authorBio.slice(0, 50000) : '',
+            format: book.format === 'digital' ? 'digital' : 'physical',
             ownershipStatus,
             ...(targetStatus !== 'unset' ? {status: targetStatus} : {}),
+            ...(book.fieldSources && Object.keys(book.fieldSources).length > 0
+              ? {fieldSources: book.fieldSources}
+              : {}),
           };
-          delete rawRecord.coverCandidates;
-          delete rawRecord.sources;
-          delete rawRecord.skippedProviders;
 
           const bookData = Object.fromEntries(
             Object.entries(rawRecord).filter(([, val]) => val !== undefined),

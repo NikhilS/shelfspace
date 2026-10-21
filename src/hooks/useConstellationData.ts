@@ -564,14 +564,33 @@ export function useConstellationData(libraryId: string | undefined) {
         // Persist computed clusterCoordinates and clusterNames in single-library mode so subsequent visits load in O(N)
         if (libraryId && !isReadingMode) {
           try {
-            await trpcVanilla.book.batchUpsert.mutate({
-              libraryId,
-              operations: newPlotData.map(p => ({
-                type: 'update',
+            const validOps = newPlotData
+              .filter(
+                p =>
+                  Boolean(p.book?.id) &&
+                  Number.isFinite(p.x) &&
+                  Number.isFinite(p.y),
+              )
+              .map(p => ({
+                type: 'update' as const,
                 bookId: p.book.id,
                 data: {
                   bookDetailsMetadata: {
-                    ...(p.book.bookDetailsMetadata || {}),
+                    ...(typeof p.book.bookDetailsMetadata?.hasSynopsis ===
+                    'boolean'
+                      ? {hasSynopsis: p.book.bookDetailsMetadata.hasSynopsis}
+                      : {}),
+                    ...(typeof p.book.bookDetailsMetadata?.hasAuthorBio ===
+                    'boolean'
+                      ? {hasAuthorBio: p.book.bookDetailsMetadata.hasAuthorBio}
+                      : {}),
+                    ...(typeof p.book.bookDetailsMetadata?.hasDescription ===
+                    'boolean'
+                      ? {
+                          hasDescription:
+                            p.book.bookDetailsMetadata.hasDescription,
+                        }
+                      : {}),
                     hasEmbedding: true,
                     hasClusterCoordinates: true,
                   },
@@ -581,11 +600,20 @@ export function useConstellationData(libraryId: string | undefined) {
                     x: p.x,
                     y: p.y,
                     clusterId: p.clusterId,
-                    clusterName: resolvedNames[p.clusterId] || undefined,
+                    clusterName: resolvedNames[p.clusterId]
+                      ? String(resolvedNames[p.clusterId]).slice(0, 200)
+                      : undefined,
                   },
                 },
-              })),
-            });
+              }));
+
+            const CHUNK_SIZE = 400;
+            for (let i = 0; i < validOps.length; i += CHUNK_SIZE) {
+              await trpcVanilla.book.batchUpsert.mutate({
+                libraryId,
+                operations: validOps.slice(i, i + CHUNK_SIZE),
+              });
+            }
           } catch (persistErr) {
             console.warn(
               'Could not persist constellation coordinates to server:',

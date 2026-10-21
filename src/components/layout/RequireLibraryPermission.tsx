@@ -4,7 +4,7 @@ import {useAuth} from '../../stores/authStore';
 import {useLibraryPermissions} from '../../hooks/useLibraryPermissions';
 import {AlertCircle} from 'lucide-react';
 import {Button} from '@/components/ui/button';
-import {LibraryMainSkeleton} from '../book/LibrarySkeletons';
+import {SuspenseFallbackRouter} from './SuspenseFallbackRouter';
 import {trpc} from '../../lib/trpc';
 import {preloadRouteByPathname} from '../../lib/routePreload';
 
@@ -53,7 +53,7 @@ export function RequireLibraryPermission({
     if (requires === 'viewer' && !isError) {
       return <>{children}</>;
     }
-    return <LibraryMainSkeleton />;
+    return <SuspenseFallbackRouter />;
   }
 
   let hasAccess = false;

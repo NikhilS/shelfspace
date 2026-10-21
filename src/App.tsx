@@ -21,11 +21,10 @@ import AppLayout from './components/layout/AppLayout';
 import ScrollToTop from './components/layout/ScrollToTop';
 import {RequireLibraryPermission} from './components/layout/RequireLibraryPermission';
 import {BookLoader} from './components/book/BookLoader';
-import {PageLoading} from './components/layout/PageLoading';
 import {
-  LibraryMainSkeleton,
-  DashboardMainSkeleton,
-} from './components/book/LibrarySkeletons';
+  SuspenseFallbackRouter,
+  useTrackNavigationWarmth,
+} from './components/layout/SuspenseFallbackRouter';
 import {useDebug} from './stores/debugStore';
 import {createLogger} from './lib/telemetry';
 import {Button} from './components/ui/button';
@@ -69,31 +68,19 @@ function LoadingScreen() {
   );
 }
 
+function NavigationWarmthCommit() {
+  useTrackNavigationWarmth();
+  return null;
+}
+
 function PageWrapper({children}: {children?: React.ReactNode}) {
   const location = useLocation();
-  const isLibraryRoute = location.pathname.startsWith('/library/');
-  const isDashboardRoute = location.pathname === '/';
 
   return (
     <div className="w-full flex-1">
       <ErrorBoundary key={location.pathname}>
-        <Suspense
-          key={location.pathname}
-          fallback={
-            isLibraryRoute ? (
-              <LibraryMainSkeleton />
-            ) : isDashboardRoute ? (
-              <DashboardMainSkeleton />
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh]">
-                <PageLoading
-                  title="Loading module..."
-                  subtitle="Downloading application assets and views."
-                />
-              </div>
-            )
-          }
-        >
+        <Suspense key={location.pathname} fallback={<SuspenseFallbackRouter />}>
+          <NavigationWarmthCommit />
           {children || <Outlet />}
         </Suspense>
       </ErrorBoundary>

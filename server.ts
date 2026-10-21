@@ -234,8 +234,9 @@ async function startServer() {
       onError({error, path: procPath, type, ctx}) {
         const userLabel =
           ctx?.user?.email || ctx?.user?.uid || 'unauthenticated';
+        const singleLineMsg = (error.message || '').replace(/\s+/g, ' ').trim();
         console.error(
-          `[tRPC Error] ${type} ${procPath || '<unknown>'} -> ${error.code} (user=${userLabel}): ${error.message}`,
+          `[tRPC Error] ${type} ${procPath || '<unknown>'} -> ${error.code} (user=${userLabel}): ${singleLineMsg}`,
         );
         if (error.code === 'INTERNAL_SERVER_ERROR' && error.stack) {
           console.error(error.stack);
@@ -340,9 +341,9 @@ async function startServer() {
     });
   });
 
-  // Vite middleware for development
+  // Vite middleware for development (non-blocking startup so port 3000 binds immediately)
   if (!isProd) {
-    const vite = await createViteServer({
+    const vitePromise = createViteServer({
       server: {
         middlewareMode: true,
         hmr: false,
@@ -351,7 +352,15 @@ async function startServer() {
       appType: 'custom',
       root: process.cwd(),
     });
-    app.use(vite.middlewares);
+
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (e) {
+        next(e);
+      }
+    });
 
     // If a browser with a stale cached index.html requests a missing JS bundle (e.g. /assets/index-OLDHASH.js),
     // never return a 404 or index.html (text/html) response (which triggers a strict MIME type error on <script type="module">).
@@ -404,6 +413,7 @@ async function startServer() {
         return;
       }
       try {
+        const vite = await vitePromise;
         let template = fs.readFileSync(
           path.resolve(process.cwd(), 'index.html'),
           'utf-8',
@@ -417,7 +427,8 @@ async function startServer() {
           })
           .end(template);
       } catch (e) {
-        vite.ssrFixStacktrace(e as Error);
+        const vite = await vitePromise.catch(() => null);
+        vite?.ssrFixStacktrace(e as Error);
         console.error(`[server] Error transforming index.html for ${url}:`, e);
         next(e);
       }
@@ -476,7 +487,7 @@ async function startServer() {
     });
   }
 
-  const listenWithRetry = (retries = 5, delay = 500) => {
+  const listenWithRetry = (retries = 20, delay = 500) => {
     const server = app
       .listen(PORT, '0.0.0.0', () => {
         console.log(`[server] Ready and listening on http://localhost:${PORT}`);

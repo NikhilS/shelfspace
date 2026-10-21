@@ -52,6 +52,13 @@ export function useSelection(
     if (selectedBooks.size === 0 || !userId || !libraryId) return;
     try {
       const booksArray = Array.from(selectedBooks);
+      const validStatus = newStatus as
+        | 'unset'
+        | 'want_to_read'
+        | 'reading'
+        | 'finished'
+        | 'completed'
+        | 'abandoned';
       await instrumentMutation(
         'update',
         `libraries/${libraryId}/books(bulk-status)`,
@@ -63,7 +70,10 @@ export function useSelection(
               type: 'update',
               bookId,
               data: {
-                [`userStatuses.${userId}`]: newStatus,
+                status: validStatus,
+                userStatuses: {
+                  [userId]: validStatus,
+                },
               },
             })),
           });

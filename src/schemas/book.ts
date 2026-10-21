@@ -64,15 +64,13 @@ export const bookEnrichmentStatusSchema = z
   })
   .strict();
 
-export const bookDetailsMetadataSchema = z
-  .object({
-    hasSynopsis: z.boolean().optional(),
-    hasAuthorBio: z.boolean().optional(),
-    hasEmbedding: z.boolean().optional(),
-    hasDescription: z.boolean().optional(),
-    hasClusterCoordinates: z.boolean().optional(),
-  })
-  .strict();
+export const bookDetailsMetadataSchema = z.object({
+  hasSynopsis: z.boolean().optional(),
+  hasAuthorBio: z.boolean().optional(),
+  hasEmbedding: z.boolean().optional(),
+  hasDescription: z.boolean().optional(),
+  hasClusterCoordinates: z.boolean().optional(),
+});
 
 export const clusterCoordinatesSchema = z
   .object({
@@ -228,11 +226,11 @@ export const bookBatchUpsertSchema = z
     libraryId: safeIdSchema,
     books: z
       .array(bookBatchItemSchema)
-      .max(500, 'Maximum 500 books per batch')
+      .max(5000, 'Maximum 5000 books per batch')
       .optional(),
     operations: z
       .array(bookBatchOperationSchema)
-      .max(500, 'Maximum 500 operations per batch')
+      .max(5000, 'Maximum 5000 operations per batch')
       .optional(),
     enrichOnCreate: z.boolean().optional(),
   })

@@ -27,6 +27,14 @@ vi.mock('../hooks/useLibraryData', () => ({
 
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    readingTracker: {
+      getShelf: {
+        useQuery: () => ({
+          data: undefined,
+          isLoading: true,
+        }),
+      },
+    },
     gemini: {
       generateBookEmbeddings: {
         useMutation: () => ({

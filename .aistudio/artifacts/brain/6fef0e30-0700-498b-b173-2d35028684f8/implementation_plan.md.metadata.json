@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for redesigning the unauthenticated Login & Marketing page into a tight, visual 3-section experience that matches the app's design system, reflects both physical shelves and personal reading tracking, removes the comparison table, adopts a warm informal tone, and fixes the primary button text contrast bug.",
-  "updatedAt":  "2026-10-21T02:27:42.821806698Z",
+  "summary":  "Implementation plan for a centralized Suspense skeleton fallback strategy in App.tsx that distinguishes cold loads from warm/cached library and reading-shelf navigations, keeps cached library headers real during transitions, and provides dedicated skeletons per view type (Overview, Collection, Constellation/World Map, Timeline, Book Details, and Add/Spruce Up forms).",
+  "updatedAt":  "2026-10-21T12:06:13.075471634Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
