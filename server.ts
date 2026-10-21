@@ -383,7 +383,7 @@ async function startServer() {
       }
 
       if (
-        req.method !== 'GET' ||
+        (req.method !== 'GET' && req.method !== 'HEAD') ||
         parsedPath.startsWith('/api/') ||
         parsedPath.startsWith('/trpc') ||
         parsedPath.startsWith('/@') ||
@@ -391,6 +391,16 @@ async function startServer() {
         (ext && ext !== '.html')
       ) {
         res.status(404).type('text/plain').send(`Not Found: ${parsedPath}`);
+        return;
+      }
+      if (req.method === 'HEAD') {
+        res
+          .status(200)
+          .set({
+            'Content-Type': 'text/html',
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          })
+          .end();
         return;
       }
       try {

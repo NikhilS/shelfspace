@@ -1,5 +1,5 @@
 import {getAdminDb, formatFirestoreAdminError} from '../firebaseAdmin';
-import {FieldValue} from 'firebase-admin/firestore';
+import {FieldValue, FieldPath} from 'firebase-admin/firestore';
 import {SUPERADMIN_EMAIL} from '../../../constants/auth';
 import {TRPCError} from '@trpc/server';
 import {LibraryScope} from '../../../schemas/libraryApi';
@@ -63,13 +63,17 @@ export async function getUserLibraries(
         const lowerEmail = email.toLowerCase();
         queries.push(
           librariesRef
-            .where(`access.${email}`, 'in', ['owner', 'editor', 'viewer'])
+            .where(new FieldPath('access', email), 'in', [
+              'owner',
+              'editor',
+              'viewer',
+            ])
             .get(),
         );
         if (lowerEmail !== email) {
           queries.push(
             librariesRef
-              .where(`access.${lowerEmail}`, 'in', [
+              .where(new FieldPath('access', lowerEmail), 'in', [
                 'owner',
                 'editor',
                 'viewer',

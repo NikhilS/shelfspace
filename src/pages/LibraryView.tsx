@@ -55,6 +55,7 @@ export default function LibraryView() {
   const {id} = useParams<{id: string}>();
   const {user} = useAuth();
   const navigate = useNavigate();
+  const utils = trpc.useUtils();
 
   // Data fetching (do not pass navigate so transient errors show in-page recovery UI instead of silently bouncing back to /)
   const {
@@ -202,6 +203,8 @@ export default function LibraryView() {
       );
 
       void refetch();
+      void utils.library.list?.invalidate?.();
+      void utils.library.getCollaborators?.invalidate?.({libraryId: id});
       toast.success(`Removed access for ${email}`);
     } catch (error) {
       console.error('Failed to remove collaborator:', error);
@@ -227,6 +230,8 @@ export default function LibraryView() {
       );
 
       void refetch();
+      void utils.library.list?.invalidate?.();
+      void utils.library.getCollaborators?.invalidate?.({libraryId: id});
       toast.success(`Updated role for ${email} to ${toTitleCase(role)}`);
     } catch (error) {
       console.error('Failed to update role:', error);
@@ -248,6 +253,7 @@ export default function LibraryView() {
           }),
       );
       void refetch();
+      void utils.library.list?.invalidate?.();
       toast.success('Library name updated');
     } catch (error) {
       console.error('Failed to rename library:', error);
@@ -764,6 +770,10 @@ export default function LibraryView() {
                 );
 
                 void refetch();
+                void utils.library.list?.invalidate?.();
+                void utils.library.getCollaborators?.invalidate?.({
+                  libraryId: id,
+                });
 
                 if (res?.allowlistStatus === 'pending_approval') {
                   toast.success(

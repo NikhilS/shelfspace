@@ -61,7 +61,8 @@ export function useAppPermissions() {
     undefined,
     {
       enabled: Boolean(isAuthReady && email && !isSuperAdmin),
-      initialData: () => (cached ? {...cached, user: null} : undefined),
+      initialData: () =>
+        cached?.isAppAllowed ? {...cached, user: null} : undefined,
       staleTime: 1000 * 60 * 5,
     },
   );

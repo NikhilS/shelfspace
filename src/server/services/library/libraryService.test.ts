@@ -259,6 +259,15 @@ describe('LibraryService', () => {
       expect(result.libraries[1].id).toBe('lib_shared');
       expect(result.libraries[1].callerRole).toBe('editor');
       expect(result.libraries[1].ownershipType).toBe('shared');
+      expect(mockLibWhere).toHaveBeenCalledWith(expect.anything(), 'in', [
+        'owner',
+        'editor',
+        'viewer',
+      ]);
+      const sharedQueryFieldPath = (
+        mockLibWhere.mock.calls as unknown as Array<[unknown]>
+      )[1]?.[0];
+      expect(sharedQueryFieldPath).not.toBe('access.user_1@example.com');
     });
 
     it('returns all system libraries with global_admin type for super admin with scope all', async () => {
