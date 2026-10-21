@@ -8,6 +8,7 @@ const PERMISSIONS_CACHE_PREFIX = 'bookish_app_permissions_';
 interface CachedPermissions {
   isAppAllowed: boolean;
   isAdmin: boolean;
+  hasAiPlan?: boolean;
 }
 
 function readCachedPermissions(
@@ -27,6 +28,10 @@ function readCachedPermissions(
       return {
         isAppAllowed: parsed.isAppAllowed,
         isAdmin: parsed.isAdmin,
+        hasAiPlan:
+          typeof parsed.hasAiPlan === 'boolean'
+            ? parsed.hasAiPlan
+            : parsed.isAdmin,
       };
     }
   } catch {
@@ -51,27 +56,55 @@ function writeCachedPermissions(
 }
 
 export function useAppPermissions() {
-  const {user, isAuthReady} = useAuth();
+  const {user, isAuthReady} = useAuth() ?? {};
   const email = user?.email?.toLowerCase().trim();
   const isSuperAdmin = email === SUPERADMIN_EMAIL.toLowerCase().trim();
 
   const cached = readCachedPermissions(email);
 
-  const {data, isLoading, refetch} = trpc.auth.getPermissions.useQuery(
-    undefined,
-    {
-      enabled: Boolean(isAuthReady && email && !isSuperAdmin),
-      initialData: () =>
-        cached?.isAppAllowed ? {...cached, user: null} : undefined,
-      staleTime: 1000 * 60 * 5,
-    },
-  );
+  let data:
+    | {
+        isAppAllowed: boolean;
+        isAdmin: boolean;
+        hasAiPlan?: boolean;
+        user?: unknown;
+      }
+    | undefined;
+  let isLoading = false;
+  let refetch: () => Promise<unknown> = async () => {};
+
+  const usePermissionsQuery = trpc?.auth?.getPermissions?.useQuery;
+  if (typeof usePermissionsQuery === 'function') {
+    try {
+      const queryResult = usePermissionsQuery(undefined, {
+        enabled: Boolean(isAuthReady && email && !isSuperAdmin),
+        initialData: () =>
+          cached?.isAppAllowed
+            ? {
+                isAppAllowed: cached.isAppAllowed,
+                isAdmin: cached.isAdmin,
+                hasAiPlan: Boolean(cached.isAdmin || cached.hasAiPlan),
+                user: null,
+              }
+            : undefined,
+        staleTime: 1000 * 60 * 5,
+      });
+      data = queryResult?.data;
+      isLoading = Boolean(queryResult?.isLoading);
+      if (queryResult?.refetch) {
+        refetch = queryResult.refetch;
+      }
+    } catch {
+      // Fallback when rendered outside tRPC Provider in isolated unit tests
+    }
+  }
 
   useEffect(() => {
     if (email && data && typeof data.isAppAllowed === 'boolean') {
       writeCachedPermissions(email, {
         isAppAllowed: data.isAppAllowed,
         isAdmin: Boolean(data.isAdmin),
+        hasAiPlan: Boolean(data.isAdmin || data.hasAiPlan),
       });
     }
   }, [email, data]);
@@ -80,16 +113,26 @@ export function useAppPermissions() {
     return {
       isAppAllowed: true,
       isAdmin: true,
+      hasAiPlan: true,
       isLoadingPermissions: false,
       refetchPermissions: async () => {},
     };
   }
 
   const effectiveData = data ?? cached;
+  const resolvedIsAdmin = effectiveData?.isAdmin ?? false;
+  const resolvedHasAiPlan = effectiveData
+    ? Boolean(resolvedIsAdmin || effectiveData.hasAiPlan)
+    : Boolean(
+        resolvedIsAdmin ||
+        typeof usePermissionsQuery !== 'function' ||
+        !isAuthReady,
+      );
 
   return {
     isAppAllowed: effectiveData?.isAppAllowed ?? false,
-    isAdmin: effectiveData?.isAdmin ?? false,
+    isAdmin: resolvedIsAdmin,
+    hasAiPlan: resolvedHasAiPlan,
     isLoadingPermissions: Boolean(
       isAuthReady && email && isLoading && !effectiveData,
     ),

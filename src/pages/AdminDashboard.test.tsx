@@ -1,12 +1,13 @@
 import React from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {render, screen} from '@testing-library/react';
+import {render, screen, fireEvent} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import AdminDashboard from './AdminDashboard';
 
 let mockIsAdmin = true;
 let mockIsAppAllowed = true;
 let mockIsLoadingPermissions = false;
+const mockReviewWaitlistMutateAsync = vi.fn();
 
 vi.mock('../stores/authStore', () => ({
   useAuth: () => ({
@@ -71,7 +72,7 @@ vi.mock('../lib/trpc', () => ({
       },
       reviewWaitlistEntry: {
         useMutation: () => ({
-          mutateAsync: vi.fn(),
+          mutateAsync: mockReviewWaitlistMutateAsync,
           isPending: false,
         }),
       },
@@ -82,6 +83,12 @@ vi.mock('../lib/trpc', () => ({
         }),
       },
       removeAllowlistUser: {
+        useMutation: () => ({
+          mutateAsync: vi.fn(),
+          isPending: false,
+        }),
+      },
+      updateAllowlistAiPlan: {
         useMutation: () => ({
           mutateAsync: vi.fn(),
           isPending: false,
@@ -107,7 +114,7 @@ describe('AdminDashboard', () => {
     mockIsLoadingPermissions = false;
   });
 
-  it('renders the admin dashboard with Waitlist Queue and Authorized Users', () => {
+  it('renders the admin dashboard with Waitlist Queue, Authorized Users, and AI Plan controls', () => {
     render(
       <MemoryRouter>
         <AdminDashboard />
@@ -125,5 +132,31 @@ describe('AdminDashboard', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('applicant@example.com')).toBeInTheDocument();
     expect(screen.getByText('reader@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Catalog Only (AI Off)')).toBeInTheDocument();
+    expect(screen.getByText('Enable AI Plan')).toBeInTheDocument();
+    expect(screen.getByText('Approve + AI')).toBeInTheDocument();
+  });
+
+  it('allows approving a pending waitlist user directly with an AI Plan', () => {
+    mockReviewWaitlistMutateAsync.mockResolvedValueOnce({
+      email: 'applicant@example.com',
+      status: 'approved',
+    });
+
+    render(
+      <MemoryRouter>
+        <AdminDashboard />
+      </MemoryRouter>,
+    );
+
+    const approveAiBtn = screen.getByText('Approve + AI').closest('button');
+    expect(approveAiBtn).toBeTruthy();
+    fireEvent.click(approveAiBtn!);
+
+    expect(mockReviewWaitlistMutateAsync).toHaveBeenCalledWith({
+      email: 'applicant@example.com',
+      action: 'approve',
+      hasAiPlan: true,
+    });
   });
 });

@@ -7,6 +7,7 @@ import {
   authenticatedProcedure,
   protectedProcedure,
   adminProcedure,
+  aiProtectedProcedure,
   libraryProcedure,
   t,
 } from '../auth/procedures';
@@ -37,6 +38,7 @@ export {
   authenticatedProcedure,
   protectedProcedure,
   adminProcedure,
+  aiProtectedProcedure,
   libraryProcedure,
   t,
 };

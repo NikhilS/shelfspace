@@ -75,8 +75,8 @@ export default function BulkImport({
         `CSV text extracted, total length: ${text.length} characters`,
       );
 
-      setExtractionStatus('Extracting books using AI...');
-      logger.info('Sending CSV text to Gemini for standard book extraction...');
+      setExtractionStatus('Analyzing and extracting books from CSV...');
+      logger.info('Sending CSV text for book extraction...');
 
       const books = await extractBooksFromCsvMutation.mutateAsync({
         csvText: text,
@@ -84,7 +84,7 @@ export default function BulkImport({
       onBooksExtracted(books);
 
       if (books.length === 0) {
-        logger.warn('Gemini extraction returned 0 books from the CSV');
+        logger.warn('CSV extraction returned 0 books from the CSV');
         toast.error('No books could be extracted from this file.');
       } else {
         logger.info(`Successfully extracted ${books.length} books from CSV.`);
@@ -112,8 +112,9 @@ export default function BulkImport({
         Upload Library CSV
       </h3>
       <p className="text-on-surface-variant font-body-md text-body-md sm:text-body-lg mb-6 max-w-md leading-relaxed">
-        Upload a CSV export from Goodreads, Amazon, or your own spreadsheet. Our
-        AI will automatically extract the titles, authors, and ISBNs.
+        Upload a CSV export from Goodreads, StoryGraph, Calibre, Amazon, or your
+        own spreadsheet. Standard exports are mapped automatically, with AI
+        column mapping available for custom layouts.
       </p>
 
       <div className="mb-8 w-full max-w-xs text-left">

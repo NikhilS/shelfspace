@@ -1,4 +1,4 @@
-import {GoogleGenAI} from '@google/genai';
+import {GoogleGenAI, ThinkingLevel} from '@google/genai';
 import {geminiLimiter, geminiEmbeddingLimiter} from '../limiters';
 import type {
   ProviderQuotaScheduler,
@@ -152,34 +152,52 @@ export function handleGeminiError(error: unknown): never {
   );
 }
 
+export interface BatchGeminiOperationOptions {
+  priority?: SchedulePriority;
+  signal?: AbortSignal;
+  model?: string;
+  thinkingLevel?: ThinkingLevel;
+}
+
 export async function batchGeminiOperation<T>(
   books: {id: string; title: string; author: string; synopsis?: string}[],
   prompt: string,
   schema: unknown,
   systemInstruction?: string,
-  options?: {priority?: SchedulePriority; signal?: AbortSignal},
+  options?: BatchGeminiOperationOptions,
 ): Promise<T | null> {
   try {
-    const fullPrompt = `${prompt}\n\nBooks to analyze:\n${JSON.stringify(
-      books.map(b => ({
+    const compactBooks = books.map(b => {
+      const entry: {
+        id: string;
+        title: string;
+        author: string;
+        synopsis?: string;
+      } = {
         id: b.id,
         title: b.title,
         author: b.author,
-        synopsis: b.synopsis || '',
-      })),
-      null,
-      2,
-    )}`;
+      };
+      if (b.synopsis) {
+        entry.synopsis = b.synopsis.slice(0, 400);
+      }
+      return entry;
+    });
+
+    const fullPrompt = `${prompt}\n\nBooks to analyze:\n${JSON.stringify(compactBooks)}`;
 
     const response = await generateContentWithLimiter(
       {
-        model: 'gemini-3-flash-preview',
+        model: options?.model ?? 'gemini-3.8-flash',
         contents: fullPrompt,
         config: {
           systemInstruction,
           responseMimeType: 'application/json',
           responseSchema: schema,
           temperature: 0.2,
+          thinkingConfig: {
+            thinkingLevel: options?.thinkingLevel ?? ThinkingLevel.LOW,
+          },
         },
       },
       {

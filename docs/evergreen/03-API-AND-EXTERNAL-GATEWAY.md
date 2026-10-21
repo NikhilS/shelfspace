@@ -60,10 +60,13 @@ authenticatedProcedure.query(...)
 // 3. Protected Procedure (Valid Firebase JWT + verified allowlist membership required)
 protectedProcedure.query(...)
 
-// 4. Administrator Procedure (Caller must belong to the verified admin allowlist)
+// 4. AI Protected Procedure (Protected + requires caller to have an active AI Plan or Admin role)
+aiProtectedProcedure.mutation(...)
+
+// 5. Administrator Procedure (Caller must belong to the verified admin allowlist)
 adminProcedure.mutation(...)
 
-// 5. Library Procedure with Role Check (Validates caller has required role on the target library)
+// 6. Library Procedure with Role Check (Validates caller has required role on the target library)
 libraryProcedure('owner').mutation(...)  // Owner-only
 libraryProcedure('editor').mutation(...) // Owner or Editor
 libraryProcedure('viewer').query(...)    // Owner, Editor, or Viewer (Read-only)

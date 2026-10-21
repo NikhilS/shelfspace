@@ -199,6 +199,52 @@ describe('EnrichmentService', () => {
     );
   });
 
+  it('does not poison enrichmentStatus with "unsupported" for hybrid fields when allowAiFallback is false', async () => {
+    vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
+
+    const mockProvider = {
+      isAvailable: () => true,
+      bulkFetch: vi.fn().mockResolvedValue({}),
+    };
+
+    const mockRegistry = {
+      getProvider: vi.fn().mockReturnValue(mockProvider),
+    };
+
+    vi.mocked(MetadataRegistry.getInstance).mockReturnValue(
+      mockRegistry as unknown as MetadataRegistry,
+    );
+
+    mockBookGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        title: 'Rare Edition',
+        author: 'Obscure Author',
+      }),
+    });
+
+    mockBookUpdate.mockResolvedValue(undefined);
+
+    const res = await EnrichmentService.triggerBatchEnrichment(
+      'u1',
+      'u1@example.com',
+      {
+        libraryId: 'lib1',
+        enrichmentType: 'synopsis',
+        bookIds: ['b_rare'],
+        allowAiFallback: false,
+      },
+    );
+
+    expect(res.status).toBe('success');
+    expect(res.processedCount).toBe(0);
+    expect(mockProvider.bulkFetch).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({allowAiFallback: false}),
+    );
+    expect(mockBookUpdate).not.toHaveBeenCalled();
+  });
+
   it('supports alias keys like temporalMetadata and updates status to completed', async () => {
     vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
 

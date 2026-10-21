@@ -287,6 +287,7 @@ export async function deleteBook(
 export async function batchUpsert(
   userId: string,
   input: BookBatchUpsertInput,
+  options?: {allowAiFallback?: boolean},
 ): Promise<{
   success: true;
   count: number;
@@ -346,8 +347,10 @@ export async function batchUpsert(
     });
 
     if (booksToEnrich.length > 0) {
-      const enrichmentPromise =
-        metadataRegistry.enrichBooksOnCreate(booksToEnrich);
+      const enrichmentPromise = metadataRegistry.enrichBooksOnCreate(
+        booksToEnrich,
+        {allowAiFallback: options?.allowAiFallback},
+      );
 
       // For small interactive creates (<= 2 books), wait up to 2.5s so fast enrichments
       // land in the initial commit. For larger batches (e.g. Shelf Capture / CSV import)

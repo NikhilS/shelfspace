@@ -3,6 +3,7 @@ import {Sparkles, RefreshCw, Plus, Check, Loader2} from 'lucide-react';
 import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
 import {BookLoader} from './BookLoader';
+import {useAppPermissions} from '../../hooks/useAppPermissions';
 
 export interface CuratorPickItem {
   title: string;
@@ -16,6 +17,7 @@ export interface CuratorPickCardProps {
   isGeneratingPick: boolean;
   generateNewPick: () => void;
   pickError?: string | null;
+  hasAiPlan?: boolean;
   eyebrow?: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -30,6 +32,7 @@ export const CuratorPickCard: React.FC<CuratorPickCardProps> = ({
   isGeneratingPick,
   generateNewPick,
   pickError,
+  hasAiPlan: passedHasAiPlan,
   eyebrow = "Curator's Recommendation",
   emptyTitle = "Curator's Pick",
   emptyDescription = 'Looking for something to read next? Let our AI curator pick a volume from your shelf.',
@@ -38,6 +41,9 @@ export const CuratorPickCard: React.FC<CuratorPickCardProps> = ({
   isAddingToWantToRead = false,
   className = '',
 }) => {
+  const {hasAiPlan: contextHasAiPlan} = useAppPermissions();
+  const hasAiPlan = passedHasAiPlan ?? contextHasAiPlan;
+
   return (
     <div
       className={`bento-card bg-gradient-to-br from-surface-container-low/80 to-surface p-5 sm:p-6 relative overflow-hidden min-h-[160px] flex items-center ${className}`}
@@ -48,9 +54,14 @@ export const CuratorPickCard: React.FC<CuratorPickCardProps> = ({
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => generateNewPick()}
-        className="absolute top-3 left-3 z-20 hover:bg-surface-container text-on-surface-variant hover:text-primary w-8 h-8 rounded-lg"
-        title="Get another recommendation"
+        onClick={() => hasAiPlan && generateNewPick()}
+        disabled={!hasAiPlan || isGeneratingPick}
+        className="absolute top-3 left-3 z-20 hover:bg-surface-container text-on-surface-variant hover:text-primary w-8 h-8 rounded-lg disabled:opacity-40"
+        title={
+          !hasAiPlan
+            ? 'Requires AI Plan (Admin-enabled)'
+            : 'Get another recommendation'
+        }
       >
         <RefreshCw size={15} />
       </Button>
@@ -124,6 +135,22 @@ export const CuratorPickCard: React.FC<CuratorPickCardProps> = ({
               </div>
             )}
           </div>
+        </div>
+      ) : !hasAiPlan ? (
+        <div className="w-full flex flex-col items-center justify-center gap-2.5 py-6 text-center z-10 relative px-4">
+          <p className="font-serif text-lg font-semibold text-primary">
+            {emptyTitle}
+          </p>
+          <p className="font-sans text-xs text-on-surface-variant max-w-sm">
+            {emptyDescription}
+          </p>
+          <span
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans font-medium bg-surface-container text-on-surface-variant border border-outline-variant/50"
+            title="Requires AI Plan (Admin-enabled)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-on-surface-variant/70" />
+            Requires AI Plan (Admin-enabled)
+          </span>
         </div>
       ) : pickError ? (
         <div className="w-full flex flex-col items-center justify-center gap-3 py-6 text-center z-10 relative px-4">

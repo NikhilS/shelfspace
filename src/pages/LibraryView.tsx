@@ -35,6 +35,7 @@ import {useBookFilters} from '../hooks/useBookFilters';
 import {useSelection} from '../hooks/useSelection';
 import {usePickOfTheDay} from '../hooks/usePickOfTheDay';
 import {useDebugInspect} from '../hooks/useDebugInspect';
+import {useAppPermissions} from '../hooks/useAppPermissions';
 
 // Components
 import {LibraryHeader} from './library/LibraryHeader';
@@ -54,6 +55,7 @@ import {
 export default function LibraryView() {
   const {id} = useParams<{id: string}>();
   const {user} = useAuth();
+  const {hasAiPlan} = useAppPermissions();
   const navigate = useNavigate();
   const utils = trpc.useUtils();
 
@@ -414,7 +416,7 @@ export default function LibraryView() {
     trpc.gemini.generateLibraryHeroImage.useMutation();
 
   const handleRefreshHero = async () => {
-    if (!id || !library || isRefreshingHero) return;
+    if (!id || !library || isRefreshingHero || !hasAiPlan) return;
     setIsRefreshingHero(true);
     const toastId = toast.loading('Generating library banner...');
     try {
@@ -547,6 +549,7 @@ export default function LibraryView() {
               isSyncing={isSyncing}
               role={access.role}
               canEdit={canEdit}
+              hasAiPlan={hasAiPlan}
               isRefreshingHero={isRefreshingHero}
               onRefreshHero={handleRefreshHero}
             />

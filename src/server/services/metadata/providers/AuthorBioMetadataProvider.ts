@@ -78,6 +78,7 @@ export class AuthorBioMetadataProvider implements IMetadataProvider<
     );
     if (
       remaining.length > 0 &&
+      options?.allowAiFallback !== false &&
       Boolean(process.env.GEMINI_API_KEY) &&
       typeof generateAuthorBiosBatch === 'function'
     ) {

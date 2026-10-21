@@ -1,6 +1,7 @@
 import React, {useState, useMemo, useCallback, useEffect} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
 import {useCollectionScope} from '../hooks/useCollectionScope';
+import {useAppPermissions} from '../hooks/useAppPermissions';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../components/import/BulkEnrichmentBanner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
@@ -50,6 +51,7 @@ export default function WorldMap() {
     wantToReadCount,
     refetchShelf,
   } = useCollectionScope(libraryId);
+  const {hasAiPlan} = useAppPermissions();
 
   // Map settings and presentation controls
   const [zoom, setZoom] = useState<number>(1.5);
@@ -101,7 +103,7 @@ export default function WorldMap() {
     providerKey: 'geoMetadata',
     metadataField: 'geoMetadata',
     filterPredicate: filterGeoPredicate,
-    canEdit,
+    canEdit: Boolean(canEdit && hasAiPlan),
     successToastMessage:
       'Successfully backfilled literary settings map references!',
     errorToastMessage:

@@ -2,6 +2,7 @@ import React, {useState, useMemo, useCallback, useEffect, useRef} from 'react';
 import {useParams} from 'react-router-dom';
 import {Clock, Waves} from 'lucide-react';
 import {useCollectionScope} from '../hooks/useCollectionScope';
+import {useAppPermissions} from '../hooks/useAppPermissions';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
 import {BulkEnrichmentBanner} from '../components/import/BulkEnrichmentBanner';
 import {DebugTelemetryEngine} from '../lib/telemetry';
@@ -44,6 +45,7 @@ export default function TimelineView() {
     wantToReadCount,
     refetchShelf,
   } = useCollectionScope(libraryId);
+  const {hasAiPlan} = useAppPermissions();
 
   const [zoomLevel, setZoomLevel] = useState<1 | 5 | 20>(1);
   const [selectedPreset, setSelectedPreset] = useState<string>('all');
@@ -112,7 +114,7 @@ export default function TimelineView() {
     providerKey: 'temporalMetadata',
     metadataField: 'temporalMetadata',
     filterPredicate: filterTemporalPredicate,
-    canEdit,
+    canEdit: Boolean(canEdit && hasAiPlan),
     successToastMessage: 'Historical temporal analysis complete!',
     errorToastMessage: 'Analysis backfill failed',
     onComplete: isReadingMode ? () => void refetchShelf() : undefined,

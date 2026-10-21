@@ -39,7 +39,13 @@ export class EmbeddingMetadataProvider implements IMetadataProvider<number[]> {
     options?: MetadataBulkFetchOptions,
   ): Promise<Record<string, number[]>> {
     const results: Record<string, number[]> = {};
-    if (books.length === 0 || options?.signal?.aborted) return results;
+    if (
+      books.length === 0 ||
+      options?.signal?.aborted ||
+      options?.allowAiFallback === false
+    ) {
+      return results;
+    }
 
     const texts = books.map(b => this.buildEmbeddingText(b));
     const embeddings = await generateBookEmbeddings(texts, undefined, {

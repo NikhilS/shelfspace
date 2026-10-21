@@ -27,42 +27,76 @@ describe('AllowlistService', () => {
     AllowlistService.clearCache();
   });
 
-  it('returns isAppAllowed: true, isAdmin: true for superadmin email without querying DB', async () => {
+  it('returns isAppAllowed: true, isAdmin: true, hasAiPlan: true for superadmin email without querying DB', async () => {
     const res = await AllowlistService.getPermissions(SUPERADMIN_EMAIL);
-    expect(res).toEqual({isAppAllowed: true, isAdmin: true});
+    expect(res).toEqual({
+      isAppAllowed: true,
+      isAdmin: true,
+      hasAiPlan: true,
+    });
     expect(mockDoc).not.toHaveBeenCalled();
   });
 
-  it('returns isAppAllowed: false, isAdmin: false for empty or null email', async () => {
+  it('returns isAppAllowed: false, isAdmin: false, hasAiPlan: false for empty or null email', async () => {
     const res1 = await AllowlistService.getPermissions(null);
-    expect(res1).toEqual({isAppAllowed: false, isAdmin: false});
+    expect(res1).toEqual({
+      isAppAllowed: false,
+      isAdmin: false,
+      hasAiPlan: false,
+    });
 
     const res2 = await AllowlistService.getPermissions('');
-    expect(res2).toEqual({isAppAllowed: false, isAdmin: false});
+    expect(res2).toEqual({
+      isAppAllowed: false,
+      isAdmin: false,
+      hasAiPlan: false,
+    });
     expect(mockDoc).not.toHaveBeenCalled();
   });
 
-  it('queries Firestore for regular user and returns permissions', async () => {
+  it('queries Firestore for regular user and returns permissions with default hasAiPlan: false', async () => {
     mockDocGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({role: 'user'}),
     });
 
     const res = await AllowlistService.getPermissions('reader@example.com');
-    expect(res).toEqual({isAppAllowed: true, isAdmin: false});
+    expect(res).toEqual({
+      isAppAllowed: true,
+      isAdmin: false,
+      hasAiPlan: false,
+    });
     expect(mockDoc).toHaveBeenCalledWith(
       'appSettings/allowlist/users/reader@example.com',
     );
   });
 
-  it('identifies admin users when role is admin', async () => {
+  it('returns hasAiPlan: true for regular user when hasAiPlan is enabled on document', async () => {
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({role: 'user', hasAiPlan: true}),
+    });
+
+    const res = await AllowlistService.getPermissions('ai-reader@example.com');
+    expect(res).toEqual({
+      isAppAllowed: true,
+      isAdmin: false,
+      hasAiPlan: true,
+    });
+  });
+
+  it('identifies admin users when role is admin and grants hasAiPlan: true', async () => {
     mockDocGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({role: 'admin'}),
     });
 
     const res = await AllowlistService.getPermissions('admin@example.com');
-    expect(res).toEqual({isAppAllowed: true, isAdmin: true});
+    expect(res).toEqual({
+      isAppAllowed: true,
+      isAdmin: true,
+      hasAiPlan: true,
+    });
   });
 
   it('returns not allowed if user document does not exist', async () => {
@@ -71,7 +105,11 @@ describe('AllowlistService', () => {
     });
 
     const res = await AllowlistService.getPermissions('stranger@example.com');
-    expect(res).toEqual({isAppAllowed: false, isAdmin: false});
+    expect(res).toEqual({
+      isAppAllowed: false,
+      isAdmin: false,
+      hasAiPlan: false,
+    });
   });
 
   it('caches permissions in-memory and avoids repeated DB lookups', async () => {
@@ -81,12 +119,20 @@ describe('AllowlistService', () => {
     });
 
     const res1 = await AllowlistService.getPermissions('cached@example.com');
-    expect(res1).toEqual({isAppAllowed: true, isAdmin: false});
+    expect(res1).toEqual({
+      isAppAllowed: true,
+      isAdmin: false,
+      hasAiPlan: false,
+    });
     expect(mockDocGet).toHaveBeenCalledTimes(1);
 
     // Second call should hit in-memory cache
     const res2 = await AllowlistService.getPermissions('cached@example.com');
-    expect(res2).toEqual({isAppAllowed: true, isAdmin: false});
+    expect(res2).toEqual({
+      isAppAllowed: true,
+      isAdmin: false,
+      hasAiPlan: false,
+    });
     expect(mockDocGet).toHaveBeenCalledTimes(1);
   });
 
@@ -94,10 +140,15 @@ describe('AllowlistService', () => {
     AllowlistService.setCache('manual@example.com', {
       isAppAllowed: true,
       isAdmin: true,
+      hasAiPlan: true,
     });
 
     const res1 = await AllowlistService.getPermissions('manual@example.com');
-    expect(res1).toEqual({isAppAllowed: true, isAdmin: true});
+    expect(res1).toEqual({
+      isAppAllowed: true,
+      isAdmin: true,
+      hasAiPlan: true,
+    });
     expect(mockDocGet).not.toHaveBeenCalled();
 
     AllowlistService.clearCache();
@@ -106,7 +157,11 @@ describe('AllowlistService', () => {
     });
 
     const res2 = await AllowlistService.getPermissions('manual@example.com');
-    expect(res2).toEqual({isAppAllowed: false, isAdmin: false});
+    expect(res2).toEqual({
+      isAppAllowed: false,
+      isAdmin: false,
+      hasAiPlan: false,
+    });
     expect(mockDocGet).toHaveBeenCalledTimes(1);
   });
 });

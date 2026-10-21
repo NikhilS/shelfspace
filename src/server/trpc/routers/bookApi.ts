@@ -52,7 +52,12 @@ export const bookApiRouter = router({
   batchUpsert: libraryProcedure('editor')
     .input(bookBatchUpsertSchema)
     .mutation(async ({ctx, input}) => {
-      return await BookService.batchUpsert(ctx.user.uid, input);
+      const allowAiFallback = Boolean(ctx.isAdmin || ctx.hasAiPlan !== false);
+      return await BookService.batchUpsert(
+        ctx.user.uid,
+        input,
+        input.enrichOnCreate ? {allowAiFallback} : undefined,
+      );
     }),
 
   mergeDuplicates: libraryProcedure('editor')

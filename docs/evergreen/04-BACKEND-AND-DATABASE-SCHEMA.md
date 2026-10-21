@@ -65,7 +65,7 @@ The database follows a hierarchical subcollection structure designed to guarante
   └── createdAt: Timestamp / ISO date string
 
 /appSettings
-  ├── /allowlist/users/{email}: { email, role: "admin" | "user", grantedAt, grantedBy }
+  ├── /allowlist/users/{email}: { email, role: "admin" | "user", hasAiPlan?: boolean, grantedAt, grantedBy }
   └── /waitlist/entries/{email}: { email, displayName, photoURL, status: "pending" | "approved" | "rejected", requestedAt }
 ```
 

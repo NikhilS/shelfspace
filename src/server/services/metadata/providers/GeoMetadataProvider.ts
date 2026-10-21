@@ -90,7 +90,9 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
     books: CoreBookData[],
     options?: MetadataBulkFetchOptions,
   ): Promise<Record<string, unknown>> {
-    if (options?.signal?.aborted) return {};
+    if (options?.signal?.aborted || options?.allowAiFallback === false) {
+      return {};
+    }
     const synopsisMap = await resolveBookSynopses(books, options);
     if (options?.signal?.aborted) return {};
 

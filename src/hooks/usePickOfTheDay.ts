@@ -1,6 +1,7 @@
 import {useQuery} from '@tanstack/react-query';
 import {logger} from '../stores/debugStore';
 import {trpc, trpcVanilla} from '../lib/trpc';
+import {useAppPermissions} from './useAppPermissions';
 
 export interface PickSeedBook {
   title: string;
@@ -14,6 +15,7 @@ export function usePickOfTheDay(
   currentTabOrEnabled: string | boolean = 'overview',
   scopeKey: string = 'library',
 ) {
+  const {hasAiPlan} = useAppPermissions();
   const getPickOfTheDayMutation =
     trpc?.gemini?.getPickOfTheDay?.useMutation?.();
 
@@ -27,6 +29,7 @@ export function usePickOfTheDay(
     enabled:
       books.length > 0 &&
       isEnabled &&
+      hasAiPlan &&
       Boolean(getPickOfTheDayMutation?.mutateAsync),
     retry: false,
     staleTime: 1000 * 60 * 60 * 24, // 24 hours

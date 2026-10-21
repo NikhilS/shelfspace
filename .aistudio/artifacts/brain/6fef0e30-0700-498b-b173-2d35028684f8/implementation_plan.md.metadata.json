@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for a centralized Suspense skeleton fallback strategy in App.tsx that distinguishes cold loads from warm/cached library and reading-shelf navigations, keeps cached library headers real during transitions, and provides dedicated skeletons per view type (Overview, Collection, Constellation/World Map, Timeline, Book Details, and Add/Spruce Up forms).",
-  "updatedAt":  "2026-10-21T12:06:13.075471634Z",
+  "summary":  "Staff Software Engineer Audit & Cohesion Remediation Plan covering 6 identified gaps and bugs across backend routers/services, metadata providers, frontend hooks/views, admin waitlist controls, and Evergreen documentation.",
+  "updatedAt":  "2026-10-21T20:14:52.890058853Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

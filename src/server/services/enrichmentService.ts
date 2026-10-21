@@ -32,6 +32,7 @@ export interface TriggerBatchEnrichmentInput {
   bookIds: string[];
   overwrite?: boolean;
   customGenres?: string[];
+  allowAiFallback?: boolean;
 }
 
 export interface TriggerBatchEnrichmentResult {
@@ -299,7 +300,11 @@ export class EnrichmentService {
 
       const extractedMap = await provider.bulkFetch(
         validBooks.map(v => v.bookData),
-        {signal: callbacks?.signal},
+        {
+          signal: callbacks?.signal,
+          allowAiFallback: input.allowAiFallback,
+          customGenres: input.customGenres,
+        },
       );
 
       if (callbacks?.signal?.aborted) {
@@ -338,12 +343,21 @@ export class EnrichmentService {
             !(Array.isArray(value) && value.length === 0);
 
           if (!hasValidValue) {
-            await booksCollection.doc(bookId).update({
-              enrichmentStatus: {
-                ...existingStatus,
-                [statusKey]: 'unsupported',
-              },
-            });
+            const isHybridWithAiFallback =
+              metadataKey === MetadataKey.SYNOPSIS ||
+              metadataKey === MetadataKey.AUTHOR_BIO ||
+              metadataKey === MetadataKey.SERIES;
+            const skippedAiFallback =
+              isHybridWithAiFallback && input.allowAiFallback === false;
+
+            if (!skippedAiFallback) {
+              await booksCollection.doc(bookId).update({
+                enrichmentStatus: {
+                  ...existingStatus,
+                  [statusKey]: 'unsupported',
+                },
+              });
+            }
             callbacks?.onBookProgress?.({
               bookId,
               stage: 'skipped',

@@ -17,6 +17,7 @@ vi.mock('../../auth/allowlistService', () => ({
   AllowlistService: {
     listUsers: vi.fn(),
     addUser: vi.fn(),
+    updateUserAiPlan: vi.fn(),
     removeUser: vi.fn(),
   },
 }));
@@ -47,11 +48,13 @@ describe('authRouter', () => {
         user: {uid: 'u1', email: 'user@example.com'},
         isAppAllowed: true,
         isAdmin: false,
+        hasAiPlan: false,
       });
       const res = await api.getPermissions();
       expect(res).toEqual({
         isAppAllowed: true,
         isAdmin: false,
+        hasAiPlan: false,
         user: {uid: 'u1', email: 'user@example.com'},
       });
     });

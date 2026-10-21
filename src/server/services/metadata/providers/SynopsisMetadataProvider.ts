@@ -88,6 +88,7 @@ export class SynopsisMetadataProvider implements IMetadataProvider<
     const remaining = books.filter(b => !results[b.id] && b.title);
     if (
       remaining.length > 0 &&
+      options?.allowAiFallback !== false &&
       Boolean(process.env.GEMINI_API_KEY) &&
       typeof generateBookSynopsesBatch === 'function'
     ) {

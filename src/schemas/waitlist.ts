@@ -36,6 +36,7 @@ export const listWaitlistInputSchema = z
 export const reviewWaitlistInputSchema = z.object({
   email: safeEmailSchema,
   action: z.enum(['approve', 'reject']),
+  hasAiPlan: z.boolean().optional(),
 });
 
 export type WaitlistStatus = z.infer<typeof waitlistStatusSchema>;

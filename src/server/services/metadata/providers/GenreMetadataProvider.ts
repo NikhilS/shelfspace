@@ -31,7 +31,9 @@ export class GenreMetadataProvider implements IMetadataProvider<BookGenreData> {
     books: CoreBookData[],
     options?: MetadataBulkFetchOptions,
   ): Promise<Record<string, BookGenreData>> {
-    if (options?.signal?.aborted) return {};
+    if (options?.signal?.aborted || options?.allowAiFallback === false) {
+      return {};
+    }
     const synopsisMap = await resolveBookSynopses(books, options);
     if (options?.signal?.aborted) return {};
 
@@ -56,6 +58,7 @@ export class GenreMetadataProvider implements IMetadataProvider<BookGenreData> {
         const genreResult = await classifyBooks(chunk, {
           priority: 'BATCH',
           signal: options?.signal,
+          customGenres: options?.customGenres,
         });
 
         if (Array.isArray(genreResult)) {

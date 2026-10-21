@@ -232,6 +232,7 @@ describe('WaitlistService', () => {
       expect(AllowlistService.addUser).toHaveBeenCalledWith(
         'applicant@example.com',
         'user',
+        false,
       );
       expect(mockDocSet).toHaveBeenCalledWith(
         expect.objectContaining({

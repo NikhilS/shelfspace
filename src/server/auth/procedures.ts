@@ -77,13 +77,38 @@ const enforceUserIsAdmin = enforceUserIsAuthed.unstable_pipe(({ctx, next}) => {
       ...ctx,
       user: ctx.user as AuthUser,
       isAdmin: true,
+      hasAiPlan: true,
     },
   });
 });
 
+/**
+ * Middleware: Requires the authenticated caller to have the orthogonal AI Plan enabled (or be an Admin).
+ */
+const enforceUserHasAiPlan = enforceUserIsAuthed.unstable_pipe(
+  ({ctx, next}) => {
+    if (!ctx.isAdmin && ctx.hasAiPlan === false) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message:
+          'Forbidden: AI Plan required for this feature. Contact an administrator to enable AI access.',
+      });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        user: ctx.user as AuthUser,
+        hasAiPlan: true,
+      },
+    });
+  },
+);
+
 export const authenticatedProcedure = t.procedure.use(enforceIsAuthenticated);
 export const protectedProcedure = t.procedure.use(enforceUserIsAuthed);
 export const adminProcedure = t.procedure.use(enforceUserIsAdmin);
+export const aiProtectedProcedure = t.procedure.use(enforceUserHasAiPlan);
 
 /**
  * Creates a procedure that enforces library-level access control (viewer, editor, or owner).

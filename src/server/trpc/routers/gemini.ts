@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {router, protectedProcedure} from '../trpc';
+import {router, protectedProcedure, aiProtectedProcedure} from '../trpc';
 import {safeIdSchema} from '../../../schemas/common';
 import {
   extractBooksFromImage,
@@ -39,7 +39,7 @@ const libraryBookInputSchema = z.object({
 });
 
 export const geminiRouter = router({
-  extractBooksFromImage: protectedProcedure
+  extractBooksFromImage: aiProtectedProcedure
     .input(
       z.object({
         base64Image: z
@@ -62,11 +62,12 @@ export const geminiRouter = router({
           .max(500_000, 'CSV payload exceeds 500KB limit'),
       }),
     )
-    .mutation(async ({input}) => {
-      return await extractBooksFromCsv(input.csvText);
+    .mutation(async ({ctx, input}) => {
+      const allowAiFallback = Boolean(ctx.isAdmin || ctx.hasAiPlan !== false);
+      return await extractBooksFromCsv(input.csvText, {allowAiFallback});
     }),
 
-  generateLibraryHeroImage: protectedProcedure
+  generateLibraryHeroImage: aiProtectedProcedure
     .input(
       z.object({
         libraryName: z.string().trim().min(1).max(120),
@@ -76,7 +77,7 @@ export const geminiRouter = router({
       return await generateLibraryHeroImage(input.libraryName);
     }),
 
-  generateClusterNames: protectedProcedure
+  generateClusterNames: aiProtectedProcedure
     .input(
       z.object({
         clusters: z
@@ -100,7 +101,7 @@ export const geminiRouter = router({
       return await generateClusterNames(input.clusters);
     }),
 
-  generateBookEmbeddings: protectedProcedure
+  generateBookEmbeddings: aiProtectedProcedure
     .input(
       z.object({
         texts: z
@@ -112,7 +113,7 @@ export const geminiRouter = router({
       return await generateBookEmbeddings(input.texts);
     }),
 
-  getPickOfTheDay: protectedProcedure
+  getPickOfTheDay: aiProtectedProcedure
     .input(
       z.object({
         books: z
@@ -124,7 +125,7 @@ export const geminiRouter = router({
       return await getPickOfTheDay(input.books);
     }),
 
-  generateBookInsights: protectedProcedure
+  generateBookInsights: aiProtectedProcedure
     .input(
       z.object({
         title: z.string().trim().min(1).max(500),
@@ -142,7 +143,7 @@ export const geminiRouter = router({
       return await generateBookInsights(input.title, input.author, input.type);
     }),
 
-  generateLibraryRecommendations: protectedProcedure
+  generateLibraryRecommendations: aiProtectedProcedure
     .input(
       z.object({
         books: z
@@ -154,7 +155,7 @@ export const geminiRouter = router({
       return await generateLibraryRecommendations(input.books);
     }),
 
-  classifyBooks: protectedProcedure
+  classifyBooks: aiProtectedProcedure
     .input(
       z.object({
         books: z.array(bookGenreSchema).max(100),
@@ -163,10 +164,12 @@ export const geminiRouter = router({
       }),
     )
     .mutation(async ({input}) => {
-      return await classifyBooks(input.books);
+      return await classifyBooks(input.books, {
+        customGenres: input.customGenres,
+      });
     }),
 
-  extractBookGeoMetadataBatch: protectedProcedure
+  extractBookGeoMetadataBatch: aiProtectedProcedure
     .input(
       z.object({
         books: z.array(bookGenreSchema).max(100, 'Maximum 100 books per batch'),
@@ -176,7 +179,7 @@ export const geminiRouter = router({
       return await extractBookGeoMetadataBatch(input.books);
     }),
 
-  extractBookTemporalMetadataBatch: protectedProcedure
+  extractBookTemporalMetadataBatch: aiProtectedProcedure
     .input(
       z.object({
         books: z.array(bookGenreSchema).max(100, 'Maximum 100 books per batch'),

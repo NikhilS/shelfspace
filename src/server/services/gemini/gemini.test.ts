@@ -223,16 +223,7 @@ describe('gemini service unit suite', () => {
     const hero = await generateLibraryHeroImage('Sanctuary');
     expect(hero).toBe('data:image/png;base64,iVBORw0KGgo=');
 
-    vi.spyOn(
-      clientMod.geminiStructuredProvider,
-      'generateContent',
-    ).mockResolvedValueOnce({
-      text: JSON.stringify({
-        hasHeaderRow: true,
-        columnMap: {title: 0, author: 1, isbn: 2, format: 3},
-      }),
-    } as never);
-
+    // Zero-token deterministic fast-path for standard headers (does not call Gemini)
     const csvBooks = await extractBooksFromCsv(
       'Title,Author,ISBN,Binding\nDune,Frank Herbert,978-0-441-17271-9,Kindle Edition\nFoundation,Isaac Asimov,0553293354,Hardcover',
     );
@@ -247,6 +238,29 @@ describe('gemini service unit suite', () => {
         title: 'Foundation',
         author: 'Isaac Asimov',
         isbn: '0553293354',
+        format: 'physical',
+      },
+    ]);
+
+    // Gemini fallback when headers are non-standard
+    vi.spyOn(
+      clientMod.geminiStructuredProvider,
+      'generateContent',
+    ).mockResolvedValueOnce({
+      text: JSON.stringify({
+        hasHeaderRow: false,
+        columnMap: {title: 0, author: 1, isbn: 2, format: 3},
+      }),
+    } as never);
+
+    const headerlessCsvBooks = await extractBooksFromCsv(
+      'Solaris,Stanislaw Lem,9780156027601,Paperback',
+    );
+    expect(headerlessCsvBooks).toEqual([
+      {
+        title: 'Solaris',
+        author: 'Stanislaw Lem',
+        isbn: '9780156027601',
         format: 'physical',
       },
     ]);

@@ -16,8 +16,10 @@ import {
   CheckCircle2,
   Loader2,
   Activity,
+  Sparkles,
 } from 'lucide-react';
 import {MetadataKey} from '../../types/metadata';
+import {useAppPermissions} from '../../hooks/useAppPermissions';
 import {
   useBulkEnrichment,
   BookJobTelemetry,
@@ -38,15 +40,22 @@ interface ManualEnrichmentSectionProps {
 }
 
 const ALL_METADATA_KEYS = [
-  {id: MetadataKey.GEO, label: 'Settings & Places'},
-  {id: MetadataKey.TEMPORAL, label: 'Historical Eras'},
-  {id: MetadataKey.GENRE, label: 'Genres'},
-  {id: MetadataKey.SERIES, label: 'Series'},
-  {id: MetadataKey.SYNOPSIS, label: 'Summaries'},
-  {id: MetadataKey.AUTHOR_BIO, label: 'Author Bios'},
-  {id: MetadataKey.EMBEDDING, label: 'Embeddings'},
-  {id: MetadataKey.COVER_IMAGE, label: 'Cover Art'},
+  {id: MetadataKey.GEO, label: 'Settings & Places', aiOnly: true},
+  {id: MetadataKey.TEMPORAL, label: 'Historical Eras', aiOnly: true},
+  {id: MetadataKey.GENRE, label: 'Genres', aiOnly: true},
+  {id: MetadataKey.SERIES, label: 'Series', aiOnly: false},
+  {id: MetadataKey.SYNOPSIS, label: 'Summaries', aiOnly: false},
+  {id: MetadataKey.AUTHOR_BIO, label: 'Author Bios', aiOnly: false},
+  {id: MetadataKey.EMBEDDING, label: 'Embeddings', aiOnly: true},
+  {id: MetadataKey.COVER_IMAGE, label: 'Cover Art', aiOnly: false},
 ];
+
+const PURE_AI_KEYS = new Set<MetadataKey>([
+  MetadataKey.GEO,
+  MetadataKey.TEMPORAL,
+  MetadataKey.GENRE,
+  MetadataKey.EMBEDDING,
+]);
 
 function isMetadataPresent(book: Book, key: MetadataKey): boolean {
   const status = book.enrichmentStatus || {};
@@ -231,6 +240,7 @@ export function ManualEnrichmentSection({
   books,
   libraryId,
 }: ManualEnrichmentSectionProps) {
+  const {hasAiPlan} = useAppPermissions();
   const [filterMissing, setFilterMissing] = useState<MetadataKey | 'all'>(
     'all',
   );
@@ -242,13 +252,16 @@ export function ManualEnrichmentSection({
   const [enrichmentBatchBooks, setEnrichmentBatchBooks] = useState<Book[]>([]);
   const [enrichmentEffectiveOverwrite, setEnrichmentEffectiveOverwrite] =
     useState(false);
-  const [targetMetadata, setTargetMetadata] = useState<MetadataKey>(
-    MetadataKey.GEO,
+  const [targetMetadata, setTargetMetadata] = useState<MetadataKey>(() =>
+    hasAiPlan ? MetadataKey.GEO : MetadataKey.SYNOPSIS,
   );
   const [overwrite, setOverwrite] = useState(false);
   const [liveBookStates, setLiveBookStates] = useState<
     Record<string, BookJobTelemetry>
   >({});
+
+  const isTargetBlockedByAiPlan =
+    !hasAiPlan && PURE_AI_KEYS.has(targetMetadata);
 
   const filteredBooks = useMemo(() => {
     if (filterMissing === 'all') return books;
@@ -290,6 +303,7 @@ export function ManualEnrichmentSection({
   };
 
   const handleStartEnrichment = () => {
+    if (isTargetBlockedByAiPlan) return;
     const selected = books.filter(b => selectedBookIds.has(b.id));
     if (selected.length === 0) return;
 
@@ -492,6 +506,7 @@ export function ManualEnrichmentSection({
                 {ALL_METADATA_KEYS.map(k => (
                   <SelectItem key={k.id} value={k.id}>
                     {k.label}
+                    {!hasAiPlan && k.aiOnly ? ' (Requires AI Plan)' : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -511,13 +526,23 @@ export function ManualEnrichmentSection({
             </label>
           </div>
         </div>
-        <Button
-          onClick={handleStartEnrichment}
-          size="sm"
-          className="gap-2 w-full md:w-auto flex-shrink-0"
-        >
-          <Play className="w-4 h-4" /> Start
-        </Button>
+        {isTargetBlockedByAiPlan ? (
+          <span
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans font-medium bg-surface-container text-on-surface-variant border border-outline-variant/50 whitespace-nowrap"
+            title="Requires AI Plan (Admin-enabled)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-on-surface-variant/70" />
+            Requires AI Plan (Admin-enabled)
+          </span>
+        ) : (
+          <Button
+            onClick={handleStartEnrichment}
+            size="sm"
+            className="gap-2 w-full md:w-auto flex-shrink-0"
+          >
+            <Play className="w-4 h-4" /> Start
+          </Button>
+        )}
       </div>
 
       {/* In-Progress Enrichment Runner view */}

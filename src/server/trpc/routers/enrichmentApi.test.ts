@@ -72,6 +72,7 @@ describe('enrichmentApiRouter', () => {
         bookIds: ['b1', 'b2'],
         overwrite: true,
         customGenres: undefined,
+        allowAiFallback: true,
       },
       {skipAccessCheck: true},
     );
@@ -106,5 +107,72 @@ describe('enrichmentApiRouter', () => {
 
     const statusRes = await caller.getJobStatus({libraryId: 'lib-1'});
     expect(statusRes).toEqual({activeJob: null});
+  });
+
+  it('blocks pure-AI enrichment flows (geo, temporal, genre, embedding) for standard users without AI Plan', async () => {
+    vi.mocked(PermissionService.verifyLibraryAccess).mockResolvedValue({
+      role: 'editor',
+      userId: 'user-standard',
+    });
+
+    const nonAiCtx = {
+      user: {
+        uid: 'user-standard',
+        email: 'reader@example.com',
+      },
+      isAppAllowed: true,
+      isAdmin: false,
+      hasAiPlan: false,
+    } as any;
+
+    const caller = enrichmentApiRouter.createCaller(nonAiCtx);
+    await expect(
+      caller.triggerBatch({
+        libraryId: 'lib-1',
+        enrichmentType: 'geo',
+        bookIds: ['b1'],
+      }),
+    ).rejects.toThrow(/AI Plan required/);
+    expect(EnrichmentService.triggerBatchEnrichment).not.toHaveBeenCalled();
+  });
+
+  it('allows hybrid catalog enrichment (synopsis, authorBio, series, coverImage) with allowAiFallback: false when hasAiPlan is false', async () => {
+    vi.mocked(PermissionService.verifyLibraryAccess).mockResolvedValueOnce({
+      role: 'editor',
+      userId: 'user-standard',
+    });
+    vi.mocked(EnrichmentService.triggerBatchEnrichment).mockResolvedValueOnce({
+      enrichedCount: 1,
+      failedCount: 0,
+      results: [],
+    } as any);
+
+    const nonAiCtx = {
+      user: {
+        uid: 'user-standard',
+        email: 'reader@example.com',
+      },
+      isAppAllowed: true,
+      isAdmin: false,
+      hasAiPlan: false,
+    } as any;
+
+    const caller = enrichmentApiRouter.createCaller(nonAiCtx);
+    await caller.triggerBatch({
+      libraryId: 'lib-1',
+      enrichmentType: 'synopsis',
+      bookIds: ['b1'],
+    });
+
+    expect(EnrichmentService.triggerBatchEnrichment).toHaveBeenCalledWith(
+      'user-standard',
+      'reader@example.com',
+      expect.objectContaining({
+        libraryId: 'lib-1',
+        enrichmentType: 'synopsis',
+        allowAiFallback: false,
+      }),
+      {skipAccessCheck: true},
+    );
   });
 });

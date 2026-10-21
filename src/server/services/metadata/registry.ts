@@ -61,6 +61,7 @@ export class MetadataRegistry {
    */
   public async enrichBooksOnCreate(
     books: CoreBookData[],
+    options?: {allowAiFallback?: boolean; customGenres?: string[]},
   ): Promise<Map<string, Record<string, unknown>>> {
     const mergedUpdates = new Map<string, Record<string, unknown>>();
     const workingBooks: CoreBookData[] = books.map(b => ({...b}));
@@ -149,6 +150,10 @@ export class MetadataRegistry {
       }),
     );
 
+    if (options?.allowAiFallback === false) {
+      return mergedUpdates;
+    }
+
     // Step 2: Run remaining on-create providers (Genre & Embedding) sequentially
     // so EmbeddingMetadataProvider benefits from newly classified genres and synopses.
     const createProviders = this.getAllProviders().filter(
@@ -165,7 +170,10 @@ export class MetadataRegistry {
       if (booksNeedingField.length === 0) continue;
 
       try {
-        const batchRes = await provider.bulkFetch(booksNeedingField);
+        const batchRes = await provider.bulkFetch(booksNeedingField, {
+          allowAiFallback: options?.allowAiFallback,
+          customGenres: options?.customGenres,
+        });
         for (const [bookId, value] of Object.entries(batchRes)) {
           if (value === null || value === undefined) continue;
           const current = mergedUpdates.get(bookId) || {};

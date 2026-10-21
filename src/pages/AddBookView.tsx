@@ -16,6 +16,7 @@ import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {useAddBooks} from './add-book/useAddBooks';
 import {useExistingBooks} from './add-book/useExistingBooks';
 import {useOnlineStatus} from '../hooks/useOnlineStatus';
+import {useAppPermissions} from '../hooks/useAppPermissions';
 import {Checkbox} from '../components/ui/checkbox';
 import {isDuplicateBook, normalizeBookDetails, toTitleCase} from '../lib/utils';
 import {BookLoader} from '../components/book/BookLoader';
@@ -67,6 +68,7 @@ export default function AddBookView() {
   const {id: libraryId} = useParams<{id: string}>();
   const [searchParams, setSearchParams] = useSearchParams();
   const isOnline = useOnlineStatus();
+  const {hasAiPlan} = useAppPermissions();
   const utils = trpc.useUtils();
 
   const isReadingMode = !libraryId || libraryId.startsWith('virtual_');
@@ -258,7 +260,12 @@ export default function AddBookView() {
                         >
                           <div className="flex items-center gap-2">
                             <Camera size={18} className="text-primary" />{' '}
-                            Capture Shelf
+                            <span>Capture Shelf</span>
+                            {!hasAiPlan && (
+                              <span className="text-[11px] text-on-surface-variant">
+                                (AI Plan)
+                              </span>
+                            )}
                           </div>
                         </SelectItem>
                       )}
@@ -380,6 +387,7 @@ export default function AddBookView() {
                   addBooks={addBooks}
                   existingBooks={existingBooks}
                   allowDuplicates={allowDuplicates}
+                  hasAiPlan={hasAiPlan}
                 />
               )}
 

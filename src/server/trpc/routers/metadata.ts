@@ -1,10 +1,18 @@
 import {z} from 'zod';
+import {TRPCError} from '@trpc/server';
 import {router, protectedProcedure, adminProcedure} from '../trpc';
 import {MetadataRegistry} from '../../services/metadata';
 import {MetadataKey, CoreBookData} from '../../../types/metadata';
 import {catalogOrchestrator, wikipediaProvider} from '../../services/catalog';
 import {serverTelemetryBuffer} from '../../services/telemetry/serverTelemetryBuffer';
 import {safeIdSchema, safeUrlSchema} from '../../../schemas/common';
+
+const PURE_AI_METADATA_KEYS = new Set<MetadataKey>([
+  MetadataKey.GEO,
+  MetadataKey.TEMPORAL,
+  MetadataKey.GENRE,
+  MetadataKey.EMBEDDING,
+]);
 
 const coreBookSchema = z
   .object({
@@ -34,7 +42,8 @@ export const metadataRouter = router({
           .max(100, 'Maximum 100 books per enrichment batch'),
       }),
     )
-    .mutation(async ({input}) => {
+    .mutation(async ({ctx, input}) => {
+      const allowAiFallback = Boolean(ctx.isAdmin || ctx.hasAiPlan !== false);
       const registry = MetadataRegistry.getInstance();
       const createProviders = registry
         .getAllProviders()
@@ -47,9 +56,13 @@ export const metadataRouter = router({
 
       const providerPromises = createProviders.map(async provider => {
         const key = provider.getKey();
+        if (!allowAiFallback && PURE_AI_METADATA_KEYS.has(key)) {
+          return;
+        }
         try {
           const batchResult = await provider.bulkFetch(
             input.books as CoreBookData[],
+            {allowAiFallback},
           );
           for (const [bookId, metadata] of Object.entries(batchResult)) {
             if (metadata !== null && metadata !== undefined) {
@@ -81,7 +94,16 @@ export const metadataRouter = router({
           .max(100, 'Maximum 100 books per enrichment batch'),
       }),
     )
-    .mutation(async ({input}) => {
+    .mutation(async ({ctx, input}) => {
+      const allowAiFallback = Boolean(ctx.isAdmin || ctx.hasAiPlan !== false);
+      if (!allowAiFallback && PURE_AI_METADATA_KEYS.has(input.providerKey)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message:
+            'AI Plan required: Your account does not have an active AI Plan for AI metadata enrichment.',
+        });
+      }
+
       const registry = MetadataRegistry.getInstance();
       const provider = registry.getProvider(input.providerKey);
 
@@ -96,7 +118,9 @@ export const metadataRouter = router({
       }
 
       try {
-        return await provider.bulkFetch(input.books as CoreBookData[]);
+        return await provider.bulkFetch(input.books as CoreBookData[], {
+          allowAiFallback,
+        });
       } catch (error) {
         console.error(
           `Error running spruce-up provider for key ${input.providerKey}:`,

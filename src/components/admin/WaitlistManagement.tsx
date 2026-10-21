@@ -134,10 +134,18 @@ export function WaitlistManagement() {
     });
   }, [entries, searchQuery]);
 
-  const handleReview = async (email: string, action: 'approve' | 'reject') => {
+  const handleReview = async (
+    email: string,
+    action: 'approve' | 'reject',
+    hasAiPlan?: boolean,
+  ) => {
     setProcessingEmail(email);
     try {
-      await reviewMutation.mutateAsync({email, action});
+      await reviewMutation.mutateAsync({
+        email,
+        action,
+        ...(action === 'approve' && hasAiPlan !== undefined ? {hasAiPlan} : {}),
+      });
     } finally {
       setProcessingEmail(null);
     }
@@ -387,6 +395,7 @@ export function WaitlistManagement() {
               isProcessing={processingEmail === entry.email}
               isCopied={copiedEmail === entry.email}
               onApprove={() => handleReview(entry.email, 'approve')}
+              onApproveWithAi={() => handleReview(entry.email, 'approve', true)}
               onReject={() => handleReview(entry.email, 'reject')}
               onCopy={() => handleCopyEmail(entry.email)}
             />
@@ -402,6 +411,7 @@ interface WaitlistRowProps {
   isProcessing: boolean;
   isCopied: boolean;
   onApprove: () => void;
+  onApproveWithAi: () => void;
   onReject: () => void;
   onCopy: () => void;
 }
@@ -411,6 +421,7 @@ function WaitlistRow({
   isProcessing,
   isCopied,
   onApprove,
+  onApproveWithAi,
   onReject,
   onCopy,
 }: WaitlistRowProps) {
@@ -503,6 +514,20 @@ function WaitlistRow({
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>{isProcessing ? 'Saving...' : 'Approve'}</span>
+            </Button>
+
+            <Button
+              id={`waitlist-approve-ai-${entry.email}`}
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onApproveWithAi}
+              disabled={isProcessing}
+              className="h-8 px-3 text-xs font-medium gap-1.5 text-primary border-primary/30 hover:bg-primary/10"
+              title="Approve user and grant AI Plan access"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Approve + AI</span>
             </Button>
 
             <Button

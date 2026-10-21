@@ -14,6 +14,7 @@ interface LibraryHeaderProps {
   isSyncing?: boolean;
   role?: 'owner' | 'editor' | 'viewer' | null;
   canEdit?: boolean;
+  hasAiPlan?: boolean;
   isRefreshingHero?: boolean;
   onRefreshHero?: () => void;
 }
@@ -25,6 +26,7 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   isSyncing = false,
   role,
   canEdit = false,
+  hasAiPlan = true,
   isRefreshingHero = false,
   onRefreshHero,
 }) => {
@@ -104,10 +106,16 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
                 type="button"
                 variant="ghost"
                 size="icon"
-                onClick={onRefreshHero}
-                disabled={isRefreshingHero}
+                onClick={hasAiPlan ? onRefreshHero : undefined}
+                disabled={isRefreshingHero || !hasAiPlan}
                 className="flex items-center justify-center text-white bg-white/15 hover:bg-white/25 active:bg-white/30 hover:text-white transition-colors w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-white/20 backdrop-blur-sm disabled:opacity-50 ml-auto sm:ml-4 shadow-xs"
-                title={isRefreshingHero ? 'Refreshing...' : 'Refresh Banner'}
+                title={
+                  !hasAiPlan
+                    ? 'Requires AI Plan (Admin-enabled)'
+                    : isRefreshingHero
+                      ? 'Refreshing...'
+                      : 'Refresh Banner'
+                }
                 aria-label="Refresh Banner"
               >
                 <RefreshCw

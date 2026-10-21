@@ -1,13 +1,15 @@
-import {useState, useEffect, useCallback} from 'react';
+import {useState, useEffect, useCallback, useRef} from 'react';
 import {Book, BookDetailsPayload} from '../../types';
 import {toast} from 'sonner';
 import {trpc, trpcVanilla} from '../../lib/trpc';
+import {useAppPermissions} from '../../hooks/useAppPermissions';
 
 export function useBookInsights(
   libraryId: string | undefined,
   book: (Book & BookDetailsPayload) | null,
   canEdit: boolean,
 ) {
+  const {hasAiPlan} = useAppPermissions();
   const [activeInsight, setActiveInsight] = useState<
     'catchup' | 'similar' | null
   >(null);
@@ -15,6 +17,7 @@ export function useBookInsights(
   const [isGeneratingInsight, setIsGeneratingInsight] = useState(false);
   const [isEnrichingSynopsis, setIsEnrichingSynopsis] = useState(false);
   const [isEnrichingBio, setIsEnrichingBio] = useState(false);
+  const attemptedAutoEnrichRef = useRef<Set<string>>(new Set());
 
   const utils = trpc.useUtils();
   const generateBookInsightsMutation =
@@ -42,20 +45,30 @@ export function useBookInsights(
       }
 
       try {
-        await trpcVanilla.enrichment.trigger.mutate({
+        const res = await trpcVanilla.enrichment.trigger.mutate({
           libraryId,
           enrichmentType: type,
           bookIds: [book.id],
         });
         await invalidateBookQueries(book.id);
-        toast.success(
-          type === 'synopsis'
-            ? 'Synopsis updated!'
-            : 'Author biography updated!',
-        );
+        const processed = res?.processedCount ?? res?.results?.length ?? 1;
+        if (processed > 0) {
+          toast.success(
+            type === 'synopsis'
+              ? 'Synopsis updated!'
+              : 'Author biography updated!',
+          );
+        } else {
+          const label = type === 'synopsis' ? 'synopsis' : 'author biography';
+          toast.info(
+            hasAiPlan
+              ? `No ${label} found for this title.`
+              : `No ${label} found in public catalogs (AI fallback requires an active AI Plan).`,
+          );
+        }
       } catch (err) {
         console.error(`Manual enrichment failed for ${type}:`, err);
-        toast.error(`Could not generate ${type}. Please try again later.`);
+        toast.error(`Could not fetch ${type}. Please try again later.`);
       } finally {
         if (type === 'synopsis') {
           setIsEnrichingSynopsis(false);
@@ -64,23 +77,28 @@ export function useBookInsights(
         }
       }
     },
-    [book, libraryId, canEdit, invalidateBookQueries],
+    [book, libraryId, canEdit, hasAiPlan, invalidateBookQueries],
   );
 
   useEffect(() => {
     if (!book || !libraryId || !canEdit) return;
+
+    const synopsisKey = `${book.id}:synopsis`;
+    const bioKey = `${book.id}:authorBio`;
 
     // Check if enrichment already ran or is unsupported
     const synopsisStatus = book.enrichmentStatus?.synopsis;
     const authorBioStatus = book.enrichmentStatus?.authorBio;
 
     const needsSynopsis =
+      !attemptedAutoEnrichRef.current.has(synopsisKey) &&
       !book.bookDetailsMetadata?.hasSynopsis &&
       !book.synopsis &&
       synopsisStatus !== 'unsupported' &&
       synopsisStatus !== 'completed';
 
     const needsBio =
+      !attemptedAutoEnrichRef.current.has(bioKey) &&
       !book.bookDetailsMetadata?.hasAuthorBio &&
       !book.authorBio &&
       book.author &&
@@ -94,6 +112,7 @@ export function useBookInsights(
 
     const runAutoEnrichment = async () => {
       if (needsSynopsis) {
+        attemptedAutoEnrichRef.current.add(synopsisKey);
         if (isMounted) setIsEnrichingSynopsis(true);
         try {
           await trpcVanilla.enrichment.trigger.mutate({
@@ -112,6 +131,7 @@ export function useBookInsights(
       }
 
       if (needsBio && isMounted) {
+        attemptedAutoEnrichRef.current.add(bioKey);
         setIsEnrichingBio(true);
         try {
           await trpcVanilla.enrichment.trigger.mutate({

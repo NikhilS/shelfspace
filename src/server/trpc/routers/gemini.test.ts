@@ -41,6 +41,19 @@ describe('geminiRouter tRPC procedures & security boundaries', () => {
     ).rejects.toMatchObject({code: 'UNAUTHORIZED'});
   });
 
+  it('rejects non-admin callers with hasAiPlan: false on AI procedures with FORBIDDEN', async () => {
+    const noAiCtx: SecurityContext = {
+      user: {uid: 'user-no-ai', email: 'basic@example.com'},
+      isAdmin: false,
+      isAppAllowed: true,
+      hasAiPlan: false,
+    };
+    const caller = geminiRouter.createCaller(noAiCtx);
+    await expect(
+      caller.generateLibraryHeroImage({libraryName: 'My Library'}),
+    ).rejects.toMatchObject({code: 'FORBIDDEN'});
+  });
+
   it('enforces MIME allowlist and 15MB cap on extractBooksFromImage', async () => {
     const caller = geminiRouter.createCaller(authCtx);
     vi.mocked(geminiService.extractBooksFromImage).mockResolvedValue([

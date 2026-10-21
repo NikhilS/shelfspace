@@ -187,6 +187,19 @@
         "invitedLibraryName": { "type": "string" }
       },
       "required": ["email", "status", "requestedAt"]
+    },
+    "AllowlistUser": {
+      "title": "AllowlistUser",
+      "description": "An allowlisted user with role and orthogonal AI Plan entitlement.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "hasAiPlan": { "type": "boolean" },
+        "addedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "hasAiPlan"]
     }
   },
   "firestore": {
@@ -225,6 +238,10 @@
     "/appSettings/waitlist/entries/{email}": {
       "schema": { "$ref": "#/entities/WaitlistEntry" },
       "description": "Submissions to the invite waitlist."
+    },
+    "/appSettings/allowlist/users/{email}": {
+      "schema": { "$ref": "#/entities/AllowlistUser" },
+      "description": "Allowlisted users and their AI Plan status."
     }
   }
 }

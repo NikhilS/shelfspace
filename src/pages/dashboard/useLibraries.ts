@@ -1,5 +1,6 @@
 import {useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import {useAuth} from '../../stores/authStore';
+import {useAppPermissions} from '../../hooks/useAppPermissions';
 import {uploadBase64Image} from '../../lib/storage';
 import {Library} from '../../types';
 import {LibraryScope} from '../../schemas/libraryApi';
@@ -27,6 +28,7 @@ export function useLibraries(
   initialScopes: LibraryScope[] = ['owned', 'shared'],
 ) {
   const {user} = useAuth();
+  const {hasAiPlan} = useAppPermissions();
   const utils = trpc.useUtils();
   const utilsRef = useRef(utils);
   utilsRef.current = utils;
@@ -145,25 +147,27 @@ export function useLibraries(
       toast.success('Library created successfully');
       const createdId = result.id;
 
-      // Generate hero image in background
-      generateLibraryHeroImageMutation
-        .mutateAsync({libraryName: trimmedName})
-        .then(async url => {
-          if (url && createdId) {
-            try {
-              const storagePath = `libraries/${createdId}/hero.png`;
-              const storageUrl = await uploadBase64Image(url, storagePath);
-              await trpcVanilla.library.update.mutate({
-                libraryId: createdId,
-                heroImageUrl: storageUrl,
-              });
-              void utils.library.list.invalidate();
-            } catch (e) {
-              console.error('Failed to save hero image', e);
+      // Generate hero image in background only when user has AI Plan
+      if (hasAiPlan) {
+        generateLibraryHeroImageMutation
+          .mutateAsync({libraryName: trimmedName})
+          .then(async url => {
+            if (url && createdId) {
+              try {
+                const storagePath = `libraries/${createdId}/hero.png`;
+                const storageUrl = await uploadBase64Image(url, storagePath);
+                await trpcVanilla.library.update.mutate({
+                  libraryId: createdId,
+                  heroImageUrl: storageUrl,
+                });
+                void utils.library.list.invalidate();
+              } catch (e) {
+                console.error('Failed to save hero image', e);
+              }
             }
-          }
-        })
-        .catch(console.error);
+          })
+          .catch(console.error);
+      }
     } catch (error) {
       console.error('Failed to create library:', error);
       toast.error('Failed to create library');

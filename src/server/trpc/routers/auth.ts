@@ -15,6 +15,7 @@ export const authRouter = router({
     return {
       isAppAllowed: ctx.isAppAllowed,
       isAdmin: ctx.isAdmin,
+      hasAiPlan: Boolean(ctx.isAdmin || ctx.hasAiPlan),
       user: ctx.user,
     };
   }),
@@ -29,11 +30,27 @@ export const authRouter = router({
       z.object({
         email: safeEmailSchema,
         role: z.enum(['user', 'admin']).optional().default('user'),
+        hasAiPlan: z.boolean().optional(),
       }),
     )
     .mutation(async ({input}) => {
-      await AllowlistService.addUser(input.email, input.role);
+      await AllowlistService.addUser(input.email, input.role, input.hasAiPlan);
       return {success: true};
+    }),
+
+  updateAllowlistAiPlan: adminProcedure
+    .input(
+      z.object({
+        email: safeEmailSchema,
+        hasAiPlan: z.boolean(),
+      }),
+    )
+    .mutation(async ({input}) => {
+      const updated = await AllowlistService.updateUserAiPlan(
+        input.email,
+        input.hasAiPlan,
+      );
+      return {success: true, ...updated};
     }),
 
   removeAllowlistUser: adminProcedure
@@ -73,6 +90,7 @@ export const authRouter = router({
         email: input.email,
         action: input.action,
         adminEmail: ctx.user.email,
+        hasAiPlan: input.hasAiPlan,
       });
     }),
 });

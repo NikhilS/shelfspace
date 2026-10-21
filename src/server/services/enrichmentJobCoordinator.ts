@@ -93,6 +93,7 @@ interface InternalJobState {
   pendingQueue: string[];
   overwrite: boolean;
   customGenres?: string[];
+  allowAiFallback?: boolean;
   startedAt: number;
   updatedAt: number;
   completedAt?: number;
@@ -179,6 +180,7 @@ class EnrichmentJobCoordinatorService {
       bookIds: string[];
       overwrite?: boolean;
       customGenres?: string[];
+      allowAiFallback?: boolean;
     },
     options?: {skipAccessCheck?: boolean},
   ): Promise<EnrichmentJobSnapshot> {
@@ -197,6 +199,7 @@ class EnrichmentJobCoordinatorService {
       bookIds: string[];
       overwrite?: boolean;
       customGenres?: string[];
+      allowAiFallback?: boolean;
     },
     options?: {skipAccessCheck?: boolean},
   ): Promise<EnrichmentJobSnapshot> {
@@ -206,6 +209,7 @@ class EnrichmentJobCoordinatorService {
       bookIds,
       overwrite = false,
       customGenres,
+      allowAiFallback,
     } = input;
 
     if (!options?.skipAccessCheck) {
@@ -225,6 +229,9 @@ class EnrichmentJobCoordinatorService {
     if (existingJob && existingJob.status === 'running') {
       if (existingJob.enrichmentType === enrichmentType) {
         if (overwrite) existingJob.overwrite = true;
+        if (allowAiFallback !== undefined) {
+          existingJob.allowAiFallback = allowAiFallback;
+        }
         const now = Date.now();
         for (const id of cleanBookIds) {
           if (!existingJob.perBookStates.has(id)) {
@@ -277,6 +284,7 @@ class EnrichmentJobCoordinatorService {
       pendingQueue: [...cleanBookIds],
       overwrite,
       customGenres,
+      allowAiFallback,
       startedAt: now,
       updatedAt: now,
       completedAt: cleanBookIds.length === 0 ? now : undefined,
@@ -419,6 +427,7 @@ class EnrichmentJobCoordinatorService {
               bookIds: microBatch,
               overwrite: job.overwrite,
               customGenres: job.customGenres,
+              allowAiFallback: job.allowAiFallback,
             },
             {
               skipAccessCheck: true,

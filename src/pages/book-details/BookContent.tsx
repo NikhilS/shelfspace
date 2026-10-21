@@ -2,6 +2,7 @@ import {AnimatePresence} from 'motion/react';
 import React, {useState, useEffect, useMemo} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuth} from '../../stores/authStore';
+import {useAppPermissions} from '../../hooks/useAppPermissions';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {cn, toTitleCase} from '../../lib/utils';
@@ -49,6 +50,7 @@ export function BookContent({
 }: BookContentProps) {
   const navigate = useNavigate();
   const {user} = useAuth();
+  const {hasAiPlan} = useAppPermissions();
 
   const {
     book,
@@ -293,7 +295,9 @@ export function BookContent({
                   ) : (
                     <>
                       <Sparkles className="w-3.5 h-3.5 text-primary" />
-                      <span>Generate Synopsis</span>
+                      <span>
+                        {hasAiPlan ? 'Generate Synopsis' : 'Fetch Synopsis'}
+                      </span>
                     </>
                   )}
                 </Button>
@@ -608,7 +612,9 @@ export function BookContent({
                         ) : (
                           <>
                             <Sparkles className="w-3 h-3 text-primary" />
-                            <span>Generate Bio</span>
+                            <span>
+                              {hasAiPlan ? 'Generate Bio' : 'Fetch Bio'}
+                            </span>
                           </>
                         )}
                       </Button>

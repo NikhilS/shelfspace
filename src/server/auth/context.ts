@@ -19,6 +19,7 @@ export async function createSecurityContext({
   let user: AuthUser | null = null;
   let isAppAllowed = false;
   let isAdmin = false;
+  let hasAiPlan = false;
 
   const jwtToken = TokenVerifier.extractTokenFromHeader(authHeader);
   if (jwtToken) {
@@ -29,6 +30,7 @@ export async function createSecurityContext({
     const perms = await AllowlistService.getPermissions(user.email);
     isAppAllowed = perms.isAppAllowed;
     isAdmin = perms.isAdmin;
+    hasAiPlan = Boolean(perms.hasAiPlan || perms.isAdmin);
   }
 
   return {
@@ -37,5 +39,6 @@ export async function createSecurityContext({
     user,
     isAppAllowed,
     isAdmin,
+    hasAiPlan,
   };
 }

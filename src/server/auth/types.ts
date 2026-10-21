@@ -14,6 +14,7 @@ export interface AuthUser {
 export interface SecurityPermissions {
   isAppAllowed: boolean;
   isAdmin: boolean;
+  hasAiPlan?: boolean;
 }
 
 export interface CachedLibraryAccess {
@@ -27,6 +28,7 @@ export interface SecurityContext {
   user: AuthUser | null;
   isAppAllowed: boolean;
   isAdmin: boolean;
+  hasAiPlan?: boolean;
   libraryId?: string;
   callerRole?: LibraryRole;
   libraryData?: Record<string, unknown>;

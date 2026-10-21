@@ -250,6 +250,7 @@ export class WaitlistService {
     email: string;
     action: 'approve' | 'reject';
     adminEmail: string;
+    hasAiPlan?: boolean;
   }): Promise<{success: boolean; status: 'approved' | 'rejected'}> {
     let normalized: string;
     try {
@@ -268,7 +269,11 @@ export class WaitlistService {
       params.action === 'approve' ? 'approved' : 'rejected';
 
     if (params.action === 'approve') {
-      await AllowlistService.addUser(normalized, 'user');
+      await AllowlistService.addUser(
+        normalized,
+        'user',
+        params.hasAiPlan ?? false,
+      );
     }
 
     await db.collection('appSettings/waitlist/entries').doc(normalized).set(

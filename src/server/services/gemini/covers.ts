@@ -4,12 +4,14 @@ export async function generateLibraryHeroImage(
   libraryName: string,
 ): Promise<string | null> {
   try {
+    const cleanMotif =
+      libraryName.replace(/["'`]/g, '').trim() || 'Archival Study';
     const response = await generateContentWithLimiter({
-      model: 'gemini-3.1-flash-image-preview',
+      model: 'gemini-nano-banana-2.1',
       contents: {
         parts: [
           {
-            text: `Breathtaking cozy watercolor and gouache storybook illustration of an enchanting personal library sanctuary named '${libraryName}'. Sunlit reading nook with arched wooden mullioned windows, warm golden sunbeams streaming across towering shelves overflowing with beautifully bound books, potted houseplants, a comfortable leather armchair, soft atmospheric lighting and floating dust motes. Peaceful Studio Ghibli inspired aesthetic. Masterpiece digital art, vibrant warm palette. Strictly no text, no letters, no words, no alphabet characters anywhere in the artwork.`,
+            text: `Breathtaking cozy watercolor and gouache storybook illustration of an enchanting personal library sanctuary inspired by the thematic mood of "${cleanMotif}". Sunlit reading nook with arched wooden mullioned windows, warm golden sunbeams streaming across towering shelves overflowing with finely bound volumes, subtle architectural and decorative motifs reflecting the collection's theme, potted botanicals, a worn leather armchair, and soft atmospheric dust motes. Peaceful Studio Ghibli and warm archival studio aesthetic. Masterpiece digital art, rich warm palette. CRITICAL: Render purely visual scenery—strictly no text, no signage, no plaques, no letters, no words, and no alphabet characters anywhere in the artwork.`,
           },
         ],
       },

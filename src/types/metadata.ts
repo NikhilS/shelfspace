@@ -30,6 +30,8 @@ export interface CoreBookData {
 
 export interface MetadataBulkFetchOptions {
   signal?: AbortSignal;
+  allowAiFallback?: boolean;
+  customGenres?: string[];
 }
 
 export interface IMetadataProvider<T = unknown> {

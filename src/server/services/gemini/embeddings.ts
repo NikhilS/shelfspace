@@ -1,4 +1,4 @@
-import {Type} from '@google/genai';
+import {Type, ThinkingLevel} from '@google/genai';
 import {
   generateContentWithLimiter,
   geminiEmbeddingProvider,
@@ -11,10 +11,15 @@ export async function generateClusterNames(
   clusters: {id: number; books: {title: string; author?: string}[]}[],
 ): Promise<Record<number, string>> {
   try {
-    const prompt = `I have clustered a reader's library into thematic constellations based on semantic embeddings.
-For each cluster below, analyze the titles and authors to identify the shared literary genre, aesthetic, or philosophical theme.
-Provide a captivating, evocative, and concise name for each cluster (1 to 3 words max).
-Avoid generic names like "Books" or "Novels". Favor distinctive descriptors (e.g., "Cosmic Dread", "Golden Age Sleuths", "Magical Realism", "Stoic Philosophy", "Cyberpunk Dystopia").
+    if (!clusters || clusters.length === 0) return {};
+
+    const prompt = `Clustered below are groups of books from a reader's library based on semantic vector similarity.
+For each cluster ID, inspect the titles and authors to identify the shared literary genre, intellectual tradition, aesthetic mood, or historical subject.
+Provide a distinct, evocative, and concise name for each cluster (1 to 3 words max).
+Rules:
+- Never use generic filler words ("Books", "Novels", "Cluster", "Misc", "Collection").
+- Ensure every cluster in the response has a unique name (no duplicates across cluster IDs).
+- Examples of strong names: "Cosmic Dread", "Golden Age Sleuths", "Magical Realism", "Stoic Philosophy", "Cyberpunk Dystopia".
 
 Clusters:
 ${clusters
@@ -24,15 +29,14 @@ ${clusters
         .slice(0, 15)
         .map(
           b =>
-            `- ${b.title || 'Unknown Title'} ${b.author ? `by ${b.author}` : ''}`,
+            `- ${b.title || 'Unknown Title'}${b.author ? ` by ${b.author}` : ''}`,
         )
         .join('\n')}`,
   )
-  .join('\n\n')}
-`;
+  .join('\n\n')}`;
 
     const response = await generateContentWithLimiter({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.1-flash-lite',
       contents: prompt,
       config: {
         systemInstruction:
@@ -56,7 +60,10 @@ ${clusters
             required: ['id', 'name'],
           },
         },
-        temperature: 0.4,
+        temperature: 0.3,
+        thinkingConfig: {
+          thinkingLevel: ThinkingLevel.MINIMAL,
+        },
       },
     });
 
@@ -110,17 +117,26 @@ export async function generateBookEmbeddings(
 
     let completedCount = 0;
     const priority = options?.priority ?? 'BATCH';
+    const inFlightByText = new Map<string, Promise<number[]>>();
 
     await Promise.all(
       texts.map(async (text, index) => {
         if (options?.signal?.aborted) return;
+        const normalizedKey = text.trim();
         try {
-          const values = await geminiEmbeddingProvider.embedText(text, {
-            priority,
-            signal: options?.signal,
-          });
-          if (values && values.length > 0) {
-            embeddings[index] = values;
+          if (normalizedKey) {
+            let promise = inFlightByText.get(normalizedKey);
+            if (!promise) {
+              promise = geminiEmbeddingProvider.embedText(normalizedKey, {
+                priority,
+                signal: options?.signal,
+              });
+              inFlightByText.set(normalizedKey, promise);
+            }
+            const values = await promise;
+            if (values && values.length > 0) {
+              embeddings[index] = values;
+            }
           }
         } catch (err: unknown) {
           console.warn('Failed to embed text: ', err);

@@ -1,4 +1,5 @@
 import React, {useState} from 'react';
+import {Camera, Sparkles} from 'lucide-react';
 import {BookDetails} from '../../types';
 import CameraScanner from '../../components/import/CameraScanner';
 import ExtractedBooksTable from '../../components/import/ExtractedBooksTable';
@@ -9,12 +10,14 @@ interface CaptureShelfTabProps {
   addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
   existingBooks: BookDetails[];
   allowDuplicates: boolean;
+  hasAiPlan?: boolean;
 }
 
 function CaptureShelfTab({
   addBooks,
   existingBooks,
   allowDuplicates,
+  hasAiPlan = true,
 }: CaptureShelfTabProps) {
   const [extractedBooks, setExtractedBooks] = useState<
     {
@@ -33,6 +36,34 @@ function CaptureShelfTab({
     new Set(),
   );
   const [isExtracting, setIsExtracting] = useState(false);
+
+  if (!hasAiPlan) {
+    return (
+      <div
+        className="w-full max-w-lg mx-auto py-14 px-6 text-center rounded-2xl border border-outline-variant/40 bg-surface-container-low/50 flex flex-col items-center gap-3"
+        data-testid="capture-shelf-ai-plan-notice"
+      >
+        <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-on-surface-variant border border-outline-variant/50">
+          <Camera className="w-6 h-6" />
+        </div>
+        <h3 className="font-serif text-lg font-semibold text-primary">
+          Photo Shelf Scan
+        </h3>
+        <p className="font-sans text-xs sm:text-sm text-on-surface-variant max-w-md leading-relaxed">
+          Optical bookshelf spine extraction uses Gemini Vision. You can still
+          add books at any time using Search Database, Scan ISBN, Import CSV, or
+          Manual Entry.
+        </p>
+        <span
+          className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans font-medium bg-surface-container text-on-surface-variant border border-outline-variant/50"
+          title="Requires AI Plan (Admin-enabled)"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-on-surface-variant/70" />
+          Requires AI Plan (Admin-enabled)
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 flex flex-col items-center">

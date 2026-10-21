@@ -1,4 +1,4 @@
-import {Type} from '@google/genai';
+import {Type, ThinkingLevel} from '@google/genai';
 import {BOOK_TAXONOMY, sanitizeGenrePayload} from '../../../constants/taxonomy';
 import {
   generateContentWithLimiter,
@@ -17,6 +17,14 @@ export async function generateLibraryRecommendations(
 ): Promise<string> {
   try {
     const limitedBooks = libraryBooks.slice(0, 100);
+    const allOwnedTitles = Array.from(
+      new Set(
+        libraryBooks
+          .map(b => b.title?.trim())
+          .filter((t): t is string => Boolean(t)),
+      ),
+    ).slice(0, 300);
+
     const bookList = limitedBooks
       .map(b => {
         let line = `"${b.title}" by ${b.author}`;
@@ -30,27 +38,35 @@ export async function generateLibraryRecommendations(
         return line;
       })
       .join('\n');
+
     const prompt = `Here is a catalog of books from a reader's personal library:
 
 ${bookList}
 
+Owned Titles Do-Not-Recommend List:
+${allOwnedTitles.join(' | ')}
+
 Based on this reader's interests, recurring genres, narrative styles, pacing, and philosophical themes, recommend 5 captivating new books to expand their horizons.
 
 CRITICAL DIRECTIVES:
-1. STRICTLY DO NOT recommend any book that is already listed in the reader's library above.
-2. Recommend exceptional, distinctive titles (a thoughtful blend of acclaimed literary works, modern masterworks, and hidden gems).
-3. For each book, use this clear markdown format:
+1. STRICTLY DO NOT recommend any book already listed in the reader's library or in the Owned Titles Do-Not-Recommend List above, nor direct sequels to unread series already owned.
+2. Every recommended book MUST be a real, verifiable published work attributed to its actual author (never invent or conflate titles and authors).
+3. Recommend exceptional, distinctive titles (a thoughtful blend of acclaimed literary works, modern masterworks, and high-resonance hidden gems).
+4. For each book, use this exact markdown format:
    ## [Book Title] by [Author]
    **Why It Fits Your Library**: 2-3 sentences explaining the exact thematic, stylistic, or intellectual resonance with specific books in their collection.
    **Key Themes**: 3-4 comma-separated tags (e.g., *Speculative Fiction, Found Family, Moral Ambiguity*).`;
 
     const response = await generateContentWithLimiter({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.8-flash',
       contents: prompt,
       config: {
         systemInstruction:
-          'You are an erudite, insightful literary curator and librarian who recommends books with nuance, depth, and precision.',
-        temperature: 0.6,
+          'You are an erudite, insightful literary curator and librarian who recommends real, verifiable books with nuance, depth, and precision.',
+        temperature: 0.5,
+        thinkingConfig: {
+          thinkingLevel: ThinkingLevel.LOW,
+        },
       },
     });
 
@@ -75,7 +91,7 @@ export async function generateBookInsights(
     case 'synopsis':
       prompt = `Provide a compelling, spoiler-free literary summary of "${title}" by ${author}.
 Focus on the core premise, central conflict, primary themes, setting, and narrative tone.
-Conclude with what kind of reader would find this work most rewarding. Keep it to 2-3 engaging, well-crafted paragraphs. Format with clean markdown (use ## for subheadings if appropriate).`;
+Conclude with what kind of reader would find this work most rewarding. Keep it to 2-3 engaging, well-crafted paragraphs without conversational filler. Format with clean markdown (use ## for subheadings if appropriate).`;
       break;
     case 'author_bio':
       prompt = `Provide an authoritative biographical profile of ${author}, focusing on their literary career, artistic philosophy, major themes across their bibliography, and critical recognition or awards.
@@ -88,10 +104,10 @@ Structure chronologically into:
 - **Key Plot Developments & Character Arcs**
 - **Major Plot Twists & Revelations**
 - **Climax & Ending Resolution**
-Detail all major twists, deaths, alliances, and the exact ending. Use concise markdown with bullet points for readability.`;
+Detail all major twists, character fates, alliances, and the exact ending accurately. Use concise markdown with bullet points for readability.`;
       break;
     case 'similar':
-      prompt = `Recommend 3 to 5 books with strong thematic, stylistic, or emotional kinship to "${title}" by ${author}.
+      prompt = `Recommend 3 to 5 real, published books with strong thematic, stylistic, or emotional kinship to "${title}" by ${author} (excluding other volumes in the same series).
 For each recommendation, format with:
 ## [Book Title] by [Author]
 **Why It Resonates**: 2-3 sentences detailing the specific points of connection (e.g., world-building, psychological depth, narrative voice, or moral dilemmas).`;
@@ -102,12 +118,16 @@ For each recommendation, format with:
   while (retries > 0) {
     try {
       const response = await generateContentWithLimiter({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
           systemInstruction:
-            'You are an insightful literary scholar, critic, and expert librarian who provides rich, accurate, and compelling book analyses.',
+            'You are an insightful literary scholar, critic, and expert librarian who provides rich, factually accurate, and compelling book analyses.',
           temperature: type === 'catchup' ? 0.3 : 0.5,
+          thinkingConfig: {
+            thinkingLevel:
+              type === 'catchup' ? ThinkingLevel.MEDIUM : ThinkingLevel.LOW,
+          },
         },
       });
 
@@ -149,6 +169,12 @@ export async function getPickOfTheDay(
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     const sampleBooks = shuffled.slice(0, 100);
+    const allOwnedTitles = Array.from(
+      new Set(
+        books.map(b => b.title?.trim()).filter((t): t is string => Boolean(t)),
+      ),
+    ).slice(0, 350);
+
     const bookList = sampleBooks
       .map((b, i) => {
         let line = `${i + 1}. "${b.title || 'Unknown Title'}" by ${b.author || 'Unknown Author'}`;
@@ -162,17 +188,22 @@ export async function getPickOfTheDay(
         return line;
       })
       .join('\n');
+
     const prompt = `Here is a sample of books from a reader's personal library:
 
 ${bookList}
+
+Full Exclusion List of Owned Titles:
+${allOwnedTitles.join(' | ')}
 
 Based on the underlying themes, literary voices, and conceptual styles across these titles, recommend 10 non-obvious, deeply rewarding books that this reader would love.
 Think like an expert library curator discovering unexpected gems and profound thematic bridges.
 
 CRITICAL RULES:
-1. The recommended books MUST NOT be in the reader's current list above.
-2. Provide exactly 10 distinct recommendations.
-3. For each book, explain in 1-2 insightful sentences WHY it is a superb recommendation, highlighting the surprising or complementary connection to their taste.`;
+1. The recommended books MUST NOT appear in the reader's sample list or Full Exclusion List above.
+2. Every recommended book MUST be an authentic, published book attributed to its real-world author.
+3. Provide 10 distinct recommendations.
+4. For each book, explain in 1-2 insightful sentences WHY it is a superb recommendation, naming specific books or themes in their library that it bridges.`;
 
     const pickOfTheDaySchema = {
       type: Type.ARRAY,
@@ -194,47 +225,33 @@ CRITICAL RULES:
     let response;
     try {
       response = await generateContentWithLimiter({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
           systemInstruction:
-            'You are a distinguished literary curator and reader advisory expert who recommends surprising, high-resonance literature.',
+            'You are a distinguished literary curator and reader advisory expert who recommends real, high-resonance literature.',
           responseMimeType: 'application/json',
           responseSchema: pickOfTheDaySchema,
-          temperature: 0.7,
+          temperature: 0.6,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.LOW,
+          },
         },
       });
     } catch (e: unknown) {
       if (isApiKeyError(e)) {
         throw e;
       }
-      console.warn('Fallback to Gemini 3.1 Pro for pick of the day:', e);
-      try {
-        response = await generateContentWithLimiter({
-          model: 'gemini-3.1-pro-preview',
-          contents: prompt,
-          config: {
-            systemInstruction:
-              'You are a distinguished literary curator and reader advisory expert who recommends surprising, high-resonance literature.',
-            responseMimeType: 'application/json',
-            responseSchema: pickOfTheDaySchema,
-            temperature: 0.7,
-          },
-        });
-      } catch (err: unknown) {
-        if (isApiKeyError(err)) {
-          throw err;
-        }
-        console.warn('Fallback retry with Gemini 3.8 Flash model:', err);
-        response = await generateContentWithLimiter({
-          model: 'gemini-3-flash-preview',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: pickOfTheDaySchema,
-          },
-        });
-      }
+      console.warn('Retrying Pick of the Day with Gemini 3.8 Flash:', e);
+      response = await generateContentWithLimiter({
+        model: 'gemini-3.8-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: pickOfTheDaySchema,
+          temperature: 0.5,
+        },
+      });
     }
 
     let text = response.text;
@@ -288,6 +305,7 @@ export async function classifyBooks(
   options?: {
     priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
     signal?: AbortSignal;
+    customGenres?: string[];
   },
 ): Promise<ClassifiedBookGenre[]> {
   try {
@@ -299,6 +317,21 @@ export async function classifyBooks(
       context: b.synopsis ? b.synopsis.substring(0, 300) : '',
     }));
 
+    const canonicalGenres = Object.keys(BOOK_TAXONOMY).filter(
+      k => k !== 'Other',
+    );
+    const validCustomGenres = Array.from(
+      new Set(
+        (options?.customGenres || [])
+          .map(g => g.trim())
+          .filter(Boolean)
+          .slice(0, 50),
+      ),
+    );
+    const allowedPrimaryEnum = Array.from(
+      new Set([...canonicalGenres, ...validCustomGenres, 'Other']),
+    );
+
     const canonicalTaxonomySummary = Object.entries(BOOK_TAXONOMY)
       .filter(([k]) => k !== 'Other')
       .map(
@@ -307,23 +340,28 @@ export async function classifyBooks(
       )
       .join('\n');
 
+    const customGenresBlock =
+      validCustomGenres.length > 0
+        ? `\nCustom Library Primary Genres (use when a book specifically fits one of these user-defined categories):\n${validCustomGenres.map(g => `- "${g}"`).join('\n')}`
+        : '';
+
     const prompt = `Classify the following batch of ${batch.length} books into the application's standardized taxonomy.
 
 Canonical Primary Genres & Their Available Subgenres:
-${canonicalTaxonomySummary}
-- "Other": Use only if the book completely defies the 18 canonical genres.
+${canonicalTaxonomySummary}${customGenresBlock}
+- "Other": Use only if the book completely defies all canonical and custom genres above.
 
 Directives:
-1. "primaryGenre" (REQUIRED): Select the single best-fitting canonical Primary Genre.
-2. "subgenres" (OPTIONAL): Choose 0 to 3 relevant subgenres strictly from the selected Primary Genre's allowed list. Subgenres are optional—only include ones that clearly match.
+1. "primaryGenre" (REQUIRED): Select the single best-fitting Primary Genre from the allowed list.
+2. "subgenres" (OPTIONAL): Choose 0 to 3 relevant subgenres strictly from the selected Primary Genre's allowed subgenre list. Omit subgenres if none clearly apply.
 3. Preserve the exact provided unique book "id".
 
 Books to classify:
-${JSON.stringify(booksPromptData, null, 2)}`;
+${JSON.stringify(booksPromptData)}`;
 
     const response = await generateContentWithLimiter(
       {
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.1-flash-lite',
         contents: prompt,
         config: {
           systemInstruction:
@@ -341,7 +379,8 @@ ${JSON.stringify(booksPromptData, null, 2)}`;
                 },
                 primaryGenre: {
                   type: Type.STRING,
-                  description: 'The chosen canonical primary genre or Other',
+                  enum: allowedPrimaryEnum,
+                  description: 'The chosen canonical or custom primary genre',
                 },
                 subgenres: {
                   type: Type.ARRAY,
@@ -354,6 +393,9 @@ ${JSON.stringify(booksPromptData, null, 2)}`;
             },
           },
           temperature: 0.1,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.MINIMAL,
+          },
         },
       },
       {
@@ -370,6 +412,18 @@ ${JSON.stringify(booksPromptData, null, 2)}`;
       if (Array.isArray(parsed)) {
         return parsed.map(
           (item: {id: string; primaryGenre?: string; subgenres?: string[]}) => {
+            const rawPrimary = item.primaryGenre?.trim() || '';
+            if (
+              validCustomGenres.includes(rawPrimary) &&
+              !canonicalGenres.includes(rawPrimary)
+            ) {
+              return {
+                id: item.id,
+                primaryGenre: rawPrimary,
+                subgenres: [],
+                isCustomPrimary: true,
+              };
+            }
             const sanitized = sanitizeGenrePayload({
               primaryGenre: item.primaryGenre,
               subgenres: item.subgenres,
@@ -443,7 +497,7 @@ export async function extractBookGeoMetadataBatch(
             isNonEarth: {
               type: Type.BOOLEAN,
               description:
-                'Set to true ONLY if the entire work is sci-fi set in space/fictional planets, high fantasy set in completely fictional realms, or is a textbook, academic guide, or abstract literature with no logical earthly setting.',
+                'Set to true ONLY if the entire work is sci-fi set in space/fictional planets, high fantasy set in completely fictional realms, or is a textbook, academic guide, philosophy treatise, or abstract work with no logical earthly setting.',
             },
             locations: {
               type: Type.ARRAY,
@@ -453,7 +507,7 @@ export async function extractBookGeoMetadataBatch(
                   name: {
                     type: Type.STRING,
                     description:
-                      "Fully-qualified geographical name. Must include specific city, province/state, and country name combined to guarantee precise geocoding (e.g., 'Kyoto, Japan' instead of 'Kyoto', 'Delhi, India' instead of 'Delhi', 'Gettysburg, PA, USA' instead of 'Gettysburg').",
+                      "Fully-qualified geographical name including city/region, state/province, and country to guarantee unambiguous geocoding (e.g., 'Kyoto, Japan', 'Delhi, India', 'Gettysburg, PA, USA').",
                   },
                   adminLevel: {
                     type: Type.STRING,
@@ -463,13 +517,13 @@ export async function extractBookGeoMetadataBatch(
                   rationale: {
                     type: Type.STRING,
                     description:
-                      'A short context sentence (15 words max) describing why this spatial setting is vital to the story.',
+                      'A short context sentence (15 words max) describing why this spatial setting is vital to the story or historical subject.',
                   },
                 },
                 required: ['name', 'adminLevel', 'rationale'],
               },
               description:
-                'At most 5 key geographical regions, cities, states, or countries central to the narrative, plot, setting, or historical backdrop. Return empty list if isNonEarth is true.',
+                'At most 5 key geographical regions, cities, states, or countries central to the narrative, plot, or historical subject. Return empty list if isNonEarth is true.',
             },
           },
           required: ['id', 'isNonEarth', 'locations'],
@@ -481,22 +535,27 @@ export async function extractBookGeoMetadataBatch(
     required: ['enrichment'],
   };
 
-  const prompt = `Analyze details of the provided list of books and determine the exact real-world geographical settings on Earth for each book.
+  const prompt = `Analyze the provided list of books and determine the real-world geographical settings on Earth for each book.
 
 Directives:
-1. For each book, identify up to 5 critical locations (cities, states/provinces, regions, or countries) where the primary narrative or historical actions occur.
-2. Every location "name" must be fully-qualified and globally unambiguous (e.g., "Kyoto, Japan", "Oxford, Oxfordshire, United Kingdom", "Concord, MA, USA").
-3. Set "adminLevel" to "city", "state", "country", or "region".
-4. For each location, provide a concise rationale (15 words max) explaining its narrative or historical significance.
-5. If a book is set entirely in a fictional realm (e.g., Middle-earth, Westeros, Narnia), outer space / sci-fi alien worlds, or is an abstract academic/mathematical work without an earthly setting, set "isNonEarth" to true and return an empty locations array.
-6. Map each parsed book specifically to the exact "id" provided in the input.`;
+1. For each book, identify up to 5 critical real-world locations (cities, states/provinces, regions, or countries) where the primary narrative, biography, or historical actions take place.
+2. NEVER use the book publisher's headquarters or the author's residence unless the book's subject or plot actually takes place there.
+3. Every location "name" must be fully-qualified and globally unambiguous (e.g., "Kyoto, Japan", "Oxford, Oxfordshire, United Kingdom", "Concord, MA, USA").
+4. Set "adminLevel" to "city", "state", "country", or "region".
+5. Provide a concise rationale (15 words max) explaining its narrative or historical significance.
+6. If a book is set entirely in a fictional realm (e.g., Middle-earth, Westeros, Arrakis), outer space, or is a timeless instructional, philosophical, or technical work without a geographic setting, set "isNonEarth": true and return an empty "locations": [] array.
+7. Preserve the exact input "id" for each book.`;
 
   return batchGeminiOperation<BatchExtractedGeoResponse>(
     books,
     prompt,
     batchSchema,
     'You are an authoritative literary geographer with deep knowledge of world literature, non-fiction contexts, and global historical geography.',
-    options,
+    {
+      ...options,
+      model: 'gemini-3.8-flash',
+      thinkingLevel: ThinkingLevel.LOW,
+    },
   );
 }
 
@@ -535,17 +594,17 @@ export async function extractBookTemporalMetadataBatch(
             isNonHistorical: {
               type: Type.BOOLEAN,
               description:
-                'Set to true if the book is sci-fi/fantasy with entirely fictional settings, abstract technical/mathematical manuals, modern theoretical guidelines with no real-world earth timeline.',
+                'Set to true if the book is sci-fi/fantasy with entirely fictional settings, or is an abstract technical/reference/philosophical work with no specific historical or chronological setting.',
             },
             startYear: {
               type: Type.INTEGER,
               description:
-                'Approximate start year of the events or plot. Use negative values for BC/BCE (e.g. -44). Leave blank or omit if isNonHistorical is true.',
+                'Approximate start year of the events or plot (-10000 to 2100). Use negative values for BC/BCE (e.g. -44). Leave blank or omit if isNonHistorical is true.',
             },
             endYear: {
               type: Type.INTEGER,
               description:
-                'Approximate end year of the events. Gap between start and end year must not exceed 100 years. Leave blank or omit if isNonHistorical is true.',
+                'Approximate end year of the events (must be >= startYear and within 100 years of startYear). Leave blank or omit if isNonHistorical is true.',
             },
             eraName: {
               type: Type.STRING,
@@ -555,7 +614,7 @@ export async function extractBookTemporalMetadataBatch(
             rationale: {
               type: Type.STRING,
               description:
-                'Max 15 words explaining why this temporal context is critical to the story. Leave blank or omit if isNonHistorical is true.',
+                'Max 15 words explaining why this temporal context is central to the book. Leave blank or omit if isNonHistorical is true.',
             },
           },
           required: ['id', 'isNonHistorical'],
@@ -570,12 +629,12 @@ export async function extractBookTemporalMetadataBatch(
   const prompt = `Analyze the provided list of books and determine the chronological historical setting and era for each book on Earth.
 
 Directives:
-1. Identify if the book possesses a real-world Earth timeline or historical backdrop.
-2. If the book is set in an entirely fictional realm (fantasy), far-future or deep-space setting (sci-fi), or is an abstract technical manual with no real-world time setting, mark "isNonHistorical: true" and omit startYear, endYear, eraName, and rationale.
+1. Identify whether the book possesses a real-world Earth timeline or historical setting.
+2. If the book is set in an entirely fictional realm (fantasy), far-future or deep-space setting (sci-fi), or is a timeless technical, self-help, or reference manual with no narrative era, mark "isNonHistorical": true and omit startYear, endYear, eraName, and rationale.
 3. For books with real Earth timelines:
    - "startYear": Integer representing the approximate starting year of the core events (use negative values for BCE/BC, e.g. -44).
-   - "endYear": Integer representing the approximate ending year. The span between startYear and endYear must NOT exceed 100 years. For sweeping histories, isolate the definitive period.
-   - "eraName": Concise historical era name (e.g., "Late Antiquity", "Italian Renaissance", "Victorian Era", "Cold War Era", "Jazz Age").
+   - "endYear": Integer >= startYear representing the approximate ending year. The span (endYear - startYear) must NOT exceed 100 years; for sweeping histories, select the primary focal century.
+   - "eraName": Concise historical era name (2-5 words max, e.g., "Late Antiquity", "Italian Renaissance", "Victorian Era", "Cold War Era", "Jazz Age").
    - "rationale": Concise explanation (15 words max) of the temporal context.
 4. Years MUST be between -10000 and 2100.
 5. Map each book specifically to its unique input "id".`;
@@ -585,17 +644,26 @@ Directives:
     prompt,
     batchSchema,
     'You are an academic bibliophile historian with encyclopedic knowledge of world history, literary chronology, and historical eras.',
-    options,
+    {
+      ...options,
+      model: 'gemini-3.8-flash',
+      thinkingLevel: ThinkingLevel.LOW,
+    },
   );
 
   if (result?.enrichment) {
     result.enrichment.forEach(item => {
-      if (
-        !item.isNonHistorical &&
-        item.startYear !== undefined &&
-        item.endYear === undefined
-      ) {
-        item.endYear = item.startYear;
+      if (!item.isNonHistorical && item.startYear !== undefined) {
+        if (item.endYear === undefined) {
+          item.endYear = item.startYear;
+        } else if (item.endYear < item.startYear) {
+          const temp = item.startYear;
+          item.startYear = item.endYear;
+          item.endYear = temp;
+        }
+        if (item.endYear - item.startYear > 100) {
+          item.endYear = item.startYear + 100;
+        }
       }
     });
   }
@@ -633,7 +701,7 @@ export async function generateBookSynopsesBatch(
   };
 
   const prompt =
-    'Provide a compelling, accurate, spoiler-free literary summary (1 to 2 concise paragraphs) for each book in the provided list. Preserve the exact input "id" for each book.';
+    'Provide a compelling, factually accurate, spoiler-free literary summary (1 to 2 concise paragraphs) for each book in the provided list. Preserve the exact input "id" for each book.';
 
   const res = await batchGeminiOperation<
     Array<{id: string; synopsis?: string}>
@@ -642,7 +710,11 @@ export async function generateBookSynopsesBatch(
     prompt,
     schema,
     'You are an insightful literary scholar and librarian who writes accurate, spoiler-free book summaries.',
-    options,
+    {
+      ...options,
+      model: 'gemini-3.8-flash',
+      thinkingLevel: ThinkingLevel.LOW,
+    },
   );
 
   const map: Record<string, string> = {};
@@ -695,7 +767,11 @@ export async function generateAuthorBiosBatch(
     prompt,
     schema,
     'You are an insightful literary scholar and biographer.',
-    options,
+    {
+      ...options,
+      model: 'gemini-3.8-flash',
+      thinkingLevel: ThinkingLevel.LOW,
+    },
   );
 
   const map: Record<string, string> = {};
@@ -756,7 +832,11 @@ Directives:
     prompt,
     schema,
     'You are a meticulous bibliographer and literary archivist specializing in book series and edition numbering.',
-    options,
+    {
+      ...options,
+      model: 'gemini-3.1-flash-lite',
+      thinkingLevel: ThinkingLevel.MINIMAL,
+    },
   );
 
   const map: Record<string, string> = {};

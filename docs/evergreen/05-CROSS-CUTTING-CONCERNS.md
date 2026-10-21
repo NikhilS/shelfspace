@@ -12,9 +12,11 @@ Access control operates on two distinct layers: **Platform Administration** and 
 
 ```
 +-------------------------------------------------------------------------------+
-| LAYER 1: PLATFORM ALLOWLIST (Superadmin & Allowlist Service)                  |
+| LAYER 1: PLATFORM ALLOWLIST & ORTHOGONAL AI PLAN (Superadmin & Allowlist)     |
 | - Verifies user email in `/appSettings/allowlist/users/{email}`               |
 | - Superadmins (`isAdmin: true`) bypass all library-level ownership checks     |
+| - Orthogonal AI Plan (`hasAiPlan: boolean`): gates Gemini token expenditure   |
+|   (default `true` for admins, admin-controlled opt-in `false` for users)      |
 +-------------------------------------------------------------------------------+
                                        |
 +-------------------------------------------------------------------------------+
@@ -29,7 +31,7 @@ Access control operates on two distinct layers: **Platform Administration** and 
 Every server request executes the single-path JWT context pipeline (`src/server/auth/context.ts`):
 1. Extract Firebase ID Token from `Authorization: Bearer <token>` via `TokenVerifier.extractTokenFromHeader`.
 2. Verify token signature, expiration, and `email_verified` claim via Firebase Admin SDK (`TokenVerifier.verify`).
-3. Check `AllowlistService.getPermissions(user.email)`: determine whether the caller is on the platform allowlist (`isAppAllowed`) and whether they hold administrative privileges (`isAdmin`).
+3. Check `AllowlistService.getPermissions(user.email)`: determine whether the caller is on the platform allowlist (`isAppAllowed`), whether they hold administrative privileges (`isAdmin`), and whether they hold an active AI Plan (`hasAiPlan`).
 4. Construct the request `SecurityContext`:
    ```typescript
    export interface SecurityContext {
@@ -38,6 +40,7 @@ Every server request executes the single-path JWT context pipeline (`src/server/
      user: AuthUser | null;
      isAppAllowed: boolean;
      isAdmin: boolean;
+     hasAiPlan: boolean;
    }
    ```
 

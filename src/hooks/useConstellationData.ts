@@ -8,6 +8,7 @@ import {
 } from '../lib/clustering';
 import {trpc, trpcVanilla} from '../lib/trpc';
 import {useCollectionScope} from './useCollectionScope';
+import {useAppPermissions} from './useAppPermissions';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../lib/telemetry';
 import {BookDetails, BookDetailsMetadata} from '../types';
 
@@ -127,11 +128,14 @@ export function useConstellationData(libraryId: string | undefined) {
     isReadingMode,
     books: libraryBooks,
     isBooksLoading,
+    canEdit,
     includeWantToRead,
     setIncludeWantToRead,
     readAndReadingCount,
     wantToReadCount,
   } = useCollectionScope(libraryId);
+  const {hasAiPlan} = useAppPermissions();
+  const canRunAiEnrichment = Boolean((canEdit || isReadingMode) && hasAiPlan);
 
   const [, setBooks] = useState<BookDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -362,7 +366,7 @@ export function useConstellationData(libraryId: string | undefined) {
           b => !b.embedding || b.embedding.length === 0,
         );
 
-        if (toEmbed.length > 0) {
+        if (toEmbed.length > 0 && canRunAiEnrichment) {
           setProgress(
             `Generating AI embeddings for ${toEmbed.length} books on server...`,
           );
@@ -555,14 +559,44 @@ export function useConstellationData(libraryId: string | undefined) {
 
         let resolvedNames: Record<number, string> = {};
         if (clusterArray.length > 0) {
-          resolvedNames = await generateClusterNamesMutation.mutateAsync({
-            clusters: clusterArray,
-          });
+          if (canRunAiEnrichment) {
+            setProgress('Naming constellations with AI...');
+            try {
+              resolvedNames = await generateClusterNamesMutation.mutateAsync({
+                clusters: clusterArray,
+              });
+            } catch {
+              // Fallback to deterministic names below
+            }
+          }
+          if (Object.keys(resolvedNames).length === 0) {
+            for (const c of clusterArray) {
+              const members = groupedClusters[c.id] || [];
+              const genreCounts = new Map<string, number>();
+              for (const m of members) {
+                const g =
+                  (m as {primaryGenre?: string}).primaryGenre ||
+                  (m as {genre?: string}).genre;
+                if (g && g !== 'Unclassified') {
+                  genreCounts.set(g, (genreCounts.get(g) || 0) + 1);
+                }
+              }
+              let topGenre = '';
+              let topCount = 0;
+              for (const [g, count] of genreCounts.entries()) {
+                if (count > topCount) {
+                  topGenre = g;
+                  topCount = count;
+                }
+              }
+              resolvedNames[c.id] = topGenre || `Constellation ${c.id + 1}`;
+            }
+          }
           if (isMounted) setClusterNames(resolvedNames);
         }
 
         // Persist computed clusterCoordinates and clusterNames in single-library mode so subsequent visits load in O(N)
-        if (libraryId && !isReadingMode) {
+        if (canEdit && libraryId && !isReadingMode) {
           try {
             const validOps = newPlotData
               .filter(
@@ -654,6 +688,8 @@ export function useConstellationData(libraryId: string | undefined) {
     isBooksLoading,
     libraryBooks,
     reclusterTrigger,
+    canEdit,
+    canRunAiEnrichment,
   ]);
 
   const handleRecluster = async () => {

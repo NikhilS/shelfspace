@@ -1,4 +1,4 @@
-import {Type} from '@google/genai';
+import {Type, ThinkingLevel} from '@google/genai';
 import Papa from 'papaparse';
 import {
   logger,
@@ -34,19 +34,23 @@ export async function extractBooksFromImage(
       },
     };
 
-    const prompt = `Analyze this image of physical books (such as a bookshelf, book stack, or book covers) with high optical precision.
-Detect and transcribe every distinct book clearly visible in the image (both vertically shelved and horizontally stacked books).
+    const prompt = `Analyze this photograph of physical books (bookshelf, stack, or covers) with high optical precision.
+Detect and transcribe every distinct book clearly legible in the image (both vertically shelved spines and horizontally stacked volumes).
 
 For each book detected:
-1. "title": The complete, clean title of the book. Use standard capitalization. Exclude extraneous promotional quotes, publisher logos, or price stickers.
-2. "author": The primary author, co-author, or editor. Do NOT include publisher imprints (such as Penguin, Vintage, Harper, Tor, Oxford).
-3. "isbn": If an ISBN-10 or ISBN-13 is legibly printed or visible as a barcode on the spine or cover, extract it as clean digits; otherwise return null.
+1. "title": Complete, clean title of the book in standard title case. Exclude promotional blurbs ("New York Times Bestseller"), price stickers, or publisher logos.
+2. "author": Primary author, co-author, or volume editor. Ignore foreword/introduction/translator credits and never use publisher imprints (e.g., Penguin, Vintage, Harper, Tor, Oxford) as the author.
+3. "isbn": If an ISBN-10 or ISBN-13 is legibly printed on the spine or cover barcode, extract it as clean digits; otherwise return null.
 
 Important Directives:
-- Transcribe in natural reading order (left to right, top to bottom where possible).
-- Do not invent or hallucinate titles that cannot be deciphered with confidence.`;
+- Scan systematically in reading order (left to right, top to bottom).
+- Deduplicate identical spine reads unless multiple physical copies or distinct volume numbers are clearly visible.
+- Never guess or hallucinate titles from unreadable or heavily blurred spines.`;
 
-    const generateCall = async (model: string) => {
+    const generateCall = async (
+      model: string,
+      thinkingLevel: ThinkingLevel = ThinkingLevel.LOW,
+    ) => {
       return generateContentWithLimiter({
         model,
         contents: {
@@ -65,6 +69,10 @@ Important Directives:
             'You are a specialized computer vision and optical recognition system for books and library collections. Your goal is to accurately transcribe book titles, author names, and visible ISBNs from shelf or cover photographs.',
           responseMimeType: 'application/json',
           responseSchema: extractionSchema,
+          temperature: 0.1,
+          thinkingConfig: {
+            thinkingLevel,
+          },
         },
       });
     };
@@ -76,40 +84,25 @@ Important Directives:
 
     let response;
     try {
-      logger.info('Calling Gemini 3 Flash for book extraction...');
+      logger.info('Calling Gemini 3.8 Flash for book extraction...');
       response = await Promise.race([
-        generateCall('gemini-3-flash-preview'),
+        generateCall('gemini-3.8-flash', ThinkingLevel.LOW),
         timeoutPromise(25000),
       ]);
-      logger.info('Gemini 3 Flash response received.');
+      logger.info('Gemini 3.8 Flash response received.');
     } catch (e: unknown) {
       if (isApiKeyError(e)) {
         throw e;
       }
       const isTimeout = e instanceof Error && e.message === 'API_TIMEOUT';
       logger.warn(
-        `Gemini 3.8 Flash ${isTimeout ? 'timed out' : 'failed'}, retrying with Gemini 3.1 Pro: ${e instanceof Error ? e.message : String(e)}`,
+        `Gemini 3.8 Flash ${isTimeout ? 'timed out' : 'failed'}, retrying with medium thinking: ${e instanceof Error ? e.message : String(e)}`,
       );
-      try {
-        response = await Promise.race([
-          generateCall('gemini-3.1-pro-preview'),
-          timeoutPromise(30000),
-        ]);
-        logger.info('Gemini 3.1 Pro response received.');
-      } catch (err: unknown) {
-        if (isApiKeyError(err)) {
-          throw err;
-        }
-        logger.warn(
-          'Gemini 3.1 Pro failed, retrying with Gemini 3.8 Flash backup: ' +
-            (err instanceof Error ? err.message : String(err)),
-        );
-        response = await Promise.race([
-          generateCall('gemini-3-flash-preview'),
-          timeoutPromise(25000),
-        ]);
-        logger.info('Gemini 3 Flash backup response received.');
-      }
+      response = await Promise.race([
+        generateCall('gemini-3.8-flash', ThinkingLevel.MEDIUM),
+        timeoutPromise(30000),
+      ]);
+      logger.info('Gemini 3.8 Flash retry response received.');
     }
 
     let text = response.text;
@@ -153,7 +146,96 @@ Important Directives:
   }
 }
 
-export async function extractBooksFromCsv(csvText: string): Promise<
+interface CsvColumnSchema {
+  hasHeaderRow: boolean;
+  columnMap: {
+    title: number;
+    author: number;
+    isbn: number | null;
+    format: number | null;
+  };
+}
+
+/**
+ * Deterministic zero-token CSV header detector for standard exports
+ * (Goodreads, StoryGraph, Calibre, LibraryThing, and book(ish) CSVs).
+ */
+export function tryDeterministicCsvColumnMap(
+  headerRow: string[],
+): CsvColumnSchema | null {
+  if (!headerRow || headerRow.length < 2) return null;
+
+  const normalized = headerRow.map(cell =>
+    (cell || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^["']|["']$/g, '')
+      .replace(/[\s_-]+/g, ' '),
+  );
+
+  const titleAliases = new Set([
+    'title',
+    'book title',
+    'book',
+    'work',
+    'book name',
+  ]);
+  const authorAliases = new Set([
+    'author',
+    'authors',
+    'primary author',
+    'author l f',
+    'creator',
+    'writer',
+  ]);
+  const isbn13Aliases = new Set(['isbn13', 'isbn 13']);
+  const isbnAliases = new Set(['isbn', 'isbn10', 'isbn 10', 'barcode', 'ean']);
+  const formatAliases = new Set([
+    'format',
+    'binding',
+    'book format',
+    'media',
+    'edition format',
+  ]);
+
+  let titleIdx = -1;
+  let authorIdx = -1;
+  let isbnIdx: number | null = null;
+  let formatIdx: number | null = null;
+
+  normalized.forEach((col, idx) => {
+    if (titleIdx === -1 && titleAliases.has(col)) {
+      titleIdx = idx;
+    } else if (authorIdx === -1 && authorAliases.has(col)) {
+      authorIdx = idx;
+    } else if (isbn13Aliases.has(col)) {
+      isbnIdx = idx;
+    } else if (isbnIdx === null && isbnAliases.has(col)) {
+      isbnIdx = idx;
+    } else if (formatIdx === null && formatAliases.has(col)) {
+      formatIdx = idx;
+    }
+  });
+
+  if (titleIdx !== -1 && authorIdx !== -1 && titleIdx !== authorIdx) {
+    return {
+      hasHeaderRow: true,
+      columnMap: {
+        title: titleIdx,
+        author: authorIdx,
+        isbn: isbnIdx,
+        format: formatIdx,
+      },
+    };
+  }
+
+  return null;
+}
+
+export async function extractBooksFromCsv(
+  csvText: string,
+  options?: {allowAiFallback?: boolean},
+): Promise<
   {
     title: string;
     author: string;
@@ -176,14 +258,24 @@ export async function extractBooksFromCsv(csvText: string): Promise<
     const rows = parsed.data as string[][];
     if (rows.length === 0) return [];
 
-    const sampleRows = rows.slice(0, 5);
+    // 1. Try zero-token deterministic header mapping first
+    let resolvedSchema: CsvColumnSchema | null = tryDeterministicCsvColumnMap(
+      rows[0],
+    );
 
-    const response = await generateContentWithLimiter({
-      model: 'gemini-3-flash-preview',
-      contents: `Analyze these sample rows from an uploaded book collection CSV file (parsed as an array of rows):
-      
+    // 2. Fall back to lightweight Gemini 3.1 Flash Lite column inference only when headers are non-standard
+    if (!resolvedSchema) {
+      if (options?.allowAiFallback === false) {
+        return [];
+      }
+
+      const sampleRows = rows.slice(0, 5);
+      const response = await generateContentWithLimiter({
+        model: 'gemini-3.1-flash-lite',
+        contents: `Analyze these sample rows from an uploaded book collection CSV file (parsed as an array of rows):
+
 CSV Sample Rows:
-${JSON.stringify(sampleRows, null, 2)}
+${JSON.stringify(sampleRows)}
 
 Your task is to inspect the spreadsheet layout and map the columns:
 1. Determine if row 0 is a header row (containing labels like 'Title', 'Author', 'ISBN', 'Binding', 'Format', 'Year', etc.).
@@ -194,79 +286,97 @@ Your task is to inspect the spreadsheet layout and map the columns:
    - format: (optional) Book binding or digital type. Common column names: 'Format', 'Binding', 'Type', 'Media'. Look for values like 'Paperback', 'Hardcover', 'Kindle', 'Ebook'.
 
 If an optional attribute (isbn, format) is not found in any column, set its column index to null.`,
-      config: {
-        systemInstruction:
-          'You are an intelligent data ingestion assistant specializing in book spreadsheets and library exports (such as Goodreads, StoryGraph, Calibre, LibraryThing, and custom CSV catalogs).',
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          description: 'CSV column mapping configuration',
-          properties: {
-            hasHeaderRow: {
-              type: Type.BOOLEAN,
-              description: 'Whether the first row contains column headers',
-            },
-            columnMap: {
-              type: Type.OBJECT,
-              properties: {
-                title: {
-                  type: Type.INTEGER,
-                  description: '0-based column index of the book title',
-                },
-                author: {
-                  type: Type.INTEGER,
-                  description: '0-based column index of the author',
-                },
-                isbn: {
-                  type: Type.INTEGER,
-                  description:
-                    '0-based column index of ISBN if present, otherwise null',
-                },
-                format: {
-                  type: Type.INTEGER,
-                  description:
-                    '0-based column index of binding/format if present, otherwise null',
-                },
+        config: {
+          systemInstruction:
+            'You are an intelligent data ingestion assistant specializing in book spreadsheets and library exports (such as Goodreads, StoryGraph, Calibre, LibraryThing, and custom CSV catalogs).',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            description: 'CSV column mapping configuration',
+            properties: {
+              hasHeaderRow: {
+                type: Type.BOOLEAN,
+                description: 'Whether the first row contains column headers',
               },
-              required: ['title', 'author'],
+              columnMap: {
+                type: Type.OBJECT,
+                properties: {
+                  title: {
+                    type: Type.INTEGER,
+                    description: '0-based column index of the book title',
+                  },
+                  author: {
+                    type: Type.INTEGER,
+                    description: '0-based column index of the author',
+                  },
+                  isbn: {
+                    type: Type.INTEGER,
+                    description:
+                      '0-based column index of ISBN if present, otherwise null',
+                  },
+                  format: {
+                    type: Type.INTEGER,
+                    description:
+                      '0-based column index of binding/format if present, otherwise null',
+                  },
+                },
+                required: ['title', 'author'],
+              },
             },
+            required: ['hasHeaderRow', 'columnMap'],
           },
-          required: ['hasHeaderRow', 'columnMap'],
+          temperature: 0.1,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.MINIMAL,
+          },
         },
-        temperature: 0.1,
-      },
-    });
+      });
 
-    const text = response.text;
-    if (!text) return [];
+      const text = response.text;
+      if (!text) return [];
 
-    let schema: {
-      hasHeaderRow?: boolean;
-      columnMap?: {
-        title?: number;
-        author?: number;
-        isbn?: number | null;
-        format?: number | null;
-      };
-    };
-    try {
-      schema = JSON.parse(text);
-    } catch (e) {
-      console.warn('Failed to parse Gemini schema response:', e);
+      try {
+        const parsedSchema = JSON.parse(text) as {
+          hasHeaderRow?: boolean;
+          columnMap?: {
+            title?: number;
+            author?: number;
+            isbn?: number | null;
+            format?: number | null;
+          };
+        };
+        if (
+          parsedSchema.columnMap &&
+          typeof parsedSchema.columnMap.title === 'number' &&
+          typeof parsedSchema.columnMap.author === 'number'
+        ) {
+          resolvedSchema = {
+            hasHeaderRow: Boolean(parsedSchema.hasHeaderRow),
+            columnMap: {
+              title: parsedSchema.columnMap.title,
+              author: parsedSchema.columnMap.author,
+              isbn:
+                typeof parsedSchema.columnMap.isbn === 'number'
+                  ? parsedSchema.columnMap.isbn
+                  : null,
+              format:
+                typeof parsedSchema.columnMap.format === 'number'
+                  ? parsedSchema.columnMap.format
+                  : null,
+            },
+          };
+        }
+      } catch (e) {
+        console.warn('Failed to parse Gemini schema response:', e);
+        return [];
+      }
+    }
+
+    if (!resolvedSchema) {
       return [];
     }
 
-    const {hasHeaderRow, columnMap} = schema;
-
-    if (
-      !columnMap ||
-      typeof columnMap !== 'object' ||
-      typeof columnMap.title !== 'number' ||
-      typeof columnMap.author !== 'number'
-    ) {
-      return [];
-    }
-
+    const {hasHeaderRow, columnMap} = resolvedSchema;
     const books: {
       title: string;
       author: string;
