@@ -17,8 +17,14 @@ export const BookHeader = memo(
   ({book, canEdit, onEdit, libraryId}: BookHeaderProps) => {
     const navigate = useNavigate();
 
+    const isVirtualShelf = Boolean(libraryId?.startsWith('virtual_'));
+
     const handleGenreClick = (genre: string, subgenre?: string) => {
       if (!libraryId) return;
+      if (isVirtualShelf) {
+        void navigate('/');
+        return;
+      }
       const params = new URLSearchParams();
       if (genre) params.set('genre', genre);
       if (subgenre) params.set('subgenre', subgenre);
@@ -35,7 +41,11 @@ export const BookHeader = memo(
               variant="genre"
               onClick={() => handleGenreClick(book.primaryGenre!)}
               className="cursor-pointer swiper-no-swiping uppercase"
-              title={`Filter library by ${book.primaryGenre}`}
+              title={
+                isVirtualShelf
+                  ? 'Return to Reading Room'
+                  : `Filter library by ${book.primaryGenre}`
+              }
             >
               {book.primaryGenre}
             </Badge>
@@ -46,7 +56,11 @@ export const BookHeader = memo(
               variant="subgenre"
               onClick={() => handleGenreClick(book.primaryGenre || '', sg)}
               className="cursor-pointer swiper-no-swiping"
-              title={`Filter library by ${sg}`}
+              title={
+                isVirtualShelf
+                  ? 'Return to Reading Room'
+                  : `Filter library by ${sg}`
+              }
             >
               {sg}
             </Badge>

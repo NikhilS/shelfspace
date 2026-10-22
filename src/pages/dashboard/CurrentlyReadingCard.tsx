@@ -1,15 +1,10 @@
 import React, {useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {
-  BookOpen,
-  CheckCircle2,
-  Plus,
-  Book as BookIcon,
-  ArrowRight,
-} from 'lucide-react';
+import {CheckCircle2, Plus, Book as BookIcon, ArrowRight} from 'lucide-react';
 import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
+import {NightstandBookIllustration} from '@/components/ui/empty-state-illustrations';
 import type {
   TrackedBookItem,
   TrackedShelfStatus,
@@ -72,15 +67,13 @@ export const CurrentlyReadingCard: React.FC<CurrentlyReadingCardProps> = ({
 
       {!activeBook ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center py-8 px-4">
-          <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-primary/80 mb-3.5 border border-outline-variant/50">
-            <BookOpen className="w-5 h-5" />
-          </div>
+          <NightstandBookIllustration className="mb-3" />
           <h3 className="font-serif text-lg font-semibold text-on-surface mb-1">
             Nothing Open on the Nightstand
           </h3>
           <p className="font-sans text-xs sm:text-sm text-on-surface-variant max-w-md mb-5 leading-relaxed">
-            Pick a book you&apos;re currently reading from your libraries or
-            search external catalogs to spotlight it here.
+            Track what you&apos;re reading right now to keep it front and
+            center.
           </p>
           <Button
             type="button"

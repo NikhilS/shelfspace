@@ -181,7 +181,7 @@ export function QuickAddBookDialog({
           <DialogDescription className="font-sans text-xs sm:text-sm text-on-surface-variant">
             {isReadingMode
               ? 'Search across your libraries and global catalogs to add a book in one click, or open Advanced for ISBN barcode scanning, CSV import, and manual entry.'
-              : 'Search by title, author, or ISBN to add an owned volume in one click, or open Advanced for ISBN barcode scanning, shelf camera capture, CSV import, and manual entry.'}
+              : 'Search by title, author, or ISBN to add a book in one click, or open Advanced for ISBN barcode scanning, shelf camera capture, CSV import, and manual entry.'}
           </DialogDescription>
 
           {isReadingMode && (

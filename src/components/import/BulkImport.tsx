@@ -31,6 +31,7 @@ interface BulkImportProps {
   setIsExtracting: (extracting: boolean) => void;
   csvFormat: 'physical' | 'digital';
   setCsvFormat: (format: 'physical' | 'digital') => void;
+  mode?: 'library' | 'reading';
 }
 
 export default function BulkImport({
@@ -39,6 +40,7 @@ export default function BulkImport({
   setIsExtracting,
   csvFormat,
   setCsvFormat,
+  mode = 'library',
 }: BulkImportProps) {
   const isOnline = useOnlineStatus();
   const [extractionStatus, setExtractionStatus] = useState<string | null>(null);
@@ -109,7 +111,7 @@ export default function BulkImport({
         <UploadCloud className="w-8 h-8 sm:w-10 sm:h-10" strokeWidth={2} />
       </div>
       <h3 className="font-headline-lg text-headline-lg sm:text-headline-xl text-on-surface mb-3 tracking-tight">
-        Upload Library CSV
+        {mode === 'reading' ? 'Upload Reading List CSV' : 'Upload Library CSV'}
       </h3>
       <p className="text-on-surface-variant font-body-md text-body-md sm:text-body-lg mb-6 max-w-md leading-relaxed">
         Upload a CSV export from Goodreads, StoryGraph, Calibre, Amazon, or your

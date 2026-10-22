@@ -6,11 +6,11 @@ import {
   Layers,
   GitMerge,
   BookOpen,
-  CheckCircle2,
 } from 'lucide-react';
 import {Book} from '../../types';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
+import {TidyShelfCheckIllustration} from '@/components/ui/empty-state-illustrations';
 import {formatFirestoreDate} from '../../lib/date';
 import {DuplicateGroupMetadata} from '../../lib/duplicateDetection';
 import {
@@ -54,7 +54,7 @@ export function DuplicateSection({
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <h2 className="text-xl font-sans font-bold text-on-surface">
-                Potentially Duplicate Books
+                Possible Duplicates
               </h2>
               {isCheckingDuplicates ? (
                 <span
@@ -72,8 +72,8 @@ export function DuplicateSection({
               )}
             </div>
             <p className="text-sm text-on-surface-variant font-sans mt-0.5">
-              Compare candidate editions side-by-side to merge metadata, delete
-              redundant copies, or mark distinct editions as unique.
+              Compare matching books side-by-side to combine their details,
+              remove extra copies, or keep both editions.
             </p>
           </div>
         </div>
@@ -88,22 +88,22 @@ export function DuplicateSection({
           <Loader2 className="w-7 h-7 text-primary animate-spin" />
           <div>
             <h3 className="font-sans text-base font-bold text-on-surface">
-              Analyzing Collection for Duplicates...
+              Checking Your Shelves for Duplicates...
             </h3>
             <p className="font-sans text-xs text-on-surface-variant mt-1 max-w-md">
-              Running ISBN, title, and fuzzy author similarity checks in a
-              background worker without blocking your workspace.
+              Comparing titles, authors, and ISBNs in the background while you
+              browse.
             </p>
           </div>
         </div>
       ) : duplicates.length === 0 ? (
         <div className="p-12 text-center flex flex-col items-center justify-center gap-2 bg-surface">
-          <CheckCircle2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mb-1" />
-          <h3 className="font-sans text-lg font-bold text-on-surface">
-            No Duplicates Found
+          <TidyShelfCheckIllustration className="mb-1" />
+          <h3 className="font-serif text-lg font-semibold text-on-surface">
+            All Tidy—No Duplicates Found
           </h3>
           <p className="font-sans text-sm text-on-surface-variant">
-            Your library looks clean and free of duplicate records!
+            Every book in this library looks unique.
           </p>
         </div>
       ) : (

@@ -211,11 +211,11 @@ export function DuplicateMergeModal({
             </div>
             <div>
               <DialogTitle className="font-sans text-xl font-bold text-on-surface">
-                Merge Duplicate Records
+                Merge Duplicate Books
               </DialogTitle>
               <DialogDescription className="text-xs text-on-surface-variant mt-0.5">
-                Choose the surviving edition and click any field value below to
-                combine the richest metadata into one unified book record.
+                Choose which copy to keep and click any detail below to combine
+                the best information into a single book.
               </DialogDescription>
             </div>
           </div>
@@ -227,19 +227,18 @@ export function DuplicateMergeModal({
             <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
             <div>
               <span className="font-semibold">
-                Reading progress & reviews are preserved automatically:
+                Reading progress &amp; reviews are kept automatically:
               </span>{' '}
-              Member reading statuses are unioned using highest progress
-              priority (Completed &gt; Reading &gt; Abandoned &gt; Unread), and
-              all reviews on duplicate records are migrated to the surviving
-              record.
+              We&apos;ll keep your furthest reading status (Read &gt; Currently
+              Reading &gt; Abandoned &gt; Want to Read) and move all reviews to
+              the book you keep.
             </div>
           </div>
 
           {/* Survivor Record Selector */}
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant mb-2.5">
-              1. Select Surviving Book Record
+              1. Choose Which Copy to Keep
             </div>
             <div
               className="grid gap-3"

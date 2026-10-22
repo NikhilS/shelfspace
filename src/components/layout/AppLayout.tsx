@@ -37,7 +37,7 @@ export default function AppLayout({children}: AppLayoutProps) {
                 aria-hidden="true"
               />
               <span className="hidden sm:inline-flex items-center font-sans font-semibold text-[11px] tracking-widest uppercase text-on-surface-variant select-none leading-none">
-                Modern Archivist
+                Shelves &amp; Reading Life
               </span>
             </Link>
           </div>

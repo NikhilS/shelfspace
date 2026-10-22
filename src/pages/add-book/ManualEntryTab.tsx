@@ -30,6 +30,7 @@ interface ManualEntryTabProps {
   existingBooks: BookDetails[];
   allowDuplicates: boolean;
   addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
+  mode?: 'library' | 'reading';
 }
 
 const manualEntrySchema = z.object({
@@ -51,6 +52,7 @@ export function ManualEntryTab({
   existingBooks,
   allowDuplicates,
   addBooks,
+  mode = 'library',
 }: ManualEntryTabProps) {
   const isOnline = useOnlineStatus();
   const [coverUrl, setCoverUrl] = useState<string>('');
@@ -344,7 +346,9 @@ export function ManualEntryTab({
             ? 'Adding Book...'
             : !isOnline
               ? 'Add Book (Offline - Connect to Save)'
-              : 'Add Book to Library'}
+              : mode === 'reading'
+                ? 'Add to Reading List'
+                : 'Add Book to Library'}
         </Button>
       </form>
     </div>

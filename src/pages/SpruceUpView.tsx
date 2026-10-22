@@ -152,8 +152,8 @@ export default function SpruceUpView() {
           <BackToLibrary libraryId={libraryId} className="mb-2" />
           <h1 className="layout-header-title">Shelf Care</h1>
           <p className="layout-header-subtitle">
-            Audit your collection&apos;s health by backfilling missing metadata,
-            resolving duplicate editions, and maintaining storage partitions.
+            Keep your shelves in great shape—fill in missing book details, merge
+            duplicate copies, and tidy up library storage.
           </p>
         </div>
       </div>
@@ -166,8 +166,8 @@ export default function SpruceUpView() {
         >
           <WifiOff className="w-4 h-4 shrink-0 text-amber-700 dark:text-amber-300" />
           <span>
-            Working offline. Duplicate pruning and metadata enrichment require
-            an active network connection.
+            You&apos;re offline. Finding duplicates and filling in book details
+            require an internet connection.
           </span>
         </div>
       )}
@@ -191,7 +191,7 @@ export default function SpruceUpView() {
           }`}
         >
           <LibraryBig className="w-4 h-4 shrink-0" />
-          <span>Metadata Enrichment</span>
+          <span>Missing Details</span>
           <span
             className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono ${
               activeTab === 'enrichment'
@@ -258,7 +258,7 @@ export default function SpruceUpView() {
           }`}
         >
           <Database className="w-4 h-4 shrink-0" />
-          <span>Maintenance &amp; Reset</span>
+          <span>Storage &amp; Reset</span>
           {leaksCount > 0 && (
             <span
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono ${

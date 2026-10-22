@@ -216,7 +216,7 @@ export function useConstellationData(libraryId: string | undefined) {
         setBooks([]);
         setPlotData([]);
         setProgress(
-          'Not enough books to form a constellation (minimum 3 needed).',
+          'Constellations connect books with kindred themes. Track or add at least 3 books to chart your literary sky.',
         );
         setLoading(false);
         return;
@@ -317,7 +317,7 @@ export function useConstellationData(libraryId: string | undefined) {
         if (allBooks.length < 3) {
           setPlotData([]);
           setProgress(
-            'Not enough books to form a constellation (minimum 3 needed).',
+            'Constellations connect books with kindred themes. Track or add at least 3 books to chart your literary sky.',
           );
           setLoading(false);
           return;
@@ -417,7 +417,9 @@ export function useConstellationData(libraryId: string | undefined) {
           b => b.embedding && b.embedding.length > 0,
         );
         if (validBooks.length < 3) {
-          setProgress('Not enough valid embeddings to map.');
+          setProgress(
+            'We need at least 3 analyzed books to chart your constellations.',
+          );
           setLoading(false);
           return;
         }

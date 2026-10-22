@@ -49,3 +49,49 @@ All interactive and structural elements MUST use the centralized primitives in `
    * Consolidates workspace mode tabs (*Overview · All Books · Shelf Care*), live search, filter/sort triggers, and *Grid / Table* view toggles into a coordinated sticky header system respecting the 15% mobile sticky height cap.
 3. **Magazine-Style Book Details Spread (`BookDetailsView` & `BookContent`):**
    * A 12-column asymmetric exhibition layout (4-column sticky edition showcase + `dl` Accession Metadata Ledger on the left; 8-column editorial serif header, drop-cap synopsis, narrative Where/When setting cards, author bio, and reviews on the right).
+
+---
+
+## 5. Voice, Tone & Microcopy: "Warm, Friendly, Crisp"
+Every heading, subtitle, empty state, modal prompt, and status banner in `book(ish)` must embody three core qualities:
+
+1. **Warm:**
+   * Evokes the quiet comfort of a sunlit reading room or a favorite independent bookshop.
+   * Celebrates *books*, *stories*, *shelves*, and *reading life* rather than databases, payloads, or software plumbing.
+2. **Friendly:**
+   * Conversational, encouraging, and human—speaking naturally in second person (*your shelves*, *books you're reading*).
+   * Never scolds the user when a filter returns no matches, a shelf is empty, or the browser is offline; instead offers a clear, helpful next step.
+3. **Crisp:**
+   * Concise, scannable, and direct. Front-loads meaning in short sentences (1–2 clauses max for subtitles and descriptions) and 2–4 word action labels.
+   * Avoids redundant qualifiers (e.g., use *Historical Timeline* rather than *Historical Temporal Timeline*) and avoids exposing internal engineering terminology unless paired as a brief, secondary technical footnote.
+
+### Preferred Vocabulary & Anti-Jargon Reference
+
+| Avoid (Robotic / Database / Over-Formal) | Prefer (Warm, Friendly, Crisp) |
+| :--- | :--- |
+| *records*, *documents*, *volumes*, *payloads* | **books**, **copies**, **editions** |
+| *metadata*, *backfilling*, *taxonomy* | **book details**, **covers, summaries & settings**, **genres** |
+| *purge heavy data leaks*, *harden persistence layer* | **optimize library storage** *(with brief `bookDetails` footnote)* |
+| *surviving record*, *candidate editions* | **copy to keep**, **matching books** |
+| *personal reading tracker*, *catalog only* | **Your Reading Life / Reading Room**, **Shelf Only** |
+| *transaction cannot be undone*, *working offline* | **action cannot be undone**, **You're offline** |
+
+---
+
+## 6. Empty States & Bespoke Spot Illustrations (`src/components/ui/empty-state-illustrations.tsx`)
+Empty states should feel like an inviting shelf waiting to be filled—never a dead end or a cold error screen:
+
+* **Three-Part Structure:**
+  1. **Monoline Ink + Terracotta Spot Illustration:** Every major empty state renders a lightweight, theme-aware SVG illustration from `src/components/ui/empty-state-illustrations.tsx` (`1.5px` warm ink strokes in `currentColor` paired with subtle `--color-accent-warm` terracotta highlights at 15–20% fill opacity).
+  2. **Warm Editorial Heading:** Set in `--font-serif` (`Plus Jakarta Sans` semi-bold), stating the state invitingly (e.g., *"Ready for Its First Book"*, *"Your Nightstand Is Clear"*, *"All Tidy—No Duplicates Found"*).
+  3. **Crisp One-Sentence Prompt & Single Primary Action:** A concise sentence explaining how to populate or adjust the view, followed by at most one clear action button (when applicable).
+* **Canonical Spot Illustration Catalog:**
+  * `OpenBookBookmarkIllustration` — Currently Reading / Nightstand empty state
+  * `BookStackTeaIllustration` — Finished Stack / Read history empty state
+  * `BookshelfBookendsIllustration` — Empty Library Overview, Collection, & Dashboard Libraries
+  * `MagnifyingBookmarkIllustration` — Filtered shelf no-results, Book Search prompt/no-matches, & Missing Book view
+  * `ConstellationSkyIllustration` — Constellation Map (`< 3` books)
+  * `ChronicleSundialIllustration` — Historical Timeline empty state
+  * `CompassGlobeIllustration` — Literary World Map empty state
+  * `TidyShelfCheckIllustration` — Shelf Care Duplicates clean state
+

@@ -313,7 +313,7 @@ export function SpatialMapSkeleton({
                 <span>
                   {cachedLibrary
                     ? toTitleCase(cachedLibrary.name)
-                    : 'Reading Shelf'}
+                    : 'Back to Reading Room'}
                 </span>
               </Link>
             ) : (
@@ -405,7 +405,7 @@ export function TimelineViewSkeleton({
                 <span>
                   {cachedLibrary
                     ? toTitleCase(cachedLibrary.name)
-                    : 'Reading Shelf'}
+                    : 'Back to Reading Room'}
                 </span>
               </Link>
             ) : (
@@ -584,7 +584,7 @@ export function WorkbenchFormSkeleton({
                 <span>
                   {cachedLibrary
                     ? toTitleCase(cachedLibrary.name)
-                    : 'Reading Shelf'}
+                    : 'Back to Reading Room'}
                 </span>
               </Link>
             ) : (

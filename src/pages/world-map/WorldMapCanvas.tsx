@@ -1,6 +1,7 @@
 import React from 'react';
 import {MapPin, Globe, X} from 'lucide-react';
 import {Button} from '@/components/ui/button';
+import {CartographyCompassIllustration} from '@/components/ui/empty-state-illustrations';
 import {BookLoader} from '../../components/book/BookLoader';
 import {APIProvider, Map, AdvancedMarker} from '@vis.gl/react-google-maps';
 import {FlattenedLocationPin, MapCluster, WorldMapMode} from './types';
@@ -111,13 +112,13 @@ export const WorldMapCanvas: React.FC<WorldMapCanvasProps> = ({
           <div className="relative w-full h-full pt-16 pb-6 pr-6">
             {filteredPins.length === 0 ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
-                <Globe className="text-stone-400 w-10 h-10 mb-3 animate-pulse" />
-                <h4 className="text-sm font-bold text-stone-700">
-                  No geographical settings found
+                <CartographyCompassIllustration className="mb-3" />
+                <h4 className="font-serif text-base font-semibold text-on-surface">
+                  No Places Mapped Yet
                 </h4>
-                <p className="text-xs text-stone-500 max-w-sm mt-1">
-                  We couldn&apos;t locate any plotted settings for this view.
-                  Expand your libraries or sync geocoding data.
+                <p className="text-xs text-on-surface-variant max-w-sm mt-1 leading-relaxed">
+                  Try clearing your filters, or add books with real-world
+                  settings to see them pinned on the map.
                 </p>
               </div>
             ) : (

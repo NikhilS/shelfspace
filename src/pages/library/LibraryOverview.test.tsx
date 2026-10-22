@@ -144,4 +144,16 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
     expect(screen.getByText('Literary World Map')).toBeInTheDocument();
     expect(screen.getByText('Thematic Constellations')).toBeInTheDocument();
   });
+
+  it('renders the warm empty state with BookshelfBookendsIllustration and single CTA when library has 0 books', () => {
+    render(
+      <MemoryRouter>
+        <LibraryOverview {...defaultProps} books={[]} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Ready for Its First Book')).toBeInTheDocument();
+    expect(screen.getByText('Add Your First Book')).toBeInTheDocument();
+    expect(screen.queryByText('Browse Empty Shelves')).not.toBeInTheDocument();
+  });
 });

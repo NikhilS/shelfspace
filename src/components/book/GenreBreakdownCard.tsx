@@ -18,7 +18,7 @@ export const GenreBreakdownCard: React.FC<GenreBreakdownCardProps> = ({
   books,
   eyebrow = 'Top Categories',
   headerRight,
-  emptyMessage = 'No categories categorized yet.',
+  emptyMessage = 'Add a few books to see your top genres take shape.',
   maxCategories = 6,
   onSelectGenre,
   className = '',

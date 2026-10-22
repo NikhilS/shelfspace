@@ -441,8 +441,8 @@ export function ManualEnrichmentSection({
                 Complete Book Details
               </h3>
               <p className="text-sm text-on-surface-variant font-sans">
-                Review missing metadata and enrich specific volumes in your
-                collection.
+                See which books are missing covers, summaries, or settings, and
+                fill them in with one click.
               </p>
             </div>
           </div>
@@ -571,7 +571,11 @@ export function ManualEnrichmentSection({
             rowClassName={item =>
               `transition-colors bg-surface ${selectedBookIds.has(item.id) ? 'bg-primary/5' : 'hover:bg-surface-container-lowest/50'}`
             }
-            emptyPlaceholder="No books found matching this filter."
+            emptyPlaceholder={
+              books.length === 0
+                ? 'No books in this library yet.'
+                : 'All caught up—every book has this detail filled in.'
+            }
             useWindowScroll={false}
             style={{
               height: Math.min(
@@ -679,7 +683,7 @@ function EnrichmentRunner({
             {progress.completed} enriched
             {progress.failed > 0
               ? `, ${progress.failed} unchanged`
-              : ''} of {totalCount} {totalCount === 1 ? 'volume' : 'volumes'}
+              : ''} of {totalCount} {totalCount === 1 ? 'book' : 'books'}
           </span>
         </div>
 

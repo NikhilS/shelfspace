@@ -87,7 +87,7 @@ export const AiInsightsPanel = memo(
             {isGeneratingInsight ? (
               <div className="flex items-center gap-3 text-on-surface-variant">
                 <Loader2 className="animate-spin" size={24} />
-                <p>Consulting the AI...</p>
+                <p>Putting together notes...</p>
               </div>
             ) : insightContent ? (
               <div className="markdown-body">

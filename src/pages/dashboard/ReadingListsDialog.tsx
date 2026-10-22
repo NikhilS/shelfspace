@@ -1,5 +1,5 @@
 import React, {useState, useMemo, useEffect} from 'react';
-import {Search, X, Plus, BookOpen} from 'lucide-react';
+import {Search, X, Plus} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,7 @@ import {
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
+import {MagnifyingBookmarkIllustration} from '@/components/ui/empty-state-illustrations';
 import {ReadingShelfCard} from './ReadingShelfCard';
 import type {ShelfFilterTab} from './useReadingShelf';
 import type {
@@ -189,12 +190,12 @@ export const ReadingListsDialog: React.FC<ReadingListsDialogProps> = ({
         <div className="flex-1 overflow-y-auto pr-1 pt-2 min-h-[280px]">
           {filteredItems.length === 0 ? (
             <div className="py-16 text-center bg-surface-container-low rounded-xl border border-outline-variant/40">
-              <BookOpen className="w-7 h-7 text-on-surface-variant/60 mx-auto mb-2.5" />
+              <MagnifyingBookmarkIllustration className="mx-auto mb-2.5" />
               <p className="font-serif text-base font-semibold text-on-surface">
-                No Matching Books on This Shelf
+                No Matching Books
               </p>
               <p className="font-sans text-xs text-on-surface-variant mt-1">
-                Try switching shelf tabs or clearing your filter criteria.
+                Try another shelf tab or clear your search to see more books.
               </p>
             </div>
           ) : (

@@ -8,6 +8,7 @@ import Markdown from 'react-markdown';
 import {cn, toTitleCase} from '../../lib/utils';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
+import {MagnifyingBookmarkIllustration} from '@/components/ui/empty-state-illustrations';
 import {
   Loader2,
   Book as BookIcon,
@@ -155,8 +156,19 @@ export function BookContent({
     );
   }
 
-  if (!book)
-    return <div className="layout-page-content h-full">Book not found</div>;
+  if (!book) {
+    return (
+      <div className="layout-page-content h-full flex flex-col items-center justify-center text-center py-16">
+        <MagnifyingBookmarkIllustration className="mb-3" />
+        <p className="font-serif text-lg font-semibold text-primary mb-1">
+          We Couldn&apos;t Find That Book
+        </p>
+        <p className="font-sans text-xs text-on-surface-variant">
+          It may have been moved or removed from this shelf.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="layout-page-content h-full overflow-y-auto">
@@ -179,7 +191,7 @@ export function BookContent({
             ) : (
               <div className="absolute inset-0 bg-gradient-to-b from-surface-container-low via-surface-container to-surface-container-high p-6 flex flex-col justify-between">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">
-                  Archival Edition
+                  No Cover Yet
                 </span>
                 <div className="my-auto space-y-2">
                   <p className="font-serif text-xl font-semibold text-primary leading-snug">
@@ -247,7 +259,7 @@ export function BookContent({
             <div className="py-2 last:pb-0 flex items-center justify-between gap-3">
               <dt className="metadata-eyebrow">ISBN</dt>
               <dd className="font-mono tabular-nums font-medium text-on-surface text-right truncate max-w-[160px]">
-                {book.isbn || 'Unassigned'}
+                {book.isbn || 'None listed'}
               </dd>
             </div>
           </dl>
@@ -345,7 +357,7 @@ export function BookContent({
                 </div>
               ) : (
                 <p className="text-on-surface-variant/80 font-sans text-sm italic">
-                  No synopsis available for this title.
+                  No synopsis added yet.
                 </p>
               )}
             </div>
@@ -361,11 +373,17 @@ export function BookContent({
                     variant="genre"
                     onClick={() =>
                       void navigate(
-                        `/library/${libraryId}/collection?genre=${encodeURIComponent(book.primaryGenre!)}`,
+                        libraryId.startsWith('virtual_')
+                          ? '/'
+                          : `/library/${libraryId}/collection?genre=${encodeURIComponent(book.primaryGenre!)}`,
                       )
                     }
                     className="cursor-pointer swiper-no-swiping"
-                    title={`Filter library by ${book.primaryGenre}`}
+                    title={
+                      libraryId.startsWith('virtual_')
+                        ? 'Return to Reading Room'
+                        : `Filter library by ${book.primaryGenre}`
+                    }
                   >
                     {book.primaryGenre}
                   </Badge>
@@ -376,11 +394,17 @@ export function BookContent({
                     variant="subgenre"
                     onClick={() =>
                       void navigate(
-                        `/library/${libraryId}/collection?genre=${encodeURIComponent(book.primaryGenre || '')}&subgenre=${encodeURIComponent(sg)}`,
+                        libraryId.startsWith('virtual_')
+                          ? '/'
+                          : `/library/${libraryId}/collection?genre=${encodeURIComponent(book.primaryGenre || '')}&subgenre=${encodeURIComponent(sg)}`,
                       )
                     }
                     className="cursor-pointer swiper-no-swiping"
-                    title={`Filter library by ${sg}`}
+                    title={
+                      libraryId.startsWith('virtual_')
+                        ? 'Return to Reading Room'
+                        : `Filter library by ${sg}`
+                    }
                   >
                     {sg}
                   </Badge>
@@ -663,7 +687,7 @@ export function BookContent({
                     </div>
                   ) : (
                     <p className="text-on-surface-variant/80 font-sans text-xs sm:text-sm italic">
-                      No author biography available.
+                      No author bio added yet.
                     </p>
                   )}
                 </div>

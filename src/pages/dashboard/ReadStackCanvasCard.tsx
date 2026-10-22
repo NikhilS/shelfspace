@@ -4,12 +4,12 @@ import {
   Layers,
   Star,
   ArrowRight,
-  BookOpen,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
 import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
+import {BedsideStackIllustration} from '@/components/ui/empty-state-illustrations';
 import type {TrackedBookItem} from '../../server/services/readingTracker';
 
 interface ReadStackCanvasCardProps {
@@ -620,15 +620,13 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
 
       {stackBooks.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center py-8 px-4">
-          <div className="w-11 h-11 rounded-full bg-surface-container flex items-center justify-center text-primary/70 mb-3 border border-outline-variant/50">
-            <BookOpen className="w-5 h-5" />
-          </div>
+          <BedsideStackIllustration className="mb-2.5" />
           <p className="font-serif text-base font-semibold text-on-surface mb-1">
             Your Finished Stack is Waiting
           </p>
           <p className="font-sans text-xs text-on-surface-variant max-w-xs mb-4 leading-relaxed">
-            As you finish books, the last five volumes pile up here in an
-            interactive bedside stack.
+            Finish a book and your last five reads will pile up here in a
+            tactile bedside stack.
           </p>
           <Button
             type="button"

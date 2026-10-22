@@ -60,7 +60,7 @@ describe('LibraryHeader - Adaptive Density', () => {
 
     expect(screen.getByText('Athenaeum Collection')).toBeInTheDocument();
     expect(screen.getByText(/1 volume • Owned by you/i)).toBeInTheDocument();
-    expect(screen.getByText('All Libraries')).toBeInTheDocument();
+    expect(screen.getByText('Reading Room')).toBeInTheDocument();
   });
 
   it('renders read-only badge for viewer role', () => {

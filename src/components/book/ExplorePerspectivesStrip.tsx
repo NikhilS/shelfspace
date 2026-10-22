@@ -19,7 +19,7 @@ export const ExplorePerspectivesStrip: React.FC<
   books,
   basePath,
   heading = 'Explore The Collection',
-  subtitle = 'Immersive perspectives across history, geography, and theme',
+  subtitle = 'Explore your books across history, geography, and theme',
   ariaLabel = 'Explore Collection Visualizers',
 }) => {
   const temporalBooksCount = useMemo(() => {
@@ -151,12 +151,12 @@ export const ExplorePerspectivesStrip: React.FC<
               </Badge>
             </div>
             <p className="font-sans text-xs text-on-surface-variant line-clamp-1 leading-snug">
-              Chronological epochs &amp; publication eras
+              Historical eras &amp; publication years
             </p>
           </div>
 
           <div className="relative z-10 mt-3 pt-2.5 border-t border-outline-variant/15 flex items-center justify-between text-xs font-sans font-medium text-primary">
-            <span className="group-hover:underline">Launch Timeline</span>
+            <span className="group-hover:underline">Open Timeline</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
           </div>
         </Link>
@@ -234,7 +234,7 @@ export const ExplorePerspectivesStrip: React.FC<
               </Badge>
             </div>
             <p className="font-sans text-xs text-on-surface-variant line-clamp-1 leading-snug">
-              Story settings &amp; global author origins
+              Story settings &amp; real-world places
             </p>
           </div>
 
@@ -298,12 +298,12 @@ export const ExplorePerspectivesStrip: React.FC<
               </Badge>
             </div>
             <p className="font-sans text-xs text-on-surface-variant line-clamp-1 leading-snug">
-              3D celestial cluster mapped by genre &amp; theme
+              Connected clusters by genre &amp; theme
             </p>
           </div>
 
           <div className="relative z-10 mt-3 pt-2.5 border-t border-outline-variant/15 flex items-center justify-between text-xs font-sans font-medium text-primary">
-            <span className="group-hover:underline">Explore Constellation</span>
+            <span className="group-hover:underline">Open Constellations</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
           </div>
         </Link>

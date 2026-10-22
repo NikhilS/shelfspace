@@ -22,6 +22,7 @@ interface ScanISBNTabProps {
   isAddingAll: boolean;
   existingBooks?: BookDetails[];
   allowDuplicates?: boolean;
+  mode?: 'library' | 'reading';
 }
 
 function ScanISBNTab({
@@ -29,6 +30,7 @@ function ScanISBNTab({
   isAddingAll,
   existingBooks = [],
   allowDuplicates = false,
+  mode = 'library',
 }: ScanISBNTabProps) {
   const [processingIsbns, setProcessingIsbns] = useState<Set<string>>(
     new Set(),
@@ -70,7 +72,7 @@ function ScanISBNTab({
           if (isDup) {
             triggerHaptics([50, 100, 50]);
             toast.warning(
-              `"${book.title}" is already in your library (enable "Allow duplicate copies" to add again).`,
+              `"${book.title}" is already ${mode === 'reading' ? 'on your reading list' : 'in your library'} (enable "Allow duplicate copies" to add again).`,
             );
             return;
           }

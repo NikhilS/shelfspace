@@ -200,12 +200,12 @@ export function ResetMetadataSection({
             </div>
             <div>
               <h3 className="font-sans text-xl font-bold text-on-surface">
-                Hardened Storage Sanitization
+                Optimize Library Storage
               </h3>
               <p className="text-sm text-on-surface-variant font-sans">
-                Audit and purge heavy data leaks (synopses, embeddings, bios)
-                from primary book documents to drastically reduce listener
-                bandwidth.
+                Keep your library fast and lightweight by storing long
+                summaries, author bios, and AI data separately from your main
+                book list.
               </p>
             </div>
           </div>
@@ -219,16 +219,17 @@ export function ResetMetadataSection({
                 <div className="space-y-1 font-sans text-sm">
                   <p className="font-semibold text-amber-800 dark:text-amber-300">
                     {booksWithLeaks.length === 1
-                      ? '1 book contains heavy payload leaks'
-                      : `${booksWithLeaks.length} books contain heavy payload leaks`}
+                      ? '1 book can be optimized for faster loading'
+                      : `${booksWithLeaks.length} books can be optimized for faster loading`}
                   </p>
                   <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Root documents still hold full synopses or embedding
-                    vectors. Purging them relocates payloads to the isolated{' '}
+                    Some books still store full summaries or AI vectors on their
+                    main shelf entry. Optimizing moves those details into the
+                    dedicated{' '}
                     <code className="font-mono font-body-xs text-body-xs px-1 py-0.5 rounded bg-surface-container">
                       bookDetails
                     </code>{' '}
-                    collection and sets lightweight{' '}
+                    collection and leaves lightweight{' '}
                     <code className="font-mono font-body-xs text-body-xs px-1 py-0.5 rounded bg-surface-container">
                       bookDetailsMetadata
                     </code>{' '}
@@ -249,7 +250,7 @@ export function ResetMetadataSection({
                 ) : (
                   <Sparkles className="w-4 h-4" />
                 )}
-                Purge Heavy Data Leaks ({booksWithLeaks.length})
+                Optimize Storage ({booksWithLeaks.length})
               </Button>
             </div>
           ) : (
@@ -258,12 +259,16 @@ export function ResetMetadataSection({
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
                 <div className="font-sans text-sm">
                   <p className="font-semibold text-emerald-800 dark:text-emerald-300">
-                    Persistence Layer Fully Hardened
+                    Library Storage Is Optimized
                   </p>
                   <p className="text-xs text-on-surface-variant">
-                    All {books?.length || 0} books are strictly partitioned. No
-                    heavy text or embedding vectors detected in primary book
-                    documents.
+                    All {books?.length || 0} books are cleanly organized for
+                    fast loading, with long summaries and AI vectors stored
+                    separately in{' '}
+                    <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-surface-container">
+                      bookDetails
+                    </code>
+                    .
                   </p>
                 </div>
               </div>
@@ -281,7 +286,7 @@ export function ResetMetadataSection({
                 ) : (
                   <RotateCcw className="w-3.5 h-3.5" />
                 )}
-                Verify & Re-sanitize
+                Check Again
               </Button>
             </div>
           )}
@@ -333,11 +338,11 @@ export function ResetMetadataSection({
               </div>
               <div>
                 <h3 className="font-sans text-xl font-bold text-on-surface">
-                  Reset Metadata & Purge Obsolete Fields
+                  Reset Book Details
                 </h3>
                 <p className="text-sm text-on-surface-variant font-sans">
-                  Remove all metadata of a given kind across every book in this
-                  library to start over or clear outdated data.
+                  Clear a specific detail (like covers, genres, or summaries)
+                  across all books if you want to start fresh.
                 </p>
               </div>
             </div>
@@ -466,26 +471,24 @@ export function ResetMetadataSection({
                 <Database className="w-6 h-6" />
               </div>
               <DialogTitle className="font-sans text-xl font-bold">
-                Purge Heavy Data Leaks
+                Optimize Library Storage
               </DialogTitle>
               <DialogDescription asChild>
                 <div className="font-sans text-sm text-on-surface-variant pt-2 space-y-2">
                   <p>
-                    This routine will scan all books in your library and safely
-                    migrate any synopses, author biographies, embeddings, and
-                    cluster coordinates to the dedicated{' '}
+                    We&apos;ll scan your library and move any long summaries,
+                    author biographies, or AI vectors into the dedicated{' '}
                     <code className="font-mono text-xs px-1 py-0.5 rounded bg-surface-container">
                       bookDetails
                     </code>{' '}
                     collection.
                   </p>
                   <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Once migrated, the heavy fields are purged from the primary
-                    document, leaving only lightweight{' '}
+                    Your main book list stays fast and lightweight with simple{' '}
                     <code className="font-mono text-xs px-1 py-0.5 rounded bg-surface-container">
                       bookDetailsMetadata
                     </code>{' '}
-                    flags. No book descriptions or embeddings are lost.
+                    flags, and none of your book descriptions or notes are lost.
                   </p>
                 </div>
               </DialogDescription>
@@ -505,7 +508,7 @@ export function ResetMetadataSection({
                 className="gap-2 bg-primary text-on-primary"
               >
                 {isSanitizing && <Loader2 className="w-4 h-4 animate-spin" />}
-                Purge & Hard-Fence Now
+                Optimize Now
               </Button>
             </DialogFooter>
           </DialogContent>

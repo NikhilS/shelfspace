@@ -6,7 +6,6 @@ import {
   Table as TableIcon,
   ArrowUp,
   ArrowDown,
-  Book as BookIcon,
   Plus,
   X,
 } from 'lucide-react';
@@ -18,6 +17,10 @@ import {NavigateFunction} from 'react-router-dom';
 import {Input} from '../../components/ui/input';
 import {Button} from '../../components/ui/button';
 import {Badge} from '../../components/ui/badge';
+import {
+  BookshelfBookendsIllustration,
+  MagnifyingBookmarkIllustration,
+} from '../../components/ui/empty-state-illustrations';
 import {
   Dialog,
   DialogContent,
@@ -478,36 +481,48 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
       >
         <div className="flex-1 min-w-0">
           {sortedBooks.length === 0 ? (
-            <div className="text-center py-24 px-6 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
-              <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-outline-variant/30 relative z-10">
-                <BookIcon
-                  size={36}
-                  className="text-on-surface-variant"
-                  strokeWidth={1.5}
-                />
-              </div>
+            <div className="text-center py-20 px-6 bg-surface-container-low rounded-lg border border-outline-variant/30 architectural-shadow">
+              {books.length === 0 ? (
+                <BookshelfBookendsIllustration className="mx-auto mb-5" />
+              ) : (
+                <MagnifyingBookmarkIllustration className="mx-auto mb-5" />
+              )}
               <h3 className="empty-state-title">
-                {emptyTitle || 'No books found'}
+                {books.length === 0
+                  ? emptyTitle || 'This Shelf Is Empty'
+                  : 'No Matching Books'}
               </h3>
               <p className="empty-state-description">
                 {books.length === 0
                   ? emptyDescription ||
-                    "This library is empty. Let's add some great reads to your collection."
-                  : 'No books match your current filters.'}
+                    'Add your first book to start building this collection.'
+                  : 'No books match your current search or filters.'}
               </p>
-              {books.length === 0 && (onEmptyAction || canEdit) && (
+              {books.length === 0 && (onEmptyAction || canEdit) ? (
                 <Button
                   onClick={() =>
                     onEmptyAction
                       ? onEmptyAction()
                       : navigate(`/library/${libraryId}/add`)
                   }
-                  className="mt-8 flex items-center gap-2 mx-auto"
+                  className="mt-7 flex items-center gap-2 mx-auto"
                 >
                   <Plus size={18} strokeWidth={2.5} />
                   {emptyActionLabel || 'Add Your First Book'}
                 </Button>
-              )}
+              ) : books.length > 0 && (searchQuery || hasActiveFilters) ? (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchQuery('');
+                    clearFilters();
+                  }}
+                  className="mt-6 flex items-center gap-2 mx-auto"
+                >
+                  <X size={16} />
+                  Clear Search &amp; Filters
+                </Button>
+              ) : null}
             </div>
           ) : (
             <div className="mb-10 sm:mb-12 last:mb-0">

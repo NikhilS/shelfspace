@@ -19,6 +19,7 @@ import {
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Badge} from '@/components/ui/badge';
+import {MagnifyingBookmarkIllustration} from '@/components/ui/empty-state-illustrations';
 import type {
   TrackedShelfStatus,
   UnifiedLibrarySearchMatch,
@@ -229,9 +230,13 @@ export default function BookSearch({
             ))}
           </div>
         ) : hasSearched && totalMatches === 0 ? (
-          <div className="text-center py-12 bg-surface-container-low rounded-xl border border-outline-variant/40">
-            <p className="text-on-surface font-medium">
-              No matching books found. Try a different search term or switch to
+          <div className="text-center py-12 px-4 bg-surface-container-low rounded-xl border border-outline-variant/40">
+            <MagnifyingBookmarkIllustration className="mx-auto mb-2.5" />
+            <p className="font-serif text-base font-semibold text-on-surface">
+              No Books Found for That Search
+            </p>
+            <p className="font-sans text-xs text-on-surface-variant mt-1 max-w-sm mx-auto">
+              Double-check the spelling, try searching by ISBN, or switch to
               Manual Entry.
             </p>
           </div>

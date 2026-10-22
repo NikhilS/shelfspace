@@ -1,10 +1,11 @@
 import React, {useMemo} from 'react';
 import {motion} from 'motion/react';
 import {Book, Library} from '../../types';
-import {Book as BookIcon, Sparkles, Plus, ArrowRight} from 'lucide-react';
+import {Plus, ArrowRight} from 'lucide-react';
 import {toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {useNavigate, useLocation} from 'react-router-dom';
 import {Button} from '@/components/ui/button';
+import {BookshelfBookendsIllustration} from '@/components/ui/empty-state-illustrations';
 import {GenreBreakdownCard} from '../../components/book/GenreBreakdownCard';
 import {CuratorPickCard} from '../../components/book/CuratorPickCard';
 import {ExplorePerspectivesStrip} from '../../components/book/ExplorePerspectivesStrip';
@@ -81,49 +82,28 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
     >
       {books.length === 0 ? (
         /* Empty State */
-        <div className="max-w-xl mx-auto py-16 px-8 text-center flex flex-col items-center gap-8 bg-surface-container-lowest border border-outline-variant/30 rounded-2xl shadow-elevation-2 mt-4">
-          <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-surface-container text-primary">
-            <BookIcon className="w-9 h-9 text-primary" />
-            <motion.div
-              animate={{rotate: 360}}
-              transition={{repeat: Infinity, duration: 24, ease: 'linear'}}
-              className="absolute inset-0 border border-dashed border-outline-variant rounded-full"
-            />
-            <Sparkles className="absolute -top-1 -right-1 w-5 h-5 text-primary animate-pulse" />
-          </div>
+        <div className="max-w-xl mx-auto py-14 px-8 text-center flex flex-col items-center gap-6 bg-surface-container-lowest border border-outline-variant/30 rounded-2xl shadow-elevation-2 mt-4">
+          <BookshelfBookendsIllustration className="w-24 h-20" />
 
-          <div className="space-y-3">
-            <h2 className="font-sans text-3xl font-extrabold tracking-tight text-primary">
-              Your Library is a Blank Page
+          <div className="space-y-2.5">
+            <h2 className="font-serif text-2xl sm:text-3xl font-semibold tracking-tight text-primary">
+              Ready for Its First Book
             </h2>
             <p className="font-sans text-sm text-on-surface-variant max-w-md mx-auto leading-relaxed">
-              Welcome to your digital sanctuary. Every great reader starts with
-              a single volume. Let's start curating your personal collection of
-              thoughts, stories, and insights.
-            </p>
-            <p className="font-sans text-xs text-on-surface-variant/80 max-w-sm mx-auto leading-relaxed">
-              Once cataloged, your books are beautifully organized into thematic
-              constellations, and you unlock cozy, personalized curator
-              recommendations powered by AI.
+              Add a book by photo, search, or bulk import—we&apos;ll fill in
+              covers, historical eras, and map locations automatically.
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 w-full justify-center pt-2">
+          <div className="flex justify-center pt-1 w-full">
             <Button
-              className="w-full sm:w-auto h-11 px-6 font-sans text-sm font-semibold tracking-wide rounded-xl shadow-xs"
+              className="w-full sm:w-auto h-11 px-6 font-sans text-sm font-semibold tracking-wide rounded-lg shadow-xs"
               onClick={() =>
                 onAddBook ? onAddBook() : navigate(`/library/${library.id}/add`)
               }
             >
               <Plus className="w-4 h-4 mr-1.5" />
-              Catalog Your First Book
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto h-11 px-6 font-sans text-sm font-semibold tracking-wide border-outline-variant/50 hover:bg-surface-container-low rounded-xl"
-              onClick={() => setCurrentTab('collection')}
-            >
-              Browse Empty Shelves
+              Add Your First Book
             </Button>
           </div>
         </div>
@@ -140,8 +120,8 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                 </h2>
                 <p className="section-subheading">
                   {readingBooks.length > 0
-                    ? 'Active volumes in progress and daily literary curation'
-                    : 'Personalized recommendations and category balance across your shelves'}
+                    ? "What you're reading now and a daily pick from your shelves"
+                    : 'A daily recommendation and the genre mix on your shelves'}
                 </p>
               </div>
             </div>
@@ -251,7 +231,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
                 <div>
                   <h2 className="section-heading">On the Shelves</h2>
                   <p className="section-subheading">
-                    Recent acquisitions and cataloged editions
+                    Recently added to this library
                   </p>
                 </div>
                 <Button
@@ -317,7 +297,7 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
             books={books}
             basePath={`/library/${library.id}`}
             heading="Explore The Collection"
-            subtitle="Immersive perspectives across history, geography, and theme"
+            subtitle="Explore your books across history, geography, and theme"
             ariaLabel="Explore Collection Visualizers"
           />
         </div>

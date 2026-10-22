@@ -46,14 +46,14 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/25" />
 
-      {/* Top Bar: Back to All Libraries Navigation */}
+      {/* Top Bar: Back to Reading Room Navigation */}
       <div className="relative z-10 w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4">
         <Link
           to="/"
           className="inline-flex items-center gap-1.5 font-label-caps-sm text-label-caps-sm sm:text-xs font-sans font-medium text-white/95 hover:text-white bg-black/40 hover:bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg transition-all border border-white/15 shadow-xs"
         >
           <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-          <span>All Libraries</span>
+          <span>Reading Room</span>
         </Link>
       </div>
 

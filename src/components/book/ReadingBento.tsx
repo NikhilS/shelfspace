@@ -350,7 +350,7 @@ export const ReadingBento: React.FC<ReadingBentoProps> = ({
               books={finishedBooks}
               eyebrow="Books Read by Genre"
               headerRight={`${finishedBooks.length} ${finishedBooks.length === 1 ? 'volume' : 'volumes'} read`}
-              emptyMessage="Finish your first book to see your personal reading breakdown by genre."
+              emptyMessage="Finish your first book to see the genres you gravitate toward."
               onSelectGenre={genre => handleOpenShelfTrigger('finished', genre)}
             />
           </div>
@@ -361,11 +361,11 @@ export const ReadingBento: React.FC<ReadingBentoProps> = ({
               generateNewPick={activeGenerateNewPick}
               pickError={activePickError}
               eyebrow="Pick of the Day · From Your Reading History"
-              emptyTitle="Pick of the Day"
+              emptyTitle="Daily Book Pick"
               emptyDescription={
                 readingHistorySeed.length > 0
-                  ? 'Discover a personalized recommendation tailored to your reading history.'
-                  : 'Track a book you have read or want to read to unlock daily AI recommendations.'
+                  ? 'Discover a personalized recommendation tailored to your reading life.'
+                  : "Track a few books you love, and we'll suggest what to read next."
               }
               onAddToWantToRead={pick => void handleInternalAddPick(pick)}
               isAddedToWantToRead={resolvedIsPickTracked}
@@ -414,8 +414,8 @@ export const ReadingBento: React.FC<ReadingBentoProps> = ({
             {wantToReadBooks.length === 0 ? (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-2 px-1 text-xs text-on-surface-variant">
                 <p>
-                  Your Want-to-Read queue is empty. Search across providers or
-                  your libraries to save books for later.
+                  Your reading list is wide open. Save a few books you&apos;d
+                  love to pick up next.
                 </p>
                 <Button
                   type="button"

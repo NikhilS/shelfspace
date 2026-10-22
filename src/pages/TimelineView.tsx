@@ -1,6 +1,7 @@
 import React, {useState, useMemo, useCallback, useEffect, useRef} from 'react';
 import {useParams} from 'react-router-dom';
-import {Clock, Waves} from 'lucide-react';
+import {Waves} from 'lucide-react';
+import {ChronicleSundialIllustration} from '@/components/ui/empty-state-illustrations';
 import {useCollectionScope} from '../hooks/useCollectionScope';
 import {useAppPermissions} from '../hooks/useAppPermissions';
 import {useBulkEnrichment} from '../hooks/useBulkEnrichment';
@@ -208,20 +209,16 @@ export default function TimelineView() {
         <div>
           <BackToLibrary
             libraryId={libraryId}
-            label={
-              isReadingMode
-                ? 'Back to Reading Room'
-                : 'Back to Library Overview'
-            }
+            label={isReadingMode ? 'Back to Reading Room' : 'Back to Library'}
             className="mb-2"
           />
           <h1 className="layout-header-title text-balance">
-            Historical Temporal Timeline
+            Historical Timeline
           </h1>
           <p className="layout-header-subtitle max-w-2xl">
             {isReadingMode
-              ? 'A hydrographic survey of your reading life across time. Narrow riffles widen into alluvial pools and river islands at each historical bend, while tributary arcs trace narratives across centuries.'
-              : 'A hydrographic survey of your library across time. Narrow riffles widen into alluvial pools and river islands at each historical bend, while tributary arcs trace narratives across centuries.'}
+              ? 'Follow your reading life through history—from ancient eras to the modern day—along a winding river of time.'
+              : 'Follow your books through history—from ancient eras to the modern day—along a winding river of time.'}
           </p>
 
           {/* Unboxed Archival Metrics Strip (Zero-Pill Discipline) */}
@@ -231,13 +228,13 @@ export default function TimelineView() {
                 <strong className="font-mono tabular-nums text-on-surface font-semibold">
                   {timelineStats.totalHistorical}
                 </strong>{' '}
-                Historical Volumes
+                Historical Books
               </span>
               <span aria-hidden="true" className="text-outline-variant">
                 ·
               </span>
               <span>
-                Headwaters:{' '}
+                Earliest:{' '}
                 <strong className="font-mono tabular-nums text-on-surface font-semibold">
                   {timelineStats.earliestYear !== null
                     ? formatYear(timelineStats.earliestYear)
@@ -248,7 +245,7 @@ export default function TimelineView() {
                 ·
               </span>
               <span>
-                Delta:{' '}
+                Latest:{' '}
                 <strong className="font-mono tabular-nums text-on-surface font-semibold">
                   {timelineStats.latestYear !== null
                     ? formatYear(timelineStats.latestYear)
@@ -404,14 +401,18 @@ export default function TimelineView() {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-24 text-center">
-                    <Clock className="w-12 h-12 text-outline mb-3 stroke-1" />
+                    <ChronicleSundialIllustration className="mb-3" />
                     <h4 className="text-base font-serif font-semibold text-on-surface">
-                      No historical timelines mapped
+                      No Historical Eras Mapped Yet
                     </h4>
-                    <p className="text-xs text-on-surface-variant max-w-sm mt-1">
+                    <p className="text-xs text-on-surface-variant max-w-sm mt-1 leading-relaxed">
                       {selectedPreset === 'bce'
-                        ? 'No books in this library are set in the Ancient or BCE era.'
-                        : 'Wait for the chronological background scanner to finish analyzing your library or add historical books.'}
+                        ? isReadingMode
+                          ? 'No books on your reading shelf are set in the Ancient or BCE era.'
+                          : 'No books in this library are set in the Ancient or BCE era.'
+                        : isReadingMode
+                          ? 'Track books set in a historical period—or give us a moment to finish mapping your reading shelf.'
+                          : 'Add books set in a historical period—or give us a moment to finish mapping this library.'}
                     </p>
                   </div>
                 )}

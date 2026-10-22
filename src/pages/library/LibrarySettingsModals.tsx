@@ -212,9 +212,8 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
           </div>
 
           <p className="text-xs text-on-surface-variant mb-5 leading-relaxed">
-            Invite collaborators by email. New readers not yet on the global
-            allowlist are placed in the administrator approval queue before
-            entering the app.
+            Invite friends or family by email to view or edit this library. New
+            readers can join as soon as an admin approves their invite.
           </p>
 
           <div className="mb-6">

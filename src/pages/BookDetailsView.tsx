@@ -10,6 +10,7 @@ import {PrefetchAdjacentBooks} from '../components/book/PrefetchAdjacentBooks';
 import {ChevronLeft, ChevronRight} from 'lucide-react';
 import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {Button} from '@/components/ui/button';
+import {MagnifyingBookmarkIllustration} from '@/components/ui/empty-state-illustrations';
 import {Book} from '../types';
 import {trpc} from '../lib/trpc';
 
@@ -121,6 +122,7 @@ export default function BookDetailsView() {
   }, [swiperInstance]);
 
   if (!libraryId || bookList.length === 0) {
+    const isVirtualShelf = Boolean(libraryId?.startsWith('virtual_'));
     return (
       <div className="h-full w-full bg-surface flex flex-col">
         <div className="w-full bg-surface/90 backdrop-blur-md border-b border-surface-variant/40 z-20 shrink-0 shadow-xs">
@@ -129,11 +131,14 @@ export default function BookDetailsView() {
           </div>
         </div>
         <div className="layout-page-content flex flex-col items-center justify-center min-h-[40vh] text-center">
-          <p className="font-sans font-bold text-xl text-primary mb-2">
-            Book Not Found
+          <MagnifyingBookmarkIllustration className="mb-3" />
+          <p className="font-serif font-semibold text-xl text-primary mb-1.5">
+            We Couldn&apos;t Find That Book
           </p>
-          <p className="text-sm text-on-surface-variant mb-6">
-            This volume could not be loaded or the library contains no books.
+          <p className="text-sm text-on-surface-variant mb-6 max-w-sm">
+            {isVirtualShelf
+              ? 'It may have been removed from your reading shelf.'
+              : 'It may have been moved or removed from this library.'}
           </p>
           <BackToLibrary libraryId={libraryId} customTo={backUrl} />
         </div>

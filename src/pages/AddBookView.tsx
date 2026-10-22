@@ -178,7 +178,7 @@ export default function AddBookView() {
             <BackToLibrary libraryId={libraryId} mode={mode} className="mb-2" />
             <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="layout-header-title">
-                {isReadingMode ? 'Track a Book' : 'Expand Your Shelves'}
+                {isReadingMode ? 'Track a Book' : 'Add Books'}
               </h1>
               <span
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-sans font-semibold bg-surface-container text-on-surface-variant border border-outline-variant/50"
@@ -199,8 +199,8 @@ export default function AddBookView() {
             </div>
             <p className="layout-header-subtitle">
               {isReadingMode
-                ? 'Search across your libraries and global catalogs, scan an ISBN barcode, import a CSV, or enter a volume manually. Books added here are marked as un-owned on your reading shelf.'
-                : 'Grow your library! Dust off your books and add them via barcode-scan, snapshot, CSV upload, or lookup.'}
+                ? 'Search across your libraries and global catalogs, scan an ISBN barcode, import a CSV, or add a book manually. Books added here are marked as un-owned on your reading shelf.'
+                : 'Add books from your shelves by search, ISBN barcode scan, shelf photo, CSV import, or manual entry.'}
             </p>
           </div>
         </div>
@@ -244,7 +244,7 @@ export default function AddBookView() {
                       >
                         <div className="flex items-center gap-2">
                           <Search size={18} className="text-primary" /> Search
-                          Database
+                          Books
                         </div>
                       </SelectItem>
                       <SelectItem value="scan" data-testid="method-option-scan">
@@ -325,7 +325,7 @@ export default function AddBookView() {
                         : 'text-on-surface-variant hover:text-on-surface'
                     }`}
                   >
-                    Catalog Only
+                    Shelf Only
                   </button>
                 )}
                 {READING_STATUS_OPTIONS.map(opt => {
@@ -379,6 +379,7 @@ export default function AddBookView() {
                   isAddingAll={isAddingAll}
                   existingBooks={existingBooks}
                   allowDuplicates={allowDuplicates}
+                  mode={mode}
                 />
               )}
 
@@ -396,6 +397,7 @@ export default function AddBookView() {
                   allowDuplicates={allowDuplicates}
                   existingBooks={existingBooks}
                   addBooks={addBooks}
+                  mode={mode}
                 />
               )}
 
@@ -404,6 +406,7 @@ export default function AddBookView() {
                   existingBooks={existingBooks}
                   allowDuplicates={allowDuplicates}
                   addBooks={addBooks}
+                  mode={mode}
                 />
               )}
             </Suspense>

@@ -35,7 +35,7 @@ export const CuratorPickCard: React.FC<CuratorPickCardProps> = ({
   hasAiPlan: passedHasAiPlan,
   eyebrow = "Curator's Recommendation",
   emptyTitle = "Curator's Pick",
-  emptyDescription = 'Looking for something to read next? Let our AI curator pick a volume from your shelf.',
+  emptyDescription = 'Looking for your next great read? Let our curator suggest a standout title from this shelf.',
   onAddToWantToRead,
   isAddedToWantToRead = false,
   isAddingToWantToRead = false,

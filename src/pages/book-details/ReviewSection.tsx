@@ -116,7 +116,9 @@ export function ReviewSection({
 
       <div className="space-y-6">
         {reviews.length === 0 ? (
-          <p className="text-on-surface-variant italic">No reviews yet.</p>
+          <p className="text-on-surface-variant italic text-sm">
+            No notes or reviews yet. Share your thoughts when you&apos;re ready.
+          </p>
         ) : (
           reviews.map(review => (
             <div

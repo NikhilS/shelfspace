@@ -7,12 +7,14 @@ interface CSVImportTabProps {
   allowDuplicates: boolean;
   existingBooks: BookDetails[];
   addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
+  mode?: 'library' | 'reading';
 }
 
 export default function CSVImportTab({
   allowDuplicates,
   existingBooks,
   addBooks,
+  mode = 'library',
 }: CSVImportTabProps) {
   const [extractedBooks, setExtractedBooks] = useState<
     {
@@ -47,6 +49,7 @@ export default function CSVImportTab({
           setIsExtracting={setIsExtracting}
           csvFormat={csvFormat}
           setCsvFormat={setCsvFormat}
+          mode={mode}
         />
       ) : (
         <ExtractedBooksTable
@@ -58,6 +61,7 @@ export default function CSVImportTab({
           existingBooks={existingBooks}
           csvFormat={csvFormat}
           addBooks={addBooks}
+          mode={mode}
         />
       )}
     </div>

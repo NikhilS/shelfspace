@@ -1,8 +1,9 @@
 import React, {Suspense, lazy} from 'react';
-import {useParams} from 'react-router-dom';
-import {RefreshCw} from 'lucide-react';
+import {useParams, useNavigate} from 'react-router-dom';
+import {RefreshCw, Plus} from 'lucide-react';
 import {useConstellationData} from '../hooks/useConstellationData';
 import {Button} from '@/components/ui/button';
+import {ConstellationSkyIllustration} from '@/components/ui/empty-state-illustrations';
 import {BookLoader} from '../components/book/BookLoader';
 import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {ReadingScopeToggle} from '../components/book/ReadingScopeToggle';
@@ -13,6 +14,7 @@ const ConstellationChart = lazy(
 
 export default function ConstellationMap() {
   const {id: libraryId} = useParams<{id: string}>();
+  const navigate = useNavigate();
   const {
     loading,
     progress,
@@ -38,8 +40,8 @@ export default function ConstellationMap() {
           <h1 className="layout-header-title">Constellation Map</h1>
           <p className="layout-header-subtitle">
             {isReadingMode
-              ? 'An AI-generated celestial atlas of your personal reading life. Books with kindred themes, genres, and synopses form connected constellations and semantic reading paths.'
-              : 'An AI-generated celestial atlas of your library. Books with kindred themes, genres, and synopses form connected constellations and semantic reading paths.'}
+              ? 'A star map of your reading life—books with kindred themes and stories cluster together into constellations.'
+              : 'A star map of your library—books with kindred themes and stories cluster together into constellations.'}
           </p>
         </div>
 
@@ -59,7 +61,7 @@ export default function ConstellationMap() {
             className="flex items-center gap-2 rounded-lg whitespace-nowrap shrink-0"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            Re-Cluster Map
+            Refresh Map
           </Button>
         </div>
       </div>
@@ -72,8 +74,28 @@ export default function ConstellationMap() {
           </p>
         </div>
       ) : plotData.length < 3 ? (
-        <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container rounded-2xl border border-outline-variant p-8">
-          <p className="text-on-surface-variant font-medium">{progress}</p>
+        <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container-low rounded-2xl border border-outline-variant/50 p-8 text-center">
+          <ConstellationSkyIllustration className="mb-3" />
+          <h2 className="font-serif text-xl font-semibold text-on-surface mb-1.5">
+            A Few More Books Needed
+          </h2>
+          <p className="font-sans text-sm text-on-surface-variant max-w-md leading-relaxed mb-5">
+            {progress}
+          </p>
+          <Button
+            type="button"
+            onClick={() =>
+              void navigate(
+                isReadingMode || !libraryId
+                  ? '/reading/add?status=want_to_read'
+                  : `/library/${libraryId}/add`,
+              )
+            }
+            className="gap-2 rounded-lg font-sans font-semibold"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{isReadingMode ? 'Track More Books' : 'Add More Books'}</span>
+          </Button>
         </div>
       ) : (
         <Suspense
@@ -81,7 +103,7 @@ export default function ConstellationMap() {
             <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container rounded-2xl border border-outline-variant p-8">
               <BookLoader size="lg" className="mb-4" />
               <p className="text-on-surface-variant font-medium animate-pulse">
-                Loading Celestial Chart Engine...
+                Charting your constellations...
               </p>
             </div>
           }

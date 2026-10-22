@@ -63,9 +63,7 @@ describe('ResetMetadataSection', () => {
   it('renders the reset metadata UI with taxonomy genres selected by default', () => {
     render(<ResetMetadataSection libraryId="lib-123" books={mockBooks} />);
 
-    expect(
-      screen.getByText('Reset Metadata & Purge Obsolete Fields'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Reset Book Details')).toBeInTheDocument();
     expect(
       screen.getByRole('button', {name: /Reset Taxonomy Genres/i}),
     ).toBeInTheDocument();
@@ -196,19 +194,17 @@ describe('ResetMetadataSection', () => {
     render(<ResetMetadataSection libraryId="lib-123" books={leakedBooks} />);
 
     expect(
-      screen.getByText(/1 book contains heavy payload leaks/i),
+      screen.getByText(/1 book can be optimized for faster loading/i),
     ).toBeInTheDocument();
 
     const purgeBtn = screen.getByRole('button', {
-      name: /Purge Heavy Data Leaks/i,
+      name: /Optimize Storage/i,
     });
     fireEvent.click(purgeBtn);
 
-    expect(screen.getByText('Purge & Hard-Fence Now')).toBeInTheDocument();
+    expect(screen.getByText('Optimize Now')).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole('button', {name: /Purge & Hard-Fence Now/i}),
-    );
+    fireEvent.click(screen.getByRole('button', {name: /Optimize Now/i}));
 
     await waitFor(() => {
       expect(mockResetMetadata).toHaveBeenCalledWith({
@@ -235,7 +231,7 @@ describe('ResetMetadataSection', () => {
     render(<ResetMetadataSection libraryId="lib-123" books={cleanBooks} />);
 
     expect(
-      screen.getByText('Persistence Layer Fully Hardened'),
+      screen.getByText('Library Storage Is Optimized'),
     ).toBeInTheDocument();
   });
 });

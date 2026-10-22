@@ -34,6 +34,7 @@ These rules apply to every pull request, feature branch, and refactor:
 | **Telemetry** | **Never `JSON.stringify` or allocate `Blob`s on the render path.** Payload calculations and telemetry logging must be deferred to `requestIdleCallback` or lightweight heuristics. |
 | **API** | **Zod is the Single Source of Truth.** Input and output schemas defined in `src/schemas/` drive all tRPC v11 routers and runtime validation. |
 | **Database** | **No Orphaned Books.** A book document cannot exist outside of a parent `libraries/{libraryId}/books/{bookId}` path. All library deletions must clean up subcollections. |
+| **Voice & Microcopy** | **Warm, Friendly, Crisp.** All user-facing headings, descriptions, empty states, and modals speak in a warm, welcoming bookshop voice with crisp, concise phrasing—free of database or systems jargon (`records`, `payloads`, `leaks`, `volumes`). |
 
 ---
 
@@ -42,7 +43,7 @@ These rules apply to every pull request, feature branch, and refactor:
 The complete engineering standard is partitioned into specialized, domain-focused modules:
 
 1. [**Design System & UI Guidelines**](./01-DESIGN-SYSTEM-AND-UI.md)  
-   *Natural Materials Palette, Manrope typography hierarchy, tonal layering, tactile components, and anti-slop rules.*
+   *Natural Materials Palette, Manrope typography hierarchy, tonal layering, tactile components, Warm/Friendly/Crisp voice & microcopy standards, monoline spot illustrations, and anti-slop rules.*
 
 2. [**State Architecture & Data Flow**](./02-STATE-MANAGEMENT-AND-FRONTEND-ARCHITECTURE.md)  
    *Four-tier state taxonomy (Zustand, React Query, URL params, local state), optimistic mutation pipelines, and Web Worker offloading.*
@@ -65,6 +66,7 @@ The complete engineering standard is partitioned into specialized, domain-focuse
  
 When architectural conventions evolve, update the relevant evergreen document and record the strategic rationale here:
 
+* **2026-10:** Codified the **Warm, Friendly, Crisp** voice and microcopy guidelines across the entire application, replacing database/archival jargon with natural book-lover language and pairing all empty states with bespoke monoline ink-and-terracotta spot illustrations (`src/components/ui/empty-state-illustrations.tsx`).
 * **2026-10:** Established 1-to-1 co-located test coverage across all pure mathematical/spatial engines (`clustering`, `timelineMath`, `worldMapMath`), Web Workers (`umap.worker`, `duplicateDetection.worker`), tRPC routers (`gemini`, `metadata`, `user`, `auth`, `libraryApi`, `bookApi`, `enrichmentApi`), backend services (`gemini`, `metadata`, `userService`, `globalProviderGovernor`, `serverTelemetryBuffer`), client RBAC/storage helpers, and Zustand stores.
 * **2026-10:** Standardized repository layout, file casing (`umap.worker.ts`, `catalogOrchestrator.ts`), 1-to-1 tRPC router modules (`libraryApi`, `bookApi`, `enrichmentApi`), single-entry barrel exports, unified date utilities, and 100% co-located `*.test.ts(x)` suites (eliminating `__tests__/` directories and legacy client `db/` helpers).
 * **2026-10:** Removed the unused `/api/v1` OpenAPI REST gateway and `apiKeys` credential subsystem, consolidating 100% of API access into the tRPC v11 gateway with single-path Firebase ID Token (JWT) authentication.

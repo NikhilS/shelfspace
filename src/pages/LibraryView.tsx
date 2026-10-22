@@ -519,7 +519,7 @@ export default function LibraryView() {
                 className="flex items-center gap-2 rounded-lg font-sans font-semibold"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>All Libraries</span>
+                <span>Reading Room</span>
               </Button>
               <Button
                 type="button"

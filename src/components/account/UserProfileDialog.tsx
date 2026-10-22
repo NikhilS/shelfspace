@@ -61,8 +61,8 @@ export function UserProfileDialog({
       const shareUrl = window.location.origin;
       if (navigator.share) {
         await navigator.share({
-          title: 'book(ish) — Modern Archivist',
-          text: 'Explore and curate your personal book archive',
+          title: 'book(ish) — Shelves & Reading Life',
+          text: 'Catalog your physical bookshelves and track your reading life in one place',
           url: shareUrl,
         });
       } else {
@@ -275,10 +275,10 @@ export function UserProfileDialog({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-sans font-medium text-on-surface">
-                      My Libraries
+                      Reading Room &amp; Libraries
                     </div>
                     <div className="text-xs text-on-surface-variant truncate">
-                      View all curated archives
+                      Return to your reading tracker and collections
                     </div>
                   </div>
                 </div>
@@ -322,7 +322,7 @@ export function UserProfileDialog({
                     <div className="text-xs text-on-surface-variant truncate">
                       {currentLibraryId
                         ? 'Invite collaborators and assign reader permissions'
-                        : 'Share archive application with fellow readers'}
+                        : 'Share book(ish) with fellow readers'}
                     </div>
                   </div>
                 </div>

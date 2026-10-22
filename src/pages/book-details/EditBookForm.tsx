@@ -298,9 +298,9 @@ export function EditBookForm({
               Delete "{toSentenceCase(book.title)}"
             </h3>
             <p className="text-on-surface-variant max-w-md text-sm leading-relaxed mb-8">
-              Are you sure you want to remove this book from your library? This
-              will permanently delete the record and all reviews. This
-              transaction cannot be undone.
+              {libraryId.startsWith('virtual_')
+                ? 'Are you sure you want to remove this book from your personal reading shelf? This will permanently delete the record and all reviews. This action cannot be undone.'
+                : 'Are you sure you want to remove this book from your library? This will permanently delete the record and all reviews. This action cannot be undone.'}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
               <Button
@@ -552,10 +552,10 @@ export function EditBookForm({
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="physical">
-                                Physical Layout
+                                Physical Book
                               </SelectItem>
                               <SelectItem value="digital">
-                                Digital E-Book
+                                Digital / E-Book
                               </SelectItem>
                             </SelectContent>
                           </Select>

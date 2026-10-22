@@ -98,6 +98,9 @@ export function useCollectionScope(
 
   const books = useMemo<Book[]>(() => {
     if (isReadingMode) {
+      if (scopedReadingBooks.length === 0 && libraryBooks.length > 0) {
+        return libraryBooks;
+      }
       return scopedReadingBooks;
     }
     return libraryBooks.map(b =>

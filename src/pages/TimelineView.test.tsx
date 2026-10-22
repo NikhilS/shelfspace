@@ -66,10 +66,8 @@ describe('TimelineView', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Back to Library Overview')).toBeInTheDocument();
-    expect(
-      screen.getByText('Historical Temporal Timeline'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Back to Library')).toBeInTheDocument();
+    expect(screen.getByText('Historical Timeline')).toBeInTheDocument();
     expect(screen.getByText('All-Time Focus')).toBeInTheDocument();
     expect(screen.getByText('Ancient & BCE Era')).toBeInTheDocument();
     expect(screen.getByText('Century Highlights')).toBeInTheDocument();
@@ -107,5 +105,20 @@ describe('TimelineView', () => {
     expect(
       screen.getAllByRole('link', {name: /Meditations/i})[0],
     ).toHaveAttribute('href', '/library/lib-1/book/b1');
+  });
+
+  it('renders Reading Mode copy and Back to Reading Room link on /reading/timeline', () => {
+    render(
+      <MemoryRouter initialEntries={['/reading/timeline']}>
+        <Routes>
+          <Route path="/reading/timeline" element={<TimelineView />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Back to Reading Room')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Follow your reading life through history/i),
+    ).toBeInTheDocument();
   });
 });

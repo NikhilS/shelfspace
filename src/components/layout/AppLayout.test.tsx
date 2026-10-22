@@ -45,8 +45,8 @@ describe('AppLayout', () => {
     expect(brand).toBeInTheDocument();
     expect(brand).toHaveClass('leading-none');
 
-    // Modern Archivist subtitle
-    const archivist = screen.getByText('Modern Archivist');
+    // Shelves & Reading Life subtitle
+    const archivist = screen.getByText('Shelves & Reading Life');
     expect(archivist).toBeInTheDocument();
     expect(archivist).toHaveClass('leading-none');
     expect(archivist).toHaveClass('items-center');

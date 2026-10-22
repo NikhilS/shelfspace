@@ -3,14 +3,13 @@ import {useAuth} from '../stores/authStore';
 import {Navigate, useNavigate} from 'react-router-dom';
 import {
   Plus,
-  Library as LibraryIcon,
-  ShieldAlert,
   AlertTriangle,
   RefreshCw,
   Search,
   Sparkles,
   BookOpen,
 } from 'lucide-react';
+import {BookshelfBookendsIllustration} from '@/components/ui/empty-state-illustrations';
 import {toast} from 'sonner';
 import {toTitleCase, formatCompactNumber} from '../lib/utils';
 import {ErrorBoundary} from '../components/layout/ErrorBoundary';
@@ -290,7 +289,7 @@ export default function Dashboard() {
           <div className="layout-header border-none pb-0 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
             <div>
               <span className="metadata-eyebrow block mb-1">
-                Personal Reading Tracker
+                Your Reading Life
               </span>
               <h1 id="reading-room-heading" className="layout-header-title">
                 {readerName}&apos;s Reading Room
@@ -441,8 +440,8 @@ export default function Dashboard() {
                 user={user}
                 navigate={navigate}
                 headerSlot={readingCollectionHeaderSlot}
-                emptyTitle="No tracked books on this shelf"
-                emptyDescription="Search across global book providers or your libraries to track books you want to read, are reading, or have finished."
+                emptyTitle="No Books on This Shelf Yet"
+                emptyDescription="Search for a title or pick one from your libraries to start tracking your reading."
                 onEmptyAction={() => openTrackBookDialog('want_to_read')}
                 emptyActionLabel="Track a Book"
                 disablePaddingTop
@@ -487,7 +486,8 @@ export default function Dashboard() {
                   Libraries
                 </h2>
                 <p className="font-sans text-xs sm:text-sm text-on-surface-variant mt-0.5">
-                  Personal archives, shared collections, and curated catalogs.
+                  Your home bookshelves and collections shared with friends and
+                  family.
                 </p>
               </div>
               {isLoading ? (
@@ -542,30 +542,24 @@ export default function Dashboard() {
                 </div>
               ) : libraryList.length === 0 && !isCreating ? (
                 <div className="text-center py-14 px-6 bg-surface-container-low rounded-xl border border-outline-variant/40">
-                  <div className="w-12 h-12 bg-surface rounded-lg flex items-center justify-center mx-auto mb-4 border border-outline-variant/50">
-                    {scopes.includes('all') ? (
-                      <ShieldAlert className="w-6 h-6 text-on-surface-variant" />
-                    ) : (
-                      <LibraryIcon className="w-6 h-6 text-on-surface-variant" />
-                    )}
-                  </div>
+                  <BookshelfBookendsIllustration className="mx-auto mb-3" />
                   <h3 className="empty-state-title">
                     {scopes.includes('all')
-                      ? 'No Cataloged Libraries Found'
+                      ? 'No Libraries Created Yet'
                       : scopes.length === 1 && scopes[0] === 'shared'
-                        ? 'No Shared Libraries'
+                        ? 'No Shared Libraries Yet'
                         : scopes.length === 1 && scopes[0] === 'owned'
-                          ? 'No Owned Libraries'
-                          : 'No Libraries Found'}
+                          ? 'No Personal Libraries Yet'
+                          : 'No Libraries Yet'}
                   </h3>
                   <p className="empty-state-description max-w-md mx-auto mb-5">
                     {scopes.includes('all')
-                      ? 'There are currently no libraries stored in the global system archive.'
+                      ? 'No libraries have been set up across the workspace yet.'
                       : scopes.length === 1 && scopes[0] === 'shared'
-                        ? 'No other users have granted you access to their library collections yet.'
+                        ? 'When friends or family share a library with you, it will appear here.'
                         : scopes.length === 1 && scopes[0] === 'owned'
-                          ? 'You have not created any personal library collections yet.'
-                          : 'Create a library collection if you also want to catalog owned physical or digital shelves.'}
+                          ? 'Create a library to organize the physical or digital books you own.'
+                          : 'Create a library to catalog the physical or digital books on your shelves.'}
                   </p>
                   {(!scopes.includes('shared') || scopes.includes('owned')) && (
                     <Button

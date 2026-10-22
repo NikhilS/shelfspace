@@ -107,9 +107,7 @@ describe('SpruceUpView', () => {
 
     // Switch to Duplicates tab and verify non-blocking duplicate group detection
     fireEvent.click(getByTestId('shelf-care-tab-duplicates'));
-    expect(
-      await screen.findByText('Potentially Duplicate Books'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Possible Duplicates')).toBeInTheDocument();
     expect(
       await screen.findByTestId('duplicate-confidence-badge-0'),
     ).toHaveTextContent('100% Match • Exact ISBN');
@@ -117,7 +115,7 @@ describe('SpruceUpView', () => {
     // Switch to Maintenance tab
     fireEvent.click(getByTestId('shelf-care-tab-maintenance'));
     expect(
-      await screen.findByText('Hardened Storage Sanitization'),
+      await screen.findByText('Optimize Library Storage'),
     ).toBeInTheDocument();
   });
 });

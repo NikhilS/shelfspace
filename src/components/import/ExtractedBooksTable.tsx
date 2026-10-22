@@ -36,6 +36,7 @@ interface ExtractedBooksTableProps {
   existingBooks: BookDetails[];
   csvFormat: 'physical' | 'digital';
   addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
+  mode?: 'library' | 'reading';
 }
 
 export default function ExtractedBooksTable({
@@ -47,6 +48,7 @@ export default function ExtractedBooksTable({
   existingBooks,
   csvFormat,
   addBooks,
+  mode = 'library',
 }: ExtractedBooksTableProps) {
   const [isAddingAll, setIsAddingAll] = useState(false);
   const [addProgress, setAddProgress] = useState<{
@@ -147,7 +149,11 @@ export default function ExtractedBooksTable({
 
       if (booksToSave.length === 0) {
         triggerHaptics([50, 100, 50]);
-        toast.info('All selected books are already in your library.');
+        toast.info(
+          mode === 'reading'
+            ? 'All selected books are already on your reading list.'
+            : 'All selected books are already in your library.',
+        );
         setIsAddingAll(false);
         setAddProgress(null);
         return;
@@ -248,7 +254,7 @@ export default function ExtractedBooksTable({
             <p className="text-xs text-on-surface-variant text-center mt-1.5 font-medium">
               {addProgress.phase === 'metadata'
                 ? `Enriching details: ${addProgress.current} of ${addProgress.total} books...`
-                : `Saving ${addProgress.total} ${addProgress.total === 1 ? 'book' : 'books'} to your library...`}
+                : `Saving ${addProgress.total} ${addProgress.total === 1 ? 'book' : 'books'} to your ${mode === 'reading' ? 'reading list' : 'library'}...`}
             </p>
           </div>
         )}

@@ -36,16 +36,26 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
     utils = undefined;
   }
 
-  const hasShelfQuery = Boolean(trpc?.readingTracker?.getShelf?.useQuery);
-  const shelfQuery = hasShelfQuery
-    ? trpc.readingTracker.getShelf.useQuery(
+  let shelfQuery:
+    | {
+        data?: unknown;
+        isLoading?: boolean;
+        refetch?: () => Promise<unknown>;
+      }
+    | undefined;
+  try {
+    if (trpc?.readingTracker?.getShelf?.useQuery) {
+      shelfQuery = trpc.readingTracker.getShelf.useQuery(
         {shelf: 'all'},
         {
           enabled: Boolean(user) && isEnabled,
           staleTime: 1000 * 60 * 2,
         },
-      )
-    : undefined;
+      );
+    }
+  } catch {
+    shelfQuery = undefined;
+  }
 
   const summary: ReadingShelfSummary = useMemo(() => {
     const data = shelfQuery?.data as ReadingShelfSummary | undefined;

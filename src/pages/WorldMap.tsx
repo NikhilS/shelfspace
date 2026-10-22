@@ -202,8 +202,8 @@ export default function WorldMap() {
           <h1 className="layout-header-title">Literary World Map</h1>
           <p className="layout-header-subtitle max-w-3xl">
             {isReadingMode
-              ? 'Visualize the settings, narrative regions, and historical backdrops across the books in your personal reading life. Grouped dynamically and colored based on real-time geographical coordinates.'
-              : 'Visualize the settings, narrative regions, and historical backdrops discussed in your books. Grouped dynamically and colored based on real-time geographical coordinates.'}
+              ? 'Explore the real-world cities, regions, and landscapes where the books on your reading shelf take place.'
+              : 'Explore the real-world cities, regions, and landscapes where your books take place.'}
           </p>
         </div>
 
@@ -227,7 +227,7 @@ export default function WorldMap() {
               }`}
               id="toggle-cluster-view"
             >
-              <Grid size={14} /> Label Cluster
+              <Grid size={14} /> Pin Clusters
             </button>
             <button
               onClick={() => setActiveTab('heat')}
@@ -251,7 +251,11 @@ export default function WorldMap() {
         failed={backfillProgress.failed}
         total={backfillProgress.total}
         title="Scanning Literary Geographies"
-        description="Resolving coordinates for your library books..."
+        description={
+          isReadingMode
+            ? 'Resolving coordinates for your tracked books...'
+            : 'Resolving coordinates for your library books...'
+        }
         colorTheme="teal"
         className="ml-1 mb-5"
         inFlightCount={inFlightCount}

@@ -1,6 +1,7 @@
 import React from 'react';
-import {MapPin, ChevronRight, Globe, BookOpen, X} from 'lucide-react';
+import {MapPin, ChevronRight, BookOpen, X} from 'lucide-react';
 import {Badge} from '@/components/ui/badge';
+import {CartographyCompassIllustration} from '@/components/ui/empty-state-illustrations';
 import {Book} from '../../types';
 import {FlattenedLocationPin, MapCluster} from './types';
 
@@ -112,19 +113,17 @@ export const WorldMapInspector: React.FC<WorldMapInspectorProps> = ({
           </div>
         ) : (
           <div
-            className="text-center py-12 px-4 my-auto space-y-3.5"
+            className="text-center py-12 px-4 my-auto space-y-3"
             id="map-selection-placeholder"
           >
-            <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto">
-              <Globe size={24} />
-            </div>
+            <CartographyCompassIllustration className="mx-auto" />
             <div>
-              <h3 className="text-sm font-bold text-on-surface">
-                No Setting Selected
+              <h3 className="font-serif text-base font-semibold text-on-surface">
+                Explore a Place on the Map
               </h3>
               <p className="text-xs text-on-surface-variant max-w-xs mx-auto leading-relaxed mt-1">
-                Choose any pin or custom cluster circle on the map to read
-                setting reviews, books, and narrative rationale settings.
+                Select any pin or cluster on the map to see the books set there
+                and why that place matters to the story.
               </p>
             </div>
           </div>
@@ -156,7 +155,7 @@ export const WorldMapInspector: React.FC<WorldMapInspectorProps> = ({
           <div className="px-5 pb-5 border-t border-outline-variant bg-surface/30">
             {nonEarthBooks.length === 0 ? (
               <p className="text-xs text-on-surface-variant py-3 italic">
-                No matching non-earth books found.
+                No fictional or otherworldly settings on this shelf yet.
               </p>
             ) : (
               <div className="space-y-2 mt-3.5 max-h-[220px] overflow-y-auto pr-1">
