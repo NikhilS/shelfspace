@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to enable full offline read-only PWA support across Service Worker app-shell precaching, runtime font and book cover caching, IndexedDB React Query hydration gating, offline-aware tRPC & Firebase Auth handling, dedicated uncached offline empty states, and in-place disabled write/AI controls with tooltips.",
-  "updatedAt":  "2026-10-22T19:39:10.645718788Z",
+  "summary":  "Implementation plan to replace the floating dark offline banner with a subtle inline terracotta-red dot + \"Offline\" indicator in the right side of the top navigation bar next to the user profile avatar across all pages.",
+  "updatedAt":  "2026-10-22T21:00:24.382245043Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

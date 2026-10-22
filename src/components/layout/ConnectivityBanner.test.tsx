@@ -26,7 +26,7 @@ describe('ConnectivityBanner', () => {
     expect(screen.queryByTestId('connectivity-banner')).not.toBeInTheDocument();
   });
 
-  it('displays banner when offline event occurs', () => {
+  it('displays inline Offline indicator with red dot when offline event occurs', () => {
     render(<ConnectivityBanner />);
 
     act(() => {
@@ -36,6 +36,7 @@ describe('ConnectivityBanner', () => {
     const banner = screen.getByTestId('connectivity-banner');
     expect(banner).toBeInTheDocument();
     expect(banner).toHaveAttribute('role', 'status');
-    expect(screen.getByText(/Working Offline/i)).toBeInTheDocument();
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    expect(banner.querySelector('.bg-error')).toBeInTheDocument();
   });
 });

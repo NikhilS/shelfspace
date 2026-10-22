@@ -72,4 +72,27 @@ describe('AppLayout', () => {
     fireEvent.click(logoutBtn);
     expect(mockLogOut).toHaveBeenCalledTimes(1);
   });
+
+  it('renders inline Offline indicator inside the top header when offline', () => {
+    const originalOnLine = navigator.onLine;
+    Object.defineProperty(navigator, 'onLine', {
+      value: false,
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      renderAppLayout();
+      const header = screen.getByRole('banner');
+      const indicator = screen.getByTestId('connectivity-banner');
+      expect(header).toContainElement(indicator);
+      expect(screen.getByText('Offline')).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(navigator, 'onLine', {
+        value: originalOnLine,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
 });

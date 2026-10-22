@@ -43,7 +43,8 @@ export function AppLayout({children}: AppLayoutProps) {
           </div>
 
           {/* Zone 2: User Profile Action */}
-          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
+            <ConnectivityBanner />
             <Button
               type="button"
               variant="ghost"
@@ -78,7 +79,6 @@ export function AppLayout({children}: AppLayoutProps) {
 
       {/* Main Content Area */}
       <main className="flex-1 min-w-0 flex flex-col min-h-screen relative w-full">
-        <ConnectivityBanner />
         {children || <Outlet />}
       </main>
 
