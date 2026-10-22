@@ -26,7 +26,9 @@ export function useLibraryPermissions(
   );
 
   const getCachedLibrary = (): Library | undefined => {
-    if (!libraryId || !userId || !utils?.library) return undefined;
+    if (!libraryId || !userId || !utils?.library) {
+      return undefined;
+    }
     return (
       (utils.library.get?.getData?.({libraryId}) as Library | undefined) ||
       (

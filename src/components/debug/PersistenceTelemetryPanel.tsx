@@ -31,15 +31,13 @@ interface PersistenceTelemetryPanelProps {
   initialContext?: TelemetryPluginContext;
 }
 
-export const PersistenceTelemetryPanel: React.FC<
-  PersistenceTelemetryPanelProps
-> = ({
+export function PersistenceTelemetryPanel({
   metrics: propMetrics,
   fetchCacheHitRatio: propCacheHitRatio,
   activeListeners: propActiveListeners,
   baseline: propBaseline,
   initialContext,
-}) => {
+}: PersistenceTelemetryPanelProps) {
   const engine = DebugTelemetryEngine.getInstance();
 
   const [liveMetrics, setLiveMetrics] = useState<TelemetryMetrics>(
@@ -76,9 +74,13 @@ export const PersistenceTelemetryPanel: React.FC<
   const baseline = propBaseline !== undefined ? propBaseline : liveBaseline;
 
   const fetchCacheHitRatio = useMemo(() => {
-    if (propCacheHitRatio !== undefined) return propCacheHitRatio;
+    if (propCacheHitRatio !== undefined) {
+      return propCacheHitRatio;
+    }
     const total = metrics.totalFirestoreReads;
-    if (total === 0) return 100;
+    if (total === 0) {
+      return 100;
+    }
     return Math.round((metrics.firestoreCacheHits / total) * 100);
   }, [
     propCacheHitRatio,
@@ -104,9 +106,15 @@ export const PersistenceTelemetryPanel: React.FC<
 
   // Format bytes helper
   const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes === 0) {
+      return '0 B';
+    }
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
@@ -737,4 +745,4 @@ export const PersistenceTelemetryPanel: React.FC<
       </div>
     </div>
   );
-};
+}

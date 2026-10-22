@@ -66,7 +66,9 @@ export const metadataRouter = router({
           );
           for (const [bookId, metadata] of Object.entries(batchResult)) {
             if (metadata !== null && metadata !== undefined) {
-              if (!enrichedResults[bookId]) enrichedResults[bookId] = {};
+              if (!enrichedResults[bookId]) {
+                enrichedResults[bookId] = {};
+              }
               enrichedResults[bookId][key] = metadata;
             }
           }

@@ -9,7 +9,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import BookSearch from '../import/BookSearch';
+import {BookSearch} from '../import/BookSearch';
 import {useAddBooks} from '../../pages/add-book/useAddBooks';
 import {useExistingBooks} from '../../pages/add-book/useExistingBooks';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
@@ -144,7 +144,9 @@ export function QuickAddBookDialog({
     <Dialog
       open={isOpen}
       onOpenChange={open => {
-        if (!open) onClose();
+        if (!open) {
+          onClose();
+        }
       }}
     >
       <DialogContent

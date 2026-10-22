@@ -274,11 +274,21 @@ export function mapLegacyGenreToTaxonomy(rawCategory: string | string[]): {
     normalized.includes('dystopian')
   ) {
     const subgenres: string[] = [];
-    if (normalized.includes('space opera')) subgenres.push('Space Opera');
-    if (normalized.includes('cyberpunk')) subgenres.push('Cyberpunk');
-    if (normalized.includes('dystopian') || normalized.includes('apocalyptic'))
+    if (normalized.includes('space opera')) {
+      subgenres.push('Space Opera');
+    }
+    if (normalized.includes('cyberpunk')) {
+      subgenres.push('Cyberpunk');
+    }
+    if (
+      normalized.includes('dystopian') ||
+      normalized.includes('apocalyptic')
+    ) {
       subgenres.push('Dystopian & Post-Apocalyptic');
-    if (normalized.includes('time travel')) subgenres.push('Time Travel');
+    }
+    if (normalized.includes('time travel')) {
+      subgenres.push('Time Travel');
+    }
     return {
       primaryGenre: 'Science Fiction',
       subgenres: subgenres.slice(0, 3),
@@ -293,11 +303,15 @@ export function mapLegacyGenreToTaxonomy(rawCategory: string | string[]): {
     normalized.includes('myth')
   ) {
     const subgenres: string[] = [];
-    if (normalized.includes('epic') || normalized.includes('high fantasy'))
+    if (normalized.includes('epic') || normalized.includes('high fantasy')) {
       subgenres.push('Epic & High Fantasy');
-    if (normalized.includes('urban fantasy')) subgenres.push('Urban Fantasy');
-    if (normalized.includes('folklore') || normalized.includes('myth'))
+    }
+    if (normalized.includes('urban fantasy')) {
+      subgenres.push('Urban Fantasy');
+    }
+    if (normalized.includes('folklore') || normalized.includes('myth')) {
       subgenres.push('Mythic & Folklore');
+    }
     return {
       primaryGenre: 'Fantasy',
       subgenres: subgenres.slice(0, 3),
@@ -312,11 +326,15 @@ export function mapLegacyGenreToTaxonomy(rawCategory: string | string[]): {
     normalized.includes('crime')
   ) {
     const subgenres: string[] = [];
-    if (normalized.includes('cozy')) subgenres.push('Cozy Mystery');
-    if (normalized.includes('police') || normalized.includes('procedural'))
+    if (normalized.includes('cozy')) {
+      subgenres.push('Cozy Mystery');
+    }
+    if (normalized.includes('police') || normalized.includes('procedural')) {
       subgenres.push('Police Procedural');
-    if (normalized.includes('hardboiled') || normalized.includes('noir'))
+    }
+    if (normalized.includes('hardboiled') || normalized.includes('noir')) {
       subgenres.push('Hardboiled & Noir');
+    }
     return {
       primaryGenre: 'Mystery & Crime',
       subgenres: subgenres.slice(0, 3),
@@ -332,10 +350,12 @@ export function mapLegacyGenreToTaxonomy(rawCategory: string | string[]): {
     normalized.includes('spy')
   ) {
     const subgenres: string[] = [];
-    if (normalized.includes('psychological'))
+    if (normalized.includes('psychological')) {
       subgenres.push('Psychological Thriller');
-    if (normalized.includes('espionage') || normalized.includes('spy'))
+    }
+    if (normalized.includes('espionage') || normalized.includes('spy')) {
       subgenres.push('Espionage & Spy Fiction');
+    }
     return {
       primaryGenre: 'Thriller & Suspense',
       subgenres: subgenres.slice(0, 3),
@@ -351,9 +371,12 @@ export function mapLegacyGenreToTaxonomy(rawCategory: string | string[]): {
     normalized.includes('supernatural')
   ) {
     const subgenres: string[] = [];
-    if (normalized.includes('gothic')) subgenres.push('Gothic Horror');
-    if (normalized.includes('ghost') || normalized.includes('haunted'))
+    if (normalized.includes('gothic')) {
+      subgenres.push('Gothic Horror');
+    }
+    if (normalized.includes('ghost') || normalized.includes('haunted')) {
       subgenres.push('Haunted & Ghost Stories');
+    }
     return {
       primaryGenre: 'Horror & Supernatural',
       subgenres: subgenres.slice(0, 3),
@@ -369,9 +392,12 @@ export function mapLegacyGenreToTaxonomy(rawCategory: string | string[]): {
     normalized.includes('comic')
   ) {
     const subgenres: string[] = [];
-    if (normalized.includes('satire') || normalized.includes('parody'))
+    if (normalized.includes('satire') || normalized.includes('parody')) {
       subgenres.push('Satire & Parody');
-    if (normalized.includes('farce')) subgenres.push('Farce & Comic Fiction');
+    }
+    if (normalized.includes('farce')) {
+      subgenres.push('Farce & Comic Fiction');
+    }
     return {
       primaryGenre: 'Humor & Satire',
       subgenres: subgenres.slice(0, 3),
@@ -394,10 +420,15 @@ export function mapLegacyGenreToTaxonomy(rawCategory: string | string[]): {
   // Romance
   if (normalized.includes('romance') || normalized.includes('love story')) {
     const subgenres: string[] = [];
-    if (normalized.includes('contemporary'))
+    if (normalized.includes('contemporary')) {
       subgenres.push('Contemporary Romance');
-    if (normalized.includes('historical')) subgenres.push('Historical Romance');
-    if (normalized.includes('comedy')) subgenres.push('Romantic Comedy');
+    }
+    if (normalized.includes('historical')) {
+      subgenres.push('Historical Romance');
+    }
+    if (normalized.includes('comedy')) {
+      subgenres.push('Romantic Comedy');
+    }
     return {
       primaryGenre: 'Romance',
       subgenres: subgenres.slice(0, 3),
@@ -412,8 +443,11 @@ export function mapLegacyGenreToTaxonomy(rawCategory: string | string[]): {
     normalized.includes('memoir')
   ) {
     const subgenres: string[] = [];
-    if (normalized.includes('autobiography')) subgenres.push('Autobiography');
-    else if (normalized.includes('memoir')) subgenres.push('Personal Memoir');
+    if (normalized.includes('autobiography')) {
+      subgenres.push('Autobiography');
+    } else if (normalized.includes('memoir')) {
+      subgenres.push('Personal Memoir');
+    }
     return {
       primaryGenre: 'Biography & Memoir',
       subgenres: subgenres.slice(0, 3),

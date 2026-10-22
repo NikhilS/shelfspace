@@ -76,7 +76,9 @@ export function useCollectionScope(
   } = useReadingShelf({enabled: isReadingMode});
 
   const readAndReadingBooks = useMemo<Book[]>(() => {
-    if (!isReadingMode) return [];
+    if (!isReadingMode) {
+      return [];
+    }
     return allItems.filter(
       item =>
         item.readingStatus === 'finished' || item.readingStatus === 'reading',
@@ -84,12 +86,16 @@ export function useCollectionScope(
   }, [isReadingMode, allItems]);
 
   const wantToReadBooks = useMemo<Book[]>(() => {
-    if (!isReadingMode) return [];
+    if (!isReadingMode) {
+      return [];
+    }
     return allItems.filter(item => item.readingStatus === 'want_to_read');
   }, [isReadingMode, allItems]);
 
   const scopedReadingBooks = useMemo<Book[]>(() => {
-    if (!isReadingMode) return [];
+    if (!isReadingMode) {
+      return [];
+    }
     if (includeWantToRead) {
       return [...readAndReadingBooks, ...wantToReadBooks];
     }

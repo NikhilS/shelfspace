@@ -128,9 +128,15 @@ export function GenreSelect({
 
   const handleAddCustomSubgenre = () => {
     const trimmed = customSubgenreInput.trim();
-    if (!trimmed) return;
-    if ((subgenres || []).length >= 3) return;
-    if ((subgenres || []).includes(trimmed)) return;
+    if (!trimmed) {
+      return;
+    }
+    if ((subgenres || []).length >= 3) {
+      return;
+    }
+    if ((subgenres || []).includes(trimmed)) {
+      return;
+    }
 
     const next = [...(subgenres || []), trimmed];
     setCustomSubgenreInput('');

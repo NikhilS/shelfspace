@@ -25,7 +25,9 @@ export const PRESETS = [
 ];
 
 export const formatYear = (year: number): string => {
-  if (year < 0) return `${Math.abs(year)} BCE`;
+  if (year < 0) {
+    return `${Math.abs(year)} BCE`;
+  }
   return `${year} CE`;
 };
 
@@ -46,12 +48,12 @@ export interface TimelinePresetControlsProps {
   onZoomChange: (zoom: 1 | 5 | 20) => void;
 }
 
-export const TimelinePresetControls: React.FC<TimelinePresetControlsProps> = ({
+export function TimelinePresetControls({
   selectedPreset,
   zoomLevel,
   onPresetSelect,
   onZoomChange,
-}) => {
+}: TimelinePresetControlsProps) {
   return (
     <div className="flex items-center gap-2.5 flex-wrap shrink-0">
       {/* Segmented filter presets */}
@@ -96,7 +98,7 @@ export const TimelinePresetControls: React.FC<TimelinePresetControlsProps> = ({
       </div>
     </div>
   );
-};
+}
 
 export interface TimelineScrubberProps {
   clusters: TimelineCluster[];
@@ -107,15 +109,17 @@ export interface TimelineScrubberProps {
   onHoverCluster: (clusterKey: number | null) => void;
 }
 
-export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
+export function TimelineScrubber({
   clusters,
   selectedClusterKey,
   hoveredClusterKey,
   maxClusterCount,
   onJumpToCluster,
   onHoverCluster,
-}) => {
-  if (clusters.length === 0) return null;
+}: TimelineScrubberProps) {
+  if (clusters.length === 0) {
+    return null;
+  }
 
   return (
     <div
@@ -192,4 +196,4 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
       </div>
     </div>
   );
-};
+}

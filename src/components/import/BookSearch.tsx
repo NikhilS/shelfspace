@@ -48,7 +48,7 @@ export interface BookSearchProps {
   autoFocus?: boolean;
 }
 
-export default function BookSearch({
+export function BookSearch({
   existingBooks,
   allowDuplicates,
   onAdd,
@@ -76,7 +76,9 @@ export default function BookSearch({
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim()) {
+      return;
+    }
 
     if (searchAbortControllerRef.current) {
       searchAbortControllerRef.current.abort();
@@ -96,7 +98,9 @@ export default function BookSearch({
         const res = await trpcVanilla.readingTracker.searchUnified.query({
           query: cleanQuery,
         });
-        if (abortController.signal.aborted) return;
+        if (abortController.signal.aborted) {
+          return;
+        }
         setLibraryMatches(res.libraryMatches || []);
         setSearchResults(res.externalMatches || []);
       } else {
@@ -107,7 +111,9 @@ export default function BookSearch({
             isbn: cleanQuery.replace(/[- ]/g, ''),
             priority: 'INTERACTIVE',
           });
-          if (book) books = [book];
+          if (book) {
+            books = [book];
+          }
         }
         if (books.length === 0) {
           books = await trpcVanilla.metadata.searchByTitle.mutate({
@@ -115,12 +121,16 @@ export default function BookSearch({
             limit: 15,
           });
         }
-        if (abortController.signal.aborted) return;
+        if (abortController.signal.aborted) {
+          return;
+        }
         setLibraryMatches([]);
         setSearchResults(books);
       }
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') return;
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
       toast.error('Failed to search books. Please try again.');
       setLibraryMatches([]);
       setSearchResults([]);
@@ -137,7 +147,9 @@ export default function BookSearch({
     bookId: string;
     title: string;
   }) => {
-    if (!onTrackExisting) return;
+    if (!onTrackExisting) {
+      return;
+    }
     const key = `${match.libraryId}:${match.bookId}`;
     setIsAdding(key);
     try {

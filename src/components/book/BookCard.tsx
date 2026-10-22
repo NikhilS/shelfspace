@@ -193,5 +193,4 @@ function areBookCardPropsEqual(
   );
 }
 
-const BookCard = memo(BookCardComponent, areBookCardPropsEqual);
-export default BookCard;
+export const BookCard = memo(BookCardComponent, areBookCardPropsEqual);

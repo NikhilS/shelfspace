@@ -214,7 +214,11 @@ describe('BookPartitioner & Multi-User Privilege Boundaries (SEC-01, SEC-04, SEC
       const perms = await AllowlistService.getPermissions(
         '../../admin@example.com',
       );
-      expect(perms).toEqual({isAppAllowed: false, isAdmin: false});
+      expect(perms).toEqual({
+        isAppAllowed: false,
+        isAdmin: false,
+        hasAiPlan: false,
+      });
       expect(mockAllowlistDocGet).not.toHaveBeenCalled();
     });
 

@@ -60,7 +60,9 @@ export async function resolveBookSynopses(
           } else if (typeof synopsisProvider.fetch === 'function') {
             await Promise.all(
               missingSynopsisBooks.map(async book => {
-                if (scopedAbort.signal.aborted) return;
+                if (scopedAbort.signal.aborted) {
+                  return;
+                }
                 const syn = await synopsisProvider.fetch(book, {
                   signal: scopedAbort.signal,
                 });

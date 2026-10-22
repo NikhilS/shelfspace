@@ -304,7 +304,9 @@ async function startServer() {
     res.flushHeaders?.();
 
     const writeEvent = (eventType: string, payload: unknown) => {
-      if (res.writableEnded) return;
+      if (res.writableEnded) {
+        return;
+      }
       res.write(`event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`);
     };
 
@@ -322,7 +324,9 @@ async function startServer() {
     );
 
     const heartbeat = setInterval(() => {
-      if (res.writableEnded) return;
+      if (res.writableEnded) {
+        return;
+      }
       res.write(': heartbeat\n\n');
     }, 15_000);
 

@@ -19,11 +19,11 @@ export interface TimelineEpochDrawerProps {
   onClose: () => void;
 }
 
-export const TimelineDesktopEpochDrawer: React.FC<TimelineEpochDrawerProps> = ({
+export function TimelineDesktopEpochDrawer({
   libraryId,
   selectedCluster,
   onClose,
-}) => {
+}: TimelineEpochDrawerProps) {
   return (
     <AnimatePresence>
       {selectedCluster && (
@@ -155,13 +155,13 @@ export const TimelineDesktopEpochDrawer: React.FC<TimelineEpochDrawerProps> = ({
       )}
     </AnimatePresence>
   );
-};
+}
 
-export const TimelineMobileEpochSheet: React.FC<TimelineEpochDrawerProps> = ({
+export function TimelineMobileEpochSheet({
   libraryId,
   selectedCluster,
   onClose,
-}) => {
+}: TimelineEpochDrawerProps) {
   return (
     <AnimatePresence>
       {selectedCluster && (
@@ -278,7 +278,7 @@ export const TimelineMobileEpochSheet: React.FC<TimelineEpochDrawerProps> = ({
       )}
     </AnimatePresence>
   );
-};
+}
 
 export interface TimelineNonHistoricalAnnexProps {
   libraryId: string | undefined;
@@ -290,9 +290,7 @@ export interface TimelineNonHistoricalAnnexProps {
   onSearchQueryChange: (query: string) => void;
 }
 
-export const TimelineNonHistoricalAnnex: React.FC<
-  TimelineNonHistoricalAnnexProps
-> = ({
+export function TimelineNonHistoricalAnnex({
   libraryId,
   nonHistoricalBooks,
   filteredNonHistorical,
@@ -300,8 +298,10 @@ export const TimelineNonHistoricalAnnex: React.FC<
   onToggleCollapse,
   searchQuery,
   onSearchQueryChange,
-}) => {
-  if (nonHistoricalBooks.length === 0) return null;
+}: TimelineNonHistoricalAnnexProps) {
+  if (nonHistoricalBooks.length === 0) {
+    return null;
+  }
 
   return (
     <div className="mt-10 bg-surface-container-low rounded-3xl p-6 border border-outline-variant/50">
@@ -396,4 +396,4 @@ export const TimelineNonHistoricalAnnex: React.FC<
       )}
     </div>
   );
-};
+}

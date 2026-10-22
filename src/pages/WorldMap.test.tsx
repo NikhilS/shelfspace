@@ -1,7 +1,7 @@
 import React from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
-import WorldMap from './WorldMap';
+import {WorldMap} from './WorldMap';
 import {MemoryRouter} from 'react-router-dom';
 
 // Mock Auth
@@ -17,7 +17,13 @@ vi.mock('@vis.gl/react-google-maps', () => ({
   Map: ({children}: {children: React.ReactNode}) => (
     <div data-testid="google-map">{children}</div>
   ),
-  AdvancedMarker: ({children, onClick}: any) => (
+  AdvancedMarker: ({
+    children,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+  }) => (
     <button data-testid="map-marker" onClick={onClick}>
       {children}
     </button>

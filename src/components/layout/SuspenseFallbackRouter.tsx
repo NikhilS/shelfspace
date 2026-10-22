@@ -186,7 +186,9 @@ function extractCachedLibraryFromQueryClient(
   libraryId: string,
   trpcUtils?: ReturnType<typeof trpc.useUtils>,
 ): Library | null {
-  if (!libraryId) return null;
+  if (!libraryId) {
+    return null;
+  }
 
   // 1. Try tRPC typed cache helpers first if available
   try {
@@ -194,24 +196,32 @@ function extractCachedLibraryFromQueryClient(
       const fromGet = trpcUtils.library.get?.getData?.({
         libraryId,
       }) as Library | undefined;
-      if (fromGet && fromGet.id === libraryId) return fromGet;
+      if (fromGet && fromGet.id === libraryId) {
+        return fromGet;
+      }
 
       const ownedShared = trpcUtils.library.list?.getData?.({
         scopes: ['owned', 'shared'],
       })?.libraries as Library[] | undefined;
       const foundOwned = ownedShared?.find(l => l.id === libraryId);
-      if (foundOwned) return foundOwned;
+      if (foundOwned) {
+        return foundOwned;
+      }
 
       const allLibs = trpcUtils.library.list?.getData?.({
         scopes: ['all'],
       })?.libraries as Library[] | undefined;
       const foundAll = allLibs?.find(l => l.id === libraryId);
-      if (foundAll) return foundAll;
+      if (foundAll) {
+        return foundAll;
+      }
 
       const defaultLibs = trpcUtils.library.list?.getData?.()?.libraries as
         Library[] | undefined;
       const foundDefault = defaultLibs?.find(l => l.id === libraryId);
-      if (foundDefault) return foundDefault;
+      if (foundDefault) {
+        return foundDefault;
+      }
     }
   } catch {
     // Fallback to raw QueryClient cache inspection
@@ -220,7 +230,9 @@ function extractCachedLibraryFromQueryClient(
   // 2. Inspect raw QueryClient cache entries (handles both tRPC nested keys and test keys)
   const allQueries = qc.getQueriesData<unknown>({});
   for (const [, data] of allQueries) {
-    if (!data || typeof data !== 'object') continue;
+    if (!data || typeof data !== 'object') {
+      continue;
+    }
     const record = data as Record<string, unknown>;
     if (record.id === libraryId && typeof record.name === 'string') {
       return record as unknown as Library;
@@ -229,7 +241,9 @@ function extractCachedLibraryFromQueryClient(
       const match = (record.libraries as Library[]).find(
         l => l && l.id === libraryId,
       );
-      if (match) return match;
+      if (match) {
+        return match;
+      }
     }
   }
 
@@ -241,12 +255,16 @@ function extractCachedBooksFromQueryClient(
   libraryId: string,
   trpcUtils?: ReturnType<typeof trpc.useUtils>,
 ): Book[] | undefined {
-  if (!libraryId) return undefined;
+  if (!libraryId) {
+    return undefined;
+  }
 
   try {
     if (trpcUtils?.book?.list?.getData) {
       const raw = trpcUtils.book.list.getData({libraryId}) as unknown;
-      if (Array.isArray(raw)) return raw as Book[];
+      if (Array.isArray(raw)) {
+        return raw as Book[];
+      }
       if (
         raw &&
         typeof raw === 'object' &&
@@ -263,8 +281,12 @@ function extractCachedBooksFromQueryClient(
   const allQueries = qc.getQueriesData<unknown>({});
   for (const [queryKey, data] of allQueries) {
     const keyStr = JSON.stringify(queryKey);
-    if (!keyStr.includes(libraryId) || !keyStr.includes('book')) continue;
-    if (Array.isArray(data)) return data as Book[];
+    if (!keyStr.includes(libraryId) || !keyStr.includes('book')) {
+      continue;
+    }
+    if (Array.isArray(data)) {
+      return data as Book[];
+    }
     if (
       data &&
       typeof data === 'object' &&
@@ -279,10 +301,14 @@ function extractCachedBooksFromQueryClient(
 }
 
 function checkReadingShelfCache(qc: QueryClient): boolean {
-  if (hasVisitedReadingShelf) return true;
+  if (hasVisitedReadingShelf) {
+    return true;
+  }
   const allQueries = qc.getQueriesData<unknown>({});
   for (const [queryKey, data] of allQueries) {
-    if (!data) continue;
+    if (!data) {
+      continue;
+    }
     const keyStr = JSON.stringify(queryKey);
     if (
       keyStr.includes('readingTracker') ||

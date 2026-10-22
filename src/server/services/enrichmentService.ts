@@ -192,7 +192,9 @@ export class EnrichmentService {
 
       await Promise.all(
         bookIds.map(async bookId => {
-          if (callbacks?.signal?.aborted) return;
+          if (callbacks?.signal?.aborted) {
+            return;
+          }
           const snap = await booksCollection.doc(bookId).get();
           if (!snap.exists) {
             callbacks?.onBookProgress?.({
@@ -321,7 +323,9 @@ export class EnrichmentService {
 
       await Promise.all(
         validBooks.map(async ({bookData, rawDoc}) => {
-          if (callbacks?.signal?.aborted) return;
+          if (callbacks?.signal?.aborted) {
+            return;
+          }
           const bookId = bookData.id;
           const value = extractedMap ? extractedMap[bookId] : undefined;
 

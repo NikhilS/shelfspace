@@ -13,7 +13,7 @@ interface ConstellationToolbarProps {
   onFocusCluster: (clusterId: number) => void;
 }
 
-export const ConstellationToolbar: React.FC<ConstellationToolbarProps> = ({
+export function ConstellationToolbar({
   searchQuery,
   onSearchChange,
   totalVolumes,
@@ -22,7 +22,7 @@ export const ConstellationToolbar: React.FC<ConstellationToolbarProps> = ({
   selectedStarId,
   onResetView,
   onFocusCluster,
-}) => {
+}: ConstellationToolbarProps) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-container/70 border border-outline-variant/60 rounded-xl p-3">
       {/* Search Input */}
@@ -88,4 +88,4 @@ export const ConstellationToolbar: React.FC<ConstellationToolbarProps> = ({
       </div>
     </div>
   );
-};
+}

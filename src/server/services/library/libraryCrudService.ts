@@ -49,7 +49,7 @@ export async function getUserLibraries(
     const db = getAdminDb();
     const librariesRef = db.collection('libraries');
 
-    const queries: Promise<FirebaseFirestore.QuerySnapshot>[] = [];
+    const queries: Array<Promise<FirebaseFirestore.QuerySnapshot>> = [];
 
     if (activeScopes.includes('all') && isCallerAdmin) {
       queries.push(librariesRef.get());
@@ -90,7 +90,9 @@ export async function getUserLibraries(
 
     for (const snap of snapshots) {
       snap.forEach(docSnap => {
-        if (seenIds.has(docSnap.id)) return;
+        if (seenIds.has(docSnap.id)) {
+          return;
+        }
         seenIds.add(docSnap.id);
 
         const data = docSnap.data();
@@ -359,7 +361,9 @@ export async function updateLibrary(
     updatePayload.access = normalizedAccess;
 
     for (const [email, role] of Object.entries(normalizedAccess)) {
-      if (role === 'owner') continue;
+      if (role === 'owner') {
+        continue;
+      }
       try {
         const perms = await AllowlistService.getPermissions(email);
         if (!perms.isAppAllowed) {

@@ -8,7 +8,7 @@ interface CoverCameraProps {
   onCancel: () => void;
 }
 
-export default function CoverCamera({onCapture, onCancel}: CoverCameraProps) {
+export function CoverCamera({onCapture, onCancel}: CoverCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -38,7 +38,9 @@ export default function CoverCamera({onCapture, onCancel}: CoverCameraProps) {
       streamRef.current = stream;
 
       const attachStream = () => {
-        if (!streamRef.current) return;
+        if (!streamRef.current) {
+          return;
+        }
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.onloadedmetadata = () => {
@@ -83,7 +85,9 @@ export default function CoverCamera({onCapture, onCancel}: CoverCameraProps) {
   }, []);
 
   const captureCover = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) {
+      return;
+    }
     const video = videoRef.current;
     if (!video.videoWidth || !video.videoHeight) {
       toast.error('Camera stream not ready yet.');
@@ -107,7 +111,9 @@ export default function CoverCamera({onCapture, onCancel}: CoverCameraProps) {
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const base64Image = canvas.toDataURL('image/jpeg', 0.8);
     onCapture(base64Image);

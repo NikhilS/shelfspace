@@ -58,9 +58,15 @@ export function RequireLibraryPermission({
 
   let hasAccess = false;
   if (role) {
-    if (requires === 'viewer' && canView) hasAccess = true;
-    if (requires === 'editor' && canEdit) hasAccess = true;
-    if (requires === 'owner' && isOwner) hasAccess = true;
+    if (requires === 'viewer' && canView) {
+      hasAccess = true;
+    }
+    if (requires === 'editor' && canEdit) {
+      hasAccess = true;
+    }
+    if (requires === 'owner' && isOwner) {
+      hasAccess = true;
+    }
   }
 
   if (!hasAccess) {

@@ -1,7 +1,7 @@
 import React from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
-import Login from './Login';
+import {Login} from './Login';
 import {MemoryRouter} from 'react-router-dom';
 
 const mockSignIn = vi.fn();

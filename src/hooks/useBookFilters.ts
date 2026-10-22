@@ -61,15 +61,20 @@ export function useBookFilters(books: Book[]) {
 
   // Sync outward from localSearchQuery to URL ?q= parameter after a 300ms debounce
   useEffect(() => {
-    if (localSearchQuery === urlSearchQuery) return undefined;
+    if (localSearchQuery === urlSearchQuery) {
+      return undefined;
+    }
 
     const timer = setTimeout(() => {
       lastCommittedUrlQueryRef.current = localSearchQuery;
       setSearchParams(
         prev => {
           const next = new URLSearchParams(prev);
-          if (!localSearchQuery) next.delete('q');
-          else next.set('q', localSearchQuery);
+          if (!localSearchQuery) {
+            next.delete('q');
+          } else {
+            next.set('q', localSearchQuery);
+          }
           return next;
         },
         {replace: true},
@@ -85,8 +90,11 @@ export function useBookFilters(books: Book[]) {
     setSearchParams(
       prev => {
         const next = new URLSearchParams(prev);
-        if (value === null || value === '') next.delete(key);
-        else next.set(key, value);
+        if (value === null || value === '') {
+          next.delete(key);
+        } else {
+          next.set(key, value);
+        }
         return next;
       },
       {replace: true},
@@ -139,7 +147,9 @@ export function useBookFilters(books: Book[]) {
   }, [books]);
 
   const activeSubgenres = useMemo(() => {
-    if (!filterGenre) return [];
+    if (!filterGenre) {
+      return [];
+    }
     const targetLower = filterGenre.trim().toLowerCase();
     const isOther = targetLower === 'other';
     const counts: Record<string, number> = {};
@@ -151,7 +161,9 @@ export function useBookFilters(books: Book[]) {
         : entry.primaryGenreLower === targetLower;
       if (matchesPrimary && entry.book.subgenres) {
         for (const sg of entry.book.subgenres) {
-          if (sg) counts[sg] = (counts[sg] || 0) + 1;
+          if (sg) {
+            counts[sg] = (counts[sg] || 0) + 1;
+          }
         }
       }
     }
@@ -163,7 +175,9 @@ export function useBookFilters(books: Book[]) {
   const availableAuthors = useMemo(() => {
     const authors = new Set<string>();
     for (let i = 0; i < books.length; i++) {
-      if (books[i].author) authors.add(books[i].author);
+      if (books[i].author) {
+        authors.add(books[i].author);
+      }
     }
     return Array.from(authors).sort();
   }, [books]);
@@ -202,23 +216,33 @@ export function useBookFilters(books: Book[]) {
         const matchesSubgenre = entry.subgenresLower.some(
           sg => sg === normalizedGenre,
         );
-        if (!matchesPrimary && !matchesSubgenre) return false;
+        if (!matchesPrimary && !matchesSubgenre) {
+          return false;
+        }
       }
 
       if (normalizedSubgenre) {
         const matchesSub = entry.subgenresLower.some(
           sg => sg === normalizedSubgenre,
         );
-        if (!matchesSub) return false;
+        if (!matchesSub) {
+          return false;
+        }
       }
 
-      if (filterAuthor && entry.book.author !== filterAuthor) return false;
+      if (filterAuthor && entry.book.author !== filterAuthor) {
+        return false;
+      }
 
       if (minYearNum !== null && !Number.isNaN(minYearNum)) {
-        if (entry.pubYear === null || entry.pubYear < minYearNum) return false;
+        if (entry.pubYear === null || entry.pubYear < minYearNum) {
+          return false;
+        }
       }
       if (maxYearNum !== null && !Number.isNaN(maxYearNum)) {
-        if (entry.pubYear === null || entry.pubYear > maxYearNum) return false;
+        if (entry.pubYear === null || entry.pubYear > maxYearNum) {
+          return false;
+        }
       }
 
       return true;
@@ -329,10 +353,16 @@ export function useBookFilters(books: Book[]) {
     activeSubgenres,
     selectGenreAndGoToCollection: (genre: string, subgenre?: string) => {
       const params = new URLSearchParams(searchParams);
-      if (genre) params.set('genre', genre);
-      else params.delete('genre');
-      if (subgenre) params.set('subgenre', subgenre);
-      else params.delete('subgenre');
+      if (genre) {
+        params.set('genre', genre);
+      } else {
+        params.delete('genre');
+      }
+      if (subgenre) {
+        params.set('subgenre', subgenre);
+      } else {
+        params.delete('subgenre');
+      }
       if (!id) {
         params.set('tab', 'collection');
         setSearchParams(params, {replace: true});

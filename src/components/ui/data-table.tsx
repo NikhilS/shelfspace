@@ -39,7 +39,7 @@ export interface DataTableColumn<T> {
 
 export interface DataTableProps<T> {
   data: T[];
-  columns: DataTableColumn<T>[];
+  columns: Array<DataTableColumn<T>>;
   keyExtractor: (item: T, index: number) => string;
   // Sorting
   sortColumn?: string | null;
@@ -263,7 +263,9 @@ export function DataTable<T>({
                   (
                     props as React.HTMLAttributes<HTMLTableRowElement>
                   ).onClick?.(e);
-                  if (item && onRowClick) onRowClick(item, index, e);
+                  if (item && onRowClick) {
+                    onRowClick(item, index, e);
+                  }
                 }}
                 className={cn(
                   'border-b border-outline-variant/30 transition-colors hover:bg-surface-container-low/50 cursor-pointer',

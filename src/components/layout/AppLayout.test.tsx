@@ -1,7 +1,7 @@
 import {render, screen, fireEvent} from '@testing-library/react';
 import {BrowserRouter} from 'react-router-dom';
 import {vi, describe, it, expect, beforeEach} from 'vitest';
-import AppLayout from './AppLayout';
+import {AppLayout} from './AppLayout';
 import {useAuth} from '../../stores/authStore';
 
 vi.mock('../../stores/authStore', () => ({

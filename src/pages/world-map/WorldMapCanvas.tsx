@@ -25,7 +25,7 @@ interface WorldMapCanvasProps {
   onMapClick: () => void;
 }
 
-export const WorldMapCanvas: React.FC<WorldMapCanvasProps> = ({
+export function WorldMapCanvas({
   isBooksLoading,
   hasMapsApiKey,
   googleMapsKey,
@@ -42,7 +42,7 @@ export const WorldMapCanvas: React.FC<WorldMapCanvasProps> = ({
   onClusterClick,
   onFallbackPinClick,
   onMapClick,
-}) => {
+}: WorldMapCanvasProps) {
   return (
     <div
       className="lg:col-span-8 bg-surface-variant/30 rounded-3xl overflow-hidden border border-outline-variant h-[calc(100vh-14rem)] min-h-[500px]"
@@ -367,4 +367,4 @@ export const WorldMapCanvas: React.FC<WorldMapCanvasProps> = ({
       )}
     </div>
   );
-};
+}

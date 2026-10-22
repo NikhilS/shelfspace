@@ -18,7 +18,9 @@ export class SeriesMetadataProvider implements IMetadataProvider<
     book: CoreBookData,
     options?: MetadataBulkFetchOptions,
   ): Promise<string | null> {
-    if (options?.signal?.aborted) return null;
+    if (options?.signal?.aborted) {
+      return null;
+    }
     try {
       if (book.isbn) {
         const details = await catalogOrchestrator.searchByIsbn(book.isbn, {
@@ -31,7 +33,9 @@ export class SeriesMetadataProvider implements IMetadataProvider<
         }
       }
 
-      if (options?.signal?.aborted) return null;
+      if (options?.signal?.aborted) {
+        return null;
+      }
 
       if (book.title) {
         const searchRes = await catalogOrchestrator.searchByQuery(
@@ -128,7 +132,9 @@ export class SeriesMetadataProvider implements IMetadataProvider<
       }
       await Promise.all(
         chunks.map(async chunk => {
-          if (options?.signal?.aborted) return;
+          if (options?.signal?.aborted) {
+            return;
+          }
           try {
             const aiSeriesMap = await extractBookSeriesBatch(chunk, {
               priority: 'BATCH',

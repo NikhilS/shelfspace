@@ -29,11 +29,11 @@ function asTelemetryPayload(payload: unknown): TelemetryLogPayload | null {
   return null;
 }
 
-export const DebugNetworkTab: React.FC<DebugNetworkTabProps> = ({
+export function DebugNetworkTab({
   networkLogs,
   metrics,
   fetchCacheHitRatio,
-}) => {
+}: DebugNetworkTabProps) {
   const [serverSnapshot, setServerSnapshot] =
     useState<ServerTelemetrySnapshot | null>(null);
   const [isLoadingServer, setIsLoadingServer] = useState(false);
@@ -76,7 +76,9 @@ export const DebugNetworkTab: React.FC<DebugNetworkTabProps> = ({
   const totalRateLimits = serverSnapshot?.totals.totalRateLimits || 0;
 
   const filteredClientLogs = useMemo(() => {
-    if (sourceFilter === 'server') return [];
+    if (sourceFilter === 'server') {
+      return [];
+    }
     if (sourceFilter === 'errors') {
       return networkLogs.filter(l => {
         const p = asTelemetryPayload(l.payload);
@@ -93,7 +95,9 @@ export const DebugNetworkTab: React.FC<DebugNetworkTabProps> = ({
 
   const filteredServerEntries = useMemo(() => {
     const entries = serverSnapshot?.entries || [];
-    if (sourceFilter === 'client') return [];
+    if (sourceFilter === 'client') {
+      return [];
+    }
     if (sourceFilter === 'errors') {
       return entries.filter(e => e.status !== 'ok');
     }
@@ -435,4 +439,4 @@ export const DebugNetworkTab: React.FC<DebugNetworkTabProps> = ({
       </div>
     </div>
   );
-};
+}

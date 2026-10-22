@@ -38,7 +38,9 @@ function patchBookInListCache(
   bookId: string,
   updater: (book: Book) => Book | null,
 ): unknown {
-  if (!oldData) return oldData;
+  if (!oldData) {
+    return oldData;
+  }
   if (Array.isArray(oldData)) {
     return (oldData as Book[])
       .map(b => (b.id === bookId ? updater(b) : b))
@@ -83,8 +85,12 @@ export function useBook(
   );
 
   useEffect(() => {
-    if (passedCanEdit !== undefined) return;
-    if (!libraryQuery.data || !user) return;
+    if (passedCanEdit !== undefined) {
+      return;
+    }
+    if (!libraryQuery.data || !user) {
+      return;
+    }
 
     const data = libraryQuery.data as Record<string, unknown>;
     const isOwner =
@@ -101,7 +107,9 @@ export function useBook(
     {
       enabled: Boolean(libraryId && bookId && isLive),
       initialData: () => {
-        if (!libraryId || !bookId) return undefined;
+        if (!libraryId || !bookId) {
+          return undefined;
+        }
         const cachedData = utils.book?.list?.getData?.({libraryId});
         const cachedBooks = extractBookList(cachedData);
         const match = cachedBooks?.find(b => b.id === bookId);
@@ -123,7 +131,9 @@ export function useBook(
   const rawBook = trpcBookQuery.data as FullBookRecord | null | undefined;
 
   const bookBase = useMemo<Book | null>(() => {
-    if (!rawBook) return null;
+    if (!rawBook) {
+      return null;
+    }
     const base = {...rawBook};
     delete base.synopsis;
     delete base.authorBio;
@@ -134,7 +144,9 @@ export function useBook(
   }, [rawBook]);
 
   const bookDetails = useMemo<BookDetailsPayload | null>(() => {
-    if (!rawBook) return null;
+    if (!rawBook) {
+      return null;
+    }
     return {
       synopsis: rawBook.synopsis,
       authorBio: rawBook.authorBio,
@@ -145,7 +157,9 @@ export function useBook(
   }, [rawBook]);
 
   const book = useMemo<FullBookRecord | null>(() => {
-    if (!rawBook) return null;
+    if (!rawBook) {
+      return null;
+    }
     return rawBook;
   }, [rawBook]);
 
@@ -165,10 +179,14 @@ export function useBook(
 
   const applyOptimisticBookPatch = useCallback(
     (partialBook: Partial<FullBookRecord>) => {
-      if (!libraryId || !bookId) return;
+      if (!libraryId || !bookId) {
+        return;
+      }
 
       utils.book?.get?.setData?.({libraryId, bookId}, old => {
-        if (!old) return old;
+        if (!old) {
+          return old;
+        }
         return {...old, ...partialBook} as typeof old;
       });
 
@@ -187,11 +205,15 @@ export function useBook(
   // Mutations
   const deleteBookMutation = useMutation({
     mutationFn: async () => {
-      if (!libraryId || !bookId) return;
+      if (!libraryId || !bookId) {
+        return;
+      }
       await deleteBookAtomic(libraryId, bookId);
     },
     onMutate: async () => {
-      if (!libraryId || !bookId) return {};
+      if (!libraryId || !bookId) {
+        return {};
+      }
       const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
       const prevList = utils.book?.list?.getData?.({libraryId});
 
@@ -203,7 +225,9 @@ export function useBook(
       return {prevBook, prevList};
     },
     onError: (_err, _vars, context) => {
-      if (!libraryId || !bookId || !context) return;
+      if (!libraryId || !bookId || !context) {
+        return;
+      }
       if (context.prevBook !== undefined) {
         utils.book?.get?.setData?.({libraryId, bookId}, context.prevBook);
       }
@@ -224,7 +248,9 @@ export function useBook(
     mutationFn: async (
       status: 'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned',
     ) => {
-      if (!libraryId || !bookId || !user) return;
+      if (!libraryId || !bookId || !user) {
+        return;
+      }
       const updates = {[`userStatuses.${user.uid}`]: status};
       await instrumentMutation(
         'update',
@@ -245,7 +271,9 @@ export function useBook(
       );
     },
     onMutate: async newStatus => {
-      if (!user || !libraryId || !bookId) return {};
+      if (!user || !libraryId || !bookId) {
+        return {};
+      }
       const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
       const prevList = utils.book?.list?.getData?.({libraryId});
 
@@ -261,7 +289,9 @@ export function useBook(
       return {prevBook, prevList};
     },
     onError: (_err, _newStatus, context) => {
-      if (!libraryId || !bookId || !context) return;
+      if (!libraryId || !bookId || !context) {
+        return;
+      }
       if (context.prevBook !== undefined) {
         utils.book?.get?.setData?.({libraryId, bookId}, context.prevBook);
       }
@@ -270,7 +300,9 @@ export function useBook(
       }
     },
     onSettled: () => {
-      if (!libraryId || !bookId) return;
+      if (!libraryId || !bookId) {
+        return;
+      }
       void utils.book?.get?.invalidate?.({libraryId, bookId});
       void utils.book?.list?.invalidate?.({libraryId});
       void (
@@ -281,7 +313,9 @@ export function useBook(
 
   const addReviewMutation = useMutation({
     mutationFn: async ({rating, text}: {rating: number; text: string}) => {
-      if (!libraryId || !bookId || !user) return;
+      if (!libraryId || !bookId || !user) {
+        return;
+      }
       await instrumentMutation(
         'create',
         `libraries/${libraryId}/books/${bookId}/reviews`,
@@ -296,7 +330,9 @@ export function useBook(
       );
     },
     onMutate: async newReview => {
-      if (!user || !libraryId || !bookId) return {};
+      if (!user || !libraryId || !bookId) {
+        return {};
+      }
       const tempId = `temp-${Date.now()}`;
       const rev: Review = {
         id: tempId,
@@ -320,14 +356,18 @@ export function useBook(
       return {prevReviews};
     },
     onError: (_err, _newReview, context) => {
-      if (!libraryId || !bookId || !context?.prevReviews) return;
+      if (!libraryId || !bookId || !context?.prevReviews) {
+        return;
+      }
       utils.book?.listReviews?.setData?.(
         {libraryId, bookId},
         context.prevReviews,
       );
     },
     onSettled: () => {
-      if (!libraryId || !bookId) return;
+      if (!libraryId || !bookId) {
+        return;
+      }
       if (utils.book?.listReviews?.invalidate) {
         void utils.book.listReviews.invalidate({libraryId, bookId});
       } else {
@@ -342,7 +382,9 @@ export function useBook(
 
   const updateBookMutation = useMutation({
     mutationFn: async (cleanForm: Partial<FullBookRecord>) => {
-      if (!libraryId || !bookId || !book) return;
+      if (!libraryId || !bookId || !book) {
+        return;
+      }
       const cargo = {...cleanForm};
 
       if (cargo.coverUrl && cargo.coverUrl.startsWith('data:')) {
@@ -371,7 +413,9 @@ export function useBook(
       );
     },
     onMutate: async partialBook => {
-      if (!libraryId || !bookId) return {};
+      if (!libraryId || !bookId) {
+        return {};
+      }
       const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
       const prevList = utils.book?.list?.getData?.({libraryId});
 
@@ -380,7 +424,9 @@ export function useBook(
       return {prevBook, prevList};
     },
     onError: (_err, _newBook, context) => {
-      if (!libraryId || !bookId || !context) return;
+      if (!libraryId || !bookId || !context) {
+        return;
+      }
       if (context.prevBook !== undefined) {
         utils.book?.get?.setData?.({libraryId, bookId}, context.prevBook);
       }
@@ -389,7 +435,9 @@ export function useBook(
       }
     },
     onSettled: () => {
-      if (!libraryId || !bookId) return;
+      if (!libraryId || !bookId) {
+        return;
+      }
       void utils.book?.get?.invalidate?.({libraryId, bookId});
       void utils.book?.list?.invalidate?.({libraryId});
     },
@@ -414,7 +462,9 @@ export function useBook(
       applyOptimisticBookPatch(partialBook);
     },
     setReviewsOptimistically: (newReviews: Review[]) => {
-      if (!libraryId || !bookId) return;
+      if (!libraryId || !bookId) {
+        return;
+      }
       utils.book?.listReviews?.setData?.(
         {libraryId, bookId},
         {

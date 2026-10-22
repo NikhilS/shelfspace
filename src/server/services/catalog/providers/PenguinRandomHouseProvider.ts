@@ -29,10 +29,10 @@ interface PrhTitleRecord {
 }
 
 export class PenguinRandomHouseProvider implements ICatalogSourceProvider {
-  public readonly id = 'penguin-random-house' as const;
-  public readonly name = 'Penguin Random House';
-  public readonly authorityWeight = 92;
-  public readonly capabilities: ProviderCapabilities = {
+  readonly id = 'penguin-random-house' as const;
+  readonly name = 'Penguin Random House';
+  readonly authorityWeight = 92;
+  readonly capabilities: ProviderCapabilities = {
     isbnSearch: true,
     titleSearch: true,
     coverResolution: true,
@@ -41,7 +41,7 @@ export class PenguinRandomHouseProvider implements ICatalogSourceProvider {
     genre: true,
   };
 
-  public readonly scheduler = new ProviderQuotaScheduler({
+  readonly scheduler = new ProviderQuotaScheduler({
     providerId: 'penguin-random-house',
     maxConcurrent: 4,
     minSpacingMs: 150,
@@ -57,15 +57,17 @@ export class PenguinRandomHouseProvider implements ICatalogSourceProvider {
     ).trim();
   }
 
-  public isAvailable(): boolean {
+  isAvailable(): boolean {
     // PRH direct ISBN-13 cover CDN is always available without an API key;
     // full REST catalog metadata activates when PRH_API_KEY is configured.
     return true;
   }
 
-  public static buildPrhCoverCdnUrl(isbn: string): string {
+  static buildPrhCoverCdnUrl(isbn: string): string {
     const clean = normalizeIsbn(isbn);
-    if (clean.length !== 13 || !clean.startsWith('978')) return '';
+    if (clean.length !== 13 || !clean.startsWith('978')) {
+      return '';
+    }
     return `https://images.randomhouse.com/cover/${clean}`;
   }
 
@@ -107,12 +109,14 @@ export class PenguinRandomHouseProvider implements ICatalogSourceProvider {
     };
   }
 
-  public async searchByIsbn(
+  async searchByIsbn(
     isbn: string,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit | null> {
     const cleanIsbn = normalizeIsbn(isbn);
-    if (!cleanIsbn) return null;
+    if (!cleanIsbn) {
+      return null;
+    }
 
     const apiKey = this.getApiKey();
     if (apiKey) {
@@ -144,18 +148,22 @@ export class PenguinRandomHouseProvider implements ICatalogSourceProvider {
     return null;
   }
 
-  public async searchByQuery(
+  async searchByQuery(
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {
     const apiKey = this.getApiKey();
-    if (!apiKey) return [];
+    if (!apiKey) {
+      return [];
+    }
 
     const searchStr = [query.title, query.author, query.rawQuery]
       .filter(Boolean)
       .join(' ')
       .trim();
-    if (!searchStr) return [];
+    if (!searchStr) {
+      return [];
+    }
 
     const url = `https://api.penguinrandomhouse.com/resources/v2/title/domains/PRH.US/titles?q=${encodeURIComponent(searchStr)}&rows=5&api_key=${encodeURIComponent(apiKey)}`;
     const response = await fetchWithProviderTimeout(
@@ -166,7 +174,9 @@ export class PenguinRandomHouseProvider implements ICatalogSourceProvider {
       },
       3200,
     );
-    if (!response.ok) return [];
+    if (!response.ok) {
+      return [];
+    }
 
     const data = (await response.json()) as {
       data?: {titles?: PrhTitleRecord[]};
@@ -177,10 +187,14 @@ export class PenguinRandomHouseProvider implements ICatalogSourceProvider {
       .map(t => this.mapPrhRecordToHit(t, query.isbn));
   }
 
-  public async resolveCovers(query: CatalogQuery): Promise<CoverCandidate[]> {
-    if (!query.isbn) return [];
+  async resolveCovers(query: CatalogQuery): Promise<CoverCandidate[]> {
+    if (!query.isbn) {
+      return [];
+    }
     const cdnUrl = PenguinRandomHouseProvider.buildPrhCoverCdnUrl(query.isbn);
-    if (!cdnUrl) return [];
+    if (!cdnUrl) {
+      return [];
+    }
     return [
       {
         url: cdnUrl,

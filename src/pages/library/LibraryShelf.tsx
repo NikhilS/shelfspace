@@ -3,7 +3,7 @@ import {useNavigate, useLocation} from 'react-router-dom';
 import {Book} from '../../types';
 import {VirtuosoGrid} from 'react-virtuoso';
 import {Book as BookIcon} from 'lucide-react';
-import BookCard from '../../components/book/BookCard';
+import {BookCard} from '../../components/book/BookCard';
 import {SortOption} from '../../hooks/useBookFilters';
 import {User} from 'firebase/auth';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -31,7 +31,7 @@ interface LibraryShelfProps {
   emptyMessage?: string;
 }
 
-export const LibraryShelf: React.FC<LibraryShelfProps> = ({
+export function LibraryShelf({
   books,
   viewMode,
   canEdit,
@@ -44,7 +44,7 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
   toggleAllBooks,
   user,
   emptyMessage = 'Empty Shelf',
-}) => {
+}: LibraryShelfProps) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -87,7 +87,7 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
       ? 'indeterminate'
       : false;
 
-  const tableColumns: DataTableColumn<Book>[] = useMemo(
+  const tableColumns: Array<DataTableColumn<Book>> = useMemo(
     () => [
       {
         id: 'title',
@@ -225,4 +225,4 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
       )}
     </div>
   );
-};
+}

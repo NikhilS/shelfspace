@@ -94,7 +94,9 @@ export function DuplicateMergeModal({
   const books = useMemo(() => group || [], [group]);
 
   useEffect(() => {
-    if (!open || books.length === 0) return;
+    if (!open || books.length === 0) {
+      return;
+    }
 
     const defaultSurvivor = books[0].id;
     setSurvivorId(defaultSurvivor);
@@ -122,7 +124,9 @@ export function DuplicateMergeModal({
         // Ignore if details chunk unavailable in tests
       }
 
-      if (cancelled) return;
+      if (cancelled) {
+        return;
+      }
       setHeavyDetails(loadedDetails);
       setLoadingDetails(false);
 
@@ -147,10 +151,14 @@ export function DuplicateMergeModal({
     };
   }, [open, books, libraryId]);
 
-  if (!group || group.length < 2) return null;
+  if (!group || group.length < 2) {
+    return null;
+  }
 
   const handleConfirm = async () => {
-    if (!survivorId) return;
+    if (!survivorId) {
+      return;
+    }
     setIsSubmitting(true);
     try {
       const bookById = new Map(books.map(b => [b.id, b]));
@@ -435,10 +443,18 @@ function getFieldValue(
 }
 
 function hasMeaningfulValue(val: unknown): boolean {
-  if (val === null || val === undefined) return false;
-  if (typeof val === 'string') return val.trim().length > 0;
-  if (typeof val === 'number') return val > 0;
-  if (Array.isArray(val)) return val.length > 0;
+  if (val === null || val === undefined) {
+    return false;
+  }
+  if (typeof val === 'string') {
+    return val.trim().length > 0;
+  }
+  if (typeof val === 'number') {
+    return val > 0;
+  }
+  if (Array.isArray(val)) {
+    return val.length > 0;
+  }
   return Boolean(val);
 }
 
@@ -453,7 +469,11 @@ function formatFieldDisplay(val: unknown, book: Book): string {
     }
     return val;
   }
-  if (typeof val === 'number') return String(val);
-  if (Array.isArray(val)) return val.join(', ');
+  if (typeof val === 'number') {
+    return String(val);
+  }
+  if (Array.isArray(val)) {
+    return val.join(', ');
+  }
   return String(val ?? '');
 }

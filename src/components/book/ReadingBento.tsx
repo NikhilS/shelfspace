@@ -123,7 +123,7 @@ function normalizeBookToTrackedItem(
   };
 }
 
-export const ReadingBento: React.FC<ReadingBentoProps> = ({
+export function ReadingBento({
   mode,
   libraryId,
   books: externalBooks,
@@ -140,7 +140,7 @@ export const ReadingBento: React.FC<ReadingBentoProps> = ({
   isSavingPick: externalIsSavingPick,
   showWantToReadStrip = true,
   showExplorePerspectives = true,
-}) => {
+}: ReadingBentoProps) {
   const {user} = useAuth();
   const navigate = useNavigate();
 
@@ -166,7 +166,9 @@ export const ReadingBento: React.FC<ReadingBentoProps> = ({
 
     for (const item of sourceList) {
       const tracked = normalizeBookToTrackedItem(item, libraryId, user?.uid);
-      if (!tracked) continue;
+      if (!tracked) {
+        continue;
+      }
       if (isLibraryScoped && libraryId && tracked.libraryId !== libraryId) {
         continue;
       }
@@ -233,10 +235,16 @@ export const ReadingBento: React.FC<ReadingBentoProps> = ({
   );
 
   const resolvedIsPickTracked = useMemo(() => {
-    if (externalIsPickTracked !== undefined) return externalIsPickTracked;
-    if (!activePick) return false;
+    if (externalIsPickTracked !== undefined) {
+      return externalIsPickTracked;
+    }
+    if (!activePick) {
+      return false;
+    }
     const key = `${activePick.title.toLowerCase()}::${activePick.author.toLowerCase()}`;
-    if (internalSavedTitles.has(key)) return true;
+    if (internalSavedTitles.has(key)) {
+      return true;
+    }
     return scopedItems.some(
       b =>
         b.title.toLowerCase() === activePick.title.toLowerCase() &&
@@ -249,7 +257,9 @@ export const ReadingBento: React.FC<ReadingBentoProps> = ({
       externalOnAddPick(pick);
       return;
     }
-    if (internalSavingPick || resolvedIsPickTracked) return;
+    if (internalSavingPick || resolvedIsPickTracked) {
+      return;
+    }
     setInternalSavingPick(true);
     try {
       await trackBookItem({
@@ -293,7 +303,9 @@ export const ReadingBento: React.FC<ReadingBentoProps> = ({
       onOpenShelf(tab, genre);
     } else if (isLibraryScoped && libraryId) {
       const params = new URLSearchParams();
-      if (genre) params.set('genre', genre);
+      if (genre) {
+        params.set('genre', genre);
+      }
       const query = params.toString();
       void navigate(
         `/library/${encodeURIComponent(libraryId)}/collection${query ? `?${query}` : ''}`,
@@ -509,4 +521,4 @@ export const ReadingBento: React.FC<ReadingBentoProps> = ({
       )}
     </div>
   );
-};
+}

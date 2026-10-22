@@ -1,7 +1,7 @@
 import {render, screen, fireEvent} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import React from 'react';
-import ExtractedBooksTable from './ExtractedBooksTable';
+import {ExtractedBooksTable} from './ExtractedBooksTable';
 
 describe('ExtractedBooksTable', () => {
   const mockBooks = [

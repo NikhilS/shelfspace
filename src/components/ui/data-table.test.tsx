@@ -25,7 +25,7 @@ describe('DataTable component', () => {
     {id: '3', title: 'Snow Crash', author: 'Neal Stephenson'},
   ];
 
-  const columns: DataTableColumn<TestItem>[] = [
+  const columns: Array<DataTableColumn<TestItem>> = [
     {
       id: 'title',
       header: 'Title',
@@ -230,7 +230,7 @@ describe('Shared cell formatting components', () => {
   });
 
   it('enforces table-fixed and renders colgroup with colClassName in DataTable', () => {
-    const cols: DataTableColumn<{id: string; title: string}>[] = [
+    const cols: Array<DataTableColumn<{id: string; title: string}>> = [
       {
         id: 'title',
         header: 'Title',

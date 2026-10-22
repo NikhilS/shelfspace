@@ -126,9 +126,12 @@ function isMetadataPresent(book: Book, key: MetadataKey): boolean {
     );
   }
   const val = (book as unknown as Record<string, unknown>)[key];
-  if (Array.isArray(val)) return val.length > 0;
-  if (typeof val === 'object' && val !== null)
+  if (Array.isArray(val)) {
+    return val.length > 0;
+  }
+  if (typeof val === 'object' && val !== null) {
     return Object.keys(val).length > 0;
+  }
   return Boolean(val);
 }
 
@@ -167,7 +170,9 @@ function formatProviderList(ids: string[], maxVisible = 2): string {
 }
 
 function renderBookLiveTelemetryBadge(state?: BookJobTelemetry) {
-  if (!state) return <span className="text-xs text-outline">—</span>;
+  if (!state) {
+    return <span className="text-xs text-outline">—</span>;
+  }
 
   const winningList = state.winningProviders
     ? Array.from(new Set(Object.values(state.winningProviders)))
@@ -264,7 +269,9 @@ export function ManualEnrichmentSection({
     !hasAiPlan && PURE_AI_KEYS.has(targetMetadata);
 
   const filteredBooks = useMemo(() => {
-    if (filterMissing === 'all') return books;
+    if (filterMissing === 'all') {
+      return books;
+    }
     return books.filter(b => !isMetadataPresent(b, filterMissing));
   }, [books, filterMissing]);
 
@@ -297,15 +304,22 @@ export function ManualEnrichmentSection({
 
   const toggleSelect = (id: string) => {
     const next = new Set(selectedBookIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
     setSelectedBookIds(next);
   };
 
   const handleStartEnrichment = () => {
-    if (isTargetBlockedByAiPlan) return;
+    if (isTargetBlockedByAiPlan) {
+      return;
+    }
     const selected = books.filter(b => selectedBookIds.has(b.id));
-    if (selected.length === 0) return;
+    if (selected.length === 0) {
+      return;
+    }
 
     const missingInSelection = selected.filter(
       b => !isMetadataPresent(b, targetMetadata),
@@ -327,7 +341,7 @@ export function ManualEnrichmentSection({
   const showActionBar = selectedBooksCount > 0 && !isEnriching;
   const hasAnyLiveBookState = Object.keys(liveBookStates).length > 0;
 
-  const columns: DataTableColumn<Book>[] = useMemo(
+  const columns: Array<DataTableColumn<Book>> = useMemo(
     () => [
       {
         id: 'select',

@@ -35,10 +35,10 @@ interface HardcoverBookNode {
 }
 
 export class HardcoverProvider implements ICatalogSourceProvider {
-  public readonly id = 'hardcover' as const;
-  public readonly name = 'Hardcover';
-  public readonly authorityWeight = 90;
-  public readonly capabilities: ProviderCapabilities = {
+  readonly id = 'hardcover' as const;
+  readonly name = 'Hardcover';
+  readonly authorityWeight = 90;
+  readonly capabilities: ProviderCapabilities = {
     isbnSearch: true,
     titleSearch: true,
     coverResolution: true,
@@ -47,7 +47,7 @@ export class HardcoverProvider implements ICatalogSourceProvider {
     genre: true,
   };
 
-  public readonly scheduler = new ProviderQuotaScheduler({
+  readonly scheduler = new ProviderQuotaScheduler({
     providerId: 'hardcover',
     maxConcurrent: 3,
     minSpacingMs: 250,
@@ -62,7 +62,7 @@ export class HardcoverProvider implements ICatalogSourceProvider {
     return raw.replace(/^Bearer\s+/i, '').trim();
   }
 
-  public isAvailable(): boolean {
+  isAvailable(): boolean {
     return this.getApiKey().length > 0;
   }
 
@@ -122,13 +122,17 @@ export class HardcoverProvider implements ICatalogSourceProvider {
     };
   }
 
-  public async searchByIsbn(
+  async searchByIsbn(
     isbn: string,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit | null> {
-    if (!this.isAvailable()) return null;
+    if (!this.isAvailable()) {
+      return null;
+    }
     const cleanIsbn = normalizeIsbn(isbn);
-    if (!cleanIsbn) return null;
+    if (!cleanIsbn) {
+      return null;
+    }
 
     const query = `
       query SearchByIsbn($isbn: String!) {
@@ -165,7 +169,9 @@ export class HardcoverProvider implements ICatalogSourceProvider {
       3500,
     );
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return null;
+    }
     const payload = (await response.json()) as {
       data?: {
         editions?: Array<{
@@ -178,7 +184,9 @@ export class HardcoverProvider implements ICatalogSourceProvider {
     };
 
     const edition = payload?.data?.editions?.[0];
-    if (!edition?.book) return null;
+    if (!edition?.book) {
+      return null;
+    }
 
     const mergedNode: HardcoverBookNode = {
       ...edition.book,
@@ -188,13 +196,17 @@ export class HardcoverProvider implements ICatalogSourceProvider {
     return this.mapNodeToHit(mergedNode, cleanIsbn);
   }
 
-  public async searchByQuery(
+  async searchByQuery(
     catalogQuery: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {
-    if (!this.isAvailable()) return [];
+    if (!this.isAvailable()) {
+      return [];
+    }
     const title = (catalogQuery.title || catalogQuery.rawQuery || '').trim();
-    if (!title) return [];
+    if (!title) {
+      return [];
+    }
 
     const query = `
       query SearchBooks($title: String!) {
@@ -231,7 +243,9 @@ export class HardcoverProvider implements ICatalogSourceProvider {
       3500,
     );
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      return [];
+    }
     const payload = (await response.json()) as {
       data?: {books?: HardcoverBookNode[]};
     };

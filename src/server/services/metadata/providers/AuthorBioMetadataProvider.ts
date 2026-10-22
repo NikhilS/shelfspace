@@ -18,7 +18,9 @@ export class AuthorBioMetadataProvider implements IMetadataProvider<
     book: CoreBookData,
     options?: MetadataBulkFetchOptions,
   ): Promise<string | null> {
-    if (options?.signal?.aborted) return null;
+    if (options?.signal?.aborted) {
+      return null;
+    }
     try {
       if (!book.author || book.author === 'Unknown Author') {
         return null;
@@ -96,7 +98,9 @@ export class AuthorBioMetadataProvider implements IMetadataProvider<
       }
       await Promise.all(
         chunks.map(async chunk => {
-          if (options?.signal?.aborted) return;
+          if (options?.signal?.aborted) {
+            return;
+          }
           try {
             const aiBios = await generateAuthorBiosBatch(chunk, {
               priority: 'BATCH',

@@ -16,7 +16,7 @@ interface GeminiTelemetryPanelProps {
   ctx: TelemetryPluginContext;
 }
 
-const GeminiTelemetryPanel: React.FC<GeminiTelemetryPanelProps> = ({ctx}) => {
+function GeminiTelemetryPanel({ctx}: GeminiTelemetryPanelProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const {metrics, logs} = ctx;
 
@@ -30,7 +30,9 @@ const GeminiTelemetryPanel: React.FC<GeminiTelemetryPanelProps> = ({ctx}) => {
   }, [logs]);
 
   const filteredLogs = useMemo(() => {
-    if (!searchTerm.trim()) return aiLogs;
+    if (!searchTerm.trim()) {
+      return aiLogs;
+    }
     const lower = searchTerm.toLowerCase();
     return aiLogs.filter(
       log =>
@@ -41,7 +43,9 @@ const GeminiTelemetryPanel: React.FC<GeminiTelemetryPanelProps> = ({ctx}) => {
   }, [aiLogs, searchTerm]);
 
   const avgTokensPerQuery = useMemo(() => {
-    if (metrics.totalGeminiQueries === 0) return 0;
+    if (metrics.totalGeminiQueries === 0) {
+      return 0;
+    }
     return Math.round(metrics.totalGeminiTokens / metrics.totalGeminiQueries);
   }, [metrics.totalGeminiQueries, metrics.totalGeminiTokens]);
 
@@ -251,26 +255,26 @@ const GeminiTelemetryPanel: React.FC<GeminiTelemetryPanelProps> = ({ctx}) => {
       </div>
     </div>
   );
-};
+}
 
 export class GeminiTelemetryPlugin implements TelemetryPlugin {
-  public id = 'gemini';
-  public name = 'Gemini AI';
-  public order = 30;
-  public icon = Cpu;
+  id = 'gemini';
+  name = 'Gemini AI';
+  order = 30;
+  icon = Cpu;
 
-  public badge(ctx: TelemetryPluginContext): string | number | undefined {
+  badge(ctx: TelemetryPluginContext): string | number | undefined {
     if (ctx.metrics.totalGeminiQueries > 0) {
       return ctx.metrics.totalGeminiQueries;
     }
     return undefined;
   }
 
-  public renderTab(ctx: TelemetryPluginContext): React.ReactNode {
+  renderTab(ctx: TelemetryPluginContext): React.ReactNode {
     return <GeminiTelemetryPanel ctx={ctx} />;
   }
 
-  public getMetrics() {
+  getMetrics() {
     return {
       type: 'gemini_ai',
     };

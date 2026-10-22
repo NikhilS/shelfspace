@@ -126,7 +126,9 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
   const canonicalType = mapToCanonicalType(metadataField || providerKey);
 
   const booksToBackfill = useMemo(() => {
-    if (isBooksLoading || !books) return [];
+    if (isBooksLoading || !books) {
+      return [];
+    }
     return books.filter(book => {
       if (
         !overwrite &&
@@ -180,7 +182,9 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
 
   const connectSseStream = useCallback(
     async (targetLibId: string, expectedJobId?: string) => {
-      if (typeof EventSource === 'undefined') return;
+      if (typeof EventSource === 'undefined') {
+        return;
+      }
       closeEventSource();
 
       try {
@@ -188,7 +192,9 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
           (await (
             auth as {currentUser?: {getIdToken?: () => Promise<string>}}
           )?.currentUser?.getIdToken?.()) || '';
-        if (!token || cancelledRef.current) return;
+        if (!token || cancelledRef.current) {
+          return;
+        }
 
         const url = `/api/enrichment/stream?libraryId=${encodeURIComponent(
           targetLibId,
@@ -313,7 +319,9 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
               utilsRef.current.book.list.setData(
                 {libraryId: targetLibId},
                 old => {
-                  if (!old) return old;
+                  if (!old) {
+                    return old;
+                  }
                   if (Array.isArray(old)) {
                     return (old as Book[]).map(b => {
                       const patch = resultsById.get(b.id);
@@ -423,14 +431,22 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
   }, [libraryId, activeJobId, closeEventSource]);
 
   const triggerBackfill = useCallback(async () => {
-    if (isRunningRef.current) return;
-    if (!user || !libraryId || !canEdit) return;
-    if (booksToBackfill.length === 0) return;
+    if (isRunningRef.current) {
+      return;
+    }
+    if (!user || !libraryId || !canEdit) {
+      return;
+    }
+    if (booksToBackfill.length === 0) {
+      return;
+    }
 
     const bookIds = Array.from(
       new Set(booksToBackfill.map(b => b.id).filter(Boolean)),
     );
-    if (bookIds.length === 0) return;
+    if (bookIds.length === 0) {
+      return;
+    }
 
     cancelledRef.current = false;
     isRunningRef.current = true;
@@ -506,7 +522,9 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
           customGenres,
         });
 
-        if (cancelledRef.current) return;
+        if (cancelledRef.current) {
+          return;
+        }
 
         isRunningRef.current = true;
         setIsBackfilling(true);
@@ -557,14 +575,18 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
           customGenres,
         });
 
-        if (cancelledRef.current) return;
+        if (cancelledRef.current) {
+          return;
+        }
 
         const results = response?.results || [];
         const resultsById = new Map(results.map(r => [r.id, r]));
 
         if (results.length > 0 && utilsRef.current?.book?.list?.setData) {
           utilsRef.current.book.list.setData({libraryId}, old => {
-            if (!old) return old;
+            if (!old) {
+              return old;
+            }
             if (Array.isArray(old)) {
               return (old as Book[]).map(b => {
                 const patch = resultsById.get(b.id);
@@ -637,7 +659,9 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
   ]);
 
   useEffect(() => {
-    if (!isBackfilling || !libraryId || !activeJobId) return;
+    if (!isBackfilling || !libraryId || !activeJobId) {
+      return;
+    }
 
     const enrichmentClient = trpcVanilla.enrichment as unknown as {
       getJobStatus?: {
@@ -654,13 +678,19 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
       };
     };
 
-    if (!enrichmentClient?.getJobStatus?.query) return;
+    if (!enrichmentClient?.getJobStatus?.query) {
+      return;
+    }
 
     const interval = setInterval(async () => {
-      if (cancelledRef.current || !isRunningRef.current) return;
+      if (cancelledRef.current || !isRunningRef.current) {
+        return;
+      }
       try {
         const snap = await enrichmentClient.getJobStatus!.query({libraryId});
-        if (!snap || (activeJobId && snap.jobId !== activeJobId)) return;
+        if (!snap || (activeJobId && snap.jobId !== activeJobId)) {
+          return;
+        }
 
         if (snap.perBookStates) {
           setPerBookStates(snap.perBookStates);
@@ -705,13 +735,23 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
   }, [isBackfilling, libraryId, activeJobId, closeEventSource]);
 
   useEffect(() => {
-    if (!autoTrigger) return;
-    if (isBooksLoading || !libraryId || !user || !canEdit) return;
-    if (isRunningRef.current) return;
-    if (booksToBackfill.length === 0) return;
+    if (!autoTrigger) {
+      return;
+    }
+    if (isBooksLoading || !libraryId || !user || !canEdit) {
+      return;
+    }
+    if (isRunningRef.current) {
+      return;
+    }
+    if (booksToBackfill.length === 0) {
+      return;
+    }
 
     const autoKey = `${libraryId}:${canonicalType}`;
-    if (autoTriggeredForLibRef.current === autoKey) return;
+    if (autoTriggeredForLibRef.current === autoKey) {
+      return;
+    }
     autoTriggeredForLibRef.current = autoKey;
 
     void triggerBackfill();

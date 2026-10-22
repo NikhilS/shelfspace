@@ -2,8 +2,8 @@ import React from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
-import ConstellationMap from './ConstellationMap';
-import ConstellationChart from './constellations/ConstellationChart';
+import {ConstellationMap} from './ConstellationMap';
+import {ConstellationChart} from './constellations/ConstellationChart';
 import {
   kmeans,
   optimalKMeans,

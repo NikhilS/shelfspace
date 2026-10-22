@@ -102,7 +102,9 @@ export class CatalogOrchestrator {
 
   private getCachedSearch(key: string): OrchestratorSearchResult | null {
     const entry = this.searchCache.get(key);
-    if (!entry) return null;
+    if (!entry) {
+      return null;
+    }
     if (Date.now() > entry.expiresAt) {
       this.searchCache.delete(key);
       return null;
@@ -113,7 +115,9 @@ export class CatalogOrchestrator {
   private setCachedSearch(key: string, value: OrchestratorSearchResult): void {
     if (this.searchCache.size > 500) {
       const oldestKey = this.searchCache.keys().next().value;
-      if (oldestKey) this.searchCache.delete(oldestKey);
+      if (oldestKey) {
+        this.searchCache.delete(oldestKey);
+      }
     }
     this.searchCache.set(key, {
       value,
@@ -126,7 +130,9 @@ export class CatalogOrchestrator {
    * (e.g., Penguin Random House ISBN CDN or Open Library without default=false).
    */
   async verifyCoverUrl(url: string, signal?: AbortSignal): Promise<boolean> {
-    if (!url || !url.startsWith('http')) return false;
+    if (!url || !url.startsWith('http')) {
+      return false;
+    }
     const cached = this.coverValidityCache.get(url);
     if (cached && Date.now() <= cached.expiresAt) {
       return cached.value;
@@ -262,7 +268,9 @@ export class CatalogOrchestrator {
     options: OrchestratorExecutionOptions = {},
   ): Promise<BookDetails | null> {
     const cleanIsbn = normalizeIsbn(rawIsbn);
-    if (!cleanIsbn) return null;
+    if (!cleanIsbn) {
+      return null;
+    }
 
     const cacheKey = `isbn:${cleanIsbn}`;
     const cached = this.getCachedSearch(cacheKey);
@@ -420,7 +428,9 @@ export class CatalogOrchestrator {
         ),
       );
       for (const list of wave1Lists) {
-        if (list) hits.push(...list);
+        if (list) {
+          hits.push(...list);
+        }
       }
 
       const hasRichHit = hits.some(
@@ -440,7 +450,9 @@ export class CatalogOrchestrator {
           ),
         );
         for (const list of wave2Lists) {
-          if (list) hits.push(...list);
+          if (list) {
+            hits.push(...list);
+          }
         }
       }
     } else {
@@ -456,7 +468,9 @@ export class CatalogOrchestrator {
         ),
       );
       for (const list of resultLists) {
-        if (list) hits.push(...list);
+        if (list) {
+          hits.push(...list);
+        }
       }
     }
 
@@ -554,10 +568,14 @@ export class CatalogOrchestrator {
     ): Promise<CoverCandidate[]> => {
       const unique: CoverCandidate[] = [];
       for (const list of lists) {
-        if (!list) continue;
+        if (!list) {
+          continue;
+        }
         for (const candidate of list) {
           const normalizedUrl = candidate.url.trim();
-          if (!normalizedUrl || seenUrls.has(normalizedUrl)) continue;
+          if (!normalizedUrl || seenUrls.has(normalizedUrl)) {
+            continue;
+          }
           seenUrls.add(normalizedUrl);
           unique.push({
             ...candidate,
@@ -701,7 +719,9 @@ export class CatalogOrchestrator {
     const groups = new Map<string, ProviderBookHit[]>();
 
     for (const hit of hits) {
-      if (!hit.title || hit.title === 'Unknown Title') continue;
+      if (!hit.title || hit.title === 'Unknown Title') {
+        continue;
+      }
       const key = this.canonicalBookGroupKey(hit);
       const existing = groups.get(key) ?? [];
       existing.push(hit);
@@ -829,18 +849,29 @@ export class CatalogOrchestrator {
       for (const hit of sortedHits) {
         if (hit.subgenres) {
           for (const sg of hit.subgenres) {
-            if (sg) subgenreSet.add(sg);
+            if (sg) {
+              subgenreSet.add(sg);
+            }
           }
         }
       }
 
       const fieldSources: Record<string, string> = {};
-      if (coverUrl && coverSource) fieldSources.coverImage = coverSource;
-      if (synopsis && synopsisSource) fieldSources.synopsis = synopsisSource;
-      if (series && seriesSource) fieldSources.series = seriesSource;
-      if (genreHit?.primaryGenre) fieldSources.genre = genreHit.providerName;
-      if (publishedDate && publishedDateHit)
+      if (coverUrl && coverSource) {
+        fieldSources.coverImage = coverSource;
+      }
+      if (synopsis && synopsisSource) {
+        fieldSources.synopsis = synopsisSource;
+      }
+      if (series && seriesSource) {
+        fieldSources.series = seriesSource;
+      }
+      if (genreHit?.primaryGenre) {
+        fieldSources.genre = genreHit.providerName;
+      }
+      if (publishedDate && publishedDateHit) {
         fieldSources.publishedDate = publishedDateHit.providerName;
+      }
 
       const sources = Array.from(new Set(sortedHits.map(h => h.providerName)));
       const totalAuthority = sortedHits.reduce((acc, h) => {

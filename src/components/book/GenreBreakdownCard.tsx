@@ -14,7 +14,7 @@ export interface GenreBreakdownCardProps {
   className?: string;
 }
 
-export const GenreBreakdownCard: React.FC<GenreBreakdownCardProps> = ({
+export function GenreBreakdownCard({
   books,
   eyebrow = 'Top Categories',
   headerRight,
@@ -22,7 +22,7 @@ export const GenreBreakdownCard: React.FC<GenreBreakdownCardProps> = ({
   maxCategories = 6,
   onSelectGenre,
   className = '',
-}) => {
+}: GenreBreakdownCardProps) {
   const topCategories = useMemo(() => {
     const counts: Record<string, number> = {};
     books.forEach(b => {
@@ -103,4 +103,4 @@ export const GenreBreakdownCard: React.FC<GenreBreakdownCardProps> = ({
       </div>
     </div>
   );
-};
+}

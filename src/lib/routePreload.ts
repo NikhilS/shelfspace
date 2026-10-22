@@ -22,7 +22,9 @@ const routeImporters: Record<PreloadableRouteKey, () => Promise<unknown>> = {
 const preloadedRoutes = new Set<PreloadableRouteKey>();
 
 export function preloadRouteChunk(key: PreloadableRouteKey): void {
-  if (preloadedRoutes.has(key)) return;
+  if (preloadedRoutes.has(key)) {
+    return;
+  }
   preloadedRoutes.add(key);
   void routeImporters[key]().catch(() => {
     preloadedRoutes.delete(key);

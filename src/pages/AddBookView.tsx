@@ -30,12 +30,18 @@ import {
 } from '../components/ui/select';
 import type {TrackedShelfStatus} from '../server/services/readingTracker';
 
-import BookSearch from '../components/import/BookSearch';
-import CSVImportTab from '../components/import/CSVImportTab';
+import {BookSearch} from '../components/import/BookSearch';
+import {CsvImportTab} from '../components/import/CsvImportTab';
 import {ManualEntryTab} from './add-book/ManualEntryTab';
 
-const ScanISBNTab = lazy(() => import('./add-book/ScanISBNTab'));
-const CaptureShelfTab = lazy(() => import('./add-book/CaptureShelfTab'));
+const ScanIsbnTab = lazy(() =>
+  import('./add-book/ScanIsbnTab').then(m => ({default: m.ScanIsbnTab})),
+);
+const CaptureShelfTab = lazy(() =>
+  import('./add-book/CaptureShelfTab').then(m => ({
+    default: m.CaptureShelfTab,
+  })),
+);
 
 type TabId = 'scan' | 'search' | 'camera' | 'csv' | 'manual';
 
@@ -64,7 +70,7 @@ function parseInitialStatus(
   return isReadingMode ? 'want_to_read' : 'unset';
 }
 
-export default function AddBookView() {
+export function AddBookView() {
   const {id: libraryId} = useParams<{id: string}>();
   const [searchParams, setSearchParams] = useSearchParams();
   const isOnline = useOnlineStatus();
@@ -374,7 +380,7 @@ export default function AddBookView() {
               )}
 
               {activeTab === 'scan' && (
-                <ScanISBNTab
+                <ScanIsbnTab
                   addBooks={addBooks}
                   isAddingAll={isAddingAll}
                   existingBooks={existingBooks}
@@ -393,7 +399,7 @@ export default function AddBookView() {
               )}
 
               {activeTab === 'csv' && (
-                <CSVImportTab
+                <CsvImportTab
                   allowDuplicates={allowDuplicates}
                   existingBooks={existingBooks}
                   addBooks={addBooks}

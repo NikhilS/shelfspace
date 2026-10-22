@@ -12,7 +12,7 @@ interface DebugStateInspectorTabProps {
   isOnline: boolean;
 }
 
-export const DebugStateInspectorTab: React.FC<DebugStateInspectorTabProps> = ({
+export function DebugStateInspectorTab({
   activeTab,
   activeStates,
   debugData,
@@ -20,7 +20,7 @@ export const DebugStateInspectorTab: React.FC<DebugStateInspectorTabProps> = ({
   metrics,
   fetchCacheHitRatio,
   isOnline,
-}) => {
+}: DebugStateInspectorTabProps) {
   if (activeTab === 'state') {
     return (
       <div className="flex flex-col h-full space-y-4">
@@ -252,4 +252,4 @@ export const DebugStateInspectorTab: React.FC<DebugStateInspectorTabProps> = ({
   }
 
   return null;
-};
+}

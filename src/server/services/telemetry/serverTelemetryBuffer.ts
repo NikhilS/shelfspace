@@ -49,7 +49,7 @@ class ServerTelemetryBuffer {
     });
   }
 
-  public recordCall(input: {
+  recordCall(input: {
     providerId: string;
     operation?: string;
     priority: SchedulePriority;
@@ -102,7 +102,7 @@ class ServerTelemetryBuffer {
     }
   }
 
-  public getSnapshot(sinceMs?: number): ServerTelemetrySnapshot {
+  getSnapshot(sinceMs?: number): ServerTelemetrySnapshot {
     const filtered =
       typeof sinceMs === 'number' && sinceMs > 0
         ? this.entries.filter(e => e.timestampMs > sinceMs)
@@ -124,7 +124,7 @@ class ServerTelemetryBuffer {
     };
   }
 
-  public clear(): void {
+  clear(): void {
     this.entries.length = 0;
     this.totalCalls = 0;
     this.totalErrors = 0;

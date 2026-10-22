@@ -19,7 +19,7 @@ const mockBatch = vi.fn(() => ({
 const mockCollection = vi.fn((path: string) => {
   if (path === 'libraries') {
     return {
-      doc: vi.fn((libId: string) => ({
+      doc: vi.fn(() => ({
         get: mockLibGet,
         collection: vi.fn((subPath: string) => {
           if (subPath === 'books') {

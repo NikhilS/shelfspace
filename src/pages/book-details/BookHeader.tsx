@@ -20,14 +20,20 @@ export const BookHeader = memo(
     const isVirtualShelf = Boolean(libraryId?.startsWith('virtual_'));
 
     const handleGenreClick = (genre: string, subgenre?: string) => {
-      if (!libraryId) return;
+      if (!libraryId) {
+        return;
+      }
       if (isVirtualShelf) {
         void navigate('/');
         return;
       }
       const params = new URLSearchParams();
-      if (genre) params.set('genre', genre);
-      if (subgenre) params.set('subgenre', subgenre);
+      if (genre) {
+        params.set('genre', genre);
+      }
+      if (subgenre) {
+        params.set('subgenre', subgenre);
+      }
       params.set('filters', 'true');
       void navigate(`/library/${libraryId}/collection?${params.toString()}`);
     };

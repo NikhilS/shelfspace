@@ -4,11 +4,7 @@ import {
   ProviderSkippedError,
 } from '../scheduler/providerQuotaScheduler';
 import {CatalogOrchestrator} from './catalogOrchestrator';
-import type {
-  ICatalogSourceProvider,
-  ProviderBookHit,
-  CatalogQuery,
-} from './types';
+import type {ICatalogSourceProvider, ProviderBookHit} from './types';
 
 function createMockProvider(
   overrides: Partial<ICatalogSourceProvider> & {

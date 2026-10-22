@@ -10,7 +10,7 @@ import {
 export async function extractBooksFromImage(
   base64Image: string,
   mimeType: string,
-): Promise<{title: string; author: string; isbn?: string}[]> {
+): Promise<Array<{title: string; author: string; isbn?: string}>> {
   try {
     logger.info(`Starting book extraction from image (${mimeType})...`);
     if (!base64Image || base64Image === 'data:,') {
@@ -163,7 +163,9 @@ interface CsvColumnSchema {
 export function tryDeterministicCsvColumnMap(
   headerRow: string[],
 ): CsvColumnSchema | null {
-  if (!headerRow || headerRow.length < 2) return null;
+  if (!headerRow || headerRow.length < 2) {
+    return null;
+  }
 
   const normalized = headerRow.map(cell =>
     (cell || '')
@@ -236,12 +238,12 @@ export async function extractBooksFromCsv(
   csvText: string,
   options?: {allowAiFallback?: boolean},
 ): Promise<
-  {
+  Array<{
     title: string;
     author: string;
     isbn?: string;
     format?: 'physical' | 'digital';
-  }[]
+  }>
 > {
   try {
     const parsed = await new Promise<Papa.ParseResult<unknown>>(
@@ -256,7 +258,9 @@ export async function extractBooksFromCsv(
     );
 
     const rows = parsed.data as string[][];
-    if (rows.length === 0) return [];
+    if (rows.length === 0) {
+      return [];
+    }
 
     // 1. Try zero-token deterministic header mapping first
     let resolvedSchema: CsvColumnSchema | null = tryDeterministicCsvColumnMap(
@@ -333,7 +337,9 @@ If an optional attribute (isbn, format) is not found in any column, set its colu
       });
 
       const text = response.text;
-      if (!text) return [];
+      if (!text) {
+        return [];
+      }
 
       try {
         const parsedSchema = JSON.parse(text) as {
@@ -377,26 +383,32 @@ If an optional attribute (isbn, format) is not found in any column, set its colu
     }
 
     const {hasHeaderRow, columnMap} = resolvedSchema;
-    const books: {
+    const books: Array<{
       title: string;
       author: string;
       isbn?: string;
       format?: 'physical' | 'digital';
-    }[] = [];
+    }> = [];
     const startIndex = hasHeaderRow ? 1 : 0;
 
     for (let i = startIndex; i < rows.length; i++) {
       const row = rows[i];
-      if (!row || row.length === 0) continue;
+      if (!row || row.length === 0) {
+        continue;
+      }
 
       const titleIndex = columnMap.title;
-      if (typeof titleIndex !== 'number' || !row[titleIndex]?.trim()) continue;
+      if (typeof titleIndex !== 'number' || !row[titleIndex]?.trim()) {
+        continue;
+      }
 
       let isbn: string | undefined = undefined;
       if (typeof columnMap.isbn === 'number') {
         const rawIsbn = row[columnMap.isbn] || '';
         const cleaned = rawIsbn.replace(/[^0-9X]/gi, '');
-        if (cleaned.length >= 10) isbn = cleaned;
+        if (cleaned.length >= 10) {
+          isbn = cleaned;
+        }
       }
 
       let format: 'physical' | 'digital' | undefined = undefined;

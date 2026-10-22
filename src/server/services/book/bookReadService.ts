@@ -132,30 +132,42 @@ export async function listBooks(
   if (options?.filters?.missingMetadata) {
     const missing = options.filters.missingMetadata;
     books = books.filter(b => {
-      if (missing === 'geo') return !b.geoMetadata;
-      if (missing === 'temporal') return !b.temporalMetadata;
-      if (missing === 'genre' || missing === 'primaryGenre')
+      if (missing === 'geo') {
+        return !b.geoMetadata;
+      }
+      if (missing === 'temporal') {
+        return !b.temporalMetadata;
+      }
+      if (missing === 'genre' || missing === 'primaryGenre') {
         return !b.primaryGenre;
-      if (missing === 'synopsis')
+      }
+      if (missing === 'synopsis') {
         return (
           !b.synopsis &&
           !(b.bookDetailsMetadata as BookDetailsMetadata | undefined)
             ?.hasSynopsis
         );
-      if (missing === 'authorBio')
+      }
+      if (missing === 'authorBio') {
         return (
           !b.authorBio &&
           !(b.bookDetailsMetadata as BookDetailsMetadata | undefined)
             ?.hasAuthorBio
         );
-      if (missing === 'embedding' || missing === 'embeddings')
+      }
+      if (missing === 'embedding' || missing === 'embeddings') {
         return (
           !b.embedding?.length &&
           !(b.bookDetailsMetadata as BookDetailsMetadata | undefined)
             ?.hasEmbedding
         );
-      if (missing === 'coverImage') return !b.coverUrl;
-      if (missing === 'series') return !b.series;
+      }
+      if (missing === 'coverImage') {
+        return !b.coverUrl;
+      }
+      if (missing === 'series') {
+        return !b.series;
+      }
       return true;
     });
   }

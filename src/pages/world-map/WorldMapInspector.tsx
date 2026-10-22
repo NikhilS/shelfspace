@@ -15,7 +15,7 @@ interface WorldMapInspectorProps {
   onNavigateToBook: (bookId: string, bookLibraryId?: string) => void;
 }
 
-export const WorldMapInspector: React.FC<WorldMapInspectorProps> = ({
+export function WorldMapInspector({
   selectedCluster,
   selectedSinglePin,
   nonEarthBooks,
@@ -23,7 +23,7 @@ export const WorldMapInspector: React.FC<WorldMapInspectorProps> = ({
   onToggleNonEarthExpanded,
   onClearSelection,
   onNavigateToBook,
-}) => {
+}: WorldMapInspectorProps) {
   return (
     <div className="lg:col-span-4 space-y-4">
       {/* Context/Selected Location info Panel */}
@@ -189,4 +189,4 @@ export const WorldMapInspector: React.FC<WorldMapInspectorProps> = ({
       </div>
     </div>
   );
-};
+}

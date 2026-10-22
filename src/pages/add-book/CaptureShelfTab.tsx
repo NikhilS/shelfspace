@@ -1,8 +1,8 @@
 import React, {useState} from 'react';
 import {Camera, Sparkles} from 'lucide-react';
 import {BookDetails} from '../../types';
-import CameraScanner from '../../components/import/CameraScanner';
-import ExtractedBooksTable from '../../components/import/ExtractedBooksTable';
+import {CameraScanner} from '../../components/import/CameraScanner';
+import {ExtractedBooksTable} from '../../components/import/ExtractedBooksTable';
 import {logger} from '../../stores/debugStore';
 import {triggerHaptics} from '../../lib/utils';
 
@@ -13,14 +13,14 @@ interface CaptureShelfTabProps {
   hasAiPlan?: boolean;
 }
 
-function CaptureShelfTab({
+export function CaptureShelfTab({
   addBooks,
   existingBooks,
   allowDuplicates,
   hasAiPlan = true,
 }: CaptureShelfTabProps) {
   const [extractedBooks, setExtractedBooks] = useState<
-    {
+    Array<{
       title: string;
       author: string;
       isbn?: string;
@@ -30,7 +30,7 @@ function CaptureShelfTab({
       format?: 'physical' | 'digital';
       coverUrl?: string;
       publishedDate?: string;
-    }[]
+    }>
   >([]);
   const [selectedExtracted, setSelectedExtracted] = useState<Set<string>>(
     new Set(),
@@ -99,5 +99,3 @@ function CaptureShelfTab({
     </div>
   );
 }
-
-export default CaptureShelfTab;

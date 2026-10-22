@@ -37,14 +37,20 @@ function formatQueryKeyLabel(queryKey: readonly unknown[]): string {
 if (typeof window !== 'undefined') {
   queryClient.getQueryCache().subscribe(event => {
     const query = event.query;
-    if (!query) return;
+    if (!query) {
+      return;
+    }
 
     // Ignore internal debug telemetry polling query
     const keyLabel = formatQueryKeyLabel(query.queryKey);
-    if (keyLabel.includes('debugTelemetry')) return;
+    if (keyLabel.includes('debugTelemetry')) {
+      return;
+    }
 
     if (event.type === 'observerAdded') {
-      if (!DebugTelemetryEngine.isHudActive()) return;
+      if (!DebugTelemetryEngine.isHudActive()) {
+        return;
+      }
       if (
         query.state.status === 'success' &&
         query.state.fetchStatus === 'idle' &&

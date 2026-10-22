@@ -155,10 +155,18 @@ export function estimateStringBytes(str: string): number {
  * Estimates byte size of an individual object or primitive.
  */
 function estimateSingleObjectBytes(obj: unknown): number {
-  if (obj === null || obj === undefined) return 0;
-  if (typeof obj === 'string') return estimateStringBytes(obj);
-  if (typeof obj === 'number') return 8;
-  if (typeof obj === 'boolean') return 4;
+  if (obj === null || obj === undefined) {
+    return 0;
+  }
+  if (typeof obj === 'string') {
+    return estimateStringBytes(obj);
+  }
+  if (typeof obj === 'number') {
+    return 8;
+  }
+  if (typeof obj === 'boolean') {
+    return 4;
+  }
   try {
     const json = JSON.stringify(obj);
     return estimateStringBytes(json);
@@ -185,11 +193,17 @@ export function calculatePayloadBytes(
   if (typeof data === 'string') {
     return estimateStringBytes(data);
   }
-  if (typeof data === 'number') return 8;
-  if (typeof data === 'boolean') return 4;
+  if (typeof data === 'number') {
+    return 8;
+  }
+  if (typeof data === 'boolean') {
+    return 4;
+  }
 
   if (Array.isArray(data)) {
-    if (data.length === 0) return 2; // "[]"
+    if (data.length === 0) {
+      return 2;
+    } // "[]"
     if (level === 'basic') {
       const sampleCount = Math.min(data.length, options?.maxSamples ?? 5);
       let sampleBytes = 0;
@@ -220,16 +234,30 @@ function inferLogScope(type: LogLevel, message: string): string {
   const bracketMatch = message.match(/^\[([A-Za-z0-9_:-]+)\]/);
   if (bracketMatch) {
     const raw = bracketMatch[1].toLowerCase();
-    if (raw.includes('auth')) return 'Auth';
-    if (raw.includes('trpc') || raw.includes('http')) return 'tRPC';
-    if (raw.includes('query') || raw.includes('cache')) return 'Cache';
-    if (raw.includes('enrich')) return 'Enrichment';
-    if (raw.includes('router') || raw.includes('nav')) return 'Router';
-    if (raw.includes('boot') || raw.includes('sw')) return 'PWA';
+    if (raw.includes('auth')) {
+      return 'Auth';
+    }
+    if (raw.includes('trpc') || raw.includes('http')) {
+      return 'tRPC';
+    }
+    if (raw.includes('query') || raw.includes('cache')) {
+      return 'Cache';
+    }
+    if (raw.includes('enrich')) {
+      return 'Enrichment';
+    }
+    if (raw.includes('router') || raw.includes('nav')) {
+      return 'Router';
+    }
+    if (raw.includes('boot') || raw.includes('sw')) {
+      return 'PWA';
+    }
     if (raw.includes('constellation') || raw.includes('umap')) {
       return 'Constellation';
     }
-    if (raw.includes('errorboundary')) return 'ErrorBoundary';
+    if (raw.includes('errorboundary')) {
+      return 'ErrorBoundary';
+    }
   }
   switch (type) {
     case 'api_res':
@@ -317,14 +345,14 @@ export class DebugTelemetryEngine {
     // Private constructor for singleton
   }
 
-  public static getInstance(): DebugTelemetryEngine {
+  static getInstance(): DebugTelemetryEngine {
     if (!this.instance) {
       this.instance = new DebugTelemetryEngine();
     }
     return this.instance;
   }
 
-  public static resetInstance(): void {
+  static resetInstance(): void {
     this.instance = null;
     this.explicitDebugEnabled = null;
   }
@@ -334,14 +362,14 @@ export class DebugTelemetryEngine {
    * When explicitly disabled (false) and no HUD subscribers are attached,
    * non-error telemetry becomes a strict O(1) no-op.
    */
-  public static setDebugModeEnabled(enabled: boolean): void {
+  static setDebugModeEnabled(enabled: boolean): void {
     this.explicitDebugEnabled = enabled;
     if (this.instance) {
       this.instance.notifySubscribers();
     }
   }
 
-  public static isDebugModeEnabled(): boolean {
+  static isDebugModeEnabled(): boolean {
     if (this.explicitDebugEnabled !== null) {
       return this.explicitDebugEnabled;
     }
@@ -358,7 +386,7 @@ export class DebugTelemetryEngine {
     return false;
   }
 
-  public static isHudActive(): boolean {
+  static isHudActive(): boolean {
     return this.isDebugModeEnabled();
   }
 
@@ -367,18 +395,20 @@ export class DebugTelemetryEngine {
    * disabled and no HUD subscriber is listening.
    */
   private isCollectionActive(): boolean {
-    if (this.subscribers.size > 0) return true;
+    if (this.subscribers.size > 0) {
+      return true;
+    }
     if (DebugTelemetryEngine.explicitDebugEnabled !== null) {
       return DebugTelemetryEngine.explicitDebugEnabled;
     }
     return true;
   }
 
-  public static getProfilingLevel(): TelemetryProfilingLevel {
+  static getProfilingLevel(): TelemetryProfilingLevel {
     return DebugTelemetryEngine.globalProfilingLevel;
   }
 
-  public static setProfilingLevel(level: TelemetryProfilingLevel): void {
+  static setProfilingLevel(level: TelemetryProfilingLevel): void {
     DebugTelemetryEngine.globalProfilingLevel = level;
     if (DebugTelemetryEngine.instance) {
       DebugTelemetryEngine.instance.profilingLevel = level;
@@ -393,16 +423,16 @@ export class DebugTelemetryEngine {
     }
   }
 
-  public getProfilingLevel(): TelemetryProfilingLevel {
+  getProfilingLevel(): TelemetryProfilingLevel {
     return this.profilingLevel;
   }
 
-  public setProfilingLevel(level: TelemetryProfilingLevel): void {
+  setProfilingLevel(level: TelemetryProfilingLevel): void {
     DebugTelemetryEngine.setProfilingLevel(level);
   }
 
   // Register and track active listeners / streams
-  public registerListener(name: string, path: string): () => void {
+  registerListener(name: string, path: string): () => void {
     const id = `lsn-${++this.seq}`;
     const info: ActiveListenerInfo = {
       id,
@@ -422,12 +452,12 @@ export class DebugTelemetryEngine {
     };
   }
 
-  public getActiveListeners(): ActiveListenerInfo[] {
+  getActiveListeners(): ActiveListenerInfo[] {
     return Array.from(this.activeListeners.values());
   }
 
   // Baseline capture for Before/After comparison
-  public captureBaseline(): TelemetryBaseline {
+  captureBaseline(): TelemetryBaseline {
     this.baseline = {
       timestamp: formatTime(new Date()),
       metrics: {...this.metrics},
@@ -436,7 +466,7 @@ export class DebugTelemetryEngine {
     return this.baseline;
   }
 
-  public getBaseline(): TelemetryBaseline | null {
+  getBaseline(): TelemetryBaseline | null {
     return this.baseline
       ? {
           timestamp: this.baseline.timestamp,
@@ -445,12 +475,12 @@ export class DebugTelemetryEngine {
       : null;
   }
 
-  public clearBaseline() {
+  clearBaseline() {
     this.baseline = null;
     this.notifySubscribers();
   }
 
-  public resetMetrics() {
+  resetMetrics() {
     this.metrics = {
       totalApiRequests: 0,
       averageApiLatency: 0,
@@ -484,8 +514,10 @@ export class DebugTelemetryEngine {
     this.notifySubscribers();
   }
 
-  public recordCacheAccess(hit: boolean, queryKeyStr?: string) {
-    if (!this.isCollectionActive()) return;
+  recordCacheAccess(hit: boolean, queryKeyStr?: string) {
+    if (!this.isCollectionActive()) {
+      return;
+    }
     this.metrics.totalQueryReads++;
     this.metrics.totalFirestoreReads++;
     if (hit) {
@@ -510,7 +542,7 @@ export class DebugTelemetryEngine {
     }
   }
 
-  public recordIdbPersistenceState(
+  recordIdbPersistenceState(
     status: 'idle' | 'restoring' | 'hydrated' | 'error',
     bytes?: number,
   ) {
@@ -525,7 +557,7 @@ export class DebugTelemetryEngine {
   }
 
   // Add Log Entry
-  public addLog(
+  addLog(
     type: LogLevel,
     message: string,
     payload?: unknown,
@@ -650,7 +682,9 @@ export class DebugTelemetryEngine {
       }
       if (p?.commitDurationMs !== undefined && p.commitDurationMs >= 0) {
         this.writeLatencies.push(p.commitDurationMs);
-        if (this.writeLatencies.length > 50) this.writeLatencies.shift();
+        if (this.writeLatencies.length > 50) {
+          this.writeLatencies.shift();
+        }
         const sum = this.writeLatencies.reduce((a, b) => a + b, 0);
         this.metrics.averageWriteLatency = Math.round(
           sum / this.writeLatencies.length,
@@ -663,7 +697,9 @@ export class DebugTelemetryEngine {
       const duration = meta?.durationMs ?? p?.durationMs;
       if (typeof duration === 'number' && duration >= 0) {
         this.latencies.push(duration);
-        if (this.latencies.length > 50) this.latencies.shift();
+        if (this.latencies.length > 50) {
+          this.latencies.shift();
+        }
         const sum = this.latencies.reduce((a, b) => a + b, 0);
         this.metrics.averageApiLatency = Math.round(
           sum / this.latencies.length,
@@ -699,7 +735,7 @@ export class DebugTelemetryEngine {
   }
 
   // Record a dedicated write mutation with metrics
-  public recordMutation(info: {
+  recordMutation(info: {
     mutationType?: MutationType;
     type?: MutationType;
     path: string;
@@ -745,7 +781,7 @@ export class DebugTelemetryEngine {
   }
 
   // Telemetry Plugin Bus Registration API
-  public registerPlugin(plugin: TelemetryPlugin): () => void {
+  registerPlugin(plugin: TelemetryPlugin): () => void {
     this.plugins.set(plugin.id, plugin);
     this.notifySubscribers();
     return () => {
@@ -754,34 +790,34 @@ export class DebugTelemetryEngine {
     };
   }
 
-  public unregisterPlugin(pluginId: string): void {
+  unregisterPlugin(pluginId: string): void {
     this.plugins.delete(pluginId);
     this.notifySubscribers();
   }
 
-  public getPlugins(): TelemetryPlugin[] {
+  getPlugins(): TelemetryPlugin[] {
     return Array.from(this.plugins.values()).sort(
       (a, b) => (a.order ?? 100) - (b.order ?? 100),
     );
   }
 
-  public getPlugin(id: string): TelemetryPlugin | undefined {
+  getPlugin(id: string): TelemetryPlugin | undefined {
     return this.plugins.get(id);
   }
 
   // Get current logs
-  public getLogs(): TelemetryLog[] {
+  getLogs(): TelemetryLog[] {
     return [...this.logs];
   }
 
   // Clear logs helper
-  public clearLogs() {
+  clearLogs() {
     this.logs = [];
     this.notifySubscribers();
   }
 
   // Subscriber pattern
-  public subscribe(sub: () => void): () => void {
+  subscribe(sub: () => void): () => void {
     this.subscribers.add(sub);
     return () => {
       this.subscribers.delete(sub);
@@ -806,31 +842,39 @@ export class DebugTelemetryEngine {
   }
 
   // Live Component / Hook State inspection tracking
-  public updateState(moduleName: string, stateObject: unknown) {
-    if (!this.isCollectionActive()) return;
+  updateState(moduleName: string, stateObject: unknown) {
+    if (!this.isCollectionActive()) {
+      return;
+    }
     this.activeStates[moduleName] = this.safeClone(stateObject);
     this.notifySubscribers();
   }
 
-  public removeState(moduleName: string) {
-    if (!(moduleName in this.activeStates)) return;
+  removeState(moduleName: string) {
+    if (!(moduleName in this.activeStates)) {
+      return;
+    }
     delete this.activeStates[moduleName];
     this.notifySubscribers();
   }
 
-  public getActiveStates(): Record<string, unknown> {
+  getActiveStates(): Record<string, unknown> {
     return {...this.activeStates};
   }
 
   // Dynamic diagnostics getters
-  public getMetrics(): TelemetryMetrics {
+  getMetrics(): TelemetryMetrics {
     return {...this.metrics};
   }
 
   // Safe payload copy utility preventing circular JSON reference crashes
   private safeClone(val: unknown): unknown {
-    if (val === undefined || val === null) return val;
-    if (typeof val !== 'object') return val;
+    if (val === undefined || val === null) {
+      return val;
+    }
+    if (typeof val !== 'object') {
+      return val;
+    }
     if (this.profilingLevel === 'off') {
       return Array.isArray(val) ? `[Array(${val.length})]` : '[Object]';
     }
@@ -884,7 +928,9 @@ export interface ScopedDebugLogger {
 export function createLogger(scope: string): ScopedDebugLogger {
   return {
     info(message, payload, meta) {
-      if (!DebugTelemetryEngine.isHudActive()) return;
+      if (!DebugTelemetryEngine.isHudActive()) {
+        return;
+      }
       DebugTelemetryEngine.getInstance().addLog(
         'info',
         `[${scope}] ${message}`,
@@ -893,7 +939,9 @@ export function createLogger(scope: string): ScopedDebugLogger {
       );
     },
     warn(message, payload, meta) {
-      if (!DebugTelemetryEngine.isHudActive()) return;
+      if (!DebugTelemetryEngine.isHudActive()) {
+        return;
+      }
       DebugTelemetryEngine.getInstance().addLog(
         'warn',
         `[${scope}] ${message}`,
@@ -913,7 +961,9 @@ export function createLogger(scope: string): ScopedDebugLogger {
       );
     },
     trace(message, payload, meta) {
-      if (!DebugTelemetryEngine.isHudActive()) return;
+      if (!DebugTelemetryEngine.isHudActive()) {
+        return;
+      }
       DebugTelemetryEngine.getInstance().addLog(
         'log',
         `[${scope}] ${message}`,
@@ -985,8 +1035,12 @@ function formatConsoleArgs(args: unknown[]): string {
 }
 
 export function interceptConsoleLogs() {
-  if (isIntercepted) return;
-  if (typeof window === 'undefined') return;
+  if (isIntercepted) {
+    return;
+  }
+  if (typeof window === 'undefined') {
+    return;
+  }
 
   const originalLog = window.console.log;
   const originalWarn = window.console.warn;

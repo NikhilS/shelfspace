@@ -45,11 +45,17 @@ interface GoogleBooksResponse {
 }
 
 function extractIsbn(identifiers?: IndustryIdentifier[]): string {
-  if (!identifiers) return '';
+  if (!identifiers) {
+    return '';
+  }
   const isbn13 = identifiers.find(id => id.type === 'ISBN_13');
-  if (isbn13) return isbn13.identifier;
+  if (isbn13) {
+    return isbn13.identifier;
+  }
   const isbn10 = identifiers.find(id => id.type === 'ISBN_10');
-  if (isbn10) return isbn10.identifier;
+  if (isbn10) {
+    return isbn10.identifier;
+  }
   return '';
 }
 
@@ -57,7 +63,9 @@ export function upgradeGoogleCoverUrl(
   url: string | undefined,
   zoomLevel: 1 | 2 | 3 = 2,
 ): string {
-  if (!url) return '';
+  if (!url) {
+    return '';
+  }
   let hiResUrl = url.replace('http:', 'https:');
   if (hiResUrl.includes('books.google.com/books/content')) {
     hiResUrl = hiResUrl
@@ -68,10 +76,10 @@ export function upgradeGoogleCoverUrl(
 }
 
 export class GoogleBooksProvider implements ICatalogSourceProvider {
-  public readonly id = 'google-books' as const;
-  public readonly name = 'Google Books';
-  public readonly authorityWeight = 85;
-  public readonly capabilities: ProviderCapabilities = {
+  readonly id = 'google-books' as const;
+  readonly name = 'Google Books';
+  readonly authorityWeight = 85;
+  readonly capabilities: ProviderCapabilities = {
     isbnSearch: true,
     titleSearch: true,
     coverResolution: true,
@@ -80,7 +88,7 @@ export class GoogleBooksProvider implements ICatalogSourceProvider {
     genre: true,
   };
 
-  public readonly scheduler = new ProviderQuotaScheduler({
+  readonly scheduler = new ProviderQuotaScheduler({
     providerId: 'google-books',
     maxConcurrent: 3,
     minSpacingMs: 200,
@@ -89,7 +97,7 @@ export class GoogleBooksProvider implements ICatalogSourceProvider {
     defaultCooldownMs: 15_000,
   });
 
-  public isAvailable(): boolean {
+  isAvailable(): boolean {
     return true;
   }
 
@@ -158,12 +166,14 @@ export class GoogleBooksProvider implements ICatalogSourceProvider {
     };
   }
 
-  public async searchByIsbn(
+  async searchByIsbn(
     isbn: string,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit | null> {
     const cleanIsbn = normalizeIsbn(isbn);
-    if (!cleanIsbn) return null;
+    if (!cleanIsbn) {
+      return null;
+    }
 
     let response = await fetchWithProviderTimeout(
       this.buildUrl(`isbn:${encodeURIComponent(cleanIsbn)}`),
@@ -192,7 +202,7 @@ export class GoogleBooksProvider implements ICatalogSourceProvider {
     return null;
   }
 
-  public async searchByQuery(
+  async searchByQuery(
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {

@@ -45,7 +45,7 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
     this.reservedInteractiveSlots = reservedInteractiveSlots;
   }
 
-  public static getInstance(): GlobalProviderGovernor {
+  static getInstance(): GlobalProviderGovernor {
     if (!GlobalProviderGovernor.instance) {
       GlobalProviderGovernor.instance = new GlobalProviderGovernor();
       attachGlobalProviderGovernor(GlobalProviderGovernor.instance);
@@ -63,28 +63,28 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
     }
   }
 
-  public subscribe(listener: () => void): () => void {
+  subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
     };
   }
 
-  public registerScheduler(scheduler: ProviderQuotaScheduler): void {
+  registerScheduler(scheduler: ProviderQuotaScheduler): void {
     if (scheduler && !this.schedulers.has(scheduler.providerId)) {
       this.schedulers.set(scheduler.providerId, scheduler);
     }
   }
 
-  public registerProvider(scheduler: ProviderQuotaScheduler): void {
+  registerProvider(scheduler: ProviderQuotaScheduler): void {
     this.registerScheduler(scheduler);
   }
 
-  public getScheduler(providerId: string): ProviderQuotaScheduler | undefined {
+  getScheduler(providerId: string): ProviderQuotaScheduler | undefined {
     return this.schedulers.get(providerId);
   }
 
-  public canAcquireSlot(priority: SchedulePriority): boolean {
+  canAcquireSlot(priority: SchedulePriority): boolean {
     const totalActive = this.activeInteractiveCount + this.activeBatchCount;
     if (priority === 'INTERACTIVE') {
       return totalActive < this.maxGlobalConcurrent;
@@ -99,7 +99,7 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
     );
   }
 
-  public acquireSlot(priority: SchedulePriority): void {
+  acquireSlot(priority: SchedulePriority): void {
     if (priority === 'INTERACTIVE') {
       this.activeInteractiveCount++;
     } else {
@@ -108,7 +108,7 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
     this.notifyListeners();
   }
 
-  public releaseSlot(priority: SchedulePriority): void {
+  releaseSlot(priority: SchedulePriority): void {
     if (priority === 'INTERACTIVE') {
       this.activeInteractiveCount = Math.max(
         0,
@@ -131,12 +131,12 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
     this.notifyListeners();
   }
 
-  public recordSkippedProvider(providerId: string): void {
+  recordSkippedProvider(providerId: string): void {
     this.recentSkips.set(providerId, Date.now());
     this.notifyListeners();
   }
 
-  public inspectAllProviders(
+  inspectAllProviders(
     priority: SchedulePriority = 'BATCH',
   ): CapacitySnapshot[] {
     const snapshots: CapacitySnapshot[] = [];
@@ -146,7 +146,7 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
     return snapshots;
   }
 
-  public getTelemetrySummary(
+  getTelemetrySummary(
     priority: SchedulePriority = 'BATCH',
   ): ProviderTelemetrySummary {
     const now = Date.now();
@@ -203,7 +203,7 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
     };
   }
 
-  public getSnapshot(priority: SchedulePriority = 'INTERACTIVE'): {
+  getSnapshot(priority: SchedulePriority = 'INTERACTIVE'): {
     providers: CapacitySnapshot[];
     activeTotal: number;
     activeInteractive: number;

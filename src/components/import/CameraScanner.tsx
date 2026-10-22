@@ -8,19 +8,19 @@ import {trpc} from '../../lib/trpc';
 
 interface CameraScannerProps {
   onBooksExtracted: (
-    books: {
+    books: Array<{
       title: string;
       author: string;
       isbn?: string;
       genres?: string[];
       format?: 'physical' | 'digital';
-    }[],
+    }>,
   ) => void;
   isExtracting: boolean;
   setIsExtracting: (extracting: boolean) => void;
 }
 
-export default function CameraScanner({
+export function CameraScanner({
   onBooksExtracted,
   isExtracting,
   setIsExtracting,
@@ -66,7 +66,9 @@ export default function CameraScanner({
       logger.info('Camera stream acquired successfully.');
 
       const attachStream = () => {
-        if (!streamRef.current) return;
+        if (!streamRef.current) {
+          return;
+        }
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.onloadedmetadata = () => {
@@ -120,7 +122,9 @@ export default function CameraScanner({
   }, []);
 
   const captureAndExtract = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) {
+      return;
+    }
     const video = videoRef.current;
     if (!video.videoWidth || !video.videoHeight) {
       toast.error('Camera stream not ready yet.');
@@ -144,7 +148,9 @@ export default function CameraScanner({
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const base64Image = canvas.toDataURL('image/jpeg', 0.8);
     logger.info(
@@ -161,17 +167,24 @@ export default function CameraScanner({
       });
       setIsExtracting(false);
       onBooksExtracted(books);
-      if (books.length === 0) toast.error('No books found in image');
+      if (books.length === 0) {
+        toast.error('No books found in image');
+      }
     } catch (error) {
       setIsExtracting(false);
-      if (error instanceof Error) toast.error(error.message);
-      else toast.error('Failed to extract books from image');
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error('Failed to extract books from image');
+      }
     }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      return;
+    }
     if (!file.type.startsWith('image/')) {
       toast.error('Please upload a valid image file.');
       return;
@@ -192,12 +205,18 @@ export default function CameraScanner({
           });
           setIsExtracting(false);
           onBooksExtracted(books);
-          if (books.length === 0) toast.error('No books found in image');
-          else toast.success(`Found ${books.length} books.`);
+          if (books.length === 0) {
+            toast.error('No books found in image');
+          } else {
+            toast.success(`Found ${books.length} books.`);
+          }
         } catch (err) {
           setIsExtracting(false);
-          if (err instanceof Error) toast.error(err.message);
-          else toast.error('Failed to extract books from image');
+          if (err instanceof Error) {
+            toast.error(err.message);
+          } else {
+            toast.error('Failed to extract books from image');
+          }
         }
       };
       reader.readAsDataURL(file);
@@ -205,7 +224,9 @@ export default function CameraScanner({
       setIsExtracting(false);
       toast.error('Failed to process image file.');
     } finally {
-      if (imageInputRef.current) imageInputRef.current.value = '';
+      if (imageInputRef.current) {
+        imageInputRef.current.value = '';
+      }
     }
   };
 

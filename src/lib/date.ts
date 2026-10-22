@@ -25,7 +25,9 @@ export function formatFirestoreDate(
   dateValue?: FirestoreDate | unknown,
   fallback = 'Unknown date',
 ): string {
-  if (!dateValue) return fallback;
+  if (!dateValue) {
+    return fallback;
+  }
 
   const asRecord = dateValue as Record<string, unknown>;
   if (typeof asRecord.toDate === 'function') {
@@ -47,10 +49,14 @@ export function formatDateTime(
   isoString?: string | number | Date | null,
   fallback = 'Never',
 ): string {
-  if (!isoString) return fallback;
+  if (!isoString) {
+    return fallback;
+  }
   try {
     const d = new Date(isoString);
-    if (isNaN(d.getTime())) return fallback;
+    if (isNaN(d.getTime())) {
+      return fallback;
+    }
     return d.toLocaleString();
   } catch {
     return fallback;
@@ -62,7 +68,9 @@ export function formatDateTime(
  */
 export function formatShortDate(date: Date | number): string {
   const d = typeof date === 'number' ? new Date(date) : date;
-  if (Number.isNaN(d.getTime())) return 'Unknown';
+  if (Number.isNaN(d.getTime())) {
+    return 'Unknown';
+  }
   return shortDateFormatter.format(d);
 }
 
@@ -71,6 +79,8 @@ export function formatShortDate(date: Date | number): string {
  */
 export function formatFullDateTime(date: Date | number): string {
   const d = typeof date === 'number' ? new Date(date) : date;
-  if (Number.isNaN(d.getTime())) return '';
+  if (Number.isNaN(d.getTime())) {
+    return '';
+  }
   return fullDateTimeFormatter.format(d);
 }

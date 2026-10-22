@@ -71,7 +71,9 @@ describe('MetadataRegistry & resolveBookSynopses unit suite', () => {
         [MetadataKey.EMBEDDING]: [0.5, 0.5],
       });
     } finally {
-      if (originalEmbedding) registry.register(originalEmbedding);
+      if (originalEmbedding) {
+        registry.register(originalEmbedding);
+      }
     }
   });
 
@@ -130,7 +132,9 @@ describe('MetadataRegistry & resolveBookSynopses unit suite', () => {
       expect(abortedResult.has('b-missing-2')).toBe(false);
       expect(mockSynopsisProvider.bulkFetch).not.toHaveBeenCalled();
     } finally {
-      if (originalSynopsis) registry.register(originalSynopsis);
+      if (originalSynopsis) {
+        registry.register(originalSynopsis);
+      }
     }
   });
 });

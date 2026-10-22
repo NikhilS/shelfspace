@@ -42,7 +42,7 @@ import {
   normalizeIsbn,
   normalizeText,
 } from '../../lib/utils';
-import CoverCamera from '../../components/import/CoverCamera';
+import {CoverCamera} from '../../components/import/CoverCamera';
 import {applyNanobananaFlash} from '../../lib/nanobanana';
 import {GenreSelect} from '../../components/book/GenreSelect';
 import {CoverGalleryPicker} from '../../components/book/CoverGalleryPicker';
@@ -186,7 +186,9 @@ export function EditBookForm({
   // Toggle Curator Lens™ processing on/off for current raw image
   const handleToggleNanobanana = async (checked: boolean) => {
     setUseNanobananaFlash(checked);
-    if (!registeredRawCover) return;
+    if (!registeredRawCover) {
+      return;
+    }
 
     if (checked) {
       setIsProcessingFlash(true);
@@ -218,7 +220,9 @@ export function EditBookForm({
   };
 
   const onSubmit = async (data: EditBookFormValues) => {
-    if (!book || !libraryId) return;
+    if (!book || !libraryId) {
+      return;
+    }
 
     if (!isOnline) {
       toast.error(
@@ -269,7 +273,9 @@ export function EditBookForm({
   };
 
   const handleDeleteConfirm = async () => {
-    if (!onDelete) return;
+    if (!onDelete) {
+      return;
+    }
 
     if (!isOnline) {
       toast.error('Network required: Connect to the internet to delete books.');

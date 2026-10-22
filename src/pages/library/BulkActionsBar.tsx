@@ -17,11 +17,11 @@ interface BulkActionsBarProps {
   onStatusChange: (status: string) => void;
 }
 
-export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
+export function BulkActionsBar({
   selectedCount,
   onClear,
   onStatusChange,
-}) => {
+}: BulkActionsBarProps) {
   return (
     <AnimatePresence>
       {selectedCount > 0 && (
@@ -70,4 +70,4 @@ export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
       )}
     </AnimatePresence>
   );
-};
+}

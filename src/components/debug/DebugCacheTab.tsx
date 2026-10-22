@@ -48,9 +48,15 @@ interface InspectedQueryEntry {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes <= 0) return '0 B';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes <= 0) {
+    return '0 B';
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
@@ -71,12 +77,20 @@ function formatQueryKey(queryKey: readonly unknown[]): string {
 }
 
 function extractItemCount(data: unknown): number | null {
-  if (!data) return null;
-  if (Array.isArray(data)) return data.length;
+  if (!data) {
+    return null;
+  }
+  if (Array.isArray(data)) {
+    return data.length;
+  }
   if (typeof data === 'object') {
     const obj = data as Record<string, unknown>;
-    if (Array.isArray(obj.books)) return obj.books.length;
-    if (Array.isArray(obj.libraries)) return obj.libraries.length;
+    if (Array.isArray(obj.books)) {
+      return obj.books.length;
+    }
+    if (Array.isArray(obj.libraries)) {
+      return obj.libraries.length;
+    }
     if (obj.details && typeof obj.details === 'object') {
       return Object.keys(obj.details).length;
     }
@@ -84,12 +98,12 @@ function extractItemCount(data: unknown): number | null {
   return null;
 }
 
-export const DebugCacheTab: React.FC<DebugCacheTabProps> = ({
+export function DebugCacheTab({
   metrics,
   fetchCacheHitRatio,
   baseline,
   activeListeners,
-}) => {
+}: DebugCacheTabProps) {
   const [refreshTick, setRefreshTick] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedHash, setExpandedHash] = useState<string | null>(null);
@@ -133,7 +147,9 @@ export const DebugCacheTab: React.FC<DebugCacheTabProps> = ({
   }, [refreshTick]);
 
   const filteredEntries = useMemo(() => {
-    if (!searchQuery.trim()) return queryEntries;
+    if (!searchQuery.trim()) {
+      return queryEntries;
+    }
     const q = searchQuery.toLowerCase();
     return queryEntries.filter(e => e.keyLabel.toLowerCase().includes(q));
   }, [queryEntries, searchQuery]);
@@ -562,4 +578,4 @@ export const DebugCacheTab: React.FC<DebugCacheTabProps> = ({
       </div>
     </div>
   );
-};
+}

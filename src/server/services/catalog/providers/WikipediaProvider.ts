@@ -22,7 +22,9 @@ export function sanitizeAuthorName(rawAuthor: string): string[] {
     .replace(/\s*\([^)]*\)/g, '')
     .trim();
 
-  if (!cleaned) return [];
+  if (!cleaned) {
+    return [];
+  }
 
   const candidates: string[] = [cleaned];
 
@@ -40,7 +42,7 @@ export function sanitizeAuthorName(rawAuthor: string): string[] {
 
 export class WikipediaProvider {
   private static instance: WikipediaProvider;
-  public readonly scheduler = new ProviderQuotaScheduler({
+  readonly scheduler = new ProviderQuotaScheduler({
     providerId: 'wikipedia',
     maxConcurrent: 3,
     minSpacingMs: 200,
@@ -55,7 +57,7 @@ export class WikipediaProvider {
     globalProviderGovernor.registerProvider(this.scheduler);
   }
 
-  public static getInstance(): WikipediaProvider {
+  static getInstance(): WikipediaProvider {
     if (!WikipediaProvider.instance) {
       WikipediaProvider.instance = new WikipediaProvider();
     }
@@ -91,10 +93,14 @@ export class WikipediaProvider {
       query?: {pages?: Record<string, {extract?: string}>};
     };
     const pages = data?.query?.pages;
-    if (!pages) return null;
+    if (!pages) {
+      return null;
+    }
 
     const pageId = Object.keys(pages)[0];
-    if (!pageId || pageId === '-1') return null;
+    if (!pageId || pageId === '-1') {
+      return null;
+    }
 
     const extract = pages[pageId]?.extract;
     if (
@@ -111,7 +117,7 @@ export class WikipediaProvider {
     return null;
   }
 
-  public async fetchAuthorBio(
+  async fetchAuthorBio(
     authorName: string,
     options?: {
       priority?: SchedulePriority;

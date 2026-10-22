@@ -73,21 +73,29 @@ export function useLibraryData(
 
   const cachedLibrary = useMemo((): Library | undefined => {
     const currentUtils = utilsRef.current;
-    if (!libraryId || !userId || !currentUtils?.library) return undefined;
+    if (!libraryId || !userId || !currentUtils?.library) {
+      return undefined;
+    }
     const getFn = currentUtils.library.get?.getData;
     const fromGet = getFn?.({libraryId}) as Library | undefined;
-    if (fromGet) return fromGet;
+    if (fromGet) {
+      return fromGet;
+    }
 
     const listFn = currentUtils.library.list?.getData;
     const rawOwned = listFn?.({scopes: ['owned', 'shared']})?.libraries;
     const ownedShared = rawOwned as Library[] | undefined;
     const fromOwnedShared = ownedShared?.find(l => l.id === libraryId);
-    if (fromOwnedShared) return fromOwnedShared;
+    if (fromOwnedShared) {
+      return fromOwnedShared;
+    }
 
     const rawAll = listFn?.({scopes: ['all']})?.libraries;
     const allLibs = rawAll as Library[] | undefined;
     const fromAll = allLibs?.find(l => l.id === libraryId);
-    if (fromAll) return fromAll;
+    if (fromAll) {
+      return fromAll;
+    }
 
     const defaultLibs = listFn?.()?.libraries as Library[] | undefined;
     return defaultLibs?.find(l => l.id === libraryId);
@@ -128,9 +136,13 @@ export function useLibraryData(
   }, [library, libraryId]);
 
   const books = useMemo(() => {
-    if (!booksQuery.data) return [];
+    if (!booksQuery.data) {
+      return [];
+    }
     const raw = booksQuery.data;
-    if (Array.isArray(raw)) return raw as Book[];
+    if (Array.isArray(raw)) {
+      return raw as Book[];
+    }
     if ('books' in raw && Array.isArray((raw as {books: unknown}).books)) {
       return (raw as {books: Book[]}).books;
     }

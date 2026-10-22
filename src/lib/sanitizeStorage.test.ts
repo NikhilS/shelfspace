@@ -45,11 +45,11 @@ describe('sanitizeStorage', () => {
       {
         id: 'book-1',
         title: 'Leaked Book 1',
-      } as any,
+      } as unknown as Book,
       {
         id: 'book-2',
         title: 'Clean Book 2',
-      } as any,
+      } as unknown as Book,
     ];
 
     const onProgress = vi.fn();

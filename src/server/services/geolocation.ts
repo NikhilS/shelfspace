@@ -79,7 +79,9 @@ function persistToDisk() {
 let firestoreL2Disabled = false;
 
 function isPermissionOrUnavailableError(err: unknown): boolean {
-  if (!err) return false;
+  if (!err) {
+    return false;
+  }
   const msg = err instanceof Error ? err.message : String(err);
   const code = (err as {code?: number | string})?.code;
   return (
@@ -105,9 +107,13 @@ function toSlug(name: string): string {
 export async function getCachedGeocode(
   name: string,
 ): Promise<{lat: number; lng: number} | undefined> {
-  if (!name || name.trim().length === 0) return undefined;
+  if (!name || name.trim().length === 0) {
+    return undefined;
+  }
   const slug = toSlug(name);
-  if (!slug) return undefined;
+  if (!slug) {
+    return undefined;
+  }
 
   // 1. Check in-memory L1 cache
   if (cache.has(slug)) {
@@ -144,7 +150,9 @@ export async function cacheGeocode(
   coordinates: {lat: number; lng: number},
 ) {
   const slug = toSlug(name);
-  if (!slug) return;
+  if (!slug) {
+    return;
+  }
 
   // 1. Update in-memory L1 cache and persist to disk
   cache.set(slug, coordinates);
@@ -177,7 +185,9 @@ export async function geocodeLocation(
   name: string,
 ): Promise<{lat: number; lng: number} | undefined> {
   const cached = await getCachedGeocode(name);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
 
   const apiKey =
     process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;

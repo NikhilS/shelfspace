@@ -21,12 +21,12 @@ interface CurrentlyReadingCardProps {
   onOpenReadingLists: (initialTab: TrackedShelfStatus) => void;
 }
 
-export const CurrentlyReadingCard: React.FC<CurrentlyReadingCardProps> = ({
+export function CurrentlyReadingCard({
   readingBooks,
   onStatusChange,
   onTrackBook,
   onOpenReadingLists,
-}) => {
+}: CurrentlyReadingCardProps) {
   const navigate = useNavigate();
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -207,4 +207,4 @@ export const CurrentlyReadingCard: React.FC<CurrentlyReadingCardProps> = ({
       )}
     </div>
   );
-};
+}

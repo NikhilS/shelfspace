@@ -300,13 +300,13 @@ export async function batchUpsert(
   const db = getAdminDb();
   const libraryRef = db.collection('libraries').doc(libraryId);
 
-  type NormalizedOp = {
+  interface NormalizedOp {
     type: 'create' | 'update' | 'delete' | 'set';
     bookId: string;
     coreData?: Record<string, unknown>;
     heavyData?: Record<string, unknown>;
     merge?: boolean;
-  };
+  }
 
   const ops: NormalizedOp[] = [];
 
@@ -390,7 +390,9 @@ export async function batchUpsert(
             err,
           );
         } finally {
-          if (timerId !== undefined) clearTimeout(timerId);
+          if (timerId !== undefined) {
+            clearTimeout(timerId);
+          }
         }
       }
 
@@ -400,7 +402,9 @@ export async function batchUpsert(
             const bgBatch = db.batch();
             let bgOps = 0;
             for (const [bookId, patch] of enrichedMap.entries()) {
-              if (!patch || Object.keys(patch).length === 0) continue;
+              if (!patch || Object.keys(patch).length === 0) {
+                continue;
+              }
               const {coreUpdates, heavyUpdates} =
                 BookPartitioner.partitionUpdatePayload(
                   patch,
@@ -802,14 +806,18 @@ export async function mergeDuplicates(
   // Union userStatuses across survivor and all duplicates (highest progress wins)
   const mergedUserStatuses: Record<string, string> = {};
   for (const snap of bookDocs) {
-    if (!snap?.exists) continue;
+    if (!snap?.exists) {
+      continue;
+    }
     const data = (snap.data() || {}) as Record<string, unknown>;
     const statuses =
       data.userStatuses && typeof data.userStatuses === 'object'
         ? (data.userStatuses as Record<string, string>)
         : {};
     for (const [uidKey, st] of Object.entries(statuses)) {
-      if (!st) continue;
+      if (!st) {
+        continue;
+      }
       const existingSt = mergedUserStatuses[uidKey];
       const existingRank = existingSt ? STATUS_RANK[existingSt] || 0 : 0;
       const nextRank = STATUS_RANK[st] || 0;

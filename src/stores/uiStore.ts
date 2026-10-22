@@ -13,8 +13,11 @@ export const useUIStore = create<UIState>(set => ({
   toggleBookSelection: bookId =>
     set(state => {
       const next = new Set(state.selectedBookIds);
-      if (next.has(bookId)) next.delete(bookId);
-      else next.add(bookId);
+      if (next.has(bookId)) {
+        next.delete(bookId);
+      } else {
+        next.add(bookId);
+      }
       return {selectedBookIds: next};
     }),
 

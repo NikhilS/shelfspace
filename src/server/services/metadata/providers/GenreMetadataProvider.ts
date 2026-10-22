@@ -35,7 +35,9 @@ export class GenreMetadataProvider implements IMetadataProvider<BookGenreData> {
       return {};
     }
     const synopsisMap = await resolveBookSynopses(books, options);
-    if (options?.signal?.aborted) return {};
+    if (options?.signal?.aborted) {
+      return {};
+    }
 
     const batchedBooks = books.map(b => ({
       id: b.id,
@@ -54,7 +56,9 @@ export class GenreMetadataProvider implements IMetadataProvider<BookGenreData> {
 
     await Promise.all(
       chunks.map(async chunk => {
-        if (options?.signal?.aborted) return;
+        if (options?.signal?.aborted) {
+          return;
+        }
         const genreResult = await classifyBooks(chunk, {
           priority: 'BATCH',
           signal: options?.signal,

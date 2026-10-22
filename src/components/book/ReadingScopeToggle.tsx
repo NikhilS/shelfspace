@@ -9,13 +9,13 @@ interface ReadingScopeToggleProps {
   className?: string;
 }
 
-export const ReadingScopeToggle: React.FC<ReadingScopeToggleProps> = ({
+export function ReadingScopeToggle({
   readAndReadingCount,
   wantToReadCount,
   includeWantToRead,
   onToggleWantToRead,
   className = '',
-}) => {
+}: ReadingScopeToggleProps) {
   return (
     <div
       className={`inline-flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-surface-container border border-outline-variant/60 text-xs font-sans ${className}`}
@@ -56,4 +56,4 @@ export const ReadingScopeToggle: React.FC<ReadingScopeToggleProps> = ({
       </button>
     </div>
   );
-};
+}

@@ -30,7 +30,9 @@ interface InventaireEntity {
 }
 
 function resolveInventaireImageUrl(rawPath?: string): string {
-  if (!rawPath) return '';
+  if (!rawPath) {
+    return '';
+  }
   if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
     return rawPath;
   }
@@ -41,17 +43,19 @@ function resolveInventaireImageUrl(rawPath?: string): string {
 }
 
 function pickEnglishOrFirst(dict?: Record<string, string>): string {
-  if (!dict) return '';
+  if (!dict) {
+    return '';
+  }
   return (
     dict.en || dict['en-us'] || dict['en-gb'] || Object.values(dict)[0] || ''
   );
 }
 
 export class InventaireWikidataProvider implements ICatalogSourceProvider {
-  public readonly id = 'inventaire-wikidata' as const;
-  public readonly name = 'Inventaire · Wikidata';
-  public readonly authorityWeight = 82;
-  public readonly capabilities: ProviderCapabilities = {
+  readonly id = 'inventaire-wikidata' as const;
+  readonly name = 'Inventaire · Wikidata';
+  readonly authorityWeight = 82;
+  readonly capabilities: ProviderCapabilities = {
     isbnSearch: true,
     titleSearch: true,
     coverResolution: true,
@@ -60,7 +64,7 @@ export class InventaireWikidataProvider implements ICatalogSourceProvider {
     genre: false,
   };
 
-  public readonly scheduler = new ProviderQuotaScheduler({
+  readonly scheduler = new ProviderQuotaScheduler({
     providerId: 'inventaire-wikidata',
     maxConcurrent: 2,
     minSpacingMs: 350,
@@ -69,30 +73,38 @@ export class InventaireWikidataProvider implements ICatalogSourceProvider {
     defaultCooldownMs: 15_000,
   });
 
-  public isAvailable(): boolean {
+  isAvailable(): boolean {
     return true;
   }
 
-  public async searchByIsbn(
+  async searchByIsbn(
     isbn: string,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit | null> {
     const cleanIsbn = normalizeIsbn(isbn);
-    if (!cleanIsbn) return null;
+    if (!cleanIsbn) {
+      return null;
+    }
 
     const url = `https://inventaire.io/api/entities?action=by-uris&uris=isbn:${encodeURIComponent(cleanIsbn)}`;
     const response = await fetchWithProviderTimeout(url, {signal}, 3200);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return null;
+    }
 
     const data = (await response.json()) as {
       entities?: Record<string, InventaireEntity>;
     };
     const entities = data?.entities ? Object.values(data.entities) : [];
-    if (entities.length === 0) return null;
+    if (entities.length === 0) {
+      return null;
+    }
 
     const entity = entities[0];
     const title = pickEnglishOrFirst(entity.labels);
-    if (!title) return null;
+    if (!title) {
+      return null;
+    }
 
     const coverUrl = resolveInventaireImageUrl(entity.image?.url);
     const pubDate = entity.claims?.['wdt:P577']?.[0]?.slice(0, 10) || '';
@@ -126,7 +138,7 @@ export class InventaireWikidataProvider implements ICatalogSourceProvider {
     };
   }
 
-  public async searchByQuery(
+  async searchByQuery(
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {
@@ -134,11 +146,15 @@ export class InventaireWikidataProvider implements ICatalogSourceProvider {
       .filter(Boolean)
       .join(' ')
       .trim();
-    if (!searchStr) return [];
+    if (!searchStr) {
+      return [];
+    }
 
     const url = `https://inventaire.io/api/entities?action=search&types=works&search=${encodeURIComponent(searchStr)}&limit=5`;
     const response = await fetchWithProviderTimeout(url, {signal}, 3200);
-    if (!response.ok) return [];
+    if (!response.ok) {
+      return [];
+    }
 
     const data = (await response.json()) as {
       results?: Array<{
@@ -148,7 +164,9 @@ export class InventaireWikidataProvider implements ICatalogSourceProvider {
       }>;
     };
 
-    if (!data.results || data.results.length === 0) return [];
+    if (!data.results || data.results.length === 0) {
+      return [];
+    }
 
     return data.results
       .filter(r => Boolean(r.label))

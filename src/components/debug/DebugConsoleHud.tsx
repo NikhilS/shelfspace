@@ -31,7 +31,7 @@ const HEIGHT_CLASSES: Record<HeightPreset, string> = {
 
 export type DebugHudTab = 'logs' | 'network' | 'cache' | 'pwa_system';
 
-export const DebugConsoleHUD: React.FC = () => {
+export function DebugConsoleHud() {
   const {
     isDebugMode,
     debugData,
@@ -118,18 +118,30 @@ export const DebugConsoleHUD: React.FC = () => {
 
   const fetchCacheHitRatio = useMemo(() => {
     const total = metrics.totalFirestoreReads;
-    if (total === 0) return 100;
+    if (total === 0) {
+      return 100;
+    }
     return Math.round((metrics.firestoreCacheHits / total) * 100);
   }, [metrics.totalFirestoreReads, metrics.firestoreCacheHits]);
 
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
-      if (log.type === 'log' && !showLog) return false;
-      if (log.type === 'info' && !showInfo) return false;
-      if (log.type === 'warn' && !showWarn) return false;
-      if (log.type === 'error' && !showError) return false;
+      if (log.type === 'log' && !showLog) {
+        return false;
+      }
+      if (log.type === 'info' && !showInfo) {
+        return false;
+      }
+      if (log.type === 'warn' && !showWarn) {
+        return false;
+      }
+      if (log.type === 'error' && !showError) {
+        return false;
+      }
 
-      if (log.message.includes('[TELEMETRY_INTERNAL]')) return false;
+      if (log.message.includes('[TELEMETRY_INTERNAL]')) {
+        return false;
+      }
 
       if (searchText.trim()) {
         const searchLower = searchText.toLowerCase();
@@ -156,7 +168,9 @@ export const DebugConsoleHUD: React.FC = () => {
         log.type === 'db_write' ||
         log.type === 'api_res' ||
         log.type === 'gen_ai';
-      if (!isNetOp) return false;
+      if (!isNetOp) {
+        return false;
+      }
 
       if (searchText.trim()) {
         const queryLower = searchText.toLowerCase();
@@ -204,13 +218,19 @@ export const DebugConsoleHUD: React.FC = () => {
 
   const cycleHeight = () => {
     setHeightPreset(prev => {
-      if (prev === 'compact') return 'medium';
-      if (prev === 'medium') return 'tall';
+      if (prev === 'compact') {
+        return 'medium';
+      }
+      if (prev === 'medium') {
+        return 'tall';
+      }
       return 'compact';
     });
   };
 
-  if (!isDebugMode) return null;
+  if (!isDebugMode) {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none font-mono">
@@ -446,4 +466,4 @@ export const DebugConsoleHUD: React.FC = () => {
       </AnimatePresence>
     </div>
   );
-};
+}

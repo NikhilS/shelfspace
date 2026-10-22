@@ -52,12 +52,15 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
     vi.clearAllMocks();
   });
 
+  type CreateContextOpts = Parameters<typeof createContext>[0];
+  type CallerCtx = Parameters<typeof testRouter.createCaller>[0];
+
   describe('createContext - JWT Token Auth', () => {
     it('returns null user when no authorization headers are present', async () => {
       const ctx = await createContext({
-        req: {headers: {}} as any,
-        res: {} as any,
-      } as any);
+        req: {headers: {}},
+        res: {},
+      } as unknown as CreateContextOpts);
 
       expect(ctx.user).toBeNull();
       expect(ctx.isAppAllowed).toBe(false);
@@ -71,9 +74,9 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
       });
 
       const ctx = await createContext({
-        req: {headers: {authorization: 'Bearer valid_jwt_token'}} as any,
-        res: {} as any,
-      } as any);
+        req: {headers: {authorization: 'Bearer valid_jwt_token'}},
+        res: {},
+      } as unknown as CreateContextOpts);
 
       expect(ctx.user).toEqual({
         uid: 'super_uid',
@@ -94,9 +97,9 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
       });
 
       const ctx = await createContext({
-        req: {headers: {authorization: 'Bearer regular_jwt'}} as any,
-        res: {} as any,
-      } as any);
+        req: {headers: {authorization: 'Bearer regular_jwt'}},
+        res: {},
+      } as unknown as CreateContextOpts);
 
       expect(ctx.user?.uid).toBe('user_123');
       expect(ctx.isAppAllowed).toBe(true);
@@ -113,9 +116,9 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
       });
 
       const ctx = await createContext({
-        req: {headers: {authorization: 'Bearer stranger_jwt'}} as any,
-        res: {} as any,
-      } as any);
+        req: {headers: {authorization: 'Bearer stranger_jwt'}},
+        res: {},
+      } as unknown as CreateContextOpts);
 
       expect(ctx.user?.uid).toBe('stranger_999');
       expect(ctx.isAppAllowed).toBe(false);
@@ -126,8 +129,8 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
   describe('Procedure Middlewares', () => {
     it('allows publicProcedure for unauthenticated callers', async () => {
       const caller = testRouter.createCaller({
-        req: {} as any,
-        res: {} as any,
+        req: {} as unknown as CallerCtx['req'],
+        res: {} as unknown as CallerCtx['res'],
         user: null,
         isAppAllowed: false,
         isAdmin: false,
@@ -139,8 +142,8 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
 
     it('throws UNAUTHORIZED on protectedProcedure when user is null', async () => {
       const caller = testRouter.createCaller({
-        req: {} as any,
-        res: {} as any,
+        req: {} as unknown as CallerCtx['req'],
+        res: {} as unknown as CallerCtx['res'],
         user: null,
         isAppAllowed: false,
         isAdmin: false,
@@ -156,8 +159,8 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
 
     it('throws FORBIDDEN on protectedProcedure when user is not on allowlist', async () => {
       const caller = testRouter.createCaller({
-        req: {} as any,
-        res: {} as any,
+        req: {} as unknown as CallerCtx['req'],
+        res: {} as unknown as CallerCtx['res'],
         user: {uid: 'u1', email: 'unallowed@example.com'},
         isAppAllowed: false,
         isAdmin: false,
@@ -173,8 +176,8 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
 
     it('succeeds on protectedProcedure for allowlisted user', async () => {
       const caller = testRouter.createCaller({
-        req: {} as any,
-        res: {} as any,
+        req: {} as unknown as CallerCtx['req'],
+        res: {} as unknown as CallerCtx['res'],
         user: {uid: 'u1', email: 'allowed@example.com'},
         isAppAllowed: true,
         isAdmin: false,
@@ -186,8 +189,8 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
 
     it('throws FORBIDDEN on adminProcedure for non-admin user', async () => {
       const caller = testRouter.createCaller({
-        req: {} as any,
-        res: {} as any,
+        req: {} as unknown as CallerCtx['req'],
+        res: {} as unknown as CallerCtx['res'],
         user: {uid: 'u1', email: 'allowed@example.com'},
         isAppAllowed: true,
         isAdmin: false,
@@ -203,8 +206,8 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
 
     it('succeeds on adminProcedure for admin user', async () => {
       const caller = testRouter.createCaller({
-        req: {} as any,
-        res: {} as any,
+        req: {} as unknown as CallerCtx['req'],
+        res: {} as unknown as CallerCtx['res'],
         user: {uid: 'admin1', email: SUPERADMIN_EMAIL},
         isAppAllowed: true,
         isAdmin: true,

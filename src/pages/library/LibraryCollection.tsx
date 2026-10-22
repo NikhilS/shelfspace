@@ -78,7 +78,7 @@ interface LibraryCollectionProps {
   disablePaddingTop?: boolean;
 }
 
-export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
+export function LibraryCollection({
   libraryId,
   books,
   sortedBooks,
@@ -118,7 +118,7 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
   onEmptyAction,
   emptyActionLabel,
   disablePaddingTop = false,
-}) => {
+}: LibraryCollectionProps) {
   const hasActiveFilters = Boolean(
     filterGenre ||
     filterSubgenre ||
@@ -550,4 +550,4 @@ export const LibraryCollection: React.FC<LibraryCollectionProps> = ({
       </main>
     </>
   );
-};
+}

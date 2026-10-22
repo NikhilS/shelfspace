@@ -71,7 +71,9 @@ function assembleScatterPoints(
     neighborIndexLists?: SemanticNeighborIndex[][];
   },
 ): ScatterPoint[] {
-  if (rawItems.length === 0) return [];
+  if (rawItems.length === 0) {
+    return [];
+  }
 
   const relaxedCoords =
     precomputed?.relaxedCoords &&
@@ -100,7 +102,9 @@ function assembleScatterPoints(
     const neighbors: ConstellationNeighbor[] = neighborIndices
       .map((n): ConstellationNeighbor | null => {
         const target = rawItems[n.index];
-        if (!target) return null;
+        if (!target) {
+          return null;
+        }
         return {
           bookId: target.book.id,
           title: target.book.title,
@@ -204,7 +208,9 @@ export function useConstellationData(libraryId: string | undefined) {
     }
 
     async function processMap() {
-      if (!libraryId && !isReadingMode) return;
+      if (!libraryId && !isReadingMode) {
+        return;
+      }
 
       if (isBooksLoading) {
         setLoading(true);
@@ -235,7 +241,9 @@ export function useConstellationData(libraryId: string | undefined) {
         const booksByLib = new Map<string, typeof libraryBooks>();
         for (const book of libraryBooks) {
           const targetLibId = book.libraryId || libraryId;
-          if (!targetLibId) continue;
+          if (!targetLibId) {
+            continue;
+          }
           const list = booksByLib.get(targetLibId) || [];
           list.push(book);
           booksByLib.set(targetLibId, list);
@@ -311,7 +319,9 @@ export function useConstellationData(libraryId: string | undefined) {
           allBooks.push(merged as BookDoc);
         });
 
-        if (!isMounted) return;
+        if (!isMounted) {
+          return;
+        }
         setBooks(allBooks);
 
         if (allBooks.length < 3) {
@@ -354,7 +364,9 @@ export function useConstellationData(libraryId: string | undefined) {
 
           if (Object.keys(cachedNames).length > 0 && isMounted) {
             const cachedPlotData = await runWorkerGeometryOnly(rawItems);
-            if (!isMounted) return;
+            if (!isMounted) {
+              return;
+            }
             setClusterNames(cachedNames);
             setPlotData(cachedPlotData);
             setLoading(false);
@@ -374,7 +386,9 @@ export function useConstellationData(libraryId: string | undefined) {
           const toEmbedByLib = new Map<string, BookDoc[]>();
           for (const b of toEmbed) {
             const targetLibId = b.libraryId || libraryId;
-            if (!targetLibId) continue;
+            if (!targetLibId) {
+              continue;
+            }
             const list = toEmbedByLib.get(targetLibId) || [];
             list.push(b);
             toEmbedByLib.set(targetLibId, list);
@@ -546,8 +560,9 @@ export function useConstellationData(libraryId: string | undefined) {
         const groupedClusters: Record<number, BookDoc[]> = {};
         newPlotData.forEach(p => {
           if (p.clusterId !== -1) {
-            if (!groupedClusters[p.clusterId])
+            if (!groupedClusters[p.clusterId]) {
               groupedClusters[p.clusterId] = [];
+            }
             groupedClusters[p.clusterId].push(p.book);
           }
         });
@@ -594,7 +609,9 @@ export function useConstellationData(libraryId: string | undefined) {
               resolvedNames[c.id] = topGenre || `Constellation ${c.id + 1}`;
             }
           }
-          if (isMounted) setClusterNames(resolvedNames);
+          if (isMounted) {
+            setClusterNames(resolvedNames);
+          }
         }
 
         // Persist computed clusterCoordinates and clusterNames in single-library mode so subsequent visits load in O(N)
@@ -695,7 +712,9 @@ export function useConstellationData(libraryId: string | undefined) {
   ]);
 
   const handleRecluster = async () => {
-    if ((!libraryId && !isReadingMode) || loading) return;
+    if ((!libraryId && !isReadingMode) || loading) {
+      return;
+    }
     setLoading(true);
     setProgress('Re-computing constellation topology...');
     setClusterNames({});

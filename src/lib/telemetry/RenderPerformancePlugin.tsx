@@ -17,9 +17,7 @@ interface RenderPerformancePanelProps {
   ctx: TelemetryPluginContext;
 }
 
-const RenderPerformancePanel: React.FC<RenderPerformancePanelProps> = ({
-  ctx,
-}) => {
+function RenderPerformancePanel({ctx}: RenderPerformancePanelProps) {
   const {activeStates, activeListeners} = ctx;
   const [expandedModules, setExpandedModules] = useState<
     Record<string, boolean>
@@ -311,24 +309,24 @@ const RenderPerformancePanel: React.FC<RenderPerformancePanelProps> = ({
       </div>
     </div>
   );
-};
+}
 
 export class RenderPerformancePlugin implements TelemetryPlugin {
-  public id = 'render_perf';
-  public name = 'UI & Render';
-  public order = 40;
-  public icon = Activity;
+  id = 'render_perf';
+  name = 'UI & Render';
+  order = 40;
+  icon = Activity;
 
-  public badge(ctx: TelemetryPluginContext): string | number | undefined {
+  badge(ctx: TelemetryPluginContext): string | number | undefined {
     const count = Object.keys(ctx.activeStates).length;
     return count > 0 ? count : undefined;
   }
 
-  public renderTab(ctx: TelemetryPluginContext): React.ReactNode {
+  renderTab(ctx: TelemetryPluginContext): React.ReactNode {
     return <RenderPerformancePanel ctx={ctx} />;
   }
 
-  public getMetrics() {
+  getMetrics() {
     return {
       type: 'render_perf',
     };

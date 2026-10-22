@@ -42,7 +42,7 @@ const SHELF_TABS: Array<{id: ShelfFilterTab; label: string}> = [
   {id: 'abandoned', label: 'Abandoned'},
 ];
 
-export const ReadingListsDialog: React.FC<ReadingListsDialogProps> = ({
+export function ReadingListsDialog({
   isOpen,
   onClose,
   allItems,
@@ -51,7 +51,7 @@ export const ReadingListsDialog: React.FC<ReadingListsDialogProps> = ({
   initialGenre = null,
   onStatusChange,
   onOpenTrackBook,
-}) => {
+}: ReadingListsDialogProps) {
   const [activeTab, setActiveTab] = useState<ShelfFilterTab>(initialTab);
   const [selectedGenre, setSelectedGenre] = useState<string | null>(
     initialGenre,
@@ -91,7 +91,9 @@ export const ReadingListsDialog: React.FC<ReadingListsDialogProps> = ({
     <Dialog
       open={isOpen}
       onOpenChange={open => {
-        if (!open) onClose();
+        if (!open) {
+          onClose();
+        }
       }}
     >
       <DialogContent className="sm:max-w-4xl max-h-[88vh] flex flex-col overflow-hidden">
@@ -213,4 +215,4 @@ export const ReadingListsDialog: React.FC<ReadingListsDialogProps> = ({
       </DialogContent>
     </Dialog>
   );
-};
+}

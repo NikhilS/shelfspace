@@ -16,15 +16,21 @@ export function PrefetchAdjacentBooks({
   const bookListKey = bookList.join(',');
 
   useEffect(() => {
-    if (!libraryId || !bookList.length) return;
+    if (!libraryId || !bookList.length) {
+      return;
+    }
 
     const start = Math.max(0, currentIndex - radius);
     const end = Math.min(bookList.length - 1, currentIndex + radius);
 
     for (let i = start; i <= end; i++) {
-      if (i === currentIndex) continue;
+      if (i === currentIndex) {
+        continue;
+      }
       const bookId = bookList[i];
-      if (!bookId) continue;
+      if (!bookId) {
+        continue;
+      }
 
       if (typeof utils?.book?.get?.prefetch === 'function') {
         void utils.book.get

@@ -94,7 +94,9 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
       return {};
     }
     const synopsisMap = await resolveBookSynopses(books, options);
-    if (options?.signal?.aborted) return {};
+    if (options?.signal?.aborted) {
+      return {};
+    }
 
     const batchedBooks = books.map(b => ({
       id: b.id,
@@ -113,7 +115,9 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
 
     await Promise.all(
       chunks.map(async chunk => {
-        if (options?.signal?.aborted) return;
+        if (options?.signal?.aborted) {
+          return;
+        }
         const geoResult = await extractBookGeoMetadataBatch(chunk, {
           priority: 'BATCH',
           signal: options?.signal,
@@ -123,7 +127,9 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
           await Promise.all(
             geoResult.enrichment.map(
               async (item: BatchExtractedGeoBookResult) => {
-                if (options?.signal?.aborted) return;
+                if (options?.signal?.aborted) {
+                  return;
+                }
                 if (item.id) {
                   results[item.id] = await this.processLocations(item);
                 }

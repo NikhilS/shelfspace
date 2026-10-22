@@ -33,7 +33,7 @@ describe('enrichmentApiRouter', () => {
     },
     isAppAllowed: true,
     isAdmin: true,
-  } as any;
+  } as unknown as Parameters<typeof enrichmentApiRouter.createCaller>[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -48,7 +48,9 @@ describe('enrichmentApiRouter', () => {
       enrichedCount: 2,
       failedCount: 0,
       results: [],
-    } as any);
+    } as unknown as Awaited<
+      ReturnType<typeof EnrichmentService.triggerBatchEnrichment>
+    >);
 
     const caller = enrichmentApiRouter.createCaller(mockCtx);
     const res = await caller.triggerBatch({
@@ -92,10 +94,12 @@ describe('enrichmentApiRouter', () => {
       jobId: 'job-1',
       status: 'running',
       totalBooks: 2,
-    } as any);
+    } as unknown as Awaited<
+      ReturnType<typeof enrichmentJobCoordinator.startJob>
+    >);
     vi.mocked(enrichmentJobCoordinator.getJobStatus).mockReturnValueOnce({
       activeJob: null,
-    } as any);
+    } as unknown as ReturnType<typeof enrichmentJobCoordinator.getJobStatus>);
 
     const caller = enrichmentApiRouter.createCaller(mockCtx);
     const startRes = await caller.startJob({
@@ -123,7 +127,7 @@ describe('enrichmentApiRouter', () => {
       isAppAllowed: true,
       isAdmin: false,
       hasAiPlan: false,
-    } as any;
+    } as unknown as Parameters<typeof enrichmentApiRouter.createCaller>[0];
 
     const caller = enrichmentApiRouter.createCaller(nonAiCtx);
     await expect(
@@ -145,7 +149,9 @@ describe('enrichmentApiRouter', () => {
       enrichedCount: 1,
       failedCount: 0,
       results: [],
-    } as any);
+    } as unknown as Awaited<
+      ReturnType<typeof EnrichmentService.triggerBatchEnrichment>
+    >);
 
     const nonAiCtx = {
       user: {
@@ -155,7 +161,7 @@ describe('enrichmentApiRouter', () => {
       isAppAllowed: true,
       isAdmin: false,
       hasAiPlan: false,
-    } as any;
+    } as unknown as Parameters<typeof enrichmentApiRouter.createCaller>[0];
 
     const caller = enrichmentApiRouter.createCaller(nonAiCtx);
     await caller.triggerBatch({

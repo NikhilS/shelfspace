@@ -36,7 +36,7 @@ describe('libraryApiRouter', () => {
     },
     isAppAllowed: true,
     isAdmin: true,
-  } as any;
+  } as unknown as Parameters<typeof libraryApiRouter.createCaller>[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,7 +52,9 @@ describe('libraryApiRouter', () => {
       },
     ];
     vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
-      libraries: mockLibraries as any,
+      libraries: mockLibraries as unknown as Awaited<
+        ReturnType<typeof LibraryService.getUserLibraries>
+      >['libraries'],
     });
 
     const caller = libraryApiRouter.createCaller(mockCtx);

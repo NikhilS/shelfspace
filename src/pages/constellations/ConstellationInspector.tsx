@@ -26,7 +26,7 @@ interface ConstellationInspectorProps {
   onFocusStar: (star: ScatterPoint) => void;
 }
 
-export const ConstellationInspector: React.FC<ConstellationInspectorProps> = ({
+export function ConstellationInspector({
   selectedStar,
   activeCluster,
   clustersGeometry,
@@ -38,7 +38,7 @@ export const ConstellationInspector: React.FC<ConstellationInspectorProps> = ({
   onResetView,
   onFocusCluster,
   onFocusStar,
-}) => {
+}: ConstellationInspectorProps) {
   return (
     <aside className="lg:col-span-4 bg-surface border border-outline-variant/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between min-h-[420px] lg:h-[640px] overflow-y-auto custom-scrollbar">
       {selectedStar ? (
@@ -332,4 +332,4 @@ export const ConstellationInspector: React.FC<ConstellationInspectorProps> = ({
       )}
     </aside>
   );
-};
+}

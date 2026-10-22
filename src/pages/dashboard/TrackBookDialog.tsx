@@ -118,9 +118,13 @@ export function TrackBookDialog({
   };
 
   const handleSearch = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+    if (e) {
+      e.preventDefault();
+    }
     const trimmed = query.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      return;
+    }
 
     setIsSearching(true);
     setSelected(null);
@@ -165,7 +169,9 @@ export function TrackBookDialog({
 
   const handleConfirmTrack = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selected || isSubmitting) return;
+    if (!selected || isSubmitting) {
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -246,7 +252,9 @@ export function TrackBookDialog({
     <Dialog
       open={isOpen}
       onOpenChange={open => {
-        if (!open) handleClose();
+        if (!open) {
+          handleClose();
+        }
       }}
     >
       <DialogContent className="sm:max-w-2xl max-h-[88vh] flex flex-col overflow-hidden">

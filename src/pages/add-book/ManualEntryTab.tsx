@@ -1,6 +1,6 @@
 import React, {useState} from 'react';
 import {BookDetails} from '../../types';
-import CoverCamera from '../../components/import/CoverCamera';
+import {CoverCamera} from '../../components/import/CoverCamera';
 import {CoverGalleryPicker} from '../../components/book/CoverGalleryPicker';
 import {Camera, X, Loader2} from 'lucide-react';
 import {toast} from 'sonner';

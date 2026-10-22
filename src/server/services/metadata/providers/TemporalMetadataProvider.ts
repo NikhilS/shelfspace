@@ -31,7 +31,9 @@ export class TemporalMetadataProvider implements IMetadataProvider<unknown> {
       return {};
     }
     const synopsisMap = await resolveBookSynopses(books, options);
-    if (options?.signal?.aborted) return {};
+    if (options?.signal?.aborted) {
+      return {};
+    }
 
     const batchedBooks = books.map(b => ({
       id: b.id,
@@ -50,7 +52,9 @@ export class TemporalMetadataProvider implements IMetadataProvider<unknown> {
 
     await Promise.all(
       chunks.map(async chunk => {
-        if (options?.signal?.aborted) return;
+        if (options?.signal?.aborted) {
+          return;
+        }
         const temporalResult = await extractBookTemporalMetadataBatch(chunk, {
           priority: 'BATCH',
           signal: options?.signal,

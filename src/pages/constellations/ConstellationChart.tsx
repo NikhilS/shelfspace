@@ -21,7 +21,7 @@ import {ConstellationInspector} from './ConstellationInspector';
 
 export {CLUSTER_COLORS} from './types';
 
-export default function ConstellationChart({
+export function ConstellationChart({
   plotData,
   clusterNames,
   libraryId: propLibraryId,
@@ -104,7 +104,9 @@ export default function ConstellationChart({
     const allWorldPoints: Point2D[] = plotData.map(p => ({x: p.x, y: p.y}));
 
     plotData.forEach((p, idx) => {
-      if (p.clusterId < 0) return;
+      if (p.clusterId < 0) {
+        return;
+      }
       const list = grouped.get(p.clusterId) || [];
       list.push(idx);
       grouped.set(p.clusterId, list);
@@ -115,7 +117,9 @@ export default function ConstellationChart({
 
     for (const cid of sortedClusterIds) {
       const indices = grouped.get(cid) || [];
-      if (indices.length === 0) continue;
+      if (indices.length === 0) {
+        continue;
+      }
 
       const clusterPts = indices.map(i => allWorldPoints[i]);
       let sumX = 0;
@@ -167,7 +171,9 @@ export default function ConstellationChart({
   // Search filter matching book IDs
   const matchingStarIds = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return null;
+    if (!q) {
+      return null;
+    }
     const set = new Set<string>();
     for (const p of plotData) {
       const id = p.id || p.book.id;
@@ -188,12 +194,16 @@ export default function ConstellationChart({
   }, [plotData, clusterNames, searchQuery]);
 
   const selectedStar = useMemo(() => {
-    if (!selectedStarId) return null;
+    if (!selectedStarId) {
+      return null;
+    }
     return starById.get(selectedStarId)?.point || null;
   }, [selectedStarId, starById]);
 
   const hoveredStar = useMemo(() => {
-    if (!hoveredStarId) return null;
+    if (!hoveredStarId) {
+      return null;
+    }
     return starById.get(hoveredStarId)?.point || null;
   }, [hoveredStarId, starById]);
 
@@ -204,7 +214,9 @@ export default function ConstellationChart({
         : selectedStar
           ? selectedStar.clusterId
           : null;
-    if (cid === null || cid < 0) return null;
+    if (cid === null || cid < 0) {
+      return null;
+    }
     return clusterById.get(cid) || null;
   }, [activeClusterId, selectedStar, clusterById]);
 
@@ -267,7 +279,9 @@ export default function ConstellationChart({
   const focusOnCluster = useCallback(
     (clusterId: number) => {
       const cluster = clusterById.get(clusterId);
-      if (!cluster) return;
+      if (!cluster) {
+        return;
+      }
       setSelectedStarId(null);
       setActiveClusterId(clusterId);
 
@@ -278,10 +292,18 @@ export default function ConstellationChart({
       let maxY = -Infinity;
       for (const idx of cluster.pointIndices) {
         const pt = plotData[idx];
-        if (pt.x < minX) minX = pt.x;
-        if (pt.x > maxX) maxX = pt.x;
-        if (pt.y < minY) minY = pt.y;
-        if (pt.y > maxY) maxY = pt.y;
+        if (pt.x < minX) {
+          minX = pt.x;
+        }
+        if (pt.x > maxX) {
+          maxX = pt.x;
+        }
+        if (pt.y < minY) {
+          minY = pt.y;
+        }
+        if (pt.y > maxY) {
+          maxY = pt.y;
+        }
       }
 
       const span = Math.max(26, maxX - minX, maxY - minY);
@@ -316,7 +338,9 @@ export default function ConstellationChart({
   // Track viewport size with ResizeObserver
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
+    if (!el || typeof ResizeObserver === 'undefined') {
+      return;
+    }
 
     const ro = new ResizeObserver(entries => {
       for (const entry of entries) {
@@ -341,14 +365,20 @@ export default function ConstellationChart({
     }
 
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
 
     let isDisposed = false;
 
     const drawFrame = () => {
-      if (isDisposed) return;
+      if (isDisposed) {
+        return;
+      }
 
       const cam = cameraRef.current;
       const dx = cam.targetX - cam.x;
@@ -475,7 +505,9 @@ export default function ConstellationChart({
   // Pointer & Touch Event Handlers
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
     canvas.setPointerCapture(e.pointerId);
 
     const rect = canvas.getBoundingClientRect();
@@ -501,7 +533,9 @@ export default function ConstellationChart({
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
     const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
@@ -601,7 +635,9 @@ export default function ConstellationChart({
   // Native non-passive wheel listener for cursor-centered zoom without page scroll
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();

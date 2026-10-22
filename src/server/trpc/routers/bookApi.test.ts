@@ -33,7 +33,7 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
     },
     isAppAllowed: true,
     isAdmin: false,
-  } as any;
+  } as unknown as Parameters<typeof bookApiRouter.createCaller>[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -166,13 +166,17 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
         ],
       });
 
-      expect(BookService.batchUpsert).toHaveBeenCalledWith('user-456', {
-        libraryId: 'lib-1',
-        operations: [
-          {type: 'create', bookId: 'b-1', data: {title: 'Book 1'}},
-          {type: 'create', bookId: 'b-2', data: {title: 'Book 2'}},
-        ],
-      });
+      expect(BookService.batchUpsert).toHaveBeenCalledWith(
+        'user-456',
+        {
+          libraryId: 'lib-1',
+          operations: [
+            {type: 'create', bookId: 'b-1', data: {title: 'Book 1'}},
+            {type: 'create', bookId: 'b-2', data: {title: 'Book 2'}},
+          ],
+        },
+        undefined,
+      );
       expect(res.count).toBe(2);
     });
   });
@@ -187,7 +191,7 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
         id: 'b-1',
         title: 'Snow Crash',
         author: 'Neal Stephenson',
-      } as any);
+      } as unknown as Awaited<ReturnType<typeof BookService.getBook>>);
 
       const caller = bookApiRouter.createCaller(mockUserCtx);
       const res = await caller.get({

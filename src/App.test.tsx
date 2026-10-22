@@ -1,7 +1,7 @@
 import React from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import {render} from '@testing-library/react';
-import App from './App';
+import {App} from './App';
 
 vi.mock('./stores/authStore', () => ({
   useAuthStore: Object.assign(() => ({user: null, isAuthReady: true}), {

@@ -28,10 +28,10 @@ interface LocResponse {
 }
 
 export class LibraryOfCongressProvider implements ICatalogSourceProvider {
-  public readonly id = 'library-of-congress' as const;
-  public readonly name = 'Library of Congress';
-  public readonly authorityWeight = 78;
-  public readonly capabilities: ProviderCapabilities = {
+  readonly id = 'library-of-congress' as const;
+  readonly name = 'Library of Congress';
+  readonly authorityWeight = 78;
+  readonly capabilities: ProviderCapabilities = {
     isbnSearch: true,
     titleSearch: true,
     coverResolution: false,
@@ -40,7 +40,7 @@ export class LibraryOfCongressProvider implements ICatalogSourceProvider {
     genre: true,
   };
 
-  public readonly scheduler = new ProviderQuotaScheduler({
+  readonly scheduler = new ProviderQuotaScheduler({
     providerId: 'library-of-congress',
     maxConcurrent: 2,
     minSpacingMs: 750,
@@ -49,7 +49,7 @@ export class LibraryOfCongressProvider implements ICatalogSourceProvider {
     defaultCooldownMs: 25_000,
   });
 
-  public isAvailable(): boolean {
+  isAvailable(): boolean {
     return true;
   }
 
@@ -91,24 +91,30 @@ export class LibraryOfCongressProvider implements ICatalogSourceProvider {
     };
   }
 
-  public async searchByIsbn(
+  async searchByIsbn(
     isbn: string,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit | null> {
     const cleanIsbn = normalizeIsbn(isbn);
-    if (!cleanIsbn) return null;
+    if (!cleanIsbn) {
+      return null;
+    }
 
     const url = `https://www.loc.gov/books/?fo=json&q=${encodeURIComponent(cleanIsbn)}&c=1`;
     const response = await fetchWithProviderTimeout(url, {signal}, 3500);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return null;
+    }
 
     const data = (await response.json()) as LocResponse;
-    if (!data.results || data.results.length === 0) return null;
+    if (!data.results || data.results.length === 0) {
+      return null;
+    }
 
     return this.mapLocItemToHit(data.results[0], cleanIsbn);
   }
 
-  public async searchByQuery(
+  async searchByQuery(
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {
@@ -116,14 +122,20 @@ export class LibraryOfCongressProvider implements ICatalogSourceProvider {
       .filter(Boolean)
       .join(' ')
       .trim();
-    if (!qStr) return [];
+    if (!qStr) {
+      return [];
+    }
 
     const url = `https://www.loc.gov/books/?fo=json&q=${encodeURIComponent(qStr)}&c=4`;
     const response = await fetchWithProviderTimeout(url, {signal}, 3500);
-    if (!response.ok) return [];
+    if (!response.ok) {
+      return [];
+    }
 
     const data = (await response.json()) as LocResponse;
-    if (!data.results || data.results.length === 0) return [];
+    if (!data.results || data.results.length === 0) {
+      return [];
+    }
 
     return data.results
       .filter(r => Boolean(r.title))

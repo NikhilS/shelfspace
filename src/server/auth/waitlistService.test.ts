@@ -4,17 +4,17 @@ import {AllowlistService} from './allowlistService';
 
 const mockDocGet = vi.fn();
 const mockDocSet = vi.fn();
-const mockDoc = vi.fn((_path: string) => ({
+const mockDoc = vi.fn(() => ({
   get: mockDocGet,
   set: mockDocSet,
 }));
 
 const mockCollectionGet = vi.fn();
-const mockCollectionDoc = vi.fn((_id: string) => ({
+const mockCollectionDoc = vi.fn(() => ({
   get: mockDocGet,
   set: mockDocSet,
 }));
-const mockCollection = vi.fn((_path: string) => ({
+const mockCollection = vi.fn(() => ({
   get: mockCollectionGet,
   doc: mockCollectionDoc,
 }));

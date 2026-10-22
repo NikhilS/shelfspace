@@ -3,7 +3,9 @@
  */
 
 export function normalizeIsbn(isbn?: string): string {
-  if (!isbn) return '';
+  if (!isbn) {
+    return '';
+  }
   return isbn.replace(/[^0-9X]/gi, '').toUpperCase();
 }
 

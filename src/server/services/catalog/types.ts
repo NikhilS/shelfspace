@@ -131,7 +131,9 @@ export async function fetchWithProviderTimeout(
 }
 
 export function stripHtmlTags(raw: string | undefined | null): string {
-  if (!raw) return '';
+  if (!raw) {
+    return '';
+  }
   return raw
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')

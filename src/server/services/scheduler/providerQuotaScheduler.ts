@@ -44,9 +44,9 @@ interface QueuedJob<T> {
 }
 
 export class ProviderSkippedError extends Error {
-  public readonly providerId: string;
-  public readonly reason: ProviderCapacityStatus;
-  public readonly estimatedWaitMs: number;
+  readonly providerId: string;
+  readonly reason: ProviderCapacityStatus;
+  readonly estimatedWaitMs: number;
 
   constructor(
     providerId: string,
@@ -106,7 +106,7 @@ export function attachSchedulerTelemetryRecorder(
  * and coordinated two-tier (Local + Global) concurrency enforcement.
  */
 export class ProviderQuotaScheduler {
-  public readonly providerId: string;
+  readonly providerId: string;
   private readonly maxConcurrent: number;
   private readonly minSpacingMs: number;
   private readonly maxRequestsPerMinute: number;
@@ -170,7 +170,7 @@ export class ProviderQuotaScheduler {
    * Computes a real-time capacity and wait-time snapshot for a given priority lane
    * BEFORE committing to schedule a task.
    */
-  public inspectCapacity(
+  inspectCapacity(
     priority: SchedulePriority = 'INTERACTIVE',
   ): CapacitySnapshot {
     const now = Date.now();
@@ -226,7 +226,7 @@ export class ProviderQuotaScheduler {
   /**
    * Explicitly places this provider into a cooldown state (e.g. after HTTP 429).
    */
-  public recordCooldown(durationMs?: number): void {
+  recordCooldown(durationMs?: number): void {
     const now = Date.now();
     this.consecutiveRateLimits++;
     const computedCooldown =
@@ -240,7 +240,9 @@ export class ProviderQuotaScheduler {
 
   private attachQueueAbortListener(job: QueuedJob<unknown>): void {
     const signal = job.options.signal;
-    if (!signal) return;
+    if (!signal) {
+      return;
+    }
     this.cleanupJobListeners(job);
     const onAbort = () => {
       this.removeJobFromQueues(job);
@@ -256,12 +258,9 @@ export class ProviderQuotaScheduler {
   /**
    * Schedules a task with priority queueing, optional maxWaitMs deadline, and AbortSignal support.
    */
-  public schedule<T>(fn: () => Promise<T>): Promise<T>;
-  public schedule<T>(
-    options: ScheduleTaskOptions,
-    fn: () => Promise<T>,
-  ): Promise<T>;
-  public schedule<T>(
+  schedule<T>(fn: () => Promise<T>): Promise<T>;
+  schedule<T>(options: ScheduleTaskOptions, fn: () => Promise<T>): Promise<T>;
+  schedule<T>(
     optionsOrFn: ScheduleTaskOptions | (() => Promise<T>),
     maybeFn?: () => Promise<T>,
   ): Promise<T> {
@@ -377,7 +376,7 @@ export class ProviderQuotaScheduler {
     evictFrom(this.batchQueue);
   }
 
-  public drain(): void {
+  drain(): void {
     if (this.drainTimer !== null) {
       clearTimeout(this.drainTimer);
       this.drainTimer = null;
@@ -470,7 +469,9 @@ export class ProviderQuotaScheduler {
   }
 
   private extractRateLimitCooldownMs(error: unknown): number | null {
-    if (!error) return null;
+    if (!error) {
+      return null;
+    }
     const status =
       (error as {status?: number; statusCode?: number})?.status ??
       (error as {statusCode?: number})?.statusCode;
@@ -490,7 +491,9 @@ export class ProviderQuotaScheduler {
   }
 
   private isTransientRetryableError(error: unknown): boolean {
-    if (!error) return false;
+    if (!error) {
+      return false;
+    }
     const name = (error as Error)?.name;
     if (name === 'AbortError' || name === 'ProviderSkippedError') {
       return false;
@@ -502,7 +505,9 @@ export class ProviderQuotaScheduler {
   }
 
   private extractTokenUsage(result: unknown): number | undefined {
-    if (!result || typeof result !== 'object') return undefined;
+    if (!result || typeof result !== 'object') {
+      return undefined;
+    }
     const usage = (
       result as {
         usageMetadata?: {
@@ -512,7 +517,9 @@ export class ProviderQuotaScheduler {
         };
       }
     ).usageMetadata;
-    if (!usage) return undefined;
+    if (!usage) {
+      return undefined;
+    }
     if (
       typeof usage.totalTokenCount === 'number' &&
       usage.totalTokenCount > 0
@@ -640,7 +647,7 @@ export class ProviderQuotaScheduler {
     }
   }
 
-  public stop(): void {
+  stop(): void {
     if (this.drainTimer !== null) {
       clearTimeout(this.drainTimer);
       this.drainTimer = null;

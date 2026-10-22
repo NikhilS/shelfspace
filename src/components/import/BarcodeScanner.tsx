@@ -6,10 +6,7 @@ interface BarcodeScannerProps {
   paused?: boolean;
 }
 
-export default function BarcodeScanner({
-  onScan,
-  paused = false,
-}: BarcodeScannerProps) {
+export function BarcodeScanner({onScan, paused = false}: BarcodeScannerProps) {
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [useFallbackCamera, setUseFallbackCamera] = useState(false);
 

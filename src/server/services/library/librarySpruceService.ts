@@ -125,8 +125,12 @@ export async function resetMetadata(
           if (raw.synopsis || raw.description) {
             detailPayload.synopsis = raw.synopsis || raw.description;
           }
-          if (raw.authorBio) detailPayload.authorBio = raw.authorBio;
-          if (raw.embedding) detailPayload.embedding = raw.embedding;
+          if (raw.authorBio) {
+            detailPayload.authorBio = raw.authorBio;
+          }
+          if (raw.embedding) {
+            detailPayload.embedding = raw.embedding;
+          }
           if (raw.clusterCoordinates) {
             detailPayload.clusterCoordinates = raw.clusterCoordinates;
           }
@@ -291,7 +295,9 @@ export function hasValidRasterMagicBytes(
   buffer: Buffer,
   mimeType: string,
 ): boolean {
-  if (buffer.length < 4) return false;
+  if (buffer.length < 4) {
+    return false;
+  }
 
   // Block disguised HTML/SVG payloads
   const headAscii = buffer.subarray(0, 256).toString('utf8').toLowerCase();
@@ -325,7 +331,9 @@ export function hasValidRasterMagicBytes(
     );
   }
   if (normalizedMime === 'image/webp') {
-    if (buffer.length < 12) return false;
+    if (buffer.length < 12) {
+      return false;
+    }
     return (
       buffer[0] === 0x52 &&
       buffer[1] === 0x49 &&

@@ -30,10 +30,10 @@ interface OpenLibraryResponse {
 }
 
 export class OpenLibraryProvider implements ICatalogSourceProvider {
-  public readonly id = 'open-library' as const;
-  public readonly name = 'Open Library';
-  public readonly authorityWeight = 75;
-  public readonly capabilities: ProviderCapabilities = {
+  readonly id = 'open-library' as const;
+  readonly name = 'Open Library';
+  readonly authorityWeight = 75;
+  readonly capabilities: ProviderCapabilities = {
     isbnSearch: true,
     titleSearch: true,
     coverResolution: true,
@@ -42,7 +42,7 @@ export class OpenLibraryProvider implements ICatalogSourceProvider {
     genre: true,
   };
 
-  public readonly scheduler = new ProviderQuotaScheduler({
+  readonly scheduler = new ProviderQuotaScheduler({
     providerId: 'open-library',
     maxConcurrent: 3,
     minSpacingMs: 200,
@@ -51,7 +51,7 @@ export class OpenLibraryProvider implements ICatalogSourceProvider {
     defaultCooldownMs: 12_000,
   });
 
-  public isAvailable(): boolean {
+  isAvailable(): boolean {
     return true;
   }
 
@@ -104,12 +104,14 @@ export class OpenLibraryProvider implements ICatalogSourceProvider {
     };
   }
 
-  public async searchByIsbn(
+  async searchByIsbn(
     isbn: string,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit | null> {
     const cleanIsbn = normalizeIsbn(isbn);
-    if (!cleanIsbn) return null;
+    if (!cleanIsbn) {
+      return null;
+    }
 
     let response = await fetchWithProviderTimeout(
       `https://openlibrary.org/search.json?isbn=${encodeURIComponent(cleanIsbn)}&limit=1`,
@@ -138,7 +140,7 @@ export class OpenLibraryProvider implements ICatalogSourceProvider {
     return null;
   }
 
-  public async searchByQuery(
+  async searchByQuery(
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {
@@ -155,10 +157,14 @@ export class OpenLibraryProvider implements ICatalogSourceProvider {
     }
 
     const response = await fetchWithProviderTimeout(url, {signal}, 3500);
-    if (!response.ok) return [];
+    if (!response.ok) {
+      return [];
+    }
 
     const data = (await response.json()) as OpenLibraryResponse;
-    if (!data.docs || data.docs.length === 0) return [];
+    if (!data.docs || data.docs.length === 0) {
+      return [];
+    }
 
     return data.docs.map(doc => this.mapDocToHit(doc, query.isbn));
   }

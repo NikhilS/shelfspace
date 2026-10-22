@@ -1,23 +1,23 @@
 import React, {useState} from 'react';
 import {BookDetails} from '../../types';
-import BulkImport from './BulkImport';
-import ExtractedBooksTable from './ExtractedBooksTable';
+import {BulkImport} from './BulkImport';
+import {ExtractedBooksTable} from './ExtractedBooksTable';
 
-interface CSVImportTabProps {
+interface CsvImportTabProps {
   allowDuplicates: boolean;
   existingBooks: BookDetails[];
   addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
   mode?: 'library' | 'reading';
 }
 
-export default function CSVImportTab({
+export function CsvImportTab({
   allowDuplicates,
   existingBooks,
   addBooks,
   mode = 'library',
-}: CSVImportTabProps) {
+}: CsvImportTabProps) {
   const [extractedBooks, setExtractedBooks] = useState<
-    {
+    Array<{
       title: string;
       author: string;
       isbn?: string;
@@ -25,7 +25,7 @@ export default function CSVImportTab({
       subgenres?: string[];
       genres?: string[];
       format?: 'physical' | 'digital';
-    }[]
+    }>
   >([]);
   const [selectedExtracted, setSelectedExtracted] = useState<Set<string>>(
     new Set(),

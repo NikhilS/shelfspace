@@ -30,7 +30,9 @@ import {useBookInsights} from './useBookInsights';
 import {useDebug} from '../../stores/debugStore';
 
 const formatYear = (year: number) => {
-  if (year < 0) return `${Math.abs(year)} BCE`;
+  if (year < 0) {
+    return `${Math.abs(year)} BCE`;
+  }
   return `${year} CE`;
 };
 
@@ -84,18 +86,23 @@ export function BookContent({
 
   // Filter huge payloads for DebugOverlay (only if active)
   const debugData = useMemo(() => {
-    if (!isActive || !bookBase) return null;
+    if (!isActive || !bookBase) {
+      return null;
+    }
     const base = {...bookBase};
     const details: Record<string, unknown> = bookDetails
       ? {...bookDetails}
       : {};
 
-    if (bookDetails?.embedding)
+    if (bookDetails?.embedding) {
       details.embedding = `[Vector array - ${bookDetails.embedding.length} dimensions]`;
-    if (bookDetails?.synopsis)
+    }
+    if (bookDetails?.synopsis) {
       details.synopsis = `[Present: ${bookDetails.synopsis.length} chars]`;
-    if (bookDetails?.authorBio)
+    }
+    if (bookDetails?.authorBio) {
       details.authorBio = `[Present: ${bookDetails.authorBio.length} chars]`;
+    }
 
     return {bookBase: base, bookDetails: details};
   }, [isActive, bookBase, bookDetails]);
@@ -114,7 +121,9 @@ export function BookContent({
   }, [debugData, setDebugData, isActive, location.pathname]);
 
   const handleDeleteBook = async () => {
-    if (!book || !libraryId || !canEdit) return;
+    if (!book || !libraryId || !canEdit) {
+      return;
+    }
     try {
       await deleteBook();
       toast.success('Book deleted');

@@ -25,21 +25,33 @@ module.exports = [
       'unused-imports': unusedImportsPlugin,
     },
     rules: {
-      'unused-imports/no-unused-imports': 'warn',
+      'unused-imports/no-unused-imports': 'error',
+      '@typescript-eslint/array-type': ['error', {default: 'array-simple'}],
+      '@typescript-eslint/explicit-member-accessibility': [
+        'error',
+        {accessibility: 'no-public'},
+      ],
+      '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ExportDefaultDeclaration',
+          message:
+            'Google TypeScript Style Guide (§ 3.3.2): Do not use default exports; always use named exports.',
+        },
+      ],
+    },
+  },
+  {
+    files: ['vite.config.ts'],
+    rules: {
+      'no-restricted-syntax': 'off',
     },
   },
   {
     files: ['**/*.rules'],
     rules: {
       'prettier/prettier': 'off',
-    },
-  },
-  {
-    files: ['**/*.test.ts', '**/*.test.tsx'],
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': 'off',
-      'unused-imports/no-unused-imports': 'off',
     },
   },
 ];

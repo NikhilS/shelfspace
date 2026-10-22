@@ -32,7 +32,7 @@ interface LibraryOverviewProps {
   onAddBook?: () => void;
 }
 
-export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
+export function LibraryOverview({
   books,
   library,
   user,
@@ -45,12 +45,14 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
   selectGenreAndGoToCollection,
   pickError,
   onAddBook,
-}) => {
+}: LibraryOverviewProps) {
   const navigate = useNavigate();
   const location = useLocation();
 
   const readingBooks = useMemo(() => {
-    if (!user) return [];
+    if (!user) {
+      return [];
+    }
     return books
       .filter(b => b.userStatuses?.[user.uid] === 'reading')
       .slice(0, 2);
@@ -67,9 +69,13 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
   }, [books]);
 
   const lastCatalogedDate = useMemo(() => {
-    if (books.length === 0) return 'Never';
+    if (books.length === 0) {
+      return 'Never';
+    }
     const latestTime = Math.max(...books.map(b => getFirestoreTime(b.addedAt)));
-    if (latestTime <= 0) return 'Unknown';
+    if (latestTime <= 0) {
+      return 'Unknown';
+    }
     return formatShortDate(latestTime);
   }, [books]);
 
@@ -304,4 +310,4 @@ export const LibraryOverview: React.FC<LibraryOverviewProps> = ({
       )}
     </motion.div>
   );
-};
+}

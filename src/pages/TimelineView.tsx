@@ -32,7 +32,7 @@ import {TimelineRiverCanvas} from './timeline/TimelineRiverCanvas';
 
 export {formatYear};
 
-export default function TimelineView() {
+export function TimelineView() {
   const {id: libraryId} = useParams<{id: string}>();
 
   const {
@@ -65,7 +65,9 @@ export default function TimelineView() {
 
   useEffect(() => {
     const el = stageContainerRef.current;
-    if (!el) return;
+    if (!el) {
+      return;
+    }
 
     const updateWidth = () => {
       if (el.clientWidth && el.clientWidth > 200) {
@@ -88,7 +90,9 @@ export default function TimelineView() {
   );
 
   const targetEnrichmentLibId = useMemo(() => {
-    if (libraryId) return libraryId;
+    if (libraryId) {
+      return libraryId;
+    }
     const missing = books.find(
       b =>
         b.libraryId &&
@@ -99,8 +103,12 @@ export default function TimelineView() {
   }, [libraryId, books, filterTemporalPredicate]);
 
   const enrichmentScopedBooks = useMemo(() => {
-    if (libraryId) return books;
-    if (!targetEnrichmentLibId) return [];
+    if (libraryId) {
+      return books;
+    }
+    if (!targetEnrichmentLibId) {
+      return [];
+    }
     return books.filter(b => b.libraryId === targetEnrichmentLibId);
   }, [libraryId, books, targetEnrichmentLibId]);
 
@@ -175,7 +183,9 @@ export default function TimelineView() {
   );
 
   const selectedCluster = useMemo(() => {
-    if (selectedClusterKey === null) return null;
+    if (selectedClusterKey === null) {
+      return null;
+    }
     return clusters.find(c => c.key === selectedClusterKey) || null;
   }, [clusters, selectedClusterKey]);
 
@@ -189,7 +199,9 @@ export default function TimelineView() {
 
   const filteredNonHistorical = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    if (!query) return nonHistoricalBooks;
+    if (!query) {
+      return nonHistoricalBooks;
+    }
     return nonHistoricalBooks.filter(
       b =>
         b.title.toLowerCase().includes(query) ||
@@ -198,7 +210,9 @@ export default function TimelineView() {
   }, [nonHistoricalBooks, searchQuery]);
 
   const maxClusterCount = useMemo(() => {
-    if (clusters.length === 0) return 1;
+    if (clusters.length === 0) {
+      return 1;
+    }
     return Math.max(1, ...clusters.map(c => c.books.length));
   }, [clusters]);
 

@@ -27,7 +27,7 @@ export interface CuratorPickCardProps {
   className?: string;
 }
 
-export const CuratorPickCard: React.FC<CuratorPickCardProps> = ({
+export function CuratorPickCard({
   pickOfTheDay,
   isGeneratingPick,
   generateNewPick,
@@ -40,7 +40,7 @@ export const CuratorPickCard: React.FC<CuratorPickCardProps> = ({
   isAddedToWantToRead = false,
   isAddingToWantToRead = false,
   className = '',
-}) => {
+}: CuratorPickCardProps) {
   const {hasAiPlan: contextHasAiPlan} = useAppPermissions();
   const hasAiPlan = passedHasAiPlan ?? contextHasAiPlan;
 
@@ -195,4 +195,4 @@ export const CuratorPickCard: React.FC<CuratorPickCardProps> = ({
       )}
     </div>
   );
-};
+}

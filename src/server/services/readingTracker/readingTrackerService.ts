@@ -58,11 +58,21 @@ export interface UnifiedExternalSearchMatch extends BookDetails {
 }
 
 function normalizeStatus(raw?: string): TrackedShelfStatus | 'unset' {
-  if (!raw || raw === 'unset') return 'unset';
-  if (raw === 'completed' || raw === 'finished') return 'finished';
-  if (raw === 'want_to_read') return 'want_to_read';
-  if (raw === 'reading') return 'reading';
-  if (raw === 'abandoned') return 'abandoned';
+  if (!raw || raw === 'unset') {
+    return 'unset';
+  }
+  if (raw === 'completed' || raw === 'finished') {
+    return 'finished';
+  }
+  if (raw === 'want_to_read') {
+    return 'want_to_read';
+  }
+  if (raw === 'reading') {
+    return 'reading';
+  }
+  if (raw === 'abandoned') {
+    return 'abandoned';
+  }
   return 'unset';
 }
 
@@ -340,16 +350,22 @@ export async function searchUnifiedCatalog(
   const externalMatches: UnifiedExternalSearchMatch[] = [];
 
   for (const ext of rawExternal) {
-    if (!ext || !ext.title) continue;
+    if (!ext || !ext.title) {
+      continue;
+    }
     const extIsbn = normalizeIsbnKey(ext.isbn);
     const extTitleKey = `${normalizeTextKey(ext.title)}::${normalizeTextKey(ext.author)}`;
     const dedupeKey = extIsbn || extTitleKey;
-    if (seenExternalKeys.has(dedupeKey)) continue;
+    if (seenExternalKeys.has(dedupeKey)) {
+      continue;
+    }
     seenExternalKeys.add(dedupeKey);
 
     const matchingLibBook = libraryMatches.find(libBook => {
       const libIsbn = normalizeIsbnKey(libBook.isbn);
-      if (extIsbn && libIsbn && extIsbn === libIsbn) return true;
+      if (extIsbn && libIsbn && extIsbn === libIsbn) {
+        return true;
+      }
       const libTitleKey = `${normalizeTextKey(libBook.title)}::${normalizeTextKey(libBook.author)}`;
       return extTitleKey === libTitleKey;
     });

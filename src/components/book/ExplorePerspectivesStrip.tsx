@@ -13,15 +13,13 @@ interface ExplorePerspectivesStripProps {
   ariaLabel?: string;
 }
 
-export const ExplorePerspectivesStrip: React.FC<
-  ExplorePerspectivesStripProps
-> = ({
+export function ExplorePerspectivesStrip({
   books,
   basePath,
   heading = 'Explore The Collection',
   subtitle = 'Explore your books across history, geography, and theme',
   ariaLabel = 'Explore Collection Visualizers',
-}) => {
+}: ExplorePerspectivesStripProps) {
   const temporalBooksCount = useMemo(() => {
     return books.filter(
       b =>
@@ -310,4 +308,4 @@ export const ExplorePerspectivesStrip: React.FC<
       </div>
     </section>
   );
-};
+}

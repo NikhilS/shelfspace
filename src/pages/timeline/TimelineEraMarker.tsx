@@ -90,7 +90,9 @@ export function sampleOrganicRiver(
   waypoints: RiverWaypoint[],
   samplesPerSegment = 20,
 ): SampledRiverPoint[] {
-  if (waypoints.length === 0) return [];
+  if (waypoints.length === 0) {
+    return [];
+  }
   if (waypoints.length === 1) {
     return [
       {
@@ -204,9 +206,11 @@ function basisBezierSegment(
   return `C${c1x},${c1y},${c2x},${c2y},${ex},${ey}`;
 }
 
-export function basisOpenPath(points: [number, number][]): string {
+export function basisOpenPath(points: Array<[number, number]>): string {
   const n = points.length;
-  if (n < 2) return '';
+  if (n < 2) {
+    return '';
+  }
   const [x0, y0] = points[0];
   if (n === 2) {
     const [x1, y1] = points[1];
@@ -230,9 +234,11 @@ export function basisOpenPath(points: [number, number][]): string {
   return path;
 }
 
-export function basisClosedPath(points: [number, number][]): string {
+export function basisClosedPath(points: Array<[number, number]>): string {
   const n = points.length;
-  if (n < 3) return '';
+  if (n < 3) {
+    return '';
+  }
   const [x0, y0] = points[n - 2];
   const [x1, y1] = points[n - 1];
   const [x2, y2] = points[0];
@@ -255,16 +261,18 @@ export function buildAsymmetricRiverPolygon(
   scale = 1,
   biasShiftFactor = 0,
 ): string {
-  if (samples.length < 2) return '';
+  if (samples.length < 2) {
+    return '';
+  }
 
-  const leftBank: [number, number][] = samples.map(pt => {
+  const leftBank: Array<[number, number]> = samples.map(pt => {
     const shift =
       pt.thalwegBias * (pt.leftRadius + pt.rightRadius) * 0.5 * biasShiftFactor;
     const r = pt.leftRadius * scale - shift;
     return [pt.x + pt.nx * r, pt.y + pt.ny * r];
   });
 
-  const rightBank: [number, number][] = [...samples].reverse().map(pt => {
+  const rightBank: Array<[number, number]> = [...samples].reverse().map(pt => {
     const shift =
       pt.thalwegBias * (pt.leftRadius + pt.rightRadius) * 0.5 * biasShiftFactor;
     const r = pt.rightRadius * scale + shift;
@@ -273,7 +281,9 @@ export function buildAsymmetricRiverPolygon(
 
   const leftPath = basisOpenPath(leftBank);
   const rightPath = basisOpenPath(rightBank);
-  if (!leftPath || !rightPath) return '';
+  if (!leftPath || !rightPath) {
+    return '';
+  }
 
   return `${leftPath} L ${rightPath.slice(1)} Z`;
 }
@@ -282,8 +292,10 @@ export function buildWaterLiningPath(
   samples: SampledRiverPoint[],
   bankFraction: number,
 ): string {
-  if (samples.length < 2) return '';
-  const pts: [number, number][] = samples.map(pt => {
+  if (samples.length < 2) {
+    return '';
+  }
+  const pts: Array<[number, number]> = samples.map(pt => {
     const radius = bankFraction >= 0 ? pt.leftRadius : pt.rightRadius;
     const offset = bankFraction * radius;
     return [pt.x + pt.nx * offset, pt.y + pt.ny * offset];
@@ -466,7 +478,7 @@ export function computeRiverGeometry(
     const cx = bestSample.x + bestSample.nx * lateralShift;
     const cy = bestSample.y + bestSample.ny * lateralShift;
 
-    const outerPts: [number, number][] = [
+    const outerPts: Array<[number, number]> = [
       [cx - bestSample.tx * islandLen, cy - bestSample.ty * islandLen],
       [
         cx -
@@ -503,7 +515,7 @@ export function computeRiverGeometry(
       ],
     ];
 
-    const innerPts: [number, number][] = outerPts.map(([px, py]) => [
+    const innerPts: Array<[number, number]> = outerPts.map(([px, py]) => [
       cx + (px - cx) * 0.62,
       cy + (py - cy) * 0.62,
     ]);
@@ -645,14 +657,14 @@ export interface TimelineEraMarkerProps {
   onHoverCluster: (clusterKey: number | null) => void;
 }
 
-export const TimelineEraMarker: React.FC<TimelineEraMarkerProps> = ({
+export function TimelineEraMarker({
   node,
   stageWidth,
   selectedClusterKey,
   hoveredClusterKey,
   onSelectCluster,
   onHoverCluster,
-}) => {
+}: TimelineEraMarkerProps) {
   const {cluster, isRightApex} = node;
   const isSelected = selectedClusterKey === cluster.key;
   const isHovered = hoveredClusterKey === cluster.key;
@@ -818,4 +830,4 @@ export const TimelineEraMarker: React.FC<TimelineEraMarkerProps> = ({
       </div>
     </div>
   );
-};
+}

@@ -22,7 +22,9 @@ export function CreateLibraryDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || isSubmitting) return;
+    if (!name.trim() || isSubmitting) {
+      return;
+    }
 
     const trimmedName = name.trim();
     try {

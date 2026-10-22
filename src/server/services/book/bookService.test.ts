@@ -337,7 +337,10 @@ describe('BookService - Unified Write Layer', () => {
       expect(res.books).toHaveLength(2);
       expect(res.books[0].title).toBe('Neuromancer');
       expect(res.books[0].primaryGenre).toBe('Cyberpunk');
-      expect((res.books[0].temporalMetadata as any)?.endYear).toBe(1984);
+      expect(
+        (res.books[0].temporalMetadata as {endYear?: number} | undefined)
+          ?.endYear,
+      ).toBe(1984);
       expect(res.books[1].title).toBe('Snow Crash');
     });
 

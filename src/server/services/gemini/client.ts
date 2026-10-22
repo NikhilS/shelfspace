@@ -19,7 +19,9 @@ export const logger = {
 };
 
 export function isApiKeyError(err: unknown): boolean {
-  if (!err) return false;
+  if (!err) {
+    return false;
+  }
   const msg = err instanceof Error ? err.message : String(err);
   return (
     msg.includes('GEMINI_API_KEY') ||
@@ -55,16 +57,16 @@ export function getGeminiClient(): GoogleGenAI {
  * rate limiting with INTERACTIVE > BATCH priority preemption.
  */
 export class GeminiStructuredProvider {
-  public readonly id = 'gemini-structured' as const;
-  public readonly name = 'Gemini AI' as const;
-  public readonly scheduler: ProviderQuotaScheduler = geminiLimiter;
+  readonly id = 'gemini-structured' as const;
+  readonly name = 'Gemini AI' as const;
+  readonly scheduler: ProviderQuotaScheduler = geminiLimiter;
 
-  public isAvailable(): boolean {
+  isAvailable(): boolean {
     const apiKey = process.env.GEMINI_API_KEY;
     return Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY');
   }
 
-  public async generateContent(
+  async generateContent(
     options: Parameters<GoogleGenAI['models']['generateContent']>[0],
     scheduleOptions?: ScheduleTaskOptions,
   ) {
@@ -83,16 +85,16 @@ export class GeminiStructuredProvider {
  * Ensures embedding generation participates in dual-lane priority scheduling and 429 cooldowns.
  */
 export class GeminiEmbeddingProvider {
-  public readonly id = 'gemini-embedding' as const;
-  public readonly name = 'Gemini Embeddings' as const;
-  public readonly scheduler: ProviderQuotaScheduler = geminiEmbeddingLimiter;
+  readonly id = 'gemini-embedding' as const;
+  readonly name = 'Gemini Embeddings' as const;
+  readonly scheduler: ProviderQuotaScheduler = geminiEmbeddingLimiter;
 
-  public isAvailable(): boolean {
+  isAvailable(): boolean {
     const apiKey = process.env.GEMINI_API_KEY;
     return Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY');
   }
 
-  public async embedText(
+  async embedText(
     text: string,
     scheduleOptions?: ScheduleTaskOptions,
   ): Promise<number[]> {
@@ -160,7 +162,7 @@ export interface BatchGeminiOperationOptions {
 }
 
 export async function batchGeminiOperation<T>(
-  books: {id: string; title: string; author: string; synopsis?: string}[],
+  books: Array<{id: string; title: string; author: string; synopsis?: string}>,
   prompt: string,
   schema: unknown,
   systemInstruction?: string,
@@ -207,7 +209,9 @@ export async function batchGeminiOperation<T>(
     );
 
     const text = response.text;
-    if (!text) return null;
+    if (!text) {
+      return null;
+    }
 
     try {
       return JSON.parse(text) as T;

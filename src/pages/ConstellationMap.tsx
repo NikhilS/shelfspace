@@ -8,11 +8,13 @@ import {BookLoader} from '../components/book/BookLoader';
 import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {ReadingScopeToggle} from '../components/book/ReadingScopeToggle';
 
-const ConstellationChart = lazy(
-  () => import('./constellations/ConstellationChart'),
+const ConstellationChart = lazy(() =>
+  import('./constellations/ConstellationChart').then(m => ({
+    default: m.ConstellationChart,
+  })),
 );
 
-export default function ConstellationMap() {
+export function ConstellationMap() {
   const {id: libraryId} = useParams<{id: string}>();
   const navigate = useNavigate();
   const {

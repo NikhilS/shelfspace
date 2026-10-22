@@ -9,7 +9,9 @@ import {trpc, trpcVanilla} from '../../lib/trpc';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../../lib/telemetry';
 
 function normalizeLibraries(data: unknown): Library[] {
-  if (Array.isArray(data)) return data as Library[];
+  if (Array.isArray(data)) {
+    return data as Library[];
+  }
   if (data && typeof data === 'object') {
     if (
       'libraries' in data &&
@@ -134,7 +136,9 @@ export function useLibraries(
   }, [libraries, scopes, user?.uid]);
 
   const createLibrary = async (name: string) => {
-    if (!name.trim() || !user || isSubmitting) return;
+    if (!name.trim() || !user || isSubmitting) {
+      return;
+    }
 
     const trimmedName = name.trim();
     setIsSubmitting(true);

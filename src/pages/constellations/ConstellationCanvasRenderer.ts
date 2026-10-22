@@ -16,7 +16,9 @@ export function traceSmoothClosedHull(
   tension = 0.28,
 ) {
   const n = pts.length;
-  if (n < 3) return;
+  if (n < 3) {
+    return;
+  }
 
   ctx.beginPath();
   ctx.moveTo(pts[0].x, pts[0].y);
@@ -160,8 +162,9 @@ export function renderConstellationFrame({
   };
   for (const grain of paperStipples) {
     const sp = worldToScreen(grain.x, grain.y, parallaxCam, width, height);
-    if (sp.x < -10 || sp.x > width + 10 || sp.y < -10 || sp.y > height + 10)
+    if (sp.x < -10 || sp.x > width + 10 || sp.y < -10 || sp.y > height + 10) {
       continue;
+    }
     ctx.fillStyle = isDark
       ? `rgba(214, 206, 190, ${grain.alpha * 0.85})`
       : `rgba(120, 108, 92, ${grain.alpha})`;
@@ -194,7 +197,9 @@ export function renderConstellationFrame({
   // LAYER 2: Watercolor-Wash Constellation Territory Hulls
   // =======================================================================
   for (const cluster of clustersGeometry) {
-    if (cluster.hullPoints.length < 3) continue;
+    if (cluster.hullPoints.length < 3) {
+      continue;
+    }
 
     const isClusterActive =
       focusedClusterId === null || focusedClusterId === cluster.clusterId;
@@ -212,7 +217,9 @@ export function renderConstellationFrame({
     let maxR = 36;
     for (const hp of hullScreenPts) {
       const d = Math.hypot(hp.x - centroidScreen.x, hp.y - centroidScreen.y);
-      if (d > maxR) maxR = d;
+      if (d > maxR) {
+        maxR = d;
+      }
     }
 
     traceSmoothClosedHull(ctx, hullScreenPts, 0.26);
@@ -271,7 +278,9 @@ export function renderConstellationFrame({
     for (const [uIdx, vIdx] of cluster.mstEdges) {
       const pu = screenPts[uIdx];
       const pv = screenPts[vIdx];
-      if (!pu || !pv) continue;
+      if (!pu || !pv) {
+        continue;
+      }
       ctx.moveTo(pu.x, pu.y);
       ctx.lineTo(pv.x, pv.y);
     }
@@ -289,13 +298,17 @@ export function renderConstellationFrame({
       for (let nIdx = 0; nIdx < selectedStar.neighbors.length; nIdx++) {
         const nb = selectedStar.neighbors[nIdx];
         const targetEntry = starById.get(nb.bookId);
-        if (!targetEntry) continue;
+        if (!targetEntry) {
+          continue;
+        }
 
         const pEnd = screenPts[targetEntry.index];
         const dx = pEnd.x - pStart.x;
         const dy = pEnd.y - pStart.y;
         const dist = Math.hypot(dx, dy);
-        if (dist < 2) continue;
+        if (dist < 2) {
+          continue;
+        }
 
         const nx = -dy / dist;
         const ny = dx / dist;
@@ -372,8 +385,9 @@ export function renderConstellationFrame({
   for (let i = 0; i < plotData.length; i++) {
     const pt = plotData[i];
     const sp = screenPts[i];
-    if (sp.x < -30 || sp.x > width + 30 || sp.y < -30 || sp.y > height + 30)
+    if (sp.x < -30 || sp.x > width + 30 || sp.y < -30 || sp.y > height + 30) {
       continue;
+    }
 
     const id = pt.id || pt.book.id;
     const isSelected = id === selectedStarId;
@@ -568,7 +582,9 @@ export function renderConstellationFrame({
       const bx2 = cScreen.x + textW * 0.5 + 6;
       const by2 = cScreen.y + 10;
 
-      if (overlapsPlaced(bx1, by1, bx2, by2)) continue;
+      if (overlapsPlaced(bx1, by1, bx2, by2)) {
+        continue;
+      }
       placedBoxes.push({x1: bx1, y1: by1, x2: bx2, y2: by2});
 
       // Soft parchment/vellum halo stroke behind glyphs so text is legible without any box
@@ -620,8 +636,9 @@ export function renderConstellationFrame({
   for (const idx of labelCandidates) {
     const pt = plotData[idx];
     const sp = screenPts[idx];
-    if (sp.x < 10 || sp.x > width - 10 || sp.y < 10 || sp.y > height - 10)
+    if (sp.x < 10 || sp.x > width - 10 || sp.y < 10 || sp.y > height - 10) {
       continue;
+    }
 
     const id = pt.id || pt.book.id;
     const isSelected = id === selectedStarId;

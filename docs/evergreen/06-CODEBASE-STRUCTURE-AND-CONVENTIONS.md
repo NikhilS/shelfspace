@@ -1,7 +1,7 @@
-# 06. Codebase Structure, Naming & Testing Conventions
+# 06. Codebase Structure, Naming, Style Guide & Testing Conventions
 
 > **Parent Document:** [Evergreen Architecture & Engineering Guidelines](./README.md)  
-> **Scope:** Repository Layout, Casing Rules, Barrel Exports, Router Organization, Test Co-Location, and Minimum Test Coverage Standards
+> **Scope:** Repository Layout, Casing Rules, Barrel Exports, Router Organization, Google TypeScript Style Guide Compliance, Test Co-Location, and Minimum Test Coverage Standards
 
 ---
 
@@ -76,7 +76,42 @@ The **book(ish)** monorepo follows a strict, layered folder structure with clear
 
 ---
 
-## 4. Test Co-Location & 1-to-1 Coverage Standard
+## 4. Google TypeScript Style Guide Compliance
+
+The repository adheres to the official [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html) and enforces compliance automatically via `gts` (`eslint.config.cjs`, `tsconfig.json`, and `.prettierrc.cjs`).
+
+### Core Enforced Rules
+1. **Named Exports Only (`no-default-export` in `src/`):**
+   - Always use named exports (`export function ...`, `export const ...`, `export interface ...`). Default exports (`export default`) are banned across `src/` so every symbol retains a single canonical identifier across imports, refactoring tools, and search.
+   - When code-splitting route views with `React.lazy`, resolve the named export explicitly:
+     ```ts
+     const Dashboard = lazy(() =>
+       import('./pages/Dashboard').then(m => ({default: m.Dashboard})),
+     );
+     ```
+2. **Named `function` Declarations Over Top-Level Arrow Functions & `React.FC`:**
+   - Declare React components and top-level helper functions using standard `function` declarations (`export function BookCard(props: BookCardProps)`), or named function expressions inside higher-order wrappers (`export const BookCard = React.memo(function BookCard(props: BookCardProps) { ... })`).
+   - Do not use `React.FC` or `FunctionComponent` type annotations.
+3. **`interface` Over `type` for Object Shapes & `T[]` Array Syntax:**
+   - Declare object shapes with `interface` rather than `type` aliases (`@typescript-eslint/consistent-type-definitions: ['error', 'interface']`). Reserve `type` for unions, intersections, and mapped types.
+   - Use `T[]` or `readonly T[]` for simple array types and `Array<...>` for complex union/function types (`@typescript-eslint/array-type: ['error', {default: 'array-simple'}]`).
+4. **No Redundant `public` Modifiers:**
+   - Class properties, methods, and constructors are public by default in TypeScript. Never add the explicit `public` keyword (`@typescript-eslint/explicit-member-accessibility: ['error', {accessibility: 'no-public'}]`). Use `readonly` directly on constructor parameter properties (`constructor(readonly id: string)`), and use `private` or `protected` for non-public members.
+5. **Whole-Word CamelCase for Acronyms (§ 7.2):**
+   - Treat acronyms and initialisms of 3+ letters as whole words in both `PascalCase` and `camelCase` identifiers and filenames: write `CsvImportTab`, `ScanIsbnTab`, `DebugConsoleHud`, `handleExportToCsv`, and `isbn` rather than `CSVImportTab`, `ScanISBNTab`, `DebugConsoleHUD`, `handleExportToCSV`, or `ISBN`.
+6. **Mandatory Braces on All Control Flow (`curly`):**
+   - Every `if`, `else`, `for`, `while`, and `do` statement must use curly braces (`{ ... }`), even when the body is a single statement (`curly: ['error', 'all']`).
+7. **Zero `any` Across Production & Test Files:**
+   - `@typescript-eslint/no-explicit-any: 'error'` is enforced across 100% of the repository, including all `*.test.ts` and `*.test.tsx` suites. Prefer `unknown`, `Partial<T>`, `Parameters<typeof fn>`, or typed test factory helpers over `any`.
+   - Lint suppressions (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`) are prohibited.
+
+### Intentional React & Vite Framework Exceptions
+- **`PascalCase.tsx` Component Filenames:** While Google's general TypeScript guide uses `snake_case` or `camelCase` filenames, **book(ish)** follows the idiomatic React convention of `PascalCase.tsx` for React views/components and `camelCase.ts` for hooks/utilities (as defined in Section 2).
+- **Root Tooling Config (`vite.config.ts`):** Vite's configuration loader requires a default export in `vite.config.ts`; therefore, the ban on `ExportDefaultDeclaration` is scoped to `src/**/*`.
+
+---
+
+## 5. Test Co-Location & 1-to-1 Coverage Standard
 
 1. **100% Co-Located Tests (`*.test.ts` / `*.test.tsx`):**
    - Every unit, integration, schema, worker, store, and security test file must sit in the **exact same directory** as the source file it tests and share its base filename:
@@ -95,7 +130,7 @@ The **book(ish)** monorepo follows a strict, layered folder structure with clear
 
 ---
 
-## 5. Minimum Test Coverage & Verification Invariants
+## 6. Minimum Test Coverage & Verification Invariants
 
 Every pull request or feature addition must satisfy three verification pillars before completion:
 
@@ -105,3 +140,4 @@ Every pull request or feature addition must satisfy three verification pillars b
    - Stochastic algorithms (K-Means++, silhouette optimal-$K$, force-directed layout relaxation, UMAP worker pipelines) must be tested with fixed PRNG seeds and assert strict geometric invariants (e.g., non-overlapping cluster bounding circles, $[-range, range]$ coordinate bounds, and $[-1, 1]$ silhouette bounds).
 3. **Asynchronous Resilience & Cancellation:**
    - Outbound provider orchestrators, rate-limit governors, and batch enrichment utilities must test both happy paths and degraded/cancelled paths (`AbortSignal` propagation, 429 quota backoff, interactive slot reservation, and ring-buffer bounding).
+

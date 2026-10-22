@@ -49,7 +49,9 @@ export function useSelection(
   };
 
   const handleBulkStatusChange = async (newStatus: string) => {
-    if (selectedBooks.size === 0 || !userId || !libraryId) return;
+    if (selectedBooks.size === 0 || !userId || !libraryId) {
+      return;
+    }
     try {
       const booksArray = Array.from(selectedBooks);
       const validStatus = newStatus as
@@ -88,7 +90,9 @@ export function useSelection(
   };
 
   const handleBulkDelete = async () => {
-    if (selectedBooks.size === 0 || !libraryId) return;
+    if (selectedBooks.size === 0 || !libraryId) {
+      return;
+    }
     try {
       const count = selectedBooks.size;
       const booksArray = Array.from(selectedBooks);

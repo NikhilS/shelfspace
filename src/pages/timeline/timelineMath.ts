@@ -13,8 +13,12 @@ export interface TimelineStats {
  */
 export function getClusterKey(startYear: number, zoom: 1 | 5 | 20): number {
   let interval = 500;
-  if (zoom === 5) interval = 100;
-  if (zoom === 20) interval = 10;
+  if (zoom === 5) {
+    interval = 100;
+  }
+  if (zoom === 20) {
+    interval = 10;
+  }
   return Math.floor(startYear / interval) * interval;
 }
 
@@ -53,10 +57,14 @@ export function buildTimelineClusters(
   historicalBooks.forEach(b => {
     const year = b.temporalMetadata?.startYear;
     if (year !== undefined && year !== null) {
-      if (selectedPreset === 'bce' && year > 0) return;
+      if (selectedPreset === 'bce' && year > 0) {
+        return;
+      }
 
       const k = getClusterKey(year, zoomLevel);
-      if (!map[k]) map[k] = [];
+      if (!map[k]) {
+        map[k] = [];
+      }
       map[k].push(b);
     }
   });

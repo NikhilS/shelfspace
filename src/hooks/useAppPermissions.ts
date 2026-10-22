@@ -14,12 +14,16 @@ interface CachedPermissions {
 function readCachedPermissions(
   email: string | undefined,
 ): CachedPermissions | undefined {
-  if (!email || typeof window === 'undefined') return undefined;
+  if (!email || typeof window === 'undefined') {
+    return undefined;
+  }
   try {
     const raw = window.localStorage.getItem(
       `${PERMISSIONS_CACHE_PREFIX}${email}`,
     );
-    if (!raw) return undefined;
+    if (!raw) {
+      return undefined;
+    }
     const parsed = JSON.parse(raw) as Partial<CachedPermissions>;
     if (
       typeof parsed.isAppAllowed === 'boolean' &&
@@ -44,7 +48,9 @@ function writeCachedPermissions(
   email: string | undefined,
   perms: CachedPermissions,
 ): void {
-  if (!email || typeof window === 'undefined') return;
+  if (!email || typeof window === 'undefined') {
+    return;
+  }
   try {
     window.localStorage.setItem(
       `${PERMISSIONS_CACHE_PREFIX}${email}`,

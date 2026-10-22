@@ -3,7 +3,7 @@ import {AllowlistService} from './allowlistService';
 import {SUPERADMIN_EMAIL} from '../../constants/auth';
 
 const mockDocGet = vi.fn();
-const mockDoc = vi.fn((_path: string) => ({
+const mockDoc = vi.fn(() => ({
   get: mockDocGet,
 }));
 const mockFirestore = vi.fn(() => ({

@@ -1,6 +1,7 @@
 import {describe, it, expect, vi} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
-import BookCard from './BookCard';
+import {BookCard} from './BookCard';
+import type {Book} from '../../types';
 
 describe('BookCard component', () => {
   const mockBook = {
@@ -11,7 +12,7 @@ describe('BookCard component', () => {
       seconds: 0,
       nanoseconds: 0,
       isEqual: () => true,
-    } as any,
+    } as unknown as Book['addedAt'],
     title: 'the great gatsby',
     author: 'f. scott fitzgerald',
     isbn: '123456',

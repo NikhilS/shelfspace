@@ -9,7 +9,7 @@ import {BookLoader} from '../components/book/BookLoader';
 import {HeroShowcaseCard} from './marketing/HeroShowcaseCard';
 import {DimensionsBento} from './marketing/DimensionsBento';
 
-export default function Login() {
+export function Login() {
   const {user, isAuthReady, signIn} = useAuth();
 
   if (!isAuthReady) {

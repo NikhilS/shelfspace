@@ -40,20 +40,20 @@ describe('ResetMetadataSection', () => {
     {
       id: 'book-1',
       title: 'Dune',
-      addedAt: {} as any,
+      addedAt: {} as unknown as Book['addedAt'],
       addedBy: 'user-1',
       primaryGenre: 'Science Fiction',
       subgenres: ['Space Opera'],
       enrichmentStatus: {
         genre: 'completed',
       },
-    } as any,
+    } as unknown as Book,
     {
       id: 'book-2',
       title: 'Clean Code',
-      addedAt: {} as any,
+      addedAt: {} as unknown as Book['addedAt'],
       addedBy: 'user-1',
-    } as any,
+    } as unknown as Book,
   ];
 
   beforeEach(() => {
@@ -142,14 +142,14 @@ describe('ResetMetadataSection', () => {
     const geoBook: Book = {
       id: 'book-3',
       title: 'Foundation',
-      addedAt: {} as any,
+      addedAt: {} as unknown as Book['addedAt'],
       addedBy: 'user-1',
       geoMetadata: {
         isNonEarth: true,
         locations: [],
         lastSyncedAt: '2025-01-01',
       },
-    } as any;
+    } as unknown as Book;
 
     render(<ResetMetadataSection libraryId="lib-123" books={[geoBook]} />);
 
@@ -185,10 +185,10 @@ describe('ResetMetadataSection', () => {
       {
         id: 'book-leaked',
         title: 'Leaked Book',
-        addedAt: {} as any,
+        addedAt: {} as unknown as Book['addedAt'],
         addedBy: 'user-1',
         synopsis: 'Massive synopsis text that should be in bookDetails',
-      } as any,
+      } as unknown as Book,
     ];
 
     render(<ResetMetadataSection libraryId="lib-123" books={leakedBooks} />);
@@ -222,10 +222,10 @@ describe('ResetMetadataSection', () => {
       {
         id: 'book-clean',
         title: 'Clean Book',
-        addedAt: {} as any,
+        addedAt: {} as unknown as Book['addedAt'],
         addedBy: 'user-1',
         bookDetailsMetadata: {hasSynopsis: false},
-      } as any,
+      } as unknown as Book,
     ];
 
     render(<ResetMetadataSection libraryId="lib-123" books={cleanBooks} />);

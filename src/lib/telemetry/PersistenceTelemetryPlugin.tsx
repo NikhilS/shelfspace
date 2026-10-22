@@ -4,12 +4,12 @@ import {TelemetryPlugin, TelemetryPluginContext} from './index';
 import {PersistenceTelemetryPanel} from '../../components/debug/PersistenceTelemetryPanel';
 
 export class PersistenceTelemetryPlugin implements TelemetryPlugin {
-  public id = 'persistence';
-  public name = 'Persistence Telemetry';
-  public order = 20;
-  public icon = Gauge;
+  id = 'persistence';
+  name = 'Persistence Telemetry';
+  order = 20;
+  icon = Gauge;
 
-  public badge(ctx: TelemetryPluginContext): string | number | undefined {
+  badge(ctx: TelemetryPluginContext): string | number | undefined {
     if (ctx.metrics.activeFirestoreListeners > 0) {
       return ctx.metrics.activeFirestoreListeners;
     }
@@ -19,11 +19,11 @@ export class PersistenceTelemetryPlugin implements TelemetryPlugin {
     return undefined;
   }
 
-  public renderTab(ctx: TelemetryPluginContext): React.ReactNode {
+  renderTab(ctx: TelemetryPluginContext): React.ReactNode {
     return <PersistenceTelemetryPanel initialContext={ctx} />;
   }
 
-  public getMetrics() {
+  getMetrics() {
     return {
       type: 'persistence',
     };

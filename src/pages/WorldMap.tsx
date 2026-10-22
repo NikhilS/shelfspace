@@ -35,7 +35,7 @@ import {WorldMapInspector} from './world-map/WorldMapInspector';
 const GOOGLE_MAPS_KEY =
   (import.meta.env && import.meta.env.VITE_GOOGLE_MAPS_API_KEY) || '';
 
-export default function WorldMap() {
+export function WorldMap() {
   const {id: libraryId} = useParams<{id: string}>();
   const navigate = useNavigate();
 
@@ -76,7 +76,9 @@ export default function WorldMap() {
   const filterGeoPredicate = useCallback((b: Book) => !b.geoMetadata, []);
 
   const targetEnrichmentLibId = useMemo(() => {
-    if (libraryId) return libraryId;
+    if (libraryId) {
+      return libraryId;
+    }
     const missing = books.find(
       b =>
         b.libraryId &&
@@ -87,8 +89,12 @@ export default function WorldMap() {
   }, [libraryId, books, filterGeoPredicate]);
 
   const enrichmentScopedBooks = useMemo(() => {
-    if (libraryId) return books;
-    if (!targetEnrichmentLibId) return [];
+    if (libraryId) {
+      return books;
+    }
+    if (!targetEnrichmentLibId) {
+      return [];
+    }
     return books.filter(b => b.libraryId === targetEnrichmentLibId);
   }, [libraryId, books, targetEnrichmentLibId]);
 

@@ -103,11 +103,11 @@ function wrapCanvasText(
   return lines;
 }
 
-export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
+export function ReadStackCanvasCard({
   finishedBooks,
   onOpenAllRead,
   onTrackBook,
-}) => {
+}: ReadStackCanvasCardProps) {
   const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageCacheRef = useRef<Map<string, HTMLImageElement | 'error'>>(
@@ -134,7 +134,9 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
   // All non-active books sit underneath in chronological order, and safeActiveIndex sits on top!
   const drawOrder = useMemo(() => {
     const total = stackBooks.length;
-    if (total === 0) return [];
+    if (total === 0) {
+      return [];
+    }
     const others: number[] = [];
     for (let i = total - 1; i >= 0; i--) {
       if (i !== safeActiveIndex) {
@@ -149,25 +151,33 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
     let isMounted = true;
     stackBooks.forEach(book => {
       const url = book.coverUrl;
-      if (!url || imageCacheRef.current.has(url)) return;
+      if (!url || imageCacheRef.current.has(url)) {
+        return;
+      }
 
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.referrerPolicy = 'no-referrer';
       img.onload = () => {
         imageCacheRef.current.set(url, img);
-        if (isMounted) setImageTick(t => t + 1);
+        if (isMounted) {
+          setImageTick(t => t + 1);
+        }
       };
       img.onerror = () => {
         const fallbackImg = new Image();
         fallbackImg.referrerPolicy = 'no-referrer';
         fallbackImg.onload = () => {
           imageCacheRef.current.set(url, fallbackImg);
-          if (isMounted) setImageTick(t => t + 1);
+          if (isMounted) {
+            setImageTick(t => t + 1);
+          }
         };
         fallbackImg.onerror = () => {
           imageCacheRef.current.set(url, 'error');
-          if (isMounted) setImageTick(t => t + 1);
+          if (isMounted) {
+            setImageTick(t => t + 1);
+          }
         };
         fallbackImg.src = url;
       };
@@ -233,14 +243,18 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
   // Render the 2D Canvas scene
   const renderStackCanvas = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas || typeof canvas.getContext !== 'function') return;
+    if (!canvas || typeof canvas.getContext !== 'function') {
+      return;
+    }
     let ctx: CanvasRenderingContext2D | null = null;
     try {
       ctx = canvas.getContext('2d');
     } catch {
       ctx = null;
     }
-    if (!ctx) return;
+    if (!ctx) {
+      return;
+    }
 
     const dpr =
       typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
@@ -287,7 +301,9 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
     // Draw books in drawOrder (bottom of pile -> top of pile)
     drawOrder.forEach(bookIndex => {
       const book = stackBooks[bookIndex];
-      if (!book) return;
+      if (!book) {
+        return;
+      }
 
       const {cx, cy, bookW, bookH, angleRad, lift} = getBookGeometry(
         bookIndex,
@@ -485,7 +501,9 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
   // Hit-test pointer coordinates in reverse drawOrder (from visually top-most book down to bottom)
   const hitTestStack = (clientX: number, clientY: number): number | null => {
     const canvas = canvasRef.current;
-    if (!canvas || stackBooks.length === 0) return null;
+    if (!canvas || stackBooks.length === 0) {
+      return null;
+    }
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
@@ -534,7 +552,9 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
   };
 
   const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (!touchStartRef.current || e.changedTouches.length === 0) return;
+    if (!touchStartRef.current || e.changedTouches.length === 0) {
+      return;
+    }
     const deltaX = e.changedTouches[0].clientX - touchStartRef.current.x;
     const deltaY = e.changedTouches[0].clientY - touchStartRef.current.y;
     touchStartRef.current = null;
@@ -579,13 +599,17 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
 
   const handleStepPrev = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (stackBooks.length <= 1) return;
+    if (stackBooks.length <= 1) {
+      return;
+    }
     setActiveIndex(prev => (prev - 1 + stackBooks.length) % stackBooks.length);
   };
 
   const handleStepNext = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (stackBooks.length <= 1) return;
+    if (stackBooks.length <= 1) {
+      return;
+    }
     setActiveIndex(prev => (prev + 1) % stackBooks.length);
   };
 
@@ -732,4 +756,4 @@ export const ReadStackCanvasCard: React.FC<ReadStackCanvasCardProps> = ({
       )}
     </div>
   );
-};
+}

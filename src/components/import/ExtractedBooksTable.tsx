@@ -13,7 +13,7 @@ import {Button} from '../ui/button';
 import {logger} from '../../stores/debugStore';
 import {BookDetails} from '../../types';
 
-type ExtractedBook = {
+interface ExtractedBook {
   title: string;
   author: string;
   isbn?: string;
@@ -21,7 +21,7 @@ type ExtractedBook = {
   subgenres?: string[];
   isCustomPrimary?: boolean;
   format?: 'physical' | 'digital';
-};
+}
 
 interface ExtractedBooksTableProps {
   extractedBooks: ExtractedBook[];
@@ -39,7 +39,7 @@ interface ExtractedBooksTableProps {
   mode?: 'library' | 'reading';
 }
 
-export default function ExtractedBooksTable({
+export function ExtractedBooksTable({
   extractedBooks,
   setExtractedBooks,
   selectedExtracted,
@@ -82,8 +82,11 @@ export default function ExtractedBooksTable({
     const id = `${book.title}::${book.author}`;
     setSelectedExtracted(prev => {
       const newSelected = new Set(prev);
-      if (newSelected.has(id)) newSelected.delete(id);
-      else newSelected.add(id);
+      if (newSelected.has(id)) {
+        newSelected.delete(id);
+      } else {
+        newSelected.add(id);
+      }
       return newSelected;
     });
   };

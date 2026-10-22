@@ -31,7 +31,9 @@ export function ReviewSection({
   const [isSavingReview, setIsSavingReview] = useState(false);
 
   const handleSaveReview = async () => {
-    if (!book || !libraryId || !user) return;
+    if (!book || !libraryId || !user) {
+      return;
+    }
     if (reviewRating === 0 && !reviewText.trim()) {
       toast.error('Please provide a rating or write a review');
       return;

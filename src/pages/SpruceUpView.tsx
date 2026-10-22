@@ -91,7 +91,7 @@ function isBookMissingAnyMetadata(book: {
   );
 }
 
-export default function SpruceUpView() {
+export function SpruceUpView() {
   const {id: libraryId} = useParams<{id: string}>();
   const [searchParams, setSearchParams] = useSearchParams();
   const isOnline = useOnlineStatus();
@@ -127,12 +127,16 @@ export default function SpruceUpView() {
   };
 
   const incompleteCount = useMemo(() => {
-    if (!books) return 0;
+    if (!books) {
+      return 0;
+    }
     return books.filter(isBookMissingAnyMetadata).length;
   }, [books]);
 
   const leaksCount = useMemo(() => {
-    if (!books) return 0;
+    if (!books) {
+      return 0;
+    }
     return books.filter(hasHeavyLeaks).length;
   }, [books]);
 

@@ -46,7 +46,7 @@ const READING_SHELF_TABS: Array<{id: ShelfFilterTab; label: string}> = [
 const EMPTY_SELECTED_BOOKS = new Set<string>();
 const NOOP = () => {};
 
-export default function Dashboard() {
+export function Dashboard() {
   const {user} = useAuth();
   const navigate = useNavigate();
   const {isAdmin} = useAppPermissions();
@@ -141,9 +141,13 @@ export default function Dashboard() {
   } = usePickOfTheDay(readingHistorySeed, true, 'personal-reading-room');
 
   const isPickAlreadyTracked = useMemo(() => {
-    if (!pickOfTheDay) return false;
+    if (!pickOfTheDay) {
+      return false;
+    }
     const key = `${pickOfTheDay.title.toLowerCase()}::${pickOfTheDay.author.toLowerCase()}`;
-    if (savedPickTitles.has(key)) return true;
+    if (savedPickTitles.has(key)) {
+      return true;
+    }
     return allItems.some(
       b =>
         b.title.toLowerCase() === pickOfTheDay.title.toLowerCase() &&
@@ -152,7 +156,9 @@ export default function Dashboard() {
   }, [pickOfTheDay, savedPickTitles, allItems]);
 
   const handleAddPickToWantToRead = async (pick: CuratorPickItem) => {
-    if (isSavingPick || isPickAlreadyTracked) return;
+    if (isSavingPick || isPickAlreadyTracked) {
+      return;
+    }
     setIsSavingPick(true);
     try {
       await trackBookItem({

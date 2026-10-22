@@ -35,8 +35,7 @@ vi.mock('lucide-react', async () => {
 
 // Mock CoverCamera
 vi.mock('../../components/import/CoverCamera', () => ({
-  __esModule: true,
-  default: ({
+  CoverCamera: ({
     onCapture,
     onCancel,
   }: {
@@ -77,7 +76,10 @@ describe('EditBookForm', () => {
     primaryGenre: 'Fantasy',
     subgenres: ['Epic & High Fantasy'],
     addedBy: 'u1',
-    addedAt: {seconds: 1600000000, nanoseconds: 0} as any,
+    addedAt: {
+      seconds: 1600000000,
+      nanoseconds: 0,
+    } as unknown as Book['addedAt'],
   };
 
   const mockBookDetails: BookDetailsPayload = {

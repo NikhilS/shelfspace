@@ -8,10 +8,12 @@ import {
 import type {SchedulePriority} from '../scheduler/providerQuotaScheduler';
 
 export async function generateClusterNames(
-  clusters: {id: number; books: {title: string; author?: string}[]}[],
+  clusters: Array<{id: number; books: Array<{title: string; author?: string}>}>,
 ): Promise<Record<number, string>> {
   try {
-    if (!clusters || clusters.length === 0) return {};
+    if (!clusters || clusters.length === 0) {
+      return {};
+    }
 
     const prompt = `Clustered below are groups of books from a reader's library based on semantic vector similarity.
 For each cluster ID, inspect the titles and authors to identify the shared literary genre, intellectual tradition, aesthetic mood, or historical subject.
@@ -112,7 +114,9 @@ export async function generateBookEmbeddings(
   options?: {priority?: SchedulePriority; signal?: AbortSignal},
 ): Promise<number[][]> {
   try {
-    if (!texts || texts.length === 0) return [];
+    if (!texts || texts.length === 0) {
+      return [];
+    }
     const embeddings: number[][] = new Array(texts.length).fill([]);
 
     let completedCount = 0;
@@ -121,7 +125,9 @@ export async function generateBookEmbeddings(
 
     await Promise.all(
       texts.map(async (text, index) => {
-        if (options?.signal?.aborted) return;
+        if (options?.signal?.aborted) {
+          return;
+        }
         const normalizedKey = text.trim();
         try {
           if (normalizedKey) {

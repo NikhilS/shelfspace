@@ -52,7 +52,7 @@ import {
   LibraryCollectionSkeleton,
 } from '../components/book/LibrarySkeletons';
 
-export default function LibraryView() {
+export function LibraryView() {
   const {id} = useParams<{id: string}>();
   const {user} = useAuth();
   const {hasAiPlan} = useAppPermissions();
@@ -123,7 +123,9 @@ export default function LibraryView() {
 
   // Scroll restoration
   useEffect(() => {
-    if (isLoading || isBooksLoading || !id) return;
+    if (isLoading || isBooksLoading || !id) {
+      return;
+    }
 
     // Only restore/save scroll for the collection tab (Grid/Table views)
     if (filters.currentTab !== 'collection') {
@@ -151,7 +153,9 @@ export default function LibraryView() {
 
     let scrollRafId: number | null = null;
     const handleScroll = () => {
-      if (filters.currentTab !== 'collection' || scrollRafId !== null) return;
+      if (filters.currentTab !== 'collection' || scrollRafId !== null) {
+        return;
+      }
       scrollRafId = window.requestAnimationFrame(() => {
         scrollRafId = null;
         if (filters.currentTab === 'collection') {
@@ -165,8 +169,12 @@ export default function LibraryView() {
     }, 400);
 
     return () => {
-      if (scrollTimer) clearTimeout(scrollTimer);
-      if (scrollRafId !== null) window.cancelAnimationFrame(scrollRafId);
+      if (scrollTimer) {
+        clearTimeout(scrollTimer);
+      }
+      if (scrollRafId !== null) {
+        window.cancelAnimationFrame(scrollRafId);
+      }
       clearTimeout(registerTimer);
       window.removeEventListener('scroll', handleScroll);
     };
@@ -186,10 +194,14 @@ export default function LibraryView() {
   }, []);
 
   const handleRemoveShare = async (email: string) => {
-    if (!id || !library) return;
+    if (!id || !library) {
+      return;
+    }
     try {
       const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error('Not logged in');
+      if (!currentUser) {
+        throw new Error('Not logged in');
+      }
 
       const targetEmail = email.trim().toLowerCase();
 
@@ -215,7 +227,9 @@ export default function LibraryView() {
   };
 
   const handleUpdateRole = async (email: string, role: 'editor' | 'viewer') => {
-    if (!id || !library) return;
+    if (!id || !library) {
+      return;
+    }
     try {
       const targetEmail = email.trim().toLowerCase();
 
@@ -242,7 +256,9 @@ export default function LibraryView() {
   };
 
   const handleRenameLibrary = async (newName: string) => {
-    if (!id || !library) return;
+    if (!id || !library) {
+      return;
+    }
     try {
       await instrumentMutation(
         'update',
@@ -264,10 +280,14 @@ export default function LibraryView() {
   };
 
   const confirmDeleteLibrary = async () => {
-    if (!id) return;
+    if (!id) {
+      return;
+    }
     try {
       const user = auth.currentUser;
-      if (!user) throw new Error('Not logged in');
+      if (!user) {
+        throw new Error('Not logged in');
+      }
 
       await instrumentMutation(
         'delete',
@@ -286,7 +306,7 @@ export default function LibraryView() {
     }
   };
 
-  const handleExportToCSV = () => {
+  const handleExportToCsv = () => {
     if (!library || books.length === 0) {
       toast.error('No books to export');
       return;
@@ -304,8 +324,10 @@ export default function LibraryView() {
       'Published Date',
       'Added Date',
     ];
-    const escapeCSV = (str: string | undefined | null) => {
-      if (!str) return '""';
+    const escapeCsv = (str: string | undefined | null) => {
+      if (!str) {
+        return '""';
+      }
       const escaped = String(str).replace(/"/g, '""');
       return `"${escaped}"`;
     };
@@ -321,7 +343,9 @@ export default function LibraryView() {
       let addedDateStr = '';
       if (book.addedAt) {
         const time = getFirestoreTime(book.addedAt);
-        if (time > 0) addedDateStr = formatFullDateTime(time);
+        if (time > 0) {
+          addedDateStr = formatFullDateTime(time);
+        }
       }
 
       // Format
@@ -376,17 +400,17 @@ export default function LibraryView() {
       const coverUrl = book.coverUrl || book.coverUrlRaw || '';
 
       return [
-        escapeCSV(book.title),
-        escapeCSV(book.author),
-        escapeCSV(book.isbn),
-        escapeCSV(book.primaryGenre || ''),
-        escapeCSV(book.subgenres?.join(', ') || ''),
-        escapeCSV(formatStr),
-        escapeCSV(eraSetting),
-        escapeCSV(geoSettings),
-        escapeCSV(coverUrl),
-        escapeCSV(book.publishedDate),
-        escapeCSV(addedDateStr),
+        escapeCsv(book.title),
+        escapeCsv(book.author),
+        escapeCsv(book.isbn),
+        escapeCsv(book.primaryGenre || ''),
+        escapeCsv(book.subgenres?.join(', ') || ''),
+        escapeCsv(formatStr),
+        escapeCsv(eraSetting),
+        escapeCsv(geoSettings),
+        escapeCsv(coverUrl),
+        escapeCsv(book.publishedDate),
+        escapeCsv(addedDateStr),
       ].join(',');
     });
     const csvContent = [headers.join(','), ...rows].join('\n');
@@ -416,7 +440,9 @@ export default function LibraryView() {
     trpc.gemini.generateLibraryHeroImage.useMutation();
 
   const handleRefreshHero = async () => {
-    if (!id || !library || isRefreshingHero || !hasAiPlan) return;
+    if (!id || !library || isRefreshingHero || !hasAiPlan) {
+      return;
+    }
     setIsRefreshingHero(true);
     const toastId = toast.loading('Generating library banner...');
     try {
@@ -753,10 +779,14 @@ export default function LibraryView() {
             isOwner={isOwner}
             canEdit={canEdit}
             addShareEmail={async (email, role) => {
-              if (!id || !library || !email.trim()) return;
+              if (!id || !library || !email.trim()) {
+                return;
+              }
               try {
                 const currentUser = auth.currentUser;
-                if (!currentUser) throw new Error('Not logged in');
+                if (!currentUser) {
+                  throw new Error('Not logged in');
+                }
 
                 const newEmail = email.trim().toLowerCase();
 
@@ -795,7 +825,7 @@ export default function LibraryView() {
             handleRemoveShare={handleRemoveShare}
             handleUpdateRole={handleUpdateRole}
             handleRenameLibrary={handleRenameLibrary}
-            handleExportToCSV={handleExportToCSV}
+            handleExportToCsv={handleExportToCsv}
             handleDeleteLibrary={() => setLibraryToDelete(true)}
             confirmDeleteLibrary={confirmDeleteLibrary}
           />

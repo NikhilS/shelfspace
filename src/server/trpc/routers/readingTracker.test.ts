@@ -22,7 +22,7 @@ describe('readingTrackerRouter', () => {
     isAppAllowed: true,
     isAdmin: false,
     traceId: 'trace-reading-tracker',
-  } as any;
+  } as unknown as Parameters<typeof appRouter.createCaller>[0];
 
   beforeEach(() => {
     vi.clearAllMocks();

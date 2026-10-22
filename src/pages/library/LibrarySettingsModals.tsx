@@ -45,7 +45,7 @@ interface LibrarySettingsModalsProps {
     role: 'editor' | 'viewer',
   ) => Promise<void>;
   handleRenameLibrary?: (newName: string) => Promise<void>;
-  handleExportToCSV: () => void;
+  handleExportToCsv: () => void;
   handleDeleteLibrary: () => void;
   confirmDeleteLibrary: () => void;
 }
@@ -57,7 +57,7 @@ const shareSchema = z.object({
 
 type ShareFormValues = z.infer<typeof shareSchema>;
 
-export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
+export function LibrarySettingsModals({
   isSettingsOpen,
   setIsSettingsOpen,
   isAdvancedSettingsOpen,
@@ -71,10 +71,10 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
   handleRemoveShare,
   handleUpdateRole,
   handleRenameLibrary,
-  handleExportToCSV,
+  handleExportToCsv,
   handleDeleteLibrary,
   confirmDeleteLibrary,
-}) => {
+}: LibrarySettingsModalsProps) {
   const [isSharing, setIsSharing] = React.useState(false);
   const [copiedLink, setCopiedLink] = React.useState(false);
   const [libraryNameInput, setLibraryNameInput] = React.useState(
@@ -145,7 +145,9 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
   const onRenameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = libraryNameInput.trim();
-    if (!trimmed || trimmed === library.name || !handleRenameLibrary) return;
+    if (!trimmed || trimmed === library.name || !handleRenameLibrary) {
+      return;
+    }
     setIsSavingName(true);
     try {
       await handleRenameLibrary(trimmed);
@@ -397,7 +399,7 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
             </h4>
             <Button
               variant="outline"
-              onClick={handleExportToCSV}
+              onClick={handleExportToCsv}
               className="w-full flex items-center justify-center gap-2"
             >
               <Download size={18} /> Export to CSV
@@ -471,4 +473,4 @@ export const LibrarySettingsModals: React.FC<LibrarySettingsModalsProps> = ({
       </Dialog>
     </>
   );
-};
+}

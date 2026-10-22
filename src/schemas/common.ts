@@ -34,8 +34,12 @@ export const safeIdSchema = z
  */
 export function isSafeImageOrHttpUrl(value: string): boolean {
   const trimmed = value.trim();
-  if (trimmed === '') return true;
-  if (hasControlCharacters(trimmed)) return false;
+  if (trimmed === '') {
+    return true;
+  }
+  if (hasControlCharacters(trimmed)) {
+    return false;
+  }
 
   const lower = trimmed.toLowerCase();
   if (

@@ -36,11 +36,15 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function toTitleCase(str: string) {
-  if (!str) return '';
+  if (!str) {
+    return '';
+  }
   // Match any sequence of non-whitespace characters
   return str.replace(/\S+/g, word => {
     const chars = Array.from(word);
-    if (chars.length === 0) return '';
+    if (chars.length === 0) {
+      return '';
+    }
     const first = chars[0].toUpperCase();
     const rest = chars.slice(1).join('').toLowerCase();
     return first + rest;
@@ -48,19 +52,27 @@ export function toTitleCase(str: string) {
 }
 
 export function toSentenceCase(str: string) {
-  if (!str) return '';
+  if (!str) {
+    return '';
+  }
   const trimmed = str.trim();
-  if (trimmed.length === 0) return '';
+  if (trimmed.length === 0) {
+    return '';
+  }
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
 }
 
 export function normalizeName(name?: string): string {
-  if (!name) return '';
+  if (!name) {
+    return '';
+  }
   return toTitleCase(name.trim());
 }
 
 export function normalizeTitle(title?: string): string {
-  if (!title) return '';
+  if (!title) {
+    return '';
+  }
   return title.trim();
 }
 
@@ -68,14 +80,18 @@ import {normalizeIsbn} from './isbn';
 export {normalizeIsbn};
 
 export function normalizeText(text?: string): string {
-  if (!text) return '';
+  if (!text) {
+    return '';
+  }
   return text.trim();
 }
 
 export function getFirestoreTime(
   dateObj?: string | number | Date | FirestoreDate | null,
 ): number {
-  if (!dateObj) return 0;
+  if (!dateObj) {
+    return 0;
+  }
 
   if (typeof dateObj === 'object') {
     if ('toMillis' in dateObj && typeof dateObj.toMillis === 'function') {
@@ -207,8 +223,12 @@ export function filterDuplicateBooks(
  * (e.g. 950 -> "950", 1620 -> "1.6k", 25000 -> "25k").
  */
 export function formatCompactNumber(num: number): string {
-  if (!num && num !== 0) return '0';
-  if (num < 1000) return num.toString();
+  if (!num && num !== 0) {
+    return '0';
+  }
+  if (num < 1000) {
+    return num.toString();
+  }
   return new Intl.NumberFormat('en', {
     notation: 'compact',
     maximumFractionDigits: 1,

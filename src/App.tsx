@@ -14,11 +14,10 @@ import {initAuthListener} from './services/authListener';
 import {useAuthStore} from './stores/authStore';
 import {useAppStore} from './stores/appStore';
 import {useAppPermissions} from './hooks/useAppPermissions';
-import {DebugConsoleHUD} from './components/debug/DebugConsoleHUD';
 import {ErrorBoundary} from './components/layout/ErrorBoundary';
 import {Toaster} from 'sonner';
-import AppLayout from './components/layout/AppLayout';
-import ScrollToTop from './components/layout/ScrollToTop';
+import {AppLayout} from './components/layout/AppLayout';
+import {ScrollToTop} from './components/layout/ScrollToTop';
 import {RequireLibraryPermission} from './components/layout/RequireLibraryPermission';
 import {BookLoader} from './components/book/BookLoader';
 import {
@@ -30,9 +29,9 @@ import {createLogger} from './lib/telemetry';
 import {Button} from './components/ui/button';
 import {WaitlistScreen} from './components/account/WaitlistScreen';
 
-import Dashboard from './pages/Dashboard';
-import LibraryView from './pages/LibraryView';
-import Login from './pages/Login';
+import {Dashboard} from './pages/Dashboard';
+import {LibraryView} from './pages/LibraryView';
+import {Login} from './pages/Login';
 
 // Initialize Auth
 initAuthListener();
@@ -50,15 +49,27 @@ function lazyWithRetry<T extends React.ComponentType<unknown>>(
   });
 }
 
-const BookDetailsView = lazyWithRetry(() => import('./pages/BookDetailsView'));
-const AddBookView = lazyWithRetry(() => import('./pages/AddBookView'));
-const ConstellationMap = lazyWithRetry(
-  () => import('./pages/ConstellationMap'),
+const BookDetailsView = lazyWithRetry(() =>
+  import('./pages/BookDetailsView').then(m => ({default: m.BookDetailsView})),
 );
-const WorldMap = lazyWithRetry(() => import('./pages/WorldMap'));
-const SpruceUpView = lazyWithRetry(() => import('./pages/SpruceUpView'));
-const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
-const TimelineView = lazyWithRetry(() => import('./pages/TimelineView'));
+const AddBookView = lazyWithRetry(() =>
+  import('./pages/AddBookView').then(m => ({default: m.AddBookView})),
+);
+const ConstellationMap = lazyWithRetry(() =>
+  import('./pages/ConstellationMap').then(m => ({default: m.ConstellationMap})),
+);
+const WorldMap = lazyWithRetry(() =>
+  import('./pages/WorldMap').then(m => ({default: m.WorldMap})),
+);
+const SpruceUpView = lazyWithRetry(() =>
+  import('./pages/SpruceUpView').then(m => ({default: m.SpruceUpView})),
+);
+const AdminDashboard = lazyWithRetry(() =>
+  import('./pages/AdminDashboard').then(m => ({default: m.AdminDashboard})),
+);
+const TimelineView = lazyWithRetry(() =>
+  import('./pages/TimelineView').then(m => ({default: m.TimelineView})),
+);
 
 function LoadingScreen() {
   return (
@@ -306,8 +317,9 @@ function ThemeProvider({children}: {children: React.ReactNode}) {
       theme !== 'system' ||
       typeof window === 'undefined' ||
       typeof window.matchMedia !== 'function'
-    )
+    ) {
       return;
+    }
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => {
@@ -343,11 +355,13 @@ function DebugDataClearer() {
 
 function TelemetryHUD() {
   const isDebugMode = useDebug(state => state.isDebugMode);
-  if (!isDebugMode) return null;
+  if (!isDebugMode) {
+    return null;
+  }
   return <DebugConsoleHUD />;
 }
 
-export default function App() {
+export function App() {
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>

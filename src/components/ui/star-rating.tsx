@@ -25,7 +25,9 @@ export function StarRating({
     e: React.MouseEvent<HTMLDivElement>,
     starIndex: number,
   ) => {
-    if (!interactive || !onRatingChange) return;
+    if (!interactive || !onRatingChange) {
+      return;
+    }
 
     // Get click position relative to the star
     const starElement = e.currentTarget.getBoundingClientRect();

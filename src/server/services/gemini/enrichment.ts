@@ -8,12 +8,12 @@ import {
 } from './client';
 
 export async function generateLibraryRecommendations(
-  libraryBooks: {
+  libraryBooks: Array<{
     title: string;
     author: string;
     primaryGenre?: string;
     subgenres?: string[];
-  }[],
+  }>,
 ): Promise<string> {
   try {
     const limitedBooks = libraryBooks.slice(0, 100);
@@ -136,7 +136,9 @@ For each recommendation, format with:
         "I'm sorry, I couldn't generate insights for this book at the moment."
       );
     } catch (error: unknown) {
-      if (signal?.aborted) throw new Error('Aborted');
+      if (signal?.aborted) {
+        throw new Error('Aborted');
+      }
       const errObj = error as Record<string, unknown>;
       const is500 =
         errObj?.status === 500 ||
@@ -154,15 +156,17 @@ For each recommendation, format with:
 }
 
 export async function getPickOfTheDay(
-  books: {
+  books: Array<{
     title: string;
     author: string;
     primaryGenre?: string;
     subgenres?: string[];
-  }[],
-): Promise<{title: string; author: string; reason: string}[] | null> {
+  }>,
+): Promise<Array<{title: string; author: string; reason: string}> | null> {
   try {
-    if (!books || books.length === 0) return null;
+    if (!books || books.length === 0) {
+      return null;
+    }
     const shuffled = [...books];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -255,7 +259,9 @@ CRITICAL RULES:
     }
 
     let text = response.text;
-    if (!text) return null;
+    if (!text) {
+      return null;
+    }
     try {
       text = text
         .replace(/^```json\n?/, '')
@@ -263,11 +269,11 @@ CRITICAL RULES:
         .trim();
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) {
-        return parsed.filter(p => p.title && p.author && p.reason) as {
+        return parsed.filter(p => p.title && p.author && p.reason) as Array<{
           title: string;
           author: string;
           reason: string;
-        }[];
+        }>;
       } else if (
         parsed &&
         typeof parsed === 'object' &&
@@ -275,7 +281,11 @@ CRITICAL RULES:
         parsed.author &&
         parsed.reason
       ) {
-        return [parsed] as {title: string; author: string; reason: string}[];
+        return [parsed] as Array<{
+          title: string;
+          author: string;
+          reason: string;
+        }>;
       }
       return null;
     } catch {
@@ -301,7 +311,7 @@ export interface ClassifiedBookGenre {
 }
 
 export async function classifyBooks(
-  batch: {id: string; title: string; author: string; synopsis?: string}[],
+  batch: Array<{id: string; title: string; author: string; synopsis?: string}>,
   options?: {
     priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
     signal?: AbortSignal;
@@ -309,7 +319,9 @@ export async function classifyBooks(
   },
 ): Promise<ClassifiedBookGenre[]> {
   try {
-    if (!batch || batch.length === 0) return [];
+    if (!batch || batch.length === 0) {
+      return [];
+    }
     const booksPromptData = batch.map(b => ({
       id: b.id,
       title: b.title,
@@ -405,7 +417,9 @@ ${JSON.stringify(booksPromptData)}`;
     );
 
     const text = response.text;
-    if (!text) return [];
+    if (!text) {
+      return [];
+    }
 
     try {
       const parsed = JSON.parse(text);
@@ -476,7 +490,7 @@ export interface BatchExtractedGeoResponse {
 }
 
 export async function extractBookGeoMetadataBatch(
-  books: {id: string; title: string; author: string; synopsis?: string}[],
+  books: Array<{id: string; title: string; author: string; synopsis?: string}>,
   options?: {
     priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
     signal?: AbortSignal;
@@ -573,7 +587,7 @@ export interface BatchTemporalResponse {
 }
 
 export async function extractBookTemporalMetadataBatch(
-  books: {id: string; title: string; author: string; synopsis?: string}[],
+  books: Array<{id: string; title: string; author: string; synopsis?: string}>,
   options?: {
     priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
     signal?: AbortSignal;
@@ -672,13 +686,15 @@ Directives:
 }
 
 export async function generateBookSynopsesBatch(
-  books: {id: string; title: string; author: string}[],
+  books: Array<{id: string; title: string; author: string}>,
   options?: {
     priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
     signal?: AbortSignal;
   },
 ): Promise<Record<string, string>> {
-  if (!books || books.length === 0) return {};
+  if (!books || books.length === 0) {
+    return {};
+  }
 
   const schema = {
     type: Type.ARRAY,
@@ -729,13 +745,15 @@ export async function generateBookSynopsesBatch(
 }
 
 export async function generateAuthorBiosBatch(
-  books: {id: string; title: string; author: string}[],
+  books: Array<{id: string; title: string; author: string}>,
   options?: {
     priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
     signal?: AbortSignal;
   },
 ): Promise<Record<string, string>> {
-  if (!books || books.length === 0) return {};
+  if (!books || books.length === 0) {
+    return {};
+  }
 
   const schema = {
     type: Type.ARRAY,
@@ -786,13 +804,15 @@ export async function generateAuthorBiosBatch(
 }
 
 export async function extractBookSeriesBatch(
-  books: {id: string; title: string; author: string; synopsis?: string}[],
+  books: Array<{id: string; title: string; author: string; synopsis?: string}>,
   options?: {
     priority?: import('../scheduler/providerQuotaScheduler').SchedulePriority;
     signal?: AbortSignal;
   },
 ): Promise<Record<string, string>> {
-  if (!books || books.length === 0) return {};
+  if (!books || books.length === 0) {
+    return {};
+  }
 
   const schema = {
     type: Type.ARRAY,

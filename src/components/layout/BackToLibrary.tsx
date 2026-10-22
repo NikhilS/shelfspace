@@ -17,14 +17,14 @@ export interface BackToLibraryProps {
  * Ensures consistent touch targets (>= 44px on mobile), hover micro-interactions,
  * and aesthetic alignment across all library sub-views.
  */
-export const BackToLibrary: React.FC<BackToLibraryProps> = ({
+export function BackToLibrary({
   libraryId,
   customTo,
   label,
   className = '',
   onClick,
   'aria-label': ariaLabel,
-}) => {
+}: BackToLibraryProps) {
   const isVirtual = Boolean(libraryId?.startsWith('virtual_'));
   const targetUrl =
     customTo || (libraryId && !isVirtual ? `/library/${libraryId}` : '/');
@@ -62,4 +62,4 @@ export const BackToLibrary: React.FC<BackToLibraryProps> = ({
       <span className="truncate">{resolvedLabel}</span>
     </Link>
   );
-};
+}

@@ -35,6 +35,7 @@ These rules apply to every pull request, feature branch, and refactor:
 | **API** | **Zod is the Single Source of Truth.** Input and output schemas defined in `src/schemas/` drive all tRPC v11 routers and runtime validation. |
 | **Database** | **No Orphaned Books.** A book document cannot exist outside of a parent `libraries/{libraryId}/books/{bookId}` path. All library deletions must clean up subcollections. |
 | **Voice & Microcopy** | **Warm, Friendly, Crisp.** All user-facing headings, descriptions, empty states, and modals speak in a warm, welcoming bookshop voice with crisp, concise phrasing—free of database or systems jargon (`records`, `payloads`, `leaks`, `volumes`). |
+| **Code Style** | **Google TypeScript Style Guide (`gts`).** Enforce named exports only (no `export default` in `src/`), named `function` declarations over `React.FC`, whole-word CamelCase for acronyms (`Csv`, `Isbn`, `Hud`), `interface` for object shapes, braced control flow (`curly`), no redundant `public` modifiers, and zero `any` across both production and test files. |
 
 ---
 
@@ -57,8 +58,8 @@ The complete engineering standard is partitioned into specialized, domain-focuse
 5. [**Cross-Cutting Concerns**](./05-CROSS-CUTTING-CONCERNS.md)  
    *Authentication & RBAC/ABAC allowlisting, telemetry budgets, developer HUD, caching lifecycles, and PWA/offline resiliency.*
 
-6. [**Codebase Structure, Naming & Testing Conventions**](./06-CODEBASE-STRUCTURE-AND-CONVENTIONS.md)  
-   *Canonical directory topology, file & symbol casing standards, single-barrel module resolution (no sibling shims), 1-to-1 tRPC router mapping, 100% test co-location, and minimum test coverage invariants.*
+6. [**Codebase Structure, Naming, Style Guide & Testing Conventions**](./06-CODEBASE-STRUCTURE-AND-CONVENTIONS.md)  
+   *Canonical directory topology, file & symbol casing standards, single-barrel module resolution (no sibling shims), 1-to-1 tRPC router mapping, Google TypeScript Style Guide (`gts`) enforcement, 100% test co-location, and minimum test coverage invariants.*
 
 ---
 
@@ -66,6 +67,7 @@ The complete engineering standard is partitioned into specialized, domain-focuse
  
 When architectural conventions evolve, update the relevant evergreen document and record the strategic rationale here:
 
+* **2026-10:** Enforced full [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html) compliance via `gts` and `eslint.config.cjs` across production and test suites (braced control flow, named exports across `src/`, named `function` declarations over `React.FC`, whole-word CamelCase for acronyms like `CsvImportTab`, `ScanIsbnTab`, and `DebugConsoleHud`, `interface` over object `type` aliases, no redundant `public` class modifiers, and zero explicit `any` in tests).
 * **2026-10:** Codified the **Warm, Friendly, Crisp** voice and microcopy guidelines across the entire application, replacing database/archival jargon with natural book-lover language and pairing all empty states with bespoke monoline ink-and-terracotta spot illustrations (`src/components/ui/empty-state-illustrations.tsx`).
 * **2026-10:** Established 1-to-1 co-located test coverage across all pure mathematical/spatial engines (`clustering`, `timelineMath`, `worldMapMath`), Web Workers (`umap.worker`, `duplicateDetection.worker`), tRPC routers (`gemini`, `metadata`, `user`, `auth`, `libraryApi`, `bookApi`, `enrichmentApi`), backend services (`gemini`, `metadata`, `userService`, `globalProviderGovernor`, `serverTelemetryBuffer`), client RBAC/storage helpers, and Zustand stores.
 * **2026-10:** Standardized repository layout, file casing (`umap.worker.ts`, `catalogOrchestrator.ts`), 1-to-1 tRPC router modules (`libraryApi`, `bookApi`, `enrichmentApi`), single-entry barrel exports, unified date utilities, and 100% co-located `*.test.ts(x)` suites (eliminating `__tests__/` directories and legacy client `db/` helpers).
@@ -74,3 +76,4 @@ When architectural conventions evolve, update the relevant evergreen document an
 * **2026-09:** Database access plane unified behind server procedures.
 * **2026-09:** Typography stack streamlined to Manrope for all UI hierarchies, pairing with Playfair Display (Italic) solely for the brand wordmark.
 * **2026-09:** Telemetry engine decoupled from the critical render loop via idle-deferred dispatch and heuristic byte calculation.
+

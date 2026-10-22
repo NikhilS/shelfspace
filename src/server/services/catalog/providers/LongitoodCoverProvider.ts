@@ -14,10 +14,10 @@ import {
 import type {CoverCandidate} from '../../../../schemas/book';
 
 export class LongitoodCoverProvider implements ICatalogSourceProvider {
-  public readonly id = 'longitood-cover' as const;
-  public readonly name = 'Longitood Cover Archive';
-  public readonly authorityWeight = 88;
-  public readonly capabilities: ProviderCapabilities = {
+  readonly id = 'longitood-cover' as const;
+  readonly name = 'Longitood Cover Archive';
+  readonly authorityWeight = 88;
+  readonly capabilities: ProviderCapabilities = {
     isbnSearch: true,
     titleSearch: true,
     coverResolution: true,
@@ -26,7 +26,7 @@ export class LongitoodCoverProvider implements ICatalogSourceProvider {
     genre: false,
   };
 
-  public readonly scheduler = new ProviderQuotaScheduler({
+  readonly scheduler = new ProviderQuotaScheduler({
     providerId: 'longitood-cover',
     maxConcurrent: 2,
     minSpacingMs: 350,
@@ -35,23 +35,29 @@ export class LongitoodCoverProvider implements ICatalogSourceProvider {
     defaultCooldownMs: 15_000,
   });
 
-  public isAvailable(): boolean {
+  isAvailable(): boolean {
     return true;
   }
 
-  public async searchByIsbn(
+  async searchByIsbn(
     isbn: string,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit | null> {
     const cleanIsbn = normalizeIsbn(isbn);
-    if (cleanIsbn.length !== 13) return null;
+    if (cleanIsbn.length !== 13) {
+      return null;
+    }
 
     const url = `https://bookcover.longitood.com/bookcover/${encodeURIComponent(cleanIsbn)}`;
     const response = await fetchWithProviderTimeout(url, {signal}, 3000);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return null;
+    }
 
     const data = (await response.json()) as {url?: string};
-    if (!data?.url) return null;
+    if (!data?.url) {
+      return null;
+    }
 
     const coverUrl = data.url.replace('http:', 'https:');
     return {
@@ -74,18 +80,24 @@ export class LongitoodCoverProvider implements ICatalogSourceProvider {
     };
   }
 
-  public async searchByQuery(
+  async searchByQuery(
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {
-    if (!query.title || !query.author) return [];
+    if (!query.title || !query.author) {
+      return [];
+    }
 
     const url = `https://bookcover.longitood.com/bookcover?book_title=${encodeURIComponent(query.title)}&author_name=${encodeURIComponent(query.author)}`;
     const response = await fetchWithProviderTimeout(url, {signal}, 3000);
-    if (!response.ok) return [];
+    if (!response.ok) {
+      return [];
+    }
 
     const data = (await response.json()) as {url?: string};
-    if (!data?.url) return [];
+    if (!data?.url) {
+      return [];
+    }
 
     const coverUrl = data.url.replace('http:', 'https:');
     return [
@@ -110,17 +122,21 @@ export class LongitoodCoverProvider implements ICatalogSourceProvider {
     ];
   }
 
-  public async resolveCovers(
+  async resolveCovers(
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<CoverCandidate[]> {
     if (query.isbn && normalizeIsbn(query.isbn).length === 13) {
       const hit = await this.searchByIsbn(query.isbn, signal);
-      if (hit?.additionalCovers?.length) return hit.additionalCovers;
+      if (hit?.additionalCovers?.length) {
+        return hit.additionalCovers;
+      }
     }
     if (query.title && query.author) {
       const hits = await this.searchByQuery(query, signal);
-      if (hits[0]?.additionalCovers?.length) return hits[0].additionalCovers;
+      if (hits[0]?.additionalCovers?.length) {
+        return hits[0].additionalCovers;
+      }
     }
     return [];
   }

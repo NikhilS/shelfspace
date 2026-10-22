@@ -17,7 +17,9 @@ export class CoverImageMetadataProvider implements IMetadataProvider<
     book: CoreBookData,
     options?: MetadataBulkFetchOptions,
   ): Promise<string | null> {
-    if (options?.signal?.aborted) return null;
+    if (options?.signal?.aborted) {
+      return null;
+    }
     try {
       // Query federated cover candidates across both ISBN and Title+Author providers
       // (including Apple Books 1000x1000 Ultra-Res covers, PRH ISBN CDN, Hardcover, Longitood, etc.)
@@ -39,7 +41,9 @@ export class CoverImageMetadataProvider implements IMetadataProvider<
         }
       }
 
-      if (options?.signal?.aborted) return null;
+      if (options?.signal?.aborted) {
+        return null;
+      }
 
       if (book.isbn) {
         const details = await catalogOrchestrator.searchByIsbn(book.isbn, {
@@ -52,7 +56,9 @@ export class CoverImageMetadataProvider implements IMetadataProvider<
         }
       }
 
-      if (options?.signal?.aborted) return null;
+      if (options?.signal?.aborted) {
+        return null;
+      }
 
       if (book.title) {
         const searchRes = await catalogOrchestrator.searchByQuery(

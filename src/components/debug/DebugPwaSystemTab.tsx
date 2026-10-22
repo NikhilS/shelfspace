@@ -34,20 +34,26 @@ interface NetworkConnectionInfo {
 }
 
 function formatBytes(bytes: number): string {
-  if (!bytes || bytes <= 0) return '0 B';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (!bytes || bytes <= 0) {
+    return '0 B';
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export const DebugPwaSystemTab: React.FC<DebugPwaSystemTabProps> = ({
+export function DebugPwaSystemTab({
   metrics,
   isOnline,
   activeStates,
   activeListeners,
   debugData,
   debugTitle,
-}) => {
+}: DebugPwaSystemTabProps) {
   const [swCount, setSwCount] = useState<number>(0);
   const [hasSwController, setHasSwController] = useState<boolean>(false);
   const [cacheKeys, setCacheKeys] = useState<string[]>([]);
@@ -62,7 +68,9 @@ export const DebugPwaSystemTab: React.FC<DebugPwaSystemTabProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const netConnection = useMemo((): NetworkConnectionInfo => {
-    if (typeof navigator === 'undefined') return {};
+    if (typeof navigator === 'undefined') {
+      return {};
+    }
     const conn = (
       navigator as unknown as {
         connection?: NetworkConnectionInfo;
@@ -427,4 +435,4 @@ export const DebugPwaSystemTab: React.FC<DebugPwaSystemTabProps> = ({
       </div>
     </div>
   );
-};
+}

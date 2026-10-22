@@ -13,7 +13,9 @@ export class EmbeddingMetadataProvider implements IMetadataProvider<number[]> {
 
   private buildEmbeddingText(book: CoreBookData): string {
     const parts = [book.title];
-    if (book.author) parts.push(`by ${book.author}`);
+    if (book.author) {
+      parts.push(`by ${book.author}`);
+    }
     if (book.primaryGenre) {
       const genreStr =
         book.subgenres && book.subgenres.length > 0
@@ -22,7 +24,9 @@ export class EmbeddingMetadataProvider implements IMetadataProvider<number[]> {
       parts.push(`[${genreStr}]`);
     }
     const syn = book.synopsis || book.description;
-    if (syn && typeof syn === 'string') parts.push(syn);
+    if (syn && typeof syn === 'string') {
+      parts.push(syn);
+    }
     return parts.join(' - ');
   }
 

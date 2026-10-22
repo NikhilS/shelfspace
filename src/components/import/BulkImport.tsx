@@ -17,7 +17,7 @@ import {
 
 interface BulkImportProps {
   onBooksExtracted: (
-    books: {
+    books: Array<{
       title: string;
       author: string;
       isbn?: string;
@@ -25,7 +25,7 @@ interface BulkImportProps {
       subgenres?: string[];
       genres?: string[];
       format?: 'physical' | 'digital';
-    }[],
+    }>,
   ) => void;
   isExtracting: boolean;
   setIsExtracting: (extracting: boolean) => void;
@@ -34,7 +34,7 @@ interface BulkImportProps {
   mode?: 'library' | 'reading';
 }
 
-export default function BulkImport({
+export function BulkImport({
   onBooksExtracted,
   isExtracting,
   setIsExtracting,
@@ -51,7 +51,9 @@ export default function BulkImport({
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     if (!isOnline) {
       toast.error(
@@ -96,12 +98,17 @@ export default function BulkImport({
       logger.error(
         `CSV Processing failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      if (error instanceof Error) toast.error(error.message);
-      else toast.error('Failed to process CSV file.');
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error('Failed to process CSV file.');
+      }
     } finally {
       setIsExtracting(false);
       setExtractionStatus(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 

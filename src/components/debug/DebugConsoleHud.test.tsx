@@ -2,7 +2,7 @@ import React from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../../lib/telemetry';
-import {DebugConsoleHUD} from './DebugConsoleHUD';
+import {DebugConsoleHud} from './DebugConsoleHud';
 
 // Mock Debug Context
 vi.mock('../../stores/debugStore', () => ({
@@ -183,7 +183,7 @@ describe('DebugTelemetryEngine Unit Tests', () => {
   });
 });
 
-describe('DebugConsoleHUD Component rendering', () => {
+describe('DebugConsoleHud Component rendering', () => {
   beforeEach(() => {
     DebugTelemetryEngine.resetInstance();
     const engine = DebugTelemetryEngine.getInstance();
@@ -193,14 +193,14 @@ describe('DebugConsoleHUD Component rendering', () => {
   });
 
   it('renders the console activator trigger label correctly', () => {
-    render(<DebugConsoleHUD />);
+    render(<DebugConsoleHud />);
 
     const btn = screen.getByRole('button', {name: /Console/i});
     expect(btn).toBeInTheDocument();
   });
 
   it('expands on trigger button click, presenting the 4 streamlined navigation tabs', () => {
-    render(<DebugConsoleHUD />);
+    render(<DebugConsoleHud />);
 
     const btn = screen.getByRole('button', {name: /Console/i});
     fireEvent.click(btn);
@@ -217,7 +217,7 @@ describe('DebugConsoleHUD Component rendering', () => {
       scope: 'Auth',
     });
 
-    render(<DebugConsoleHUD />);
+    render(<DebugConsoleHud />);
 
     const btn = screen.getByRole('button', {name: /Console/i});
     fireEvent.click(btn);
@@ -236,7 +236,7 @@ describe('DebugConsoleHUD Component rendering', () => {
       fromCache: true,
     });
 
-    render(<DebugConsoleHUD />);
+    render(<DebugConsoleHud />);
 
     fireEvent.click(screen.getByRole('button', {name: /Console/i}));
     fireEvent.click(screen.getByTitle('Cache & Persistence'));
@@ -263,7 +263,7 @@ describe('DebugConsoleHUD Component rendering', () => {
     engine.registerListener('SSE:geo', '/api/enrichment/stream?libraryId=lib1');
     engine.updateState('LibraryView', {selectedCount: 3});
 
-    render(<DebugConsoleHUD />);
+    render(<DebugConsoleHud />);
 
     fireEvent.click(screen.getByRole('button', {name: /Console/i}));
     fireEvent.click(screen.getByTitle('PWA & System'));

@@ -21,14 +21,14 @@ const TIER_LABEL: Record<
   standard: 'Standard',
 };
 
-export const CoverGalleryPicker: React.FC<CoverGalleryPickerProps> = ({
+export function CoverGalleryPicker({
   title,
   author,
   isbn,
   activeCoverUrl,
   initialCandidates = [],
   onSelectCover,
-}) => {
+}: CoverGalleryPickerProps) {
   const [isOpen, setIsOpen] = useState(initialCandidates.length > 1);
   const [isLoading, setIsLoading] = useState(false);
   const [candidates, setCandidates] =
@@ -41,7 +41,9 @@ export const CoverGalleryPicker: React.FC<CoverGalleryPickerProps> = ({
   const canQuery = Boolean(isbn?.trim() || title?.trim());
 
   const handleBrowseCovers = async () => {
-    if (!canQuery || isLoading) return;
+    if (!canQuery || isLoading) {
+      return;
+    }
     setIsOpen(true);
     setIsLoading(true);
     try {
@@ -192,4 +194,4 @@ export const CoverGalleryPicker: React.FC<CoverGalleryPickerProps> = ({
       )}
     </div>
   );
-};
+}

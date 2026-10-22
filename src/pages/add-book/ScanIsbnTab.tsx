@@ -1,7 +1,7 @@
 import React, {useState, useRef, useMemo} from 'react';
 import {BookDetails} from '../../types';
 import {trpcVanilla} from '../../lib/trpc';
-import BarcodeScanner from '../../components/import/BarcodeScanner';
+import {BarcodeScanner} from '../../components/import/BarcodeScanner';
 import {Loader2, X, BookPlus} from 'lucide-react';
 import {toast} from 'sonner';
 import {triggerHaptics, normalizeBookDetails} from '../../lib/utils';
@@ -17,7 +17,7 @@ import {
   BookAuthorCell,
 } from '../../components/ui/data-table';
 
-interface ScanISBNTabProps {
+interface ScanIsbnTabProps {
   addBooks: (books: BookDetails[]) => Promise<BookDetails[] | void | undefined>;
   isAddingAll: boolean;
   existingBooks?: BookDetails[];
@@ -25,13 +25,13 @@ interface ScanISBNTabProps {
   mode?: 'library' | 'reading';
 }
 
-function ScanISBNTab({
+export function ScanIsbnTab({
   addBooks,
   isAddingAll,
   existingBooks = [],
   allowDuplicates = false,
   mode = 'library',
-}: ScanISBNTabProps) {
+}: ScanIsbnTabProps) {
   const [processingIsbns, setProcessingIsbns] = useState<Set<string>>(
     new Set(),
   );
@@ -44,8 +44,9 @@ function ScanISBNTab({
   );
 
   const handleScanIsbn = async (isbn: string) => {
-    if (processingRefs.current.has(isbn) || scannedRefs.current.has(isbn))
+    if (processingRefs.current.has(isbn) || scannedRefs.current.has(isbn)) {
       return;
+    }
 
     logger.info(`Detected ISBN: ${isbn}. Searching federated catalog...`);
     processingRefs.current.add(isbn);
@@ -81,7 +82,9 @@ function ScanISBNTab({
         triggerHaptics(50);
         scannedRefs.current.add(isbn);
         setScannedBooks(prev => {
-          if (prev.some(b => b.isbn === isbn)) return prev;
+          if (prev.some(b => b.isbn === isbn)) {
+            return prev;
+          }
           return [book, ...prev];
         });
         setSelectedScanned(prev => new Set(prev).add(isbn));
@@ -109,8 +112,11 @@ function ScanISBNTab({
   const toggleSelectScanned = (book: BookDetails) => {
     const next = new Set(selectedScanned);
     const key = book.isbn || book.title;
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
     setSelectedScanned(next);
   };
 
@@ -135,7 +141,7 @@ function ScanISBNTab({
     }
   };
 
-  const columns: DataTableColumn<BookDetails>[] = useMemo(
+  const columns: Array<DataTableColumn<BookDetails>> = useMemo(
     () => [
       {
         id: 'select',
@@ -211,7 +217,9 @@ function ScanISBNTab({
 
     // Optimistic UI
     booksToAdd.forEach(b => {
-      if (b.isbn) scannedRefs.current.delete(b.isbn);
+      if (b.isbn) {
+        scannedRefs.current.delete(b.isbn);
+      }
     });
     setScannedBooks(prev =>
       prev.filter(b => !selectedScanned.has(b.isbn || b.title)),
@@ -228,7 +236,9 @@ function ScanISBNTab({
       triggerHaptics([30, 50, 30]);
     } catch {
       booksToAdd.forEach(b => {
-        if (b.isbn) scannedRefs.current.add(b.isbn);
+        if (b.isbn) {
+          scannedRefs.current.add(b.isbn);
+        }
       });
       setScannedBooks(originalScanned);
       setSelectedScanned(originalSelected);
@@ -327,5 +337,3 @@ function ScanISBNTab({
     </div>
   );
 }
-
-export default ScanISBNTab;

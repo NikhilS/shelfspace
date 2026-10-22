@@ -34,7 +34,9 @@ function stripControlCharacters(str: string, replacement = ''): string {
  * before writing URLs to server access logs.
  */
 export function redactUrlForLog(rawUrl: string): string {
-  if (!rawUrl) return '';
+  if (!rawUrl) {
+    return '';
+  }
   return stripControlCharacters(rawUrl, '').replace(
     SENSITIVE_QUERY_PARAM_REGEX,
     '$1[REDACTED]',
@@ -46,7 +48,9 @@ export function redactUrlForLog(rawUrl: string): string {
  * Strips CR/LF, null bytes, and ANSI escape sequences, and truncates to maxLength.
  */
 export function sanitizeLogField(input: unknown, maxLength = 1000): string {
-  if (input === null || input === undefined) return '';
+  if (input === null || input === undefined) {
+    return '';
+  }
   const raw = typeof input === 'string' ? input : JSON.stringify(input);
   const cleaned = stripControlCharacters(raw, ' ').trim();
   if (cleaned.length <= maxLength) {
@@ -168,7 +172,9 @@ export class SseConcurrencyTracker {
     this.activeCounts.set(userId, current + 1);
     let released = false;
     return () => {
-      if (released) return;
+      if (released) {
+        return;
+      }
       released = true;
       const nextCount = (this.activeCounts.get(userId) || 1) - 1;
       if (nextCount <= 0) {

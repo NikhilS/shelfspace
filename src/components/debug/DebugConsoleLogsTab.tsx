@@ -40,7 +40,7 @@ const SCOPE_OPTIONS = [
   'App',
 ] as const;
 
-export const DebugConsoleLogsTab: React.FC<DebugConsoleLogsTabProps> = ({
+export function DebugConsoleLogsTab({
   filteredLogs,
   showLog,
   setShowLog,
@@ -52,13 +52,15 @@ export const DebugConsoleLogsTab: React.FC<DebugConsoleLogsTabProps> = ({
   setShowError,
   searchText,
   setSearchText,
-}) => {
+}: DebugConsoleLogsTabProps) {
   const [selectedScope, setSelectedScope] = useState<string>('All');
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const scopedLogs = useMemo(() => {
-    if (selectedScope === 'All') return filteredLogs;
+    if (selectedScope === 'All') {
+      return filteredLogs;
+    }
     if (selectedScope === 'Error') {
       return filteredLogs.filter(
         l => l.type === 'error' || l.scope === 'Error',
@@ -321,4 +323,4 @@ export const DebugConsoleLogsTab: React.FC<DebugConsoleLogsTabProps> = ({
       </div>
     </div>
   );
-};
+}

@@ -36,7 +36,9 @@ function upgradeAppleArtworkUrl(url?: string): {
   ultra: string;
   high: string;
 } | null {
-  if (!url) return null;
+  if (!url) {
+    return null;
+  }
   const clean = url.replace('http:', 'https:');
   const ultra = clean.replace(/\/[0-9]+x[0-9]+bb\.jpg/i, '/1000x1000bb.jpg');
   const high = clean.replace(/\/[0-9]+x[0-9]+bb\.jpg/i, '/600x600bb.jpg');
@@ -47,7 +49,9 @@ function extractSeriesFromTitle(rawTitle?: string): {
   cleanTitle: string;
   series?: string;
 } {
-  if (!rawTitle) return {cleanTitle: 'Unknown Title'};
+  if (!rawTitle) {
+    return {cleanTitle: 'Unknown Title'};
+  }
   // Apple Books frequently formats series as "Book Title (Series Name, Book 1)"
   const match = rawTitle.match(
     /^(.*?)\s*\(([^)]+?(?:Book|Vol\.?|Volume|#)\s*\d+[^)]*)\)\s*$/i,
@@ -62,10 +66,10 @@ function extractSeriesFromTitle(rawTitle?: string): {
 }
 
 export class AppleBooksProvider implements ICatalogSourceProvider {
-  public readonly id = 'apple-books' as const;
-  public readonly name = 'Apple Books';
-  public readonly authorityWeight = 95;
-  public readonly capabilities: ProviderCapabilities = {
+  readonly id = 'apple-books' as const;
+  readonly name = 'Apple Books';
+  readonly authorityWeight = 95;
+  readonly capabilities: ProviderCapabilities = {
     isbnSearch: true,
     titleSearch: true,
     coverResolution: true,
@@ -74,7 +78,7 @@ export class AppleBooksProvider implements ICatalogSourceProvider {
     genre: true,
   };
 
-  public readonly scheduler = new ProviderQuotaScheduler({
+  readonly scheduler = new ProviderQuotaScheduler({
     providerId: 'apple-books',
     maxConcurrent: 2,
     minSpacingMs: 600,
@@ -83,7 +87,7 @@ export class AppleBooksProvider implements ICatalogSourceProvider {
     defaultCooldownMs: 20_000,
   });
 
-  public isAvailable(): boolean {
+  isAvailable(): boolean {
     return true;
   }
 
@@ -127,24 +131,30 @@ export class AppleBooksProvider implements ICatalogSourceProvider {
     };
   }
 
-  public async searchByIsbn(
+  async searchByIsbn(
     isbn: string,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit | null> {
     const cleanIsbn = normalizeIsbn(isbn);
-    if (!cleanIsbn) return null;
+    if (!cleanIsbn) {
+      return null;
+    }
 
     const url = `https://itunes.apple.com/search?term=${encodeURIComponent(cleanIsbn)}&media=ebook&entity=ebook&limit=3`;
     const response = await fetchWithProviderTimeout(url, {signal}, 3200);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return null;
+    }
 
     const data = (await response.json()) as AppleBooksResponse;
-    if (!data.results || data.results.length === 0) return null;
+    if (!data.results || data.results.length === 0) {
+      return null;
+    }
 
     return this.mapTrackToHit(data.results[0], cleanIsbn);
   }
 
-  public async searchByQuery(
+  async searchByQuery(
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {
@@ -152,15 +162,21 @@ export class AppleBooksProvider implements ICatalogSourceProvider {
       .filter(Boolean)
       .join(' ')
       .trim();
-    if (!parts) return [];
+    if (!parts) {
+      return [];
+    }
 
     const limit = Math.min(10, query.limit ?? 6);
     const url = `https://itunes.apple.com/search?term=${encodeURIComponent(parts)}&media=ebook&entity=ebook&limit=${limit}`;
     const response = await fetchWithProviderTimeout(url, {signal}, 3200);
-    if (!response.ok) return [];
+    if (!response.ok) {
+      return [];
+    }
 
     const data = (await response.json()) as AppleBooksResponse;
-    if (!data.results || data.results.length === 0) return [];
+    if (!data.results || data.results.length === 0) {
+      return [];
+    }
 
     return data.results.map(track => this.mapTrackToHit(track, query.isbn));
   }

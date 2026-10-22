@@ -72,9 +72,15 @@ export function isUnsafeFieldKey(key: string): boolean {
  * Converts a Firestore Timestamp, Date, or string into an ISO-8601 string.
  */
 export function normalizeFirestoreTimestamp(val: unknown): string | undefined {
-  if (!val) return undefined;
-  if (typeof val === 'string') return val;
-  if (val instanceof Date) return val.toISOString();
+  if (!val) {
+    return undefined;
+  }
+  if (typeof val === 'string') {
+    return val;
+  }
+  if (val instanceof Date) {
+    return val.toISOString();
+  }
   if (
     typeof val === 'object' &&
     'toDate' in val &&
@@ -91,7 +97,9 @@ export function normalizeFirestoreTimestamp(val: unknown): string | undefined {
 export function sanitizeTemporalMetadata(
   temporal: BookTemporalMetadata | undefined,
 ): BookTemporalMetadata | undefined {
-  if (!temporal || typeof temporal !== 'object') return undefined;
+  if (!temporal || typeof temporal !== 'object') {
+    return undefined;
+  }
   const copy: BookTemporalMetadata = {...temporal};
   if (copy.startYear !== undefined && copy.endYear === undefined) {
     copy.endYear = copy.startYear;
@@ -130,7 +138,9 @@ export class BookPartitioner {
   } {
     const rawInput: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(input)) {
-      if (isUnsafeFieldKey(key)) continue;
+      if (isUnsafeFieldKey(key)) {
+        continue;
+      }
       if (ALLOWED_CORE_BOOK_FIELDS.has(key)) {
         rawInput[key] = val;
       }
@@ -262,8 +272,12 @@ export class BookPartitioner {
     const heavyUpdates: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(updates)) {
-      if (value === undefined) continue;
-      if (isUnsafeFieldKey(key)) continue;
+      if (value === undefined) {
+        continue;
+      }
+      if (isUnsafeFieldKey(key)) {
+        continue;
+      }
 
       if (HEAVY_FIELDS.has(key)) {
         if (key === 'description' && heavyUpdates.synopsis === undefined) {

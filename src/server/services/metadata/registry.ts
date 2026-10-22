@@ -29,27 +29,25 @@ export class MetadataRegistry {
     this.register(new SeriesMetadataProvider());
   }
 
-  public static getInstance(): MetadataRegistry {
+  static getInstance(): MetadataRegistry {
     if (!MetadataRegistry.instance) {
       MetadataRegistry.instance = new MetadataRegistry();
     }
     return MetadataRegistry.instance;
   }
 
-  public register<T>(provider: IMetadataProvider<T>): void {
+  register<T>(provider: IMetadataProvider<T>): void {
     this.providers.set(
       provider.getKey(),
       provider as IMetadataProvider<unknown>,
     );
   }
 
-  public getProvider<T = unknown>(
-    key: MetadataKey,
-  ): IMetadataProvider<T> | undefined {
+  getProvider<T = unknown>(key: MetadataKey): IMetadataProvider<T> | undefined {
     return this.providers.get(key) as IMetadataProvider<T> | undefined;
   }
 
-  public getAllProviders(): IMetadataProvider<unknown>[] {
+  getAllProviders(): Array<IMetadataProvider<unknown>> {
     return Array.from(this.providers.values());
   }
 
@@ -59,7 +57,7 @@ export class MetadataRegistry {
    * isbn, publishedDate, series, and catalog genres are populated without duplicate
    * catalog lookups across CoverImageMetadataProvider and SynopsisMetadataProvider.
    */
-  public async enrichBooksOnCreate(
+  async enrichBooksOnCreate(
     books: CoreBookData[],
     options?: {allowAiFallback?: boolean; customGenres?: string[]},
   ): Promise<Map<string, Record<string, unknown>>> {
@@ -163,11 +161,17 @@ export class MetadataRegistry {
     for (const provider of createProviders) {
       const key = provider.getKey();
       const booksNeedingField = workingBooks.filter(b => {
-        if (key === MetadataKey.COVER_IMAGE) return !b.coverUrl;
-        if (key === MetadataKey.GENRE) return !b.primaryGenre;
+        if (key === MetadataKey.COVER_IMAGE) {
+          return !b.coverUrl;
+        }
+        if (key === MetadataKey.GENRE) {
+          return !b.primaryGenre;
+        }
         return !b[key];
       });
-      if (booksNeedingField.length === 0) continue;
+      if (booksNeedingField.length === 0) {
+        continue;
+      }
 
       try {
         const batchRes = await provider.bulkFetch(booksNeedingField, {
@@ -175,7 +179,9 @@ export class MetadataRegistry {
           customGenres: options?.customGenres,
         });
         for (const [bookId, value] of Object.entries(batchRes)) {
-          if (value === null || value === undefined) continue;
+          if (value === null || value === undefined) {
+            continue;
+          }
           const current = mergedUpdates.get(bookId) || {};
           const targetBook = workingBooks.find(wb => wb.id === bookId);
           if (key === MetadataKey.GENRE) {

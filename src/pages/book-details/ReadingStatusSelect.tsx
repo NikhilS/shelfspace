@@ -51,7 +51,9 @@ export const ReadingStatusSelect = memo(
         <Select
           value={currentStatus}
           onValueChange={async (val: string) => {
-            if (!libraryId || !bookId || !user) return;
+            if (!libraryId || !bookId || !user) {
+              return;
+            }
             const newStatus = val as
               'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned';
             const originalBookBase = bookBase ? {...bookBase} : null;

@@ -19,7 +19,7 @@ interface LibraryHeaderProps {
   onRefreshHero?: () => void;
 }
 
-export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
+export function LibraryHeader({
   library,
   books,
   isOwner,
@@ -29,7 +29,7 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
   hasAiPlan = true,
   isRefreshingHero = false,
   onRefreshHero,
-}) => {
+}: LibraryHeaderProps) {
   return (
     <div
       className={`w-full min-h-[110px] sm:min-h-[180px] md:min-h-[220px] relative overflow-hidden flex flex-col justify-between transition-all duration-300 border-b border-outline-variant/50 ${
@@ -130,4 +130,4 @@ export const LibraryHeader: React.FC<LibraryHeaderProps> = ({
       </div>
     </div>
   );
-};
+}

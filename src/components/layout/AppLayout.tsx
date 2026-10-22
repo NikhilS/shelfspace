@@ -9,7 +9,7 @@ interface AppLayoutProps {
   children?: React.ReactNode;
 }
 
-export default function AppLayout({children}: AppLayoutProps) {
+export function AppLayout({children}: AppLayoutProps) {
   const {user} = useAuth();
   const location = useLocation();
   const [isProfileOpen, setIsProfileOpen] = useState(false);

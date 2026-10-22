@@ -12,7 +12,7 @@ export interface TimelineRiverCanvasProps {
   stageContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export const TimelineRiverCanvas: React.FC<TimelineRiverCanvasProps> = ({
+export function TimelineRiverCanvas({
   clusters,
   riverGeometry,
   selectedClusterKey,
@@ -20,7 +20,7 @@ export const TimelineRiverCanvas: React.FC<TimelineRiverCanvasProps> = ({
   onSelectCluster,
   onHoverCluster,
   stageContainerRef,
-}) => {
+}: TimelineRiverCanvasProps) {
   return (
     <div
       ref={stageContainerRef}
@@ -238,4 +238,4 @@ export const TimelineRiverCanvas: React.FC<TimelineRiverCanvasProps> = ({
       ))}
     </div>
   );
-};
+}

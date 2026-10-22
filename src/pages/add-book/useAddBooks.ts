@@ -61,7 +61,9 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
     libraryId || (user?.uid ? `virtual_${user.uid}` : undefined);
 
   const addBooks = async (booksToAdd: BookDetails[]) => {
-    if (!user?.uid || !effectiveLibraryId || booksToAdd.length === 0) return [];
+    if (!user?.uid || !effectiveLibraryId || booksToAdd.length === 0) {
+      return [];
+    }
 
     if (!isOnline) {
       toast.error('Network required: Connect to the internet to add books.');

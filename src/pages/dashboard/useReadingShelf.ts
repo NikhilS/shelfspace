@@ -87,7 +87,9 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
       bookId: string,
       nextStatus: TrackedShelfStatus | 'unset',
     ) => {
-      if (!user) return;
+      if (!user) {
+        return;
+      }
       try {
         if (trpcVanilla?.book?.updateStatus?.mutate) {
           await trpcVanilla.book.updateStatus.mutate({
@@ -119,7 +121,9 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
 
   const trackBookItem = useCallback(
     async (input: TrackBookInput) => {
-      if (!user) return undefined;
+      if (!user) {
+        return undefined;
+      }
       const result = await trpcVanilla.readingTracker.trackBook.mutate(input);
       await invalidateAll();
       return result;

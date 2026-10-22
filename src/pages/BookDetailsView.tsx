@@ -17,7 +17,7 @@ import {trpc} from '../lib/trpc';
 import 'swiper/css';
 import 'swiper/css/virtual';
 
-export default function BookDetailsView() {
+export function BookDetailsView() {
   const {libraryId, bookId} = useParams<{libraryId: string; bookId: string}>();
   const navigate = useNavigate();
   const location = useLocation();

@@ -118,9 +118,13 @@ class EnrichmentJobCoordinatorService {
 
     for (const [bookId, entry] of job.perBookStates.entries()) {
       perBookRecord[bookId] = entry;
-      if (entry.stage === 'completed') completedBooks++;
-      else if (entry.stage === 'failed') failedBooks++;
-      else if (entry.stage === 'skipped') skippedBooks++;
+      if (entry.stage === 'completed') {
+        completedBooks++;
+      } else if (entry.stage === 'failed') {
+        failedBooks++;
+      } else if (entry.stage === 'skipped') {
+        skippedBooks++;
+      }
     }
 
     return {
@@ -146,7 +150,7 @@ class EnrichmentJobCoordinatorService {
     this.emitter.emit(`library:${libraryId}`, event);
   }
 
-  public subscribeToLibrary(
+  subscribeToLibrary(
     libraryId: string,
     listener: (event: EnrichmentSseEvent) => void,
   ): () => void {
@@ -157,21 +161,23 @@ class EnrichmentJobCoordinatorService {
     };
   }
 
-  public getJobStatus(
+  getJobStatus(
     libraryIdOrUid: string,
     _userEmail?: string,
     maybeLibraryId?: string,
   ): EnrichmentJobSnapshot | null {
     const resolvedLibraryId = maybeLibraryId || libraryIdOrUid;
     const job = this.jobsByLibrary.get(resolvedLibraryId);
-    if (!job) return null;
+    if (!job) {
+      return null;
+    }
     return this.buildSnapshot(job);
   }
 
   /**
    * Alias for startJob used by tRPC router procedures.
    */
-  public async startOrJoinJob(
+  async startOrJoinJob(
     uid: string,
     userEmail: string | undefined,
     input: {
@@ -190,7 +196,7 @@ class EnrichmentJobCoordinatorService {
   /**
    * Starts or merges into a background enrichment job for a library.
    */
-  public async startJob(
+  async startJob(
     uid: string,
     userEmail: string | undefined,
     input: {
@@ -228,7 +234,9 @@ class EnrichmentJobCoordinatorService {
     const existingJob = this.jobsByLibrary.get(libraryId);
     if (existingJob && existingJob.status === 'running') {
       if (existingJob.enrichmentType === enrichmentType) {
-        if (overwrite) existingJob.overwrite = true;
+        if (overwrite) {
+          existingJob.overwrite = true;
+        }
         if (allowAiFallback !== undefined) {
           existingJob.allowAiFallback = allowAiFallback;
         }
@@ -307,7 +315,7 @@ class EnrichmentJobCoordinatorService {
     return initialSnapshot;
   }
 
-  public async cancelJob(
+  async cancelJob(
     uid: string,
     userEmail: string | undefined,
     libraryIdOrInput: string | {libraryId: string; jobId?: string},
@@ -338,7 +346,9 @@ class EnrichmentJobCoordinatorService {
       );
     }
     const job = this.jobsByLibrary.get(libraryId);
-    if (!job) return null;
+    if (!job) {
+      return null;
+    }
     if (jobId && job.jobId !== jobId) {
       return this.buildSnapshot(job);
     }
@@ -415,7 +425,9 @@ class EnrichmentJobCoordinatorService {
         !job.abortController.signal.aborted
       ) {
         const microBatch = job.pendingQueue.splice(0, batchSize);
-        if (microBatch.length === 0) break;
+        if (microBatch.length === 0) {
+          break;
+        }
 
         try {
           const result = await EnrichmentService.triggerBatchEnrichment(

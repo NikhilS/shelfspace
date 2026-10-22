@@ -19,7 +19,9 @@ describe('applyNanobananaFlash', () => {
       height = 100;
       constructor() {
         setTimeout(() => {
-          if (this.onload) this.onload();
+          if (this.onload) {
+            this.onload();
+          }
         }, 5);
       }
     } as unknown as typeof HTMLImageElement;
@@ -42,7 +44,9 @@ describe('applyNanobananaFlash', () => {
 
     const originalCreateElement = document.createElement;
     document.createElement = vi.fn().mockImplementation((tag: string) => {
-      if (tag === 'canvas') return mockCanvas;
+      if (tag === 'canvas') {
+        return mockCanvas;
+      }
       return originalCreateElement(tag);
     }) as typeof document.createElement;
 

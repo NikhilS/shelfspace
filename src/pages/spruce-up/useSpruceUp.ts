@@ -65,7 +65,9 @@ export function useSpruceUp(libraryId: string | undefined) {
   latestBooksRef.current = books;
 
   const booksFingerprint = useMemo(() => {
-    if (!books || books.length === 0) return '';
+    if (!books || books.length === 0) {
+      return '';
+    }
     return `${books.length}:${books
       .map(b => `${b.id}:${b.isbn || ''}:${b.title}:${b.author || ''}`)
       .join('|')}`;
@@ -90,7 +92,9 @@ export function useSpruceUp(libraryId: string | undefined) {
 
     const runAsyncFallback = () => {
       fallbackTimer = setTimeout(() => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         const computed = detectDuplicatesWithConfidence(currentBooks);
         if (!cancelled) {
           setRawDuplicateGroups(computed);
@@ -174,12 +178,16 @@ export function useSpruceUp(libraryId: string | undefined) {
   );
 
   const handleDelete = async (id: string) => {
-    if (!libraryId) return;
+    if (!libraryId) {
+      return;
+    }
     const originalData = utilsRef.current.book.list.getData({libraryId});
     setProcessingIds(prev => new Set(prev).add(id));
     try {
       utilsRef.current.book.list.setData({libraryId}, old => {
-        if (!old) return {books: []};
+        if (!old) {
+          return {books: []};
+        }
         if (Array.isArray(old)) {
           return (old as Book[]).filter(
             b => b.id !== id,
@@ -214,7 +222,9 @@ export function useSpruceUp(libraryId: string | undefined) {
   };
 
   const handleAllowDuplicateGroup = async (group: Book[]) => {
-    if (!libraryId) return;
+    if (!libraryId) {
+      return;
+    }
     const bookIds = group.map(b => b.id);
     try {
       await instrumentMutation(
@@ -235,7 +245,9 @@ export function useSpruceUp(libraryId: string | undefined) {
   };
 
   const handleMergeDuplicates = async (payload: DuplicateMergePayload) => {
-    if (!libraryId) return;
+    if (!libraryId) {
+      return;
+    }
     const bookClient = trpcVanilla.book as unknown as {
       mergeDuplicates?: {
         mutate: (

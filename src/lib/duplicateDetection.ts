@@ -11,7 +11,9 @@ export interface DuplicateGroupMetadata {
 }
 
 export function normalizeIsbnForDedupe(raw?: string): string {
-  if (!raw) return '';
+  if (!raw) {
+    return '';
+  }
   return raw
     .trim()
     .replace(/[^0-9X]/gi, '')
@@ -22,7 +24,9 @@ export function normalizeTitleForDedupe(
   raw?: string,
   stripSubtitle = false,
 ): string {
-  if (!raw) return '';
+  if (!raw) {
+    return '';
+  }
   let t = raw.trim().toLowerCase();
 
   // Strip parenthetical or bracketed series suffixes e.g. "(The Lord of the Rings, #1)"
@@ -46,7 +50,9 @@ export function normalizeTitleForDedupe(
 }
 
 export function normalizeAuthorForDedupe(raw?: string): string {
-  if (!raw) return '';
+  if (!raw) {
+    return '';
+  }
   let a = raw.trim().toLowerCase();
   if (a.includes(',')) {
     const parts = a
@@ -62,10 +68,18 @@ export function normalizeAuthorForDedupe(raw?: string): string {
 }
 
 export function diceCoefficient(a: string, b: string): number {
-  if (!a && !b) return 1;
-  if (!a || !b) return 0;
-  if (a === b) return 1;
-  if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+  if (!a && !b) {
+    return 1;
+  }
+  if (!a || !b) {
+    return 0;
+  }
+  if (a === b) {
+    return 1;
+  }
+  if (a.length < 2 || b.length < 2) {
+    return a === b ? 1 : 0;
+  }
 
   const bigramsA = new Map<string, number>();
   for (let i = 0; i < a.length - 1; i++) {
@@ -89,7 +103,9 @@ export function diceCoefficient(a: string, b: string): number {
 export function detectDuplicatesWithConfidence(
   books: Book[],
 ): DuplicateGroupMetadata[] {
-  if (!books || books.length < 2) return [];
+  if (!books || books.length < 2) {
+    return [];
+  }
 
   const adjList: Record<string, Set<string>> = {};
   const edgeMeta = new Map<
@@ -106,9 +122,15 @@ export function detectDuplicatesWithConfidence(
     confidence: number,
     reason: DuplicateMatchReason,
   ) => {
-    if (id1 === id2) return;
-    if (!adjList[id1]) adjList[id1] = new Set();
-    if (!adjList[id2]) adjList[id2] = new Set();
+    if (id1 === id2) {
+      return;
+    }
+    if (!adjList[id1]) {
+      adjList[id1] = new Set();
+    }
+    if (!adjList[id2]) {
+      adjList[id2] = new Set();
+    }
     adjList[id1].add(id2);
     adjList[id2].add(id1);
 
@@ -140,13 +162,17 @@ export function detectDuplicatesWithConfidence(
 
     if (cleanIsbn) {
       const key = `${cleanIsbn}:${format}`;
-      if (!isbnGroups[key]) isbnGroups[key] = [];
+      if (!isbnGroups[key]) {
+        isbnGroups[key] = [];
+      }
       isbnGroups[key].push(book.id);
     }
 
     if (fullTitle && cleanAuthor) {
       const key = `${fullTitle}|${cleanAuthor}:${format}`;
-      if (!exactTitleAuthorGroups[key]) exactTitleAuthorGroups[key] = [];
+      if (!exactTitleAuthorGroups[key]) {
+        exactTitleAuthorGroups[key] = [];
+      }
       exactTitleAuthorGroups[key].push(book.id);
     }
 
@@ -181,7 +207,9 @@ export function detectDuplicatesWithConfidence(
   // Fuzzy pass bucketed by format and author prefix / length to stay fast on large libraries
   const byFormat = new Map<string, PreparedBook[]>();
   for (const item of prepared) {
-    if (!item.coreTitle || !item.cleanAuthor) continue;
+    if (!item.coreTitle || !item.cleanAuthor) {
+      continue;
+    }
     const list = byFormat.get(item.format) || [];
     list.push(item);
     byFormat.set(item.format, list);
@@ -189,7 +217,9 @@ export function detectDuplicatesWithConfidence(
 
   for (const list of byFormat.values()) {
     const n = list.length;
-    if (n < 2 || n > 2500) continue;
+    if (n < 2 || n > 2500) {
+      continue;
+    }
 
     for (let i = 0; i < n; i++) {
       const a = list[i];
@@ -198,13 +228,17 @@ export function detectDuplicatesWithConfidence(
 
         // If both have valid ISBNs and they differ, only merge if coreTitle & author are near-identical
         const authorSim = diceCoefficient(a.cleanAuthor, b.cleanAuthor);
-        if (authorSim < 0.82) continue;
+        if (authorSim < 0.82) {
+          continue;
+        }
 
         const coreSim = diceCoefficient(a.coreTitle, b.coreTitle);
         const fullSim = diceCoefficient(a.fullTitle, b.fullTitle);
         const bestTitleSim = Math.max(coreSim, fullSim);
 
-        if (bestTitleSim < 0.86) continue;
+        if (bestTitleSim < 0.86) {
+          continue;
+        }
 
         const combined = bestTitleSim * 0.65 + authorSim * 0.35;
         if (combined >= 0.88) {
@@ -220,7 +254,9 @@ export function detectDuplicatesWithConfidence(
   const bookMap = new Map(books.map(b => [b.id, b]));
 
   for (const node of Object.keys(adjList)) {
-    if (visited.has(node)) continue;
+    if (visited.has(node)) {
+      continue;
+    }
 
     const groupIds: string[] = [];
     const queue = [node];

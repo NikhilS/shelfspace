@@ -25,7 +25,9 @@ export function useBookInsights(
 
   const invalidateBookQueries = useCallback(
     async (bookId: string) => {
-      if (!libraryId) return;
+      if (!libraryId) {
+        return;
+      }
       await Promise.allSettled([
         utils.book.get.invalidate({libraryId, bookId}),
         utils.book.list.invalidate({libraryId}),
@@ -36,7 +38,9 @@ export function useBookInsights(
 
   const triggerManualEnrichment = useCallback(
     async (type: 'synopsis' | 'authorBio') => {
-      if (!book || !libraryId || !canEdit) return;
+      if (!book || !libraryId || !canEdit) {
+        return;
+      }
 
       if (type === 'synopsis') {
         setIsEnrichingSynopsis(true);
@@ -81,7 +85,9 @@ export function useBookInsights(
   );
 
   useEffect(() => {
-    if (!book || !libraryId || !canEdit) return;
+    if (!book || !libraryId || !canEdit) {
+      return;
+    }
 
     const synopsisKey = `${book.id}:synopsis`;
     const bioKey = `${book.id}:authorBio`;
@@ -106,14 +112,18 @@ export function useBookInsights(
       authorBioStatus !== 'unsupported' &&
       authorBioStatus !== 'completed';
 
-    if (!needsSynopsis && !needsBio) return;
+    if (!needsSynopsis && !needsBio) {
+      return;
+    }
 
     let isMounted = true;
 
     const runAutoEnrichment = async () => {
       if (needsSynopsis) {
         attemptedAutoEnrichRef.current.add(synopsisKey);
-        if (isMounted) setIsEnrichingSynopsis(true);
+        if (isMounted) {
+          setIsEnrichingSynopsis(true);
+        }
         try {
           await trpcVanilla.enrichment.trigger.mutate({
             libraryId,
@@ -173,7 +183,9 @@ export function useBookInsights(
   ]);
 
   const handleGenerateInsight = async (type: 'catchup' | 'similar') => {
-    if (!book) return;
+    if (!book) {
+      return;
+    }
 
     setActiveInsight(type);
     setIsGeneratingInsight(true);

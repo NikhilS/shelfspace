@@ -1,7 +1,7 @@
 import {render, screen, fireEvent} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import React from 'react';
-import BulkImport from './BulkImport';
+import {BulkImport} from './BulkImport';
 
 vi.mock('../../lib/trpc', () => ({
   trpc: {

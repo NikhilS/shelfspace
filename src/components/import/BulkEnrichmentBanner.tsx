@@ -31,8 +31,12 @@ export function BulkEnrichmentBanner({
   onCancel,
   cancelLabel = 'Stop',
 }: BulkEnrichmentBannerProps) {
-  if (!isBackfilling && completed === 0 && failed === 0) return null;
-  if (!isBackfilling && completed + failed >= total) return null;
+  if (!isBackfilling && completed === 0 && failed === 0) {
+    return null;
+  }
+  if (!isBackfilling && completed + failed >= total) {
+    return null;
+  }
 
   const percentage =
     total > 0 ? (Math.min(completed + failed, total) / total) * 100 : 0;

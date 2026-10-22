@@ -19,7 +19,7 @@ window.HTMLElement.prototype.setPointerCapture = vi.fn();
 class MockIntersectionObserver {
   readonly root: Element | Document | null = null;
   readonly rootMargin: string = '';
-  readonly thresholds: ReadonlyArray<number> = [];
+  readonly thresholds: readonly number[] = [];
   disconnect = vi.fn();
   observe = vi.fn();
   takeRecords = vi.fn(() => []);

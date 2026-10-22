@@ -20,20 +20,32 @@ import {toast} from 'sonner';
 import {WaitlistEntry, WaitlistStatus} from '../../schemas/waitlist';
 
 function getRelativeTimeString(dateInput?: string | null): string {
-  if (!dateInput) return 'Unknown';
+  if (!dateInput) {
+    return 'Unknown';
+  }
   try {
     const date = new Date(dateInput);
-    if (isNaN(date.getTime())) return 'Unknown';
+    if (isNaN(date.getTime())) {
+      return 'Unknown';
+    }
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffSec = Math.floor(diffMs / 1000);
-    if (diffSec < 60) return 'Just now';
+    if (diffSec < 60) {
+      return 'Just now';
+    }
     const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 60) {
+      return `${diffMin}m ago`;
+    }
     const diffHours = Math.floor(diffMin / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffHours < 24) {
+      return `${diffHours}h ago`;
+    }
     const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 30) return `${diffDays}d ago`;
+    if (diffDays < 30) {
+      return `${diffDays}d ago`;
+    }
     return date.toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
   } catch {
     return 'Unknown';
@@ -41,10 +53,14 @@ function getRelativeTimeString(dateInput?: string | null): string {
 }
 
 function formatExactDate(dateInput?: string | null): string {
-  if (!dateInput) return 'Unknown';
+  if (!dateInput) {
+    return 'Unknown';
+  }
   try {
     const date = new Date(dateInput);
-    if (isNaN(date.getTime())) return 'Unknown';
+    if (isNaN(date.getTime())) {
+      return 'Unknown';
+    }
     return date.toLocaleString(undefined, {
       year: 'numeric',
       month: 'short',
@@ -110,9 +126,13 @@ export function WaitlistManagement() {
     let rejectedCount = 0;
 
     for (const e of allEntries) {
-      if (e.status === 'pending') pendingCount++;
-      else if (e.status === 'approved') approvedCount++;
-      else if (e.status === 'rejected') rejectedCount++;
+      if (e.status === 'pending') {
+        pendingCount++;
+      } else if (e.status === 'approved') {
+        approvedCount++;
+      } else if (e.status === 'rejected') {
+        rejectedCount++;
+      }
     }
 
     return {
@@ -125,7 +145,9 @@ export function WaitlistManagement() {
 
   // Client-side search filtering
   const filteredEntries = useMemo(() => {
-    if (!searchQuery.trim()) return entries;
+    if (!searchQuery.trim()) {
+      return entries;
+    }
     const query = searchQuery.toLowerCase().trim();
     return entries.filter(e => {
       const emailMatch = e.email.toLowerCase().includes(query);

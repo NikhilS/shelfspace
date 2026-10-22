@@ -11,7 +11,7 @@ import {toast} from 'sonner';
 import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {WaitlistManagement} from '../components/admin/WaitlistManagement';
 
-export default function AdminDashboard() {
+export function AdminDashboard() {
   const {user} = useAuth();
   const {isAdmin, isAppAllowed, isLoadingPermissions} = useAppPermissions();
   const [newEmail, setNewEmail] = useState('');
@@ -61,7 +61,9 @@ export default function AdminDashboard() {
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmail.trim()) return;
+    if (!newEmail.trim()) {
+      return;
+    }
 
     setIsSubmitting(true);
     const email = newEmail.trim().toLowerCase();

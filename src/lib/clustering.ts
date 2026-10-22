@@ -37,9 +37,15 @@ export function kmeans(
   maxIterations: number = 100,
   seed: number = 42,
 ): number[] {
-  if (points.length === 0) return [];
-  if (k <= 0) return points.map(() => -1);
-  if (k >= points.length) return points.map((_, i) => i);
+  if (points.length === 0) {
+    return [];
+  }
+  if (k <= 0) {
+    return points.map(() => -1);
+  }
+  if (k >= points.length) {
+    return points.map((_, i) => i);
+  }
 
   const rng = createSeededRng(seed);
   const dim = points[0].length;
@@ -164,17 +170,23 @@ export function computeSilhouetteScore(
   labels: number[],
 ): number {
   const n = points.length;
-  if (n < 3) return 0;
+  if (n < 3) {
+    return 0;
+  }
 
   const uniqueClusters = Array.from(new Set(labels.filter(l => l >= 0)));
-  if (uniqueClusters.length < 2 || uniqueClusters.length >= n) return -1;
+  if (uniqueClusters.length < 2 || uniqueClusters.length >= n) {
+    return -1;
+  }
 
   let totalSilhouette = 0;
   let validCount = 0;
 
   for (let i = 0; i < n; i++) {
     const ownCluster = labels[i];
-    if (ownCluster < 0) continue;
+    if (ownCluster < 0) {
+      continue;
+    }
 
     // Average distance to points in own cluster (a_i)
     let ownSum = 0;
@@ -184,9 +196,13 @@ export function computeSilhouetteScore(
     const otherSums = new Map<number, {sum: number; count: number}>();
 
     for (let j = 0; j < n; j++) {
-      if (i === j) continue;
+      if (i === j) {
+        continue;
+      }
       const otherCluster = labels[j];
-      if (otherCluster < 0) continue;
+      if (otherCluster < 0) {
+        continue;
+      }
 
       const dist = euclideanDistance(points[i], points[j]);
       if (otherCluster === ownCluster) {
@@ -214,11 +230,15 @@ export function computeSilhouetteScore(
     for (const entry of otherSums.values()) {
       if (entry.count > 0) {
         const meanOther = entry.sum / entry.count;
-        if (meanOther < b) b = meanOther;
+        if (meanOther < b) {
+          b = meanOther;
+        }
       }
     }
 
-    if (!Number.isFinite(b) || Math.max(a, b) <= 1e-12) continue;
+    if (!Number.isFinite(b) || Math.max(a, b) <= 1e-12) {
+      continue;
+    }
     const s = (b - a) / Math.max(a, b);
     totalSilhouette += s;
     validCount++;
@@ -236,7 +256,9 @@ export function optimalKMeans(
   seed: number = 42,
 ): {labels: number[]; k: number; silhouette: number} {
   const n = points2D.length;
-  if (n === 0) return {labels: [], k: 0, silhouette: 0};
+  if (n === 0) {
+    return {labels: [], k: 0, silhouette: 0};
+  }
   if (n < 4) {
     const k = Math.max(1, Math.min(2, n));
     return {labels: kmeans(points2D, k, 100, seed), k, silhouette: 0};
@@ -290,7 +312,9 @@ export function normalizeAndRelaxPositions(
   },
 ): Point2D[] {
   const n = rawPoints.length;
-  if (n === 0) return [];
+  if (n === 0) {
+    return [];
+  }
 
   const targetRange = options?.range ?? 86;
   const clusterIds = options?.clusterIds;
@@ -308,10 +332,18 @@ export function normalizeAndRelaxPositions(
 
   for (let i = 0; i < n; i++) {
     const p = rawPoints[i];
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
+    if (p.x < minX) {
+      minX = p.x;
+    }
+    if (p.x > maxX) {
+      maxX = p.x;
+    }
+    if (p.y < minY) {
+      minY = p.y;
+    }
+    if (p.y > maxY) {
+      maxY = p.y;
+    }
   }
 
   const spanX = Math.max(1e-6, maxX - minX);
@@ -447,7 +479,9 @@ export function normalizeAndRelaxPositions(
     let maxStarExtent = 0;
     for (const off of localOffsets) {
       const r = Math.hypot(off.x, off.y);
-      if (r > maxStarExtent) maxStarExtent = r;
+      if (r > maxStarExtent) {
+        maxStarExtent = r;
+      }
     }
 
     macroNodes.push({
@@ -583,10 +617,18 @@ export function normalizeAndRelaxPositions(
   let finalMaxY = -Infinity;
   for (let i = 0; i < n; i++) {
     const p = assembled[i];
-    if (p.x < finalMinX) finalMinX = p.x;
-    if (p.x > finalMaxX) finalMaxX = p.x;
-    if (p.y < finalMinY) finalMinY = p.y;
-    if (p.y > finalMaxY) finalMaxY = p.y;
+    if (p.x < finalMinX) {
+      finalMinX = p.x;
+    }
+    if (p.x > finalMaxX) {
+      finalMaxX = p.x;
+    }
+    if (p.y < finalMinY) {
+      finalMinY = p.y;
+    }
+    if (p.y > finalMaxY) {
+      finalMaxY = p.y;
+    }
   }
 
   const finalCx = (finalMinX + finalMaxX) * 0.5;
@@ -613,8 +655,12 @@ export function computeClusterMST(
   clusterPointIndices: number[],
 ): Array<[number, number]> {
   const m = clusterPointIndices.length;
-  if (m < 2) return [];
-  if (m === 2) return [[clusterPointIndices[0], clusterPointIndices[1]]];
+  if (m < 2) {
+    return [];
+  }
+  if (m === 2) {
+    return [[clusterPointIndices[0], clusterPointIndices[1]]];
+  }
 
   const visited = new Array<boolean>(m).fill(false);
   const minWeight = new Array<number>(m).fill(Infinity);
@@ -633,7 +679,9 @@ export function computeClusterMST(
       }
     }
 
-    if (u === -1) break;
+    if (u === -1) {
+      break;
+    }
     visited[u] = true;
 
     if (parent[u] !== -1) {
@@ -686,7 +734,9 @@ export function computePaddedConvexHull(
   padding: number = 6.5,
 ): Point2D[] {
   const n = clusterPoints.length;
-  if (n === 0) return [];
+  if (n === 0) {
+    return [];
+  }
 
   // For 1 star: generate an 8-point circular territory halo
   if (n === 1) {
@@ -797,7 +847,9 @@ export function computeSemanticNeighbors(
   topK: number = 5,
 ): SemanticNeighborIndex[][] {
   const n = points.length;
-  if (n <= 1) return points.map(() => []);
+  if (n <= 1) {
+    return points.map(() => []);
+  }
 
   // Compute max 2D distance for spatial normalization fallback
   let maxDist2D = 1;
@@ -807,7 +859,9 @@ export function computeSemanticNeighbors(
         points[i].x - points[j].x,
         points[i].y - points[j].y,
       );
-      if (d > maxDist2D) maxDist2D = d;
+      if (d > maxDist2D) {
+        maxDist2D = d;
+      }
     }
   }
 
@@ -817,7 +871,9 @@ export function computeSemanticNeighbors(
 
     const candidates: SemanticNeighborIndex[] = [];
     for (let j = 0; j < n; j++) {
-      if (i === j) continue;
+      if (i === j) {
+        continue;
+      }
       const pj = points[j];
       const dist2D = Math.hypot(pi.x - pj.x, pi.y - pj.y);
       const spatialSim = Math.max(0.15, 1 - dist2D / (maxDist2D * 0.85));
