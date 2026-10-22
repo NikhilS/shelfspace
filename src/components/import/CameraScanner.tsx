@@ -1,9 +1,10 @@
 import React, {useRef, useState, useEffect} from 'react';
-import {Camera, UploadCloud, Loader2, Sparkles} from 'lucide-react';
+import {Camera, UploadCloud} from 'lucide-react';
 import {toast} from 'sonner';
 import {logger} from '../../stores/debugStore';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
+import {ShelfViewfinderIllustration} from '@/components/ui/empty-state-illustrations';
 import {trpc} from '../../lib/trpc';
 
 interface CameraScannerProps {
@@ -233,19 +234,12 @@ export function CameraScanner({
   if (isExtracting) {
     return (
       <div className="py-24 flex flex-col items-center justify-center w-full bg-surface-container-low/30 rounded-3xl border border-outline-variant/40">
-        <div className="relative mb-6 text-primary w-20 h-20 flex items-center justify-center">
-          <Loader2
-            className="animate-spin absolute inset-0 w-full h-full text-primary/30"
-            strokeWidth={1.5}
-          />
-          <Sparkles className="animate-pulse" size={40} strokeWidth={1.5} />
-        </div>
-        <h3 className="font-sans font-bold text-2xl text-on-surface tracking-tight mb-2">
-          Analyzing bookshelf...
+        <ShelfViewfinderIllustration scanning className="w-24 h-20 mb-5" />
+        <h3 className="font-serif font-semibold text-2xl text-on-surface tracking-tight mb-2">
+          Analyzing Bookshelf...
         </h3>
-        <p className="text-on-surface-variant font-medium text-center max-w-xs">
-          The AI Librarian is extracting book titles, authors, and metadata from
-          your image.
+        <p className="text-on-surface-variant font-sans text-sm text-center max-w-xs leading-relaxed">
+          Reading book spines, titles, and authors from your shelf photo.
         </p>
       </div>
     );
@@ -286,9 +280,11 @@ export function CameraScanner({
           </Button>
         </div>
       ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-surface/60 font-medium">
-          <Camera size={48} strokeWidth={1.5} className="mb-4 opacity-40" />
-          Camera inactive
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-surface/80 font-medium px-6 text-center">
+          <ShelfViewfinderIllustration className="w-24 h-20 mb-3 text-surface/85" />
+          <span className="font-serif text-base font-semibold text-surface">
+            Camera inactive
+          </span>
           <Input
             type="file"
             accept="image/*"
@@ -299,9 +295,9 @@ export function CameraScanner({
           <Button
             variant="outline"
             onClick={() => imageInputRef.current?.click()}
-            className="mt-6 rounded-full font-bold shadow-lg flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all"
+            className="mt-5 rounded-full font-bold shadow-lg flex items-center gap-2 hover:bg-surface-container-low hover:scale-105 transition-all"
           >
-            <UploadCloud size={18} strokeWidth={2} /> Upload Photo Instead
+            <UploadCloud size={18} strokeWidth={1.75} /> Upload Photo Instead
           </Button>
         </div>
       )}

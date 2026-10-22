@@ -1,10 +1,12 @@
 import React, {useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {CheckCircle2, Plus, Book as BookIcon, ArrowRight} from 'lucide-react';
+import {CheckCircle2, Plus, ArrowRight} from 'lucide-react';
 import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {NightstandBookIllustration} from '@/components/ui/empty-state-illustrations';
+import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import type {
   TrackedBookItem,
   TrackedShelfStatus,
@@ -28,7 +30,9 @@ export function CurrentlyReadingCard({
   onOpenReadingLists,
 }: CurrentlyReadingCardProps) {
   const navigate = useNavigate();
+  const isOnline = useOnlineStatus();
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [failedCovers, setFailedCovers] = useState<Set<string>>(new Set());
 
   const safeIndex = selectedIndex < readingBooks.length ? selectedIndex : 0;
   const activeBook = readingBooks[safeIndex] || null;
@@ -77,8 +81,10 @@ export function CurrentlyReadingCard({
           </p>
           <Button
             type="button"
+            disabled={!isOnline}
+            title={!isOnline ? 'Unavailable while offline' : undefined}
             onClick={onTrackBook}
-            className="gap-2 rounded-lg font-sans font-semibold h-9 px-4 text-xs"
+            className="gap-2 rounded-lg font-sans font-semibold h-9 px-4 text-xs disabled:opacity-50"
           >
             <Plus className="w-4 h-4" />
             <span>Start Reading a Book</span>
@@ -96,23 +102,23 @@ export function CurrentlyReadingCard({
                 className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-black/15 via-white/20 to-transparent z-10 pointer-events-none"
                 aria-hidden="true"
               />
-              {activeBook.coverUrl ? (
+              {activeBook.coverUrl && !failedCovers.has(activeBook.id) ? (
                 <img
                   src={activeBook.coverUrl}
                   alt={activeBook.title}
+                  onError={() =>
+                    setFailedCovers(prev => new Set(prev).add(activeBook.id))
+                  }
                   className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="w-full h-full p-3 flex flex-col justify-between bg-gradient-to-b from-surface-container-low via-surface-container to-surface-container-high text-left">
-                  <BookIcon className="w-4 h-4 text-on-surface-variant/60" />
-                  <span className="font-serif text-xs font-semibold text-primary line-clamp-3 leading-snug">
-                    {toTitleCase(activeBook.title)}
-                  </span>
-                  <span className="font-mono text-[9px] text-on-surface-variant uppercase truncate">
-                    {toTitleCase(activeBook.author)}
-                  </span>
-                </div>
+                <MonographCoverFallback
+                  title={activeBook.title}
+                  author={activeBook.author}
+                  variant="compact"
+                  className="w-full h-full"
+                />
               )}
             </div>
 
@@ -162,6 +168,8 @@ export function CurrentlyReadingCard({
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={!isOnline}
+                  title={!isOnline ? 'Unavailable while offline' : undefined}
                   onClick={() =>
                     void onStatusChange(
                       activeBook.libraryId,
@@ -169,7 +177,7 @@ export function CurrentlyReadingCard({
                       'finished',
                     )
                   }
-                  className="h-9 px-3.5 rounded-lg font-sans text-xs font-semibold gap-1.5"
+                  className="h-9 px-3.5 rounded-lg font-sans text-xs font-semibold gap-1.5 disabled:opacity-50"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
                   <span>Mark Finished</span>

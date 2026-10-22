@@ -1,15 +1,9 @@
 import React from 'react';
 import {Link} from 'react-router-dom';
-import {
-  BookOpen,
-  ArrowUpRight,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  X,
-} from 'lucide-react';
+import {ArrowUpRight, ChevronDown, ChevronUp, Search, X} from 'lucide-react';
 import {motion, AnimatePresence} from 'motion/react';
 import {Input} from '@/components/ui/input';
+import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
 import {Book} from '../../types';
 import {TimelineCluster, formatYear} from './TimelineControls';
 
@@ -90,9 +84,13 @@ export function TimelineDesktopEpochDrawer({
                       loading="lazy"
                     />
                   ) : (
-                    <div className="w-14 h-20 rounded-lg bg-surface-container-high flex items-center justify-center text-outline shrink-0 border border-outline-variant/40">
-                      <BookOpen className="w-5 h-5" />
-                    </div>
+                    <MonographCoverFallback
+                      title={book.title}
+                      author={book.author}
+                      publishedYear={book.publishedDate}
+                      variant="compact"
+                      className="w-14 h-20 rounded-lg shrink-0"
+                    />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
@@ -242,9 +240,12 @@ export function TimelineMobileEpochSheet({
                         loading="lazy"
                       />
                     ) : (
-                      <div className="w-12 h-18 rounded-lg bg-surface-container-high flex items-center justify-center text-outline shrink-0 border border-outline-variant/40">
-                        <BookOpen className="w-4 h-4" />
-                      </div>
+                      <MonographCoverFallback
+                        title={book.title}
+                        author={book.author}
+                        variant="micro"
+                        className="w-12 h-18 rounded-lg shrink-0"
+                      />
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
@@ -367,9 +368,12 @@ export function TimelineNonHistoricalAnnex({
                       loading="lazy"
                     />
                   ) : (
-                    <div className="w-12 h-16 rounded-lg bg-surface-container-high flex items-center justify-center text-outline shrink-0">
-                      <BookOpen className="w-4 h-4" />
-                    </div>
+                    <MonographCoverFallback
+                      title={book.title}
+                      author={book.author}
+                      variant="micro"
+                      className="w-12 h-16 rounded-lg shrink-0"
+                    />
                   )}
                   <div className="flex-1 min-w-0">
                     <h4 className="text-xs font-serif font-semibold text-on-surface group-hover:text-[#215a6d] dark:group-hover:text-[#6ab0c7] transition-colors line-clamp-1">

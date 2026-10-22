@@ -50,3 +50,21 @@ export function preloadRouteByPathname(pathname: string): void {
     preloadRouteChunk('library');
   }
 }
+
+export function preloadAllRouteChunks(): void {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return;
+  }
+  const keys: PreloadableRouteKey[] = [
+    'library',
+    'bookDetails',
+    'constellation',
+    'worldMap',
+    'timeline',
+    'spruceUp',
+    'addBook',
+  ];
+  for (const key of keys) {
+    preloadRouteChunk(key);
+  }
+}

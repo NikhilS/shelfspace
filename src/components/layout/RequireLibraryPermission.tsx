@@ -1,9 +1,11 @@
 import React, {useEffect, useRef} from 'react';
-import {useParams, useLocation} from 'react-router-dom';
+import {useParams, useLocation, useNavigate} from 'react-router-dom';
 import {useAuth} from '../../stores/authStore';
 import {useLibraryPermissions} from '../../hooks/useLibraryPermissions';
-import {AlertCircle} from 'lucide-react';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
+import {AlertCircle, ArrowLeft} from 'lucide-react';
 import {Button} from '@/components/ui/button';
+import {BookshelfBookendsIllustration} from '@/components/ui/empty-state-illustrations';
 import {SuspenseFallbackRouter} from './SuspenseFallbackRouter';
 import {trpc} from '../../lib/trpc';
 import {preloadRouteByPathname} from '../../lib/routePreload';
@@ -19,6 +21,8 @@ export function RequireLibraryPermission({
 }: RequireLibraryPermissionProps) {
   const params = useParams<Record<string, string>>();
   const location = useLocation();
+  const navigate = useNavigate();
+  const isOnline = useOnlineStatus();
   const libraryId = params.id || params.libraryId;
   const {user} = useAuth();
   const {canEdit, isOwner, canView, role, loading, isError} =
@@ -38,6 +42,9 @@ export function RequireLibraryPermission({
   // Preload view chunk and prefetch book list in parallel with library/permission resolution
   useEffect(() => {
     preloadRouteByPathname(location.pathname);
+    if (!isOnline) {
+      return;
+    }
     const currentUtils = utilsRef.current;
     if (libraryId && user?.uid && currentUtils?.book?.list?.prefetch) {
       void currentUtils.book.list.prefetch(
@@ -45,7 +52,41 @@ export function RequireLibraryPermission({
         {staleTime: 1000 * 60 * 5},
       );
     }
-  }, [libraryId, user?.uid, location.pathname]);
+  }, [libraryId, user?.uid, location.pathname, isOnline]);
+
+  // When offline, block mutating editor/owner routes with a friendly read-only offline notice
+  if (!isOnline && (requires === 'editor' || requires === 'owner')) {
+    const returnPath = libraryId ? `/library/${libraryId}` : '/';
+    return (
+      <div className="flex-1 bg-surface flex flex-col items-center justify-center p-6 text-center text-on-surface min-h-[60vh]">
+        <div className="max-w-md w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl p-8 space-y-5 shadow-elevation-1">
+          <BookshelfBookendsIllustration className="mx-auto" />
+          <div className="space-y-2">
+            <h1 className="font-serif text-2xl font-semibold text-on-surface">
+              Available When You&apos;re Back Online
+            </h1>
+            <p className="font-sans text-sm text-on-surface-variant leading-relaxed">
+              Adding books and Shelf Care require an internet connection. Your
+              saved shelves remain open for browsing while offline.
+            </p>
+          </div>
+          <div className="pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void navigate(returnPath)}
+              className="w-full gap-2 rounded-lg font-sans font-semibold"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>
+                {libraryId ? 'Back to Library' : 'Return to Reading Room'}
+              </span>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // For viewer routes, mount children immediately while library.get is in flight
   // so lazy chunks and child queries run in parallel with server-enforced RBAC.
@@ -70,6 +111,37 @@ export function RequireLibraryPermission({
   }
 
   if (!hasAccess) {
+    if (!isOnline && !role) {
+      return (
+        <div className="flex-1 bg-surface flex flex-col items-center justify-center p-6 text-center text-on-surface min-h-[60vh]">
+          <div className="max-w-md w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl p-8 space-y-5 shadow-elevation-1">
+            <BookshelfBookendsIllustration className="mx-auto" />
+            <div className="space-y-2">
+              <h1 className="font-serif text-2xl font-semibold text-on-surface">
+                Not Available Offline Yet
+              </h1>
+              <p className="font-sans text-sm text-on-surface-variant leading-relaxed">
+                This library hasn&apos;t been saved to your device&apos;s
+                offline archive yet. Connect to the internet once to open and
+                cache this shelf.
+              </p>
+            </div>
+            <div className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void navigate('/')}
+                className="w-full gap-2 rounded-lg font-sans font-semibold"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Return to Reading Room</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex-1 bg-surface flex flex-col items-center justify-center p-6 text-center text-on-surface">
         <div className="max-w-md w-full bg-surface-variant/30 border border-outline-variant/30 rounded-2xl p-8 space-y-6">

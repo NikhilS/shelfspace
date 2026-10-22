@@ -1,9 +1,12 @@
-import React from 'react';
+import React, {useState, useEffect} from 'react';
 import {Sparkles, RefreshCw, Plus, Check, Loader2} from 'lucide-react';
 import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
 import {BookLoader} from './BookLoader';
+import {MonographCoverFallback} from './MonographCoverFallback';
+import {ExLibrisStampIllustration} from '@/components/ui/empty-state-illustrations';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 
 export interface CuratorPickItem {
   title: string;
@@ -43,27 +46,37 @@ export function CuratorPickCard({
 }: CuratorPickCardProps) {
   const {hasAiPlan: contextHasAiPlan} = useAppPermissions();
   const hasAiPlan = passedHasAiPlan ?? contextHasAiPlan;
+  const isOnline = useOnlineStatus();
+  const [coverError, setCoverError] = useState(false);
+
+  useEffect(() => {
+    setCoverError(false);
+  }, [pickOfTheDay?.coverUrl]);
 
   return (
     <div
       className={`bento-card bg-gradient-to-br from-surface-container-low/80 to-surface p-5 sm:p-6 relative overflow-hidden min-h-[160px] flex items-center ${className}`}
     >
-      <div className="absolute top-4 right-4 text-primary/20 pointer-events-none">
-        <Sparkles size={22} />
-      </div>
+      {pickOfTheDay && (
+        <div className="absolute -top-1 -right-1 pointer-events-none opacity-25">
+          <ExLibrisStampIllustration className="w-16 h-14" />
+        </div>
+      )}
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => hasAiPlan && generateNewPick()}
-        disabled={!hasAiPlan || isGeneratingPick}
+        onClick={() => hasAiPlan && isOnline && generateNewPick()}
+        disabled={!hasAiPlan || !isOnline || isGeneratingPick}
         className="absolute top-3 left-3 z-20 hover:bg-surface-container text-on-surface-variant hover:text-primary w-8 h-8 rounded-lg disabled:opacity-40"
         title={
-          !hasAiPlan
-            ? 'Requires AI Plan (Admin-enabled)'
-            : 'Get another recommendation'
+          !isOnline
+            ? 'Unavailable while offline'
+            : !hasAiPlan
+              ? 'Requires AI Plan (Admin-enabled)'
+              : 'Get another recommendation'
         }
       >
-        <RefreshCw size={15} />
+        <RefreshCw size={15} strokeWidth={1.6} />
       </Button>
       {isGeneratingPick ? (
         <div className="w-full flex flex-col items-center justify-center gap-3 py-6">
@@ -75,23 +88,30 @@ export function CuratorPickCard({
       ) : pickOfTheDay ? (
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 w-full z-10 relative items-center sm:items-start pt-6 sm:pt-0">
           <div className="w-20 sm:w-24 mx-auto sm:mx-0 flex-shrink-0 mt-1">
-            {pickOfTheDay.coverUrl ? (
+            {pickOfTheDay.coverUrl && !coverError ? (
               <img
                 alt="Book Cover"
                 className="w-full h-auto object-cover rounded-lg book-cover-shadow border border-outline-variant/50 aspect-[2/3]"
                 src={pickOfTheDay.coverUrl}
+                onError={() => setCoverError(true)}
                 referrerPolicy="no-referrer"
                 loading="lazy"
               />
             ) : (
-              <div className="w-full h-28 bg-surface-container rounded-lg book-cover-shadow border border-outline-variant/50 flex items-center justify-center p-2 text-center font-serif text-xs font-semibold text-on-surface-variant">
-                {pickOfTheDay.title}
-              </div>
+              <MonographCoverFallback
+                title={pickOfTheDay.title}
+                author={pickOfTheDay.author}
+                variant="compact"
+                className="w-full aspect-[2/3] rounded-lg"
+              />
             )}
           </div>
           <div className="flex flex-col justify-center flex-1 min-w-0 text-center sm:text-left break-words">
-            <span className="metadata-eyebrow flex items-center justify-center sm:justify-start gap-1 mb-1">
-              <Sparkles size={13} className="text-tertiary" />
+            <span className="metadata-eyebrow flex items-center justify-center sm:justify-start gap-1.5 mb-1">
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-primary inline-block"
+                aria-hidden="true"
+              />
               {eyebrow}
             </span>
             <h3 className="font-serif text-lg sm:text-xl font-semibold tracking-tight text-primary line-clamp-1">
@@ -111,9 +131,12 @@ export function CuratorPickCard({
                   type="button"
                   size="sm"
                   variant={isAddedToWantToRead ? 'outline' : 'default'}
-                  disabled={isAddedToWantToRead || isAddingToWantToRead}
+                  disabled={
+                    !isOnline || isAddedToWantToRead || isAddingToWantToRead
+                  }
+                  title={!isOnline ? 'Unavailable while offline' : undefined}
                   onClick={() => void onAddToWantToRead(pickOfTheDay)}
-                  className="h-8 px-3.5 text-xs font-sans font-semibold gap-1.5 rounded-lg"
+                  className="h-8 px-3.5 text-xs font-sans font-semibold gap-1.5 rounded-lg disabled:opacity-50"
                 >
                   {isAddingToWantToRead ? (
                     <>
@@ -137,7 +160,8 @@ export function CuratorPickCard({
           </div>
         </div>
       ) : !hasAiPlan ? (
-        <div className="w-full flex flex-col items-center justify-center gap-2.5 py-6 text-center z-10 relative px-4">
+        <div className="w-full flex flex-col items-center justify-center gap-2 py-5 text-center z-10 relative px-4">
+          <ExLibrisStampIllustration className="w-14 h-12 mb-0.5" />
           <p className="font-serif text-lg font-semibold text-primary">
             {emptyTitle}
           </p>
@@ -145,7 +169,7 @@ export function CuratorPickCard({
             {emptyDescription}
           </p>
           <span
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans font-medium bg-surface-container text-on-surface-variant border border-outline-variant/50"
+            className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans font-medium bg-surface-container text-on-surface-variant border border-outline-variant/50"
             title="Requires AI Plan (Admin-enabled)"
           >
             <Sparkles className="w-3.5 h-3.5 text-on-surface-variant/70" />
@@ -153,7 +177,8 @@ export function CuratorPickCard({
           </span>
         </div>
       ) : pickError ? (
-        <div className="w-full flex flex-col items-center justify-center gap-3 py-6 text-center z-10 relative px-4">
+        <div className="w-full flex flex-col items-center justify-center gap-2.5 py-5 text-center z-10 relative px-4">
+          <ExLibrisStampIllustration className="w-14 h-12" />
           <p className="font-serif text-sm font-semibold text-primary">
             AI Curator Unavailable
           </p>
@@ -166,16 +191,19 @@ export function CuratorPickCard({
           </p>
           <Button
             onClick={() => generateNewPick()}
+            disabled={!isOnline}
+            title={!isOnline ? 'Unavailable while offline' : undefined}
             variant="outline"
             size="sm"
-            className="gap-1.5 bg-surface text-xs min-h-[36px] px-3.5 rounded-lg"
+            className="gap-1.5 bg-surface text-xs min-h-[36px] px-3.5 rounded-lg disabled:opacity-50"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Try Again
           </Button>
         </div>
       ) : (
-        <div className="w-full flex flex-col items-center justify-center gap-2.5 py-6 text-center z-10 relative px-4">
+        <div className="w-full flex flex-col items-center justify-center gap-2 py-5 text-center z-10 relative px-4">
+          <ExLibrisStampIllustration className="w-14 h-12 mb-0.5" />
           <p className="font-serif text-lg font-semibold text-primary">
             {emptyTitle}
           </p>
@@ -184,9 +212,11 @@ export function CuratorPickCard({
           </p>
           <Button
             onClick={() => generateNewPick()}
+            disabled={!isOnline}
+            title={!isOnline ? 'Unavailable while offline' : undefined}
             variant="outline"
             size="sm"
-            className="gap-2 bg-surface hover:bg-surface-container min-h-[38px] px-4 rounded-lg text-xs font-semibold"
+            className="mt-1 gap-2 bg-surface hover:bg-surface-container min-h-[38px] px-4 rounded-lg text-xs font-semibold disabled:opacity-50"
           >
             <Sparkles className="w-3.5 h-3.5 text-primary" />
             Surprise Me

@@ -2,6 +2,7 @@ import React from 'react';
 import {MapPin, ChevronRight, BookOpen, X} from 'lucide-react';
 import {Badge} from '@/components/ui/badge';
 import {CartographyCompassIllustration} from '@/components/ui/empty-state-illustrations';
+import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
 import {Book} from '../../types';
 import {FlattenedLocationPin, MapCluster} from './types';
 
@@ -75,14 +76,17 @@ export function WorldMapInspector({
                       <img
                         src={pin.book.coverUrl}
                         alt={pin.book.title}
-                        className="w-12 h-16 object-cover rounded-lg shadow-sm bg-neutral-100 flex-shrink-0"
+                        className="w-12 h-16 object-cover rounded-lg shadow-sm bg-surface-container flex-shrink-0"
                         referrerPolicy="no-referrer"
                         loading="lazy"
                       />
                     ) : (
-                      <div className="w-12 h-16 bg-neutral-100 text-neutral-400 rounded-lg flex items-center justify-center font-label-caps-xs text-label-caps-xs uppercase font-bold text-center border p-1 flex-shrink-0">
-                        No Cover
-                      </div>
+                      <MonographCoverFallback
+                        title={pin.book.title}
+                        author={pin.book.author}
+                        variant="micro"
+                        className="w-12 h-16 rounded-lg flex-shrink-0"
+                      />
                     )}
                     <div className="min-w-0">
                       <h4 className="text-sm font-bold text-on-surface leading-tight truncate">

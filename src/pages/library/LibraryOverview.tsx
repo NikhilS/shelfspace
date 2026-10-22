@@ -1,4 +1,4 @@
-import React, {useMemo} from 'react';
+import React, {useMemo, useState} from 'react';
 import {motion} from 'motion/react';
 import {Book, Library} from '../../types';
 import {Plus, ArrowRight} from 'lucide-react';
@@ -9,6 +9,8 @@ import {BookshelfBookendsIllustration} from '@/components/ui/empty-state-illustr
 import {GenreBreakdownCard} from '../../components/book/GenreBreakdownCard';
 import {CuratorPickCard} from '../../components/book/CuratorPickCard';
 import {ExplorePerspectivesStrip} from '../../components/book/ExplorePerspectivesStrip';
+import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {formatShortDate} from '../../lib/date';
 import {User} from 'firebase/auth';
 
@@ -48,6 +50,8 @@ export function LibraryOverview({
 }: LibraryOverviewProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const isOnline = useOnlineStatus();
+  const [failedCovers, setFailedCovers] = useState<Set<string>>(new Set());
 
   const readingBooks = useMemo(() => {
     if (!user) {
@@ -103,7 +107,9 @@ export function LibraryOverview({
 
           <div className="flex justify-center pt-1 w-full">
             <Button
-              className="w-full sm:w-auto h-11 px-6 font-sans text-sm font-semibold tracking-wide rounded-lg shadow-xs"
+              disabled={!isOnline}
+              title={!isOnline ? 'Unavailable while offline' : undefined}
+              className="w-full sm:w-auto h-11 px-6 font-sans text-sm font-semibold tracking-wide rounded-lg shadow-xs disabled:opacity-50"
               onClick={() =>
                 onAddBook ? onAddBook() : navigate(`/library/${library.id}/add`)
               }
@@ -170,20 +176,26 @@ export function LibraryOverview({
                           })
                         }
                       >
-                        {book.coverUrl ? (
+                        {book.coverUrl && !failedCovers.has(book.id) ? (
                           <img
                             alt={book.title}
                             className="relative w-full h-auto object-cover rounded-lg book-cover-shadow border border-outline-variant/50 z-10 aspect-[2/3]"
                             src={book.coverUrl}
+                            onError={() =>
+                              setFailedCovers(prev =>
+                                new Set(prev).add(book.id),
+                              )
+                            }
                             referrerPolicy="no-referrer"
                             loading="lazy"
                           />
                         ) : (
-                          <div className="relative w-full h-36 bg-surface-container rounded-lg book-cover-shadow border border-outline-variant/50 z-10 flex items-center justify-center p-2 text-center">
-                            <span className="font-serif text-xs font-semibold text-on-surface-variant">
-                              {book.title}
-                            </span>
-                          </div>
+                          <MonographCoverFallback
+                            title={book.title}
+                            author={book.author}
+                            variant="compact"
+                            className="relative w-full aspect-[2/3] rounded-lg z-10"
+                          />
                         )}
                       </div>
                       <div className="flex-grow min-w-0 w-full text-center sm:text-left break-words">
@@ -247,7 +259,13 @@ export function LibraryOverview({
                   onClick={() => setCurrentTab('collection')}
                   className="text-xs font-sans font-semibold text-primary hover:text-primary/80 flex items-center gap-1 group h-auto px-2.5 py-1.5"
                 >
-                  <span>Browse All {books.length} Books</span>
+                  <span>
+                    Browse All{' '}
+                    {typeof library.bookCount === 'number'
+                      ? Math.max(books.length, library.bookCount)
+                      : books.length}{' '}
+                    Books
+                  </span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                 </Button>
               </div>
@@ -267,23 +285,24 @@ export function LibraryOverview({
                     className="group flex flex-col p-3 bento-card-interactive cursor-pointer"
                   >
                     <div className="relative aspect-[2/3] w-full rounded-lg overflow-hidden bg-surface-container mb-2.5 border border-outline-variant/50 book-cover-shadow group-hover:scale-[1.02] transition-transform">
-                      {book.coverUrl ? (
+                      {book.coverUrl && !failedCovers.has(book.id) ? (
                         <img
                           src={book.coverUrl}
                           alt={book.title}
+                          onError={() =>
+                            setFailedCovers(prev => new Set(prev).add(book.id))
+                          }
                           className="w-full h-full object-cover"
                           loading="lazy"
                           referrerPolicy="no-referrer"
                         />
                       ) : (
-                        <div className="w-full h-full p-2.5 flex flex-col justify-between text-center bg-surface-container">
-                          <span className="font-serif text-xs font-semibold text-on-surface line-clamp-3">
-                            {book.title}
-                          </span>
-                          <span className="font-label-caps-xs text-label-caps-xs text-on-surface-variant/80 truncate">
-                            {book.author}
-                          </span>
-                        </div>
+                        <MonographCoverFallback
+                          title={book.title}
+                          author={book.author}
+                          variant="compact"
+                          className="w-full h-full"
+                        />
                       )}
                     </div>
                     <h4 className="card-title-editorial truncate group-hover:text-primary transition-colors">

@@ -11,7 +11,6 @@ import {
 } from '@/components/ui/select';
 import {
   Play,
-  LibraryBig,
   Square,
   CheckCircle2,
   Loader2,
@@ -446,19 +445,14 @@ export function ManualEnrichmentSection({
       {/* Header and Filtering */}
       <div className="p-6 border-b border-outline-variant/30 bg-surface-container-low">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-              <LibraryBig className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-sans text-xl font-bold text-on-surface">
-                Complete Book Details
-              </h3>
-              <p className="text-sm text-on-surface-variant font-sans">
-                See which books are missing covers, summaries, or settings, and
-                fill them in with one click.
-              </p>
-            </div>
+          <div>
+            <h3 className="font-serif text-xl font-semibold text-on-surface">
+              Complete Book Details
+            </h3>
+            <p className="text-sm text-on-surface-variant font-sans mt-0.5">
+              See which books are missing covers, summaries, or settings, and
+              fill them in with one click.
+            </p>
           </div>
 
           <div className="flex items-center gap-2">

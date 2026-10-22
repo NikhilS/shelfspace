@@ -88,14 +88,20 @@ export const bookApiRouter = router({
       }),
     )
     .query(async ({ctx, input}) => {
-      return await BookService.listBooks(ctx.user.uid, input.libraryId, input);
+      return await BookService.listBooks(
+        ctx.user.uid,
+        input.libraryId,
+        ctx.libraryData
+          ? {...input, prefetchedLibraryData: ctx.libraryData}
+          : input,
+      );
     }),
 
   getBookDetailsChunk: libraryProcedure('viewer')
     .input(
       z.object({
         libraryId: safeIdSchema,
-        bookIds: z.array(safeIdSchema).max(100),
+        bookIds: z.array(safeIdSchema).max(250),
       }),
     )
     .mutation(async ({ctx, input}) => {

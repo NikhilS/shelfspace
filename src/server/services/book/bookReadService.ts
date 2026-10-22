@@ -63,19 +63,26 @@ export async function getBook(
 /**
  * Lists books in a library, applying optional filters and cursor pagination.
  */
+export interface ListBooksOptions {
+  filters?: {
+    missingMetadata?: string;
+    primaryGenre?: string;
+    status?: string;
+  };
+  limit?: number;
+  cursor?: string;
+  prefetchedLibraryData?: Record<string, unknown>;
+}
+
+/**
+ * Lists books in a library, applying optional filters, lookahead cursor pagination,
+ * and self-healing parent library bookCount reconciliation when out of sync.
+ */
 export async function listBooks(
   _userId: string,
   libraryId: string,
-  options?: {
-    filters?: {
-      missingMetadata?: string;
-      primaryGenre?: string;
-      status?: string;
-    };
-    limit?: number;
-    cursor?: string;
-  },
-): Promise<{books: Book[]; nextCursor?: string}> {
+  options?: ListBooksOptions,
+): Promise<{books: Book[]; nextCursor?: string; totalCount?: number}> {
   const db = getAdminDb();
   const booksCollection = db
     .collection('libraries')
@@ -102,13 +109,64 @@ export async function listBooks(
 
   const limitCount = options?.limit ?? 1000;
   const hasMissingFilter = Boolean(options?.filters?.missingMetadata);
+  const hasAnyFilter = Boolean(
+    hasMissingFilter ||
+    options?.filters?.primaryGenre ||
+    options?.filters?.status,
+  );
   const fetchLimit = hasMissingFilter
     ? Math.min(2000, limitCount * 3)
-    : limitCount;
+    : limitCount + 1;
   query = query.limit(fetchLimit);
 
-  const snapshot = await query.get();
-  let books: Book[] = snapshot.docs.map(doc => {
+  const countAggregatePromise =
+    !hasAnyFilter &&
+    !options?.cursor &&
+    typeof (
+      booksCollection as unknown as {
+        count?: () => {get: () => Promise<{data: () => {count?: number}}>};
+      }
+    ).count === 'function'
+      ? (
+          booksCollection as unknown as {
+            count: () => {get: () => Promise<{data: () => {count?: number}}>};
+          }
+        )
+          .count()
+          .get()
+          .then(res => res?.data?.()?.count)
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+
+  const [snapshot, aggregatedCount] = await Promise.all([
+    query.get(),
+    countAggregatePromise,
+  ]);
+
+  let rawDocs = snapshot.docs || [];
+
+  // If an unfiltered single-page query returned fewer documents than the collection's
+  // true count (e.g. legacy imported documents missing `addedAt` excluded by orderBy),
+  // fall back to an unordered collection read and sort in memory so zero books are lost.
+  if (
+    !hasAnyFilter &&
+    !options?.cursor &&
+    rawDocs.length < fetchLimit &&
+    typeof aggregatedCount === 'number' &&
+    aggregatedCount > rawDocs.length &&
+    aggregatedCount <= limitCount
+  ) {
+    try {
+      const fallbackSnap = await booksCollection.get();
+      if (fallbackSnap?.docs && fallbackSnap.docs.length > rawDocs.length) {
+        rawDocs = fallbackSnap.docs;
+      }
+    } catch {
+      // Keep ordered snapshot if fallback fails
+    }
+  }
+
+  let books: Book[] = rawDocs.map(doc => {
     const data = (doc.data() || {}) as Partial<Book>;
     return BookPartitioner.mergeBookAndDetails(doc.id, data);
   });
@@ -172,17 +230,54 @@ export async function listBooks(
     });
   }
 
-  const hasMore =
-    books.length > limitCount || snapshot.docs.length >= fetchLimit;
+  const hasMore = hasMissingFilter
+    ? books.length > limitCount || rawDocs.length >= fetchLimit
+    : books.length > limitCount;
   const slicedBooks = books.slice(0, limitCount);
   const nextCursor = hasMore
-    ? slicedBooks[slicedBooks.length - 1]?.id ||
-      snapshot.docs[snapshot.docs.length - 1]?.id
+    ? hasAnyFilter
+      ? rawDocs[Math.min(limitCount, rawDocs.length) - 1]?.id ||
+        slicedBooks[slicedBooks.length - 1]?.id
+      : slicedBooks[slicedBooks.length - 1]?.id ||
+        rawDocs[rawDocs.length - 1]?.id
     : undefined;
+
+  const authoritativeTotalCount =
+    !hasAnyFilter && !options?.cursor
+      ? typeof aggregatedCount === 'number'
+        ? aggregatedCount
+        : !hasMore
+          ? slicedBooks.length
+          : undefined
+      : undefined;
+
+  // Self-heal parent library.bookCount asynchronously when an unfiltered read detects drift
+  if (
+    typeof authoritativeTotalCount === 'number' &&
+    options?.prefetchedLibraryData &&
+    !libraryId.startsWith('virtual_') &&
+    options.prefetchedLibraryData.bookCount !== authoritativeTotalCount
+  ) {
+    try {
+      const libRef = db.collection('libraries').doc(libraryId) as {
+        update?: (data: Record<string, unknown>) => Promise<unknown>;
+      };
+      if (typeof libRef?.update === 'function') {
+        void Promise.resolve(
+          libRef.update({bookCount: authoritativeTotalCount}),
+        ).catch(() => {});
+      }
+    } catch {
+      // Non-fatal background reconciliation
+    }
+  }
 
   return {
     books: slicedBooks,
     nextCursor,
+    ...(typeof authoritativeTotalCount === 'number'
+      ? {totalCount: authoritativeTotalCount}
+      : {}),
   };
 }
 

@@ -1,15 +1,11 @@
 import React, {useState, useMemo} from 'react';
 import {useAuth} from '../stores/authStore';
 import {Navigate, useNavigate} from 'react-router-dom';
+import {Plus, RefreshCw, Search, LayoutDashboard, BookOpen} from 'lucide-react';
 import {
-  Plus,
-  AlertTriangle,
-  RefreshCw,
-  Search,
-  Sparkles,
-  BookOpen,
-} from 'lucide-react';
-import {BookshelfBookendsIllustration} from '@/components/ui/empty-state-illustrations';
+  BookshelfBookendsIllustration,
+  FallenBookendIllustration,
+} from '@/components/ui/empty-state-illustrations';
 import {toast} from 'sonner';
 import {toTitleCase, formatCompactNumber} from '../lib/utils';
 import {ErrorBoundary} from '../components/layout/ErrorBoundary';
@@ -32,6 +28,7 @@ import {useBookFilters} from '../hooks/useBookFilters';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {useAppPermissions} from '../hooks/useAppPermissions';
+import {useOnlineStatus} from '../hooks/useOnlineStatus';
 
 type OwnershipFilter = 'all' | 'owned' | 'unowned';
 
@@ -50,6 +47,7 @@ export function Dashboard() {
   const {user} = useAuth();
   const navigate = useNavigate();
   const {isAdmin} = useAppPermissions();
+  const isOnline = useOnlineStatus();
   const {
     libraries,
     isLoading,
@@ -356,7 +354,10 @@ export function Dashboard() {
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <LayoutDashboard
+                    className="w-3.5 h-3.5 shrink-0"
+                    strokeWidth={1.75}
+                  />
                   <span>Overview</span>
                 </Button>
 
@@ -373,7 +374,10 @@ export function Dashboard() {
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
-                  <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                  <BookOpen
+                    className="w-3.5 h-3.5 shrink-0"
+                    strokeWidth={1.75}
+                  />
                   <span>All Books</span>
                   <Badge
                     variant="outline"
@@ -387,11 +391,13 @@ export function Dashboard() {
 
               <Button
                 type="button"
+                disabled={!isOnline}
+                title={!isOnline ? 'Unavailable while offline' : undefined}
                 onClick={() => openTrackBookDialog('want_to_read')}
-                className="flex items-center gap-2 min-h-[40px] px-4 sm:px-5 bg-primary text-on-primary font-sans font-semibold rounded-lg hover:bg-primary/90 shadow-xs transition-all whitespace-nowrap"
+                className="flex items-center gap-2 min-h-[40px] px-4 sm:px-5 bg-primary text-on-primary font-sans font-semibold rounded-lg hover:bg-primary/90 shadow-xs transition-all whitespace-nowrap disabled:opacity-50"
               >
                 <Search className="w-4 h-4 stroke-[2.25]" />
-                <span>Track a Book</span>
+                <span>Find a Book</span>
               </Button>
             </div>
           </div>
@@ -448,8 +454,12 @@ export function Dashboard() {
                 headerSlot={readingCollectionHeaderSlot}
                 emptyTitle="No Books on This Shelf Yet"
                 emptyDescription="Search for a title or pick one from your libraries to start tracking your reading."
-                onEmptyAction={() => openTrackBookDialog('want_to_read')}
-                emptyActionLabel="Track a Book"
+                onEmptyAction={
+                  isOnline
+                    ? () => openTrackBookDialog('want_to_read')
+                    : undefined
+                }
+                emptyActionLabel="Find a Book"
                 disablePaddingTop
               />
             </div>
@@ -501,8 +511,10 @@ export function Dashboard() {
               ) : (
                 <Button
                   variant="outline"
+                  disabled={!isOnline}
+                  title={!isOnline ? 'Unavailable while offline' : undefined}
                   onClick={() => setIsCreating(true)}
-                  className="flex items-center gap-2 min-h-[40px] px-4 font-sans font-semibold rounded-lg self-start sm:self-auto transition-all whitespace-nowrap shrink-0"
+                  className="flex items-center gap-2 min-h-[40px] px-4 font-sans font-semibold rounded-lg self-start sm:self-auto transition-all whitespace-nowrap shrink-0 disabled:opacity-50"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Create Library</span>
@@ -526,21 +538,25 @@ export function Dashboard() {
                   role="alert"
                   className="py-12 px-6 bg-surface-container-low rounded-lg border border-destructive/30 shadow-elevation-1 text-center max-w-2xl mx-auto"
                 >
-                  <div className="w-12 h-12 bg-destructive/10 rounded-lg flex items-center justify-center mx-auto mb-4 border border-destructive/20">
-                    <AlertTriangle className="w-6 h-6 text-destructive" />
-                  </div>
-                  <h3 className="font-sans text-lg font-bold text-on-surface mb-2">
-                    Unable to Load Libraries
+                  <FallenBookendIllustration className="mx-auto mb-3" />
+                  <h3 className="font-serif text-lg font-semibold text-on-surface mb-2">
+                    {!isOnline
+                      ? 'Libraries Not Cached Offline Yet'
+                      : 'Unable to Load Libraries'}
                   </h3>
                   <p className="font-sans text-sm text-on-surface-variant leading-relaxed mb-6 break-words">
-                    {error instanceof Error
-                      ? error.message
-                      : 'An unexpected server error occurred while fetching your libraries.'}
+                    {!isOnline
+                      ? 'Connect to the internet once to sync your libraries for offline browsing.'
+                      : error instanceof Error
+                        ? error.message
+                        : 'An unexpected server error occurred while fetching your libraries.'}
                   </p>
                   <Button
+                    disabled={!isOnline}
+                    title={!isOnline ? 'Unavailable while offline' : undefined}
                     onClick={() => void refetch?.()}
                     variant="outline"
-                    className="mx-auto flex items-center gap-2 rounded-lg font-sans font-semibold"
+                    className="mx-auto flex items-center gap-2 rounded-lg font-sans font-semibold disabled:opacity-50"
                   >
                     <RefreshCw className="w-4 h-4" />
                     <span>Retry</span>
@@ -570,8 +586,12 @@ export function Dashboard() {
                   {(!scopes.includes('shared') || scopes.includes('owned')) && (
                     <Button
                       variant="outline"
+                      disabled={!isOnline}
+                      title={
+                        !isOnline ? 'Unavailable while offline' : undefined
+                      }
                       onClick={() => setIsCreating(true)}
-                      className="mx-auto flex items-center gap-2 min-h-[40px] px-5 rounded-lg font-sans font-semibold"
+                      className="mx-auto flex items-center gap-2 min-h-[40px] px-5 rounded-lg font-sans font-semibold disabled:opacity-50"
                     >
                       <Plus className="w-4 h-4" />
                       <span>Create Library</span>

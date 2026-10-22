@@ -1,15 +1,9 @@
 import React from 'react';
 import {Link} from 'react-router-dom';
-import {
-  Sparkles,
-  BookOpen,
-  Compass,
-  ArrowUpRight,
-  X,
-  Layers,
-} from 'lucide-react';
+import {Sparkles, Compass, ArrowUpRight, X, Layers} from 'lucide-react';
 import {ScatterPoint} from '../../hooks/useConstellationData';
 import {Button} from '@/components/ui/button';
+import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
 import {CLUSTER_COLORS, ClusterGeometry} from './types';
 
 interface ConstellationInspectorProps {
@@ -73,9 +67,13 @@ export function ConstellationInspector({
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="w-20 h-28 rounded-md bg-surface-container border border-outline-variant/40 flex items-center justify-center text-on-surface-variant shrink-0">
-                <BookOpen className="w-6 h-6 opacity-50" />
-              </div>
+              <MonographCoverFallback
+                title={selectedStar.book.title}
+                author={selectedStar.book.author}
+                publishedYear={selectedStar.book.publishedDate}
+                variant="compact"
+                className="w-20 h-28 rounded-md shrink-0"
+              />
             )}
 
             <div className="min-w-0 flex-1">

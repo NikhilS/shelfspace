@@ -9,7 +9,11 @@ import {
   useLocation,
 } from 'react-router-dom';
 import {trpc, trpcClient} from './lib/trpc';
-import {queryClient} from './lib/queryClient';
+import {
+  queryClient,
+  isQueryCacheRestored,
+  subscribeToQueryCacheRestore,
+} from './lib/queryClient';
 import {initAuthListener} from './services/authListener';
 import {useAuthStore} from './stores/authStore';
 import {useAppStore} from './stores/appStore';
@@ -106,8 +110,23 @@ function PageWrapper({children}: {children?: React.ReactNode}) {
 
 function PrivateRoute({children}: {children?: React.ReactNode}) {
   const {user, isAuthReady} = useAuthStore();
+  const [isCacheRestored, setIsCacheRestored] = React.useState(() =>
+    isQueryCacheRestored(),
+  );
 
-  if (!isAuthReady) {
+  React.useEffect(() => {
+    if (isCacheRestored) {
+      return undefined;
+    }
+    return subscribeToQueryCacheRestore(() => {
+      setIsCacheRestored(true);
+    });
+  }, [isCacheRestored]);
+
+  const isOffline =
+    typeof navigator !== 'undefined' && navigator.onLine === false;
+
+  if (!isAuthReady || (isOffline && !isCacheRestored)) {
     return <LoadingScreen />;
   }
 

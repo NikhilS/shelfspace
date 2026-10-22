@@ -232,9 +232,9 @@ export function useConstellationData(libraryId: string | undefined) {
         setLoading(true);
         setProgress('Fetching book details...');
 
-        // Group books by their source libraryId and query bookDetails in chunks of 50
+        // Group books by their source libraryId and query bookDetails in chunks of 250
         const detailsMap = new Map<string, Record<string, unknown>>();
-        const chunkSize = 50;
+        const chunkSize = 250;
         const chunks: Array<{targetLibId: string; items: typeof libraryBooks}> =
           [];
 
@@ -398,24 +398,38 @@ export function useConstellationData(libraryId: string | undefined) {
             Array.from(toEmbedByLib.entries()).map(
               async ([targetLibId, booksGroup]) => {
                 try {
-                  await trpcVanilla.enrichment.trigger.mutate({
-                    libraryId: targetLibId,
-                    enrichmentType: 'embedding',
-                    bookIds: booksGroup.map(b => b.id),
-                    overwrite: false,
-                  });
-
-                  const refreshedDetails =
-                    await trpcVanilla.book.getBookDetailsChunk.mutate({
+                  const ENRICH_BATCH_SIZE = 100;
+                  for (
+                    let i = 0;
+                    i < booksGroup.length;
+                    i += ENRICH_BATCH_SIZE
+                  ) {
+                    const enrichSlice = booksGroup.slice(
+                      i,
+                      i + ENRICH_BATCH_SIZE,
+                    );
+                    await trpcVanilla.enrichment.trigger.mutate({
                       libraryId: targetLibId,
-                      bookIds: booksGroup.map(b => b.id),
+                      enrichmentType: 'embedding',
+                      bookIds: enrichSlice.map(b => b.id),
+                      overwrite: false,
                     });
+                  }
 
-                  if (refreshedDetails?.details) {
-                    for (const b of booksGroup) {
-                      const detail = refreshedDetails.details[b.id];
-                      if (detail?.embedding) {
-                        b.embedding = detail.embedding;
+                  for (let i = 0; i < booksGroup.length; i += chunkSize) {
+                    const detailSlice = booksGroup.slice(i, i + chunkSize);
+                    const refreshedDetails =
+                      await trpcVanilla.book.getBookDetailsChunk.mutate({
+                        libraryId: targetLibId,
+                        bookIds: detailSlice.map(b => b.id),
+                      });
+
+                    if (refreshedDetails?.details) {
+                      for (const b of detailSlice) {
+                        const detail = refreshedDetails.details[b.id];
+                        if (detail?.embedding) {
+                          b.embedding = detail.embedding;
+                        }
                       }
                     }
                   }
@@ -568,7 +582,7 @@ export function useConstellationData(libraryId: string | undefined) {
         });
         const clusterArray = Object.keys(groupedClusters).map(cid => ({
           id: parseInt(cid, 10),
-          books: groupedClusters[parseInt(cid, 10)].map(b => ({
+          books: groupedClusters[parseInt(cid, 10)].slice(0, 50).map(b => ({
             title: b.title,
             author: b.author,
           })),

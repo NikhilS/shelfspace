@@ -2,7 +2,7 @@ import React from 'react';
 import {Link} from 'react-router-dom';
 import {
   ArrowLeft,
-  Sparkles,
+  LayoutDashboard,
   BookOpen,
   Compass,
   Globe,
@@ -109,7 +109,10 @@ export function WarmLibraryTabsBar({
                 : 'text-on-surface-variant'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <LayoutDashboard
+              className="w-3.5 h-3.5 shrink-0"
+              strokeWidth={1.75}
+            />
             <span>Overview</span>
           </div>
           <div
@@ -119,7 +122,7 @@ export function WarmLibraryTabsBar({
                 : 'text-on-surface-variant'
             }`}
           >
-            <BookOpen className="w-3.5 h-3.5 shrink-0" />
+            <BookOpen className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />
             <span className="hidden sm:inline">All Books</span>
             <span className="sm:hidden">Books</span>
             {bookCount !== undefined && (

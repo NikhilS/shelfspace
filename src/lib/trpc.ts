@@ -8,21 +8,23 @@ import {DebugTelemetryEngine, estimateStringBytes} from './telemetry';
 export const getAuthHeaders = async (): Promise<Record<string, string>> => {
   try {
     if (auth?.currentUser) {
-      const token = await auth.currentUser.getIdToken();
+      const token = await auth.currentUser.getIdToken(false);
       if (token) {
         return {Authorization: `Bearer ${token}`};
       }
     }
     const storeUser = useAuthStore?.getState?.()?.user;
     if (storeUser && typeof storeUser.getIdToken === 'function') {
-      const token = await storeUser.getIdToken();
+      const token = await storeUser.getIdToken(false);
       if (token) {
         return {Authorization: `Bearer ${token}`};
       }
     }
     return {};
   } catch (err) {
-    console.warn('[tRPC] Failed to retrieve Firebase ID token:', err);
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+      console.warn('[tRPC] Failed to retrieve Firebase ID token:', err);
+    }
     return {};
   }
 };
@@ -109,6 +111,12 @@ const customFetch = async (
         ? url.toString()
         : url.url;
 
+  const isOffline =
+    typeof navigator !== 'undefined' && navigator.onLine === false;
+  if (isOffline) {
+    throw new Error('Network unavailable while offline');
+  }
+
   const method = (options?.method || 'GET').toUpperCase();
   const {procedures, isBatched, isInternalDebugPoll} =
     parseTrpcProcedureInfo(urlStr);
@@ -119,10 +127,17 @@ const customFetch = async (
   };
 
   let lastError: unknown;
+  const maxRetries =
+    typeof navigator !== 'undefined' && navigator.onLine === false
+      ? 0
+      : RETRY_DELAYS_MS.length;
 
-  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
-      if (reqOptions.signal?.aborted) {
+      if (
+        reqOptions.signal?.aborted ||
+        (typeof navigator !== 'undefined' && navigator.onLine === false)
+      ) {
         break;
       }
       await new Promise(resolve =>
@@ -139,9 +154,9 @@ const customFetch = async (
       // Never pass raw HTML to @trpc/client JSON parser; retry until server responds with JSON.
       if (isHtmlOrGatewayFallback(response)) {
         console.warn(
-          `[tRPC HTML/Gateway Fallback] ${procedures} returned status=${response.status} content-type=${response.headers?.get?.('content-type')} (attempt ${attempt + 1}/${RETRY_DELAYS_MS.length + 1}, ${durationMs}ms)`,
+          `[tRPC HTML/Gateway Fallback] ${procedures} returned status=${response.status} content-type=${response.headers?.get?.('content-type')} (attempt ${attempt + 1}/${maxRetries + 1}, ${durationMs}ms)`,
         );
-        if (attempt < RETRY_DELAYS_MS.length && !reqOptions.signal?.aborted) {
+        if (attempt < maxRetries && !reqOptions.signal?.aborted) {
           continue;
         }
         return buildSynthesizedJsonErrorResponse(urlStr);
@@ -203,14 +218,13 @@ const customFetch = async (
       return response;
     } catch (err) {
       lastError = err;
-      if (reqOptions.signal?.aborted) {
-        const durationMs = Date.now() - start;
-        console.warn(
-          `[tRPC Network Aborted] ${procedures} aborted after ${durationMs}ms`,
-        );
+      if (
+        reqOptions.signal?.aborted ||
+        (typeof navigator !== 'undefined' && navigator.onLine === false)
+      ) {
         throw err;
       }
-      if (attempt === RETRY_DELAYS_MS.length) {
+      if (attempt === maxRetries) {
         const durationMs = Date.now() - start;
         console.warn(
           `[tRPC Network Retry Failed] ${procedures} failed after ${durationMs}ms:`,

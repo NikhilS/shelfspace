@@ -1,6 +1,6 @@
 import React, {useMemo} from 'react';
 import {Link} from 'react-router-dom';
-import {Clock, Globe, Sparkles, Compass, ArrowRight} from 'lucide-react';
+import {Compass, ArrowRight} from 'lucide-react';
 import {Badge} from '@/components/ui/badge';
 import {preloadRouteChunk} from '../../lib/routePreload';
 import type {Book} from '../../types';
@@ -56,7 +56,7 @@ export function ExplorePerspectivesStrip({
     <section aria-label={ariaLabel}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-3.5">
         <div className="flex items-center gap-2">
-          <Compass className="w-4 h-4 text-primary stroke-[2.2]" />
+          <Compass className="w-4 h-4 text-primary stroke-[1.75]" />
           <h2 className="section-heading">{heading}</h2>
           <Badge
             variant="outline"
@@ -79,29 +79,54 @@ export function ExplorePerspectivesStrip({
           onFocus={() => preloadRouteChunk('timeline')}
           className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
         >
-          {/* Visual Watermark: Chronological axis with milestone ticks */}
+          {/* Visual Watermark: Monoline Ink + Terracotta Chronological Axis */}
           <svg
-            className="absolute -right-2 -bottom-2 w-36 h-20 text-outline-variant/30 pointer-events-none group-hover:text-outline-variant/50 transition-colors"
+            className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/22 pointer-events-none group-hover:text-on-surface/35 transition-colors"
             viewBox="0 0 144 80"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.2"
+            strokeWidth="1.5"
             aria-hidden="true"
           >
             <line x1="8" y1="52" x2="136" y2="52" strokeDasharray="3 3" />
-            <circle cx="28" cy="52" r="3" fill="currentColor" />
             <line x1="28" y1="42" x2="28" y2="62" />
-            <circle cx="76" cy="52" r="3.5" fill="currentColor" />
-            <line x1="76" y1="38" x2="76" y2="66" />
-            <circle cx="120" cy="52" r="3" fill="currentColor" />
+            <circle
+              cx="28"
+              cy="52"
+              r="3"
+              className="fill-surface stroke-current"
+              strokeWidth="1.5"
+            />
+            <line
+              x1="76"
+              y1="36"
+              x2="76"
+              y2="66"
+              className="stroke-primary/60"
+            />
+            <circle
+              cx="76"
+              cy="52"
+              r="4.5"
+              className="fill-primary/20 stroke-primary"
+              strokeWidth="1.6"
+            />
             <line x1="120" y1="42" x2="120" y2="62" />
+            <circle
+              cx="120"
+              cy="52"
+              r="3"
+              className="fill-surface stroke-current"
+              strokeWidth="1.5"
+            />
             <text
               x="28"
               y="74"
               fontSize="7.5"
               textAnchor="middle"
               fill="currentColor"
-              fontFamily="serif"
+              stroke="none"
+              fontFamily="monospace"
             >
               1850
             </text>
@@ -111,8 +136,9 @@ export function ExplorePerspectivesStrip({
               fontSize="8"
               textAnchor="middle"
               fontWeight="bold"
-              fill="currentColor"
-              fontFamily="serif"
+              className="fill-primary"
+              stroke="none"
+              fontFamily="monospace"
             >
               1920
             </text>
@@ -122,22 +148,18 @@ export function ExplorePerspectivesStrip({
               fontSize="7.5"
               textAnchor="middle"
               fill="currentColor"
-              fontFamily="serif"
+              stroke="none"
+              fontFamily="monospace"
             >
               2026
             </text>
           </svg>
 
           <div className="relative z-10">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
-                  <Clock className="w-4 h-4" />
-                </div>
-                <h3 className="font-sans text-sm sm:text-base font-bold text-on-surface group-hover:text-primary transition-colors truncate">
-                  Historical Timeline
-                </h3>
-              </div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <h3 className="font-serif text-base font-semibold text-on-surface group-hover:text-primary transition-colors truncate">
+                Historical Timeline
+              </h3>
               <Badge
                 variant="outline"
                 size="sm"
@@ -166,44 +188,58 @@ export function ExplorePerspectivesStrip({
           onFocus={() => preloadRouteChunk('worldMap')}
           className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
         >
-          {/* Visual Watermark: Cartographic coordinate arcs and globe curves */}
+          {/* Visual Watermark: Monoline Ink + Terracotta Cartographic Globe */}
           <svg
-            className="absolute -right-2 -bottom-2 w-36 h-20 text-outline-variant/30 pointer-events-none group-hover:text-outline-variant/50 transition-colors"
+            className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/22 pointer-events-none group-hover:text-on-surface/35 transition-colors"
             viewBox="0 0 144 80"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.2"
+            strokeWidth="1.5"
             aria-hidden="true"
           >
             <circle
               cx="108"
               cy="46"
-              r="32"
-              strokeDasharray="2 3"
-              opacity="0.6"
+              r="30"
+              className="fill-primary/8"
+              strokeDasharray="2.5 3"
             />
             <ellipse
               cx="108"
               cy="46"
-              rx="32"
-              ry="14"
+              rx="30"
+              ry="13"
               strokeDasharray="3 3"
-              opacity="0.5"
+              opacity="0.7"
             />
             <line
               x1="108"
-              y1="14"
+              y1="16"
               x2="108"
-              y2="78"
+              y2="76"
               strokeDasharray="2 2"
-              opacity="0.5"
+              opacity="0.7"
             />
-            <circle cx="98" cy="40" r="2.5" fill="currentColor" />
+            <circle
+              cx="98"
+              cy="40"
+              r="4"
+              className="fill-primary/25 stroke-primary"
+              strokeWidth="1.6"
+            />
+            <circle
+              cx="118"
+              cy="50"
+              r="2.5"
+              className="fill-surface stroke-current"
+              strokeWidth="1.5"
+            />
             <text
-              x="44"
+              x="40"
               y="68"
               fontSize="7.5"
               fill="currentColor"
+              stroke="none"
               fontFamily="monospace"
               letterSpacing="0.05em"
             >
@@ -212,15 +248,10 @@ export function ExplorePerspectivesStrip({
           </svg>
 
           <div className="relative z-10">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
-                  <Globe className="w-4 h-4" />
-                </div>
-                <h3 className="font-sans text-sm sm:text-base font-bold text-on-surface group-hover:text-primary transition-colors truncate">
-                  Literary World Map
-                </h3>
-              </div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <h3 className="font-serif text-base font-semibold text-on-surface group-hover:text-primary transition-colors truncate">
+                Literary World Map
+              </h3>
               <Badge
                 variant="outline"
                 size="sm"
@@ -249,44 +280,69 @@ export function ExplorePerspectivesStrip({
           onFocus={() => preloadRouteChunk('constellation')}
           className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
         >
-          {/* Visual Watermark: Stellar cluster with connected nodes & orbital arc */}
+          {/* Visual Watermark: Monoline Ink + Terracotta Stellar Cluster */}
           <svg
-            className="absolute -right-2 -bottom-2 w-36 h-20 text-outline-variant/30 pointer-events-none group-hover:text-outline-variant/50 transition-colors"
+            className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/22 pointer-events-none group-hover:text-on-surface/35 transition-colors"
             viewBox="0 0 144 80"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.2"
+            strokeWidth="1.5"
             aria-hidden="true"
           >
-            <line x1="48" y1="58" x2="78" y2="34" strokeDasharray="3 2" />
-            <line x1="78" y1="34" x2="114" y2="48" strokeDasharray="3 2" />
-            <line x1="78" y1="34" x2="96" y2="18" strokeDasharray="3 2" />
-            <line x1="114" y1="48" x2="132" y2="62" strokeDasharray="3 2" />
-            <circle cx="48" cy="58" r="2.5" fill="currentColor" />
-            <circle cx="78" cy="34" r="3.5" fill="currentColor" />
-            <circle cx="96" cy="18" r="2" fill="currentColor" />
-            <circle cx="114" cy="48" r="3" fill="currentColor" />
-            <circle cx="132" cy="62" r="2.5" fill="currentColor" />
             <ellipse
               cx="92"
               cy="40"
               rx="36"
               ry="18"
               strokeDasharray="2 4"
-              opacity="0.4"
+              opacity="0.55"
+            />
+            <line x1="48" y1="58" x2="78" y2="34" strokeDasharray="3 2" />
+            <line x1="78" y1="34" x2="114" y2="48" strokeDasharray="3 2" />
+            <line x1="78" y1="34" x2="96" y2="18" strokeDasharray="3 2" />
+            <line x1="114" y1="48" x2="132" y2="62" strokeDasharray="3 2" />
+            <circle
+              cx="48"
+              cy="58"
+              r="2.8"
+              className="fill-surface stroke-current"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx="78"
+              cy="34"
+              r="4.2"
+              className="fill-primary/25 stroke-primary"
+              strokeWidth="1.6"
+            />
+            <circle
+              cx="96"
+              cy="18"
+              r="2.5"
+              className="fill-surface stroke-current"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx="114"
+              cy="48"
+              r="3.5"
+              className="fill-primary/20 stroke-primary"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx="132"
+              cy="62"
+              r="2.5"
+              className="fill-surface stroke-current"
+              strokeWidth="1.5"
             />
           </svg>
 
           <div className="relative z-10">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <h3 className="font-sans text-sm sm:text-base font-bold text-on-surface group-hover:text-primary transition-colors truncate">
-                  Thematic Constellations
-                </h3>
-              </div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <h3 className="font-serif text-base font-semibold text-on-surface group-hover:text-primary transition-colors truncate">
+                Thematic Constellations
+              </h3>
               <Badge
                 variant="outline"
                 size="sm"

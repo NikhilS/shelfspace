@@ -12,6 +12,7 @@ import {
   Search,
   BarChart3,
 } from 'lucide-react';
+import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
 
 type PreviewTab = 'reading' | 'shelf';
 
@@ -19,18 +20,16 @@ const CURRENTLY_READING_BOOKS = [
   {
     title: 'Piranesi',
     author: 'Susanna Clarke',
+    year: '2020',
     context: 'Personal Reading Shelf',
     isOwned: false,
-    cover:
-      'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=300&q=80',
   },
   {
     title: 'The Left Hand of Darkness',
     author: 'Ursula K. Le Guin',
+    year: '1969',
     context: 'Owned · Living Room',
     isOwned: true,
-    cover:
-      'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=300&q=80',
   },
 ];
 
@@ -75,8 +74,6 @@ const SHELF_BOOKS = [
     genre: 'Sci-Fi',
     status: 'Read',
     setting: 'Arrakis',
-    cover:
-      'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=300&q=80',
   },
   {
     title: 'Invisible Cities',
@@ -85,8 +82,6 @@ const SHELF_BOOKS = [
     genre: 'Literary',
     status: 'Read',
     setting: 'Venice, Italy',
-    cover:
-      'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=300&q=80',
   },
   {
     title: 'The Left Hand of Darkness',
@@ -95,8 +90,6 @@ const SHELF_BOOKS = [
     genre: 'Sci-Fi',
     status: 'Reading',
     setting: 'Gethen',
-    cover:
-      'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?auto=format&fit=crop&w=300&q=80',
   },
   {
     title: 'Pachinko',
@@ -105,8 +98,6 @@ const SHELF_BOOKS = [
     genre: 'Historical',
     status: 'Want to Read',
     setting: 'Busan & Osaka',
-    cover:
-      'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&w=300&q=80',
   },
 ];
 
@@ -195,7 +186,7 @@ export function HeroShowcaseCard() {
                       </div>
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container text-primary text-xs font-sans font-semibold border border-outline-variant/50">
                         <Plus className="w-3.5 h-3.5" />
-                        Track a Book
+                        Find a Book
                       </span>
                     </div>
 
@@ -205,11 +196,12 @@ export function HeroShowcaseCard() {
                           key={book.title}
                           className="flex items-center gap-3 p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/50"
                         >
-                          <img
-                            src={book.cover}
-                            alt={book.title}
-                            className="w-11 h-16 object-cover rounded-md shadow-2xs shrink-0"
-                            referrerPolicy="no-referrer"
+                          <MonographCoverFallback
+                            title={book.title}
+                            author={book.author}
+                            publishedYear={book.year}
+                            variant="micro"
+                            className="w-11 h-16 rounded-md shadow-2xs shrink-0"
                           />
                           <div className="min-w-0 flex-1">
                             <div className="font-serif text-sm font-bold text-on-surface truncate">
@@ -397,13 +389,15 @@ export function HeroShowcaseCard() {
                     >
                       <div>
                         <div className="aspect-[2/3] w-full rounded-lg overflow-hidden bg-surface-container mb-2.5 border border-outline-variant/30 relative">
-                          <img
-                            src={book.cover}
-                            alt={book.title}
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
+                          <MonographCoverFallback
+                            title={book.title}
+                            author={book.author}
+                            publishedYear={book.year}
+                            variant="card"
+                            showTitleText={false}
+                            className="absolute inset-0 p-3"
                           />
-                          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-surface/90 backdrop-blur-xs text-[10px] font-sans font-semibold text-on-surface">
+                          <span className="absolute top-2 right-2 z-20 px-1.5 py-0.5 rounded-md bg-surface/90 backdrop-blur-xs text-[10px] font-sans font-semibold text-on-surface border border-outline-variant/40">
                             {book.status}
                           </span>
                         </div>

@@ -4,6 +4,7 @@ import {StarRating} from '@/components/ui/star-rating';
 import {Review} from './useBook';
 import {Book, FirestoreDate} from '../../types';
 import {useAuth} from '../../stores/authStore';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {Button} from '@/components/ui/button';
 import {Textarea} from '@/components/ui/textarea';
 import {formatShortDate} from '../../lib/date';
@@ -25,13 +26,14 @@ export function ReviewSection({
   addReview,
 }: ReviewSectionProps) {
   const {user} = useAuth();
+  const isOnline = useOnlineStatus();
   const [isReviewing, setIsReviewing] = useState(false);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [isSavingReview, setIsSavingReview] = useState(false);
 
   const handleSaveReview = async () => {
-    if (!book || !libraryId || !user) {
+    if (!book || !libraryId || !user || !isOnline) {
       return;
     }
     if (reviewRating === 0 && !reviewText.trim()) {
@@ -78,7 +80,13 @@ export function ReviewSection({
         {Boolean(user) &&
           !isReviewing &&
           !reviews.some(r => r.userId === user?.uid) && (
-            <Button onClick={() => setIsReviewing(true)}>Write Review</Button>
+            <Button
+              disabled={!isOnline}
+              title={!isOnline ? 'Unavailable while offline' : undefined}
+              onClick={() => isOnline && setIsReviewing(true)}
+            >
+              Write Review
+            </Button>
           )}
       </div>
 
@@ -109,7 +117,11 @@ export function ReviewSection({
             >
               Cancel
             </Button>
-            <Button onClick={handleSaveReview} disabled={isSavingReview}>
+            <Button
+              onClick={handleSaveReview}
+              disabled={!isOnline || isSavingReview}
+              title={!isOnline ? 'Unavailable while offline' : undefined}
+            >
               {isSavingReview ? 'Saving...' : 'Save Review'}
             </Button>
           </div>

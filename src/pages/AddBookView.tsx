@@ -184,7 +184,7 @@ export function AddBookView() {
             <BackToLibrary libraryId={libraryId} mode={mode} className="mb-2" />
             <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="layout-header-title">
-                {isReadingMode ? 'Track a Book' : 'Add Books'}
+                {isReadingMode ? 'Find a Book' : 'Add Books'}
               </h1>
               <span
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-sans font-semibold bg-surface-container text-on-surface-variant border border-outline-variant/50"

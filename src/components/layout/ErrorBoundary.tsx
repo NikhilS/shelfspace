@@ -1,6 +1,7 @@
 import React, {Component, ErrorInfo, ReactNode} from 'react';
-import {AlertCircle, RefreshCcw} from 'lucide-react';
+import {RefreshCcw} from 'lucide-react';
 import {Button} from '@/components/ui/button';
+import {FallenBookendIllustration} from '@/components/ui/empty-state-illustrations';
 
 interface Props {
   children: ReactNode;
@@ -100,9 +101,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] w-full p-8 text-center bg-surface rounded-xl border border-outline-variant/60 my-8 architectural-shadow">
-          <div className="w-14 h-14 bg-error-container rounded-lg flex items-center justify-center mb-5 border border-error/20">
-            <AlertCircle size={28} className="text-error" />
-          </div>
+          <FallenBookendIllustration className="w-20 h-16 mb-4" />
           <h2 className="font-serif text-2xl font-semibold text-primary mb-2">
             Something went wrong
           </h2>

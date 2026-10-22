@@ -122,3 +122,19 @@ To maintain locked 60/120fps frame pacing when swiping through large book collec
 4. **Idle-Deferred Data & Bitmap Pre-Warming:**
    - `PrefetchAdjacentBooks` defers tRPC prefetching and `new Image().decode()` cover pre-warming for `[index - 2, index + 2]` to `requestIdleCallback` after the swipe spring settles.
 
+---
+
+## 6. Progressive Catalog Hydration & Large Library Scaling (1,000+ Books)
+
+To support multi-thousand-volume libraries without sacrificing first-paint speed or client-side search/filter completeness:
+
+1. **Two-Stage Progressive Hydration (`useLibraryData`):**
+   - **Stage 1 (Instant 1,000-Book First Paint):** `trpc.book.list.useQuery({ libraryId })` fetches the first 1,000 lightweight book records immediately (`isBooksLoading = false`, `isCachedFirstPaint = true`).
+   - **Stage 2 (Background Cursor Drain):** When `nextCursor` is present, `useLibraryData` automatically drains remaining 1,000-book pages via `trpcVanilla.book.list.query` and merges deduplicated books directly into the canonical `{ libraryId }` TanStack Query cache entry (`nextCursor: undefined` once exhausted).
+2. **Exploratory View Synchronization (`useCollectionScope` & `useSpruceUp`):**
+   - Exploratory views (`ConstellationMap`, `TimelineView`, `WorldMap`, and `SpruceUpView` duplicate scanning) gate on `isBooksLoading || isPaginating` so UMAP/K-Means clustering and duplicate detection execute once across the complete catalog rather than restarting mid-drain.
+   - `getBookDetailsChunk` batches full `bookDetails` reads in chunks of up to 250 books per request.
+3. **Lookahead Pagination & Self-Healing `library.bookCount` (`BookService.listBooks`):**
+   - Server queries use `limit + 1` lookahead to set `nextCursor` only when a $(N+1)\text{th}$ document exists, and asynchronously self-heal `libraries/{libraryId}.bookCount` whenever an unfiltered read detects drift between the stored count and actual collection count.
+
+

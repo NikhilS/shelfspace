@@ -7,14 +7,17 @@ import {
   Link,
 } from 'react-router-dom';
 import {
-  Sparkles,
+  LayoutDashboard,
   BookOpen,
   Wand2,
   Plus,
-  AlertTriangle,
   RefreshCw,
   ArrowLeft,
 } from 'lucide-react';
+import {
+  BookshelfBookendsIllustration,
+  FallenBookendIllustration,
+} from '@/components/ui/empty-state-illustrations';
 import {useAuth} from '../stores/authStore';
 import {auth} from '../firebase';
 import {uploadBase64Image} from '../lib/storage';
@@ -36,6 +39,7 @@ import {useSelection} from '../hooks/useSelection';
 import {usePickOfTheDay} from '../hooks/usePickOfTheDay';
 import {useDebugInspect} from '../hooks/useDebugInspect';
 import {useAppPermissions} from '../hooks/useAppPermissions';
+import {useOnlineStatus} from '../hooks/useOnlineStatus';
 
 // Components
 import {LibraryHeader} from './library/LibraryHeader';
@@ -56,6 +60,7 @@ export function LibraryView() {
   const {id} = useParams<{id: string}>();
   const {user} = useAuth();
   const {hasAiPlan} = useAppPermissions();
+  const isOnline = useOnlineStatus();
   const navigate = useNavigate();
   const utils = trpc.useUtils();
 
@@ -440,7 +445,7 @@ export function LibraryView() {
     trpc.gemini.generateLibraryHeroImage.useMutation();
 
   const handleRefreshHero = async () => {
-    if (!id || !library || isRefreshingHero || !hasAiPlan) {
+    if (!id || !library || isRefreshingHero || !hasAiPlan || !isOnline) {
       return;
     }
     setIsRefreshingHero(true);
@@ -519,6 +524,37 @@ export function LibraryView() {
   }
 
   if (!library) {
+    if (!isOnline) {
+      return (
+        <div className="layout-page-content flex items-center justify-center min-h-[60vh]">
+          <div className="py-12 px-6 bg-surface-container-low rounded-xl border border-outline-variant/40 shadow-elevation-1 text-center max-w-lg w-full">
+            <div className="flex items-center justify-center mx-auto mb-3 text-on-surface">
+              <BookshelfBookendsIllustration className="w-24 h-16" />
+            </div>
+            <h2 className="font-serif text-xl font-semibold text-on-surface mb-2">
+              Not Available Offline Yet
+            </h2>
+            <p className="font-sans text-sm text-on-surface-variant leading-relaxed mb-6">
+              This library hasn&apos;t been saved to your device&apos;s offline
+              archive yet. Connect to the internet once to open and cache this
+              shelf.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void navigate('/')}
+                className="flex items-center gap-2 rounded-lg font-sans font-semibold"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Return to Reading Room</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (isError) {
       return (
         <div className="layout-page-content flex items-center justify-center min-h-[60vh]">
@@ -526,8 +562,8 @@ export function LibraryView() {
             role="alert"
             className="py-12 px-6 bg-surface-container-low rounded-xl border border-destructive/30 shadow-elevation-1 text-center max-w-lg w-full"
           >
-            <div className="w-12 h-12 bg-destructive/10 rounded-lg flex items-center justify-center mx-auto mb-4 border border-destructive/20">
-              <AlertTriangle className="w-6 h-6 text-destructive" />
+            <div className="flex items-center justify-center mx-auto mb-3 text-on-surface">
+              <FallenBookendIllustration className="w-24 h-16" />
             </div>
             <h2 className="font-serif text-xl font-semibold text-on-surface mb-2">
               Unable to Open Library
@@ -597,7 +633,10 @@ export function LibraryView() {
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <LayoutDashboard
+                    className="w-3.5 h-3.5 shrink-0"
+                    strokeWidth={1.75}
+                  />
                   <span>Overview</span>
                 </Button>
 
@@ -612,7 +651,10 @@ export function LibraryView() {
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
-                  <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                  <BookOpen
+                    className="w-3.5 h-3.5 shrink-0"
+                    strokeWidth={1.75}
+                  />
                   <span className="hidden sm:inline">All Books</span>
                   <span className="sm:hidden">Books</span>
                   <Badge
@@ -622,40 +664,60 @@ export function LibraryView() {
                     title={
                       isBooksLoading && books.length === 0
                         ? undefined
-                        : `${books.length} volumes`
+                        : `${
+                            isSyncing && typeof library.bookCount === 'number'
+                              ? Math.max(books.length, library.bookCount)
+                              : books.length
+                          } volumes`
                     }
                   >
                     {isBooksLoading && books.length === 0
                       ? library.bookCount !== undefined
                         ? formatCompactNumber(library.bookCount)
                         : '...'
-                      : formatCompactNumber(books.length)}
+                      : formatCompactNumber(
+                          isSyncing && typeof library.bookCount === 'number'
+                            ? Math.max(books.length, library.bookCount)
+                            : books.length,
+                        )}
                   </Badge>
                 </Button>
 
-                {canEdit && (
-                  <Link
-                    to={`/library/${id}/spruce-up`}
-                    onMouseEnter={() => preloadRouteChunk('spruceUp')}
-                    onFocus={() => preloadRouteChunk('spruceUp')}
-                    className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-8 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface/50 transition-all"
-                    title="Shelf Care & Health"
-                  >
-                    <Wand2 className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Shelf Care</span>
-                  </Link>
-                )}
+                {canEdit &&
+                  (isOnline ? (
+                    <Link
+                      to={`/library/${id}/spruce-up`}
+                      onMouseEnter={() => preloadRouteChunk('spruceUp')}
+                      onFocus={() => preloadRouteChunk('spruceUp')}
+                      className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-8 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface/50 transition-all"
+                      title="Shelf Care & Health"
+                    >
+                      <Wand2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Shelf Care</span>
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-8 rounded-md text-on-surface-variant/50 opacity-50 cursor-not-allowed"
+                      title="Unavailable while offline"
+                    >
+                      <Wand2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Shelf Care</span>
+                    </button>
+                  ))}
               </div>
 
               {/* Right Action: Primary Add Books Action (Opens shared Quick Search Dialog) */}
               {canEdit && (
                 <button
                   type="button"
-                  onClick={() => setIsQuickAddOpen(true)}
-                  onMouseEnter={() => preloadRouteChunk('addBook')}
-                  onFocus={() => preloadRouteChunk('addBook')}
-                  className="flex items-center gap-1.5 px-3 sm:px-4 h-9 rounded-lg bg-primary text-on-primary hover:bg-primary/90 text-xs font-sans font-semibold transition-all shadow-xs shrink-0 cursor-pointer"
-                  title="Add Books"
+                  disabled={!isOnline}
+                  onClick={() => isOnline && setIsQuickAddOpen(true)}
+                  onMouseEnter={() => isOnline && preloadRouteChunk('addBook')}
+                  onFocus={() => isOnline && preloadRouteChunk('addBook')}
+                  className="flex items-center gap-1.5 px-3 sm:px-4 h-9 rounded-lg bg-primary text-on-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-sans font-semibold transition-all shadow-xs shrink-0 cursor-pointer"
+                  title={!isOnline ? 'Unavailable while offline' : 'Add Books'}
                 >
                   <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                   <span className="hidden sm:inline">Add Books</span>
@@ -694,7 +756,7 @@ export function LibraryView() {
                           filters.selectGenreAndGoToCollection
                         }
                         pickError={picker.error}
-                        onAddBook={() => setIsQuickAddOpen(true)}
+                        onAddBook={() => isOnline && setIsQuickAddOpen(true)}
                       />
                     )}
                   </ErrorBoundary>
@@ -732,7 +794,7 @@ export function LibraryView() {
                         setFilterSubgenre={filters.setFilterSubgenre}
                         activeSubgenres={filters.activeSubgenres}
                         filterAuthor={filters.filterAuthor}
-                        setFilterAuthor={filters.filterAuthor}
+                        setFilterAuthor={filters.setFilterAuthor}
                         filterYearMin={filters.filterYearMin}
                         setFilterYearMin={filters.setFilterYearMin}
                         filterYearMax={filters.filterYearMax}
@@ -740,7 +802,7 @@ export function LibraryView() {
                         availableGenres={filters.availableGenres}
                         availableAuthors={filters.availableAuthors}
                         clearFilters={filters.clearFilters}
-                        canEdit={canEdit}
+                        canEdit={canEdit && isOnline}
                         selectedBooks={selection.selectedBooks}
                         toggleBookSelection={selection.toggleBookSelection}
                         toggleAllBooks={selection.toggleAllBooks}
@@ -748,7 +810,9 @@ export function LibraryView() {
                         user={user}
                         navigate={navigate}
                         onEmptyAction={
-                          canEdit ? () => setIsQuickAddOpen(true) : undefined
+                          canEdit && isOnline
+                            ? () => setIsQuickAddOpen(true)
+                            : undefined
                         }
                       />
                     )}

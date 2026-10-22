@@ -5,7 +5,6 @@ import {
   Library as LibraryIcon,
   Globe,
   Loader2,
-  Check,
   ArrowLeft,
 } from 'lucide-react';
 import {
@@ -260,7 +259,7 @@ export function TrackBookDialog({
       <DialogContent className="sm:max-w-2xl max-h-[88vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl text-on-surface">
-            Track a Book
+            Find a Book
           </DialogTitle>
           <DialogDescription className="font-sans text-sm text-on-surface-variant">
             Search across your accessible libraries and global literary catalogs
@@ -634,10 +633,7 @@ export function TrackBookDialog({
                     <span>Saving...</span>
                   </>
                 ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span>Save to Reading List</span>
-                  </>
+                  <span>Save to Reading List</span>
                 )}
               </Button>
             </div>

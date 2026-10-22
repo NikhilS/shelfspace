@@ -157,7 +157,7 @@ export function QuickAddBookDialog({
           <div className="flex flex-wrap items-center gap-2.5 pr-10 min-h-8">
             <DialogTitle className="font-serif text-2xl text-on-surface leading-8">
               {isReadingMode
-                ? 'Track a Book'
+                ? 'Find a Book'
                 : libraryName
                   ? `Add Book to ${toTitleCase(libraryName)}`
                   : 'Add Books to Library'}

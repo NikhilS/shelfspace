@@ -1,16 +1,10 @@
 import React, {useState} from 'react';
-import {
-  EyeOff,
-  Loader2,
-  Trash2,
-  Layers,
-  GitMerge,
-  BookOpen,
-} from 'lucide-react';
+import {EyeOff, Loader2, Trash2, GitMerge} from 'lucide-react';
 import {Book} from '../../types';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {TidyShelfCheckIllustration} from '@/components/ui/empty-state-illustrations';
+import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
 import {formatFirestoreDate} from '../../lib/date';
 import {DuplicateGroupMetadata} from '../../lib/duplicateDetection';
 import {
@@ -47,35 +41,30 @@ export function DuplicateSection({
     <section className="bg-surface-container-low border border-outline-variant/30 rounded-2xl overflow-hidden shadow-sm flex flex-col">
       {/* Header */}
       <div className="p-6 border-b border-outline-variant/30 bg-surface-container-low flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-            <Layers className="w-5 h-5" />
+        <div>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-xl font-serif font-semibold text-on-surface">
+              Possible Duplicates
+            </h2>
+            {isCheckingDuplicates ? (
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary"
+                data-testid="duplicate-scanning-badge"
+              >
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Scanning in background...
+              </span>
+            ) : (
+              <span className="text-on-surface-variant font-sans text-xs font-semibold px-2.5 py-0.5 rounded-md bg-surface-container border border-outline-variant/30">
+                {duplicates.length}{' '}
+                {duplicates.length === 1 ? 'group' : 'groups'} found
+              </span>
+            )}
           </div>
-          <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h2 className="text-xl font-sans font-bold text-on-surface">
-                Possible Duplicates
-              </h2>
-              {isCheckingDuplicates ? (
-                <span
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary"
-                  data-testid="duplicate-scanning-badge"
-                >
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Scanning in background...
-                </span>
-              ) : (
-                <span className="text-on-surface-variant font-sans text-xs font-semibold px-2.5 py-0.5 rounded-md bg-surface-container border border-outline-variant/30">
-                  {duplicates.length}{' '}
-                  {duplicates.length === 1 ? 'group' : 'groups'} found
-                </span>
-              )}
-            </div>
-            <p className="text-sm text-on-surface-variant font-sans mt-0.5">
-              Compare matching books side-by-side to combine their details,
-              remove extra copies, or keep both editions.
-            </p>
-          </div>
+          <p className="text-sm text-on-surface-variant font-sans mt-0.5">
+            Compare matching books side-by-side to combine their details, remove
+            extra copies, or keep both editions.
+          </p>
         </div>
       </div>
 
@@ -190,7 +179,12 @@ export function DuplicateSection({
                                         className="w-full h-full object-cover"
                                       />
                                     ) : (
-                                      <BookOpen className="w-3.5 h-3.5 text-outline" />
+                                      <MonographCoverFallback
+                                        title={b.title}
+                                        author={b.author}
+                                        variant="micro"
+                                        className="w-full h-full border-0"
+                                      />
                                     )}
                                   </div>
                                   <div className="min-w-0">

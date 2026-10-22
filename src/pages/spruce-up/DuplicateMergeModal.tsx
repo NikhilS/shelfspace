@@ -9,7 +9,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {GitMerge, Check, BookOpen, ShieldCheck, Loader2} from 'lucide-react';
+import {GitMerge, Check, ShieldCheck, Loader2} from 'lucide-react';
+import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
 import {trpcVanilla} from '../../lib/trpc';
 
 export interface DuplicateMergePayload {
@@ -213,19 +214,14 @@ export function DuplicateMergeModal({
     <Dialog open={open} onOpenChange={val => !val && onClose()}>
       <DialogContent className="max-w-4xl max-h-[88vh] flex flex-col bg-surface text-on-surface border-outline-variant/40 p-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-outline-variant/30 bg-surface-container-low">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <GitMerge className="w-5 h-5" />
-            </div>
-            <div>
-              <DialogTitle className="font-sans text-xl font-bold text-on-surface">
-                Merge Duplicate Books
-              </DialogTitle>
-              <DialogDescription className="text-xs text-on-surface-variant mt-0.5">
-                Choose which copy to keep and click any detail below to combine
-                the best information into a single book.
-              </DialogDescription>
-            </div>
+          <div>
+            <DialogTitle className="font-serif text-xl font-semibold text-on-surface">
+              Merge Duplicate Books
+            </DialogTitle>
+            <DialogDescription className="text-xs text-on-surface-variant mt-0.5">
+              Choose which copy to keep and click any detail below to combine
+              the best information into a single book.
+            </DialogDescription>
           </div>
         </DialogHeader>
 
@@ -276,7 +272,12 @@ export function DuplicateMergeModal({
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <BookOpen className="w-4 h-4 text-outline" />
+                        <MonographCoverFallback
+                          title={book.title}
+                          author={book.author}
+                          variant="micro"
+                          className="w-full h-full border-0"
+                        />
                       )}
                     </div>
                     <div className="min-w-0 flex-1">

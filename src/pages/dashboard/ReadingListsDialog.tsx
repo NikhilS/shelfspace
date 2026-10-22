@@ -118,7 +118,7 @@ export function ReadingListsDialog({
               className="gap-1.5 self-start sm:self-auto shrink-0"
             >
               <Plus className="w-4 h-4" />
-              <span>Track a Book</span>
+              <span>Find a Book</span>
             </Button>
           </div>
         </DialogHeader>

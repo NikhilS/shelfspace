@@ -20,6 +20,7 @@ import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Badge} from '@/components/ui/badge';
 import {MagnifyingBookmarkIllustration} from '@/components/ui/empty-state-illustrations';
+import {MonographCoverFallback} from '../book/MonographCoverFallback';
 import type {
   TrackedShelfStatus,
   UnifiedLibrarySearchMatch,
@@ -413,17 +414,21 @@ export function BookSearch({
                             }}
                           />
                         ) : (
-                          <div className="w-16 h-24 sm:w-20 sm:h-28 bg-surface-variant/60 rounded-lg flex items-center justify-center shrink-0 border border-outline-variant/30">
-                            <span className="text-outline text-xs font-medium">
-                              No cover
-                            </span>
-                          </div>
+                          <MonographCoverFallback
+                            title={book.title}
+                            author={book.author}
+                            publishedYear={book.publishedDate}
+                            variant="compact"
+                            className="w-16 h-24 sm:w-20 sm:h-28 rounded-lg shrink-0"
+                          />
                         )}
-                        <div className="hidden w-16 h-24 sm:w-20 sm:h-28 bg-surface-variant/60 rounded-lg flex items-center justify-center shrink-0 border border-outline-variant/30">
-                          <span className="text-outline text-xs font-medium">
-                            No cover
-                          </span>
-                        </div>
+                        <MonographCoverFallback
+                          title={book.title}
+                          author={book.author}
+                          publishedYear={book.publishedDate}
+                          variant="compact"
+                          className="hidden w-16 h-24 sm:w-20 sm:h-28 rounded-lg shrink-0"
+                        />
                         <div className="flex-1 min-w-0 py-0.5">
                           <h3 className="font-serif font-bold text-base sm:text-xl text-on-surface mb-0.5 truncate tracking-tight pr-4">
                             {toTitleCase(book.title)}

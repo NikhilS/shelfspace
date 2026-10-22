@@ -5,6 +5,7 @@ import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {Edit2} from 'lucide-react';
 import {Book} from './useBook';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 
 interface BookHeaderProps {
   book: Book;
@@ -16,6 +17,7 @@ interface BookHeaderProps {
 export const BookHeader = memo(
   ({book, canEdit, onEdit, libraryId}: BookHeaderProps) => {
     const navigate = useNavigate();
+    const isOnline = useOnlineStatus();
 
     const isVirtualShelf = Boolean(libraryId?.startsWith('virtual_'));
 
@@ -99,7 +101,9 @@ export const BookHeader = memo(
               <Button
                 variant="outline"
                 size="sm"
-                onClick={onEdit}
+                disabled={!isOnline}
+                title={!isOnline ? 'Unavailable while offline' : undefined}
+                onClick={() => isOnline && onEdit()}
                 className="flex items-center justify-center gap-2 w-full sm:w-auto h-9 px-3.5"
               >
                 <Edit2 size={14} /> Edit Details

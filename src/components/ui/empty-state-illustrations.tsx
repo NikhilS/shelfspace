@@ -605,3 +605,438 @@ export function TidyShelfCheckIllustration({
     </svg>
   );
 }
+
+/**
+ * 9. ArchivalLedgerImportIllustration
+ * Open archival catalog ledger / index card tray with an incoming catalog card and terracotta ribbon accent.
+ * Used on CSV Bulk Import dropzones.
+ */
+export function ArchivalLedgerImportIllustration({
+  className,
+  ...props
+}: SpotIllustrationProps) {
+  return (
+    <svg
+      viewBox="0 0 88 68"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={cn('w-20 h-16 text-on-surface', className)}
+      {...props}
+    >
+      {/* Warm shadow ellipse */}
+      <ellipse
+        cx="44"
+        cy="56"
+        rx="30"
+        ry="6"
+        className="fill-primary/8 dark:fill-primary/15"
+      />
+      {/* Archival card tray base */}
+      <rect
+        x="16"
+        y="34"
+        width="56"
+        height="19"
+        rx="3"
+        className="fill-surface stroke-current"
+        strokeWidth="1.5"
+      />
+      {/* Brass label holder on front of tray */}
+      <rect
+        x="34"
+        y="40"
+        width="20"
+        height="7"
+        rx="1.5"
+        className="fill-primary/15 stroke-primary"
+        strokeWidth="1.4"
+      />
+      <path
+        d="M38 43.5H50"
+        className="stroke-primary"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      {/* Back index card tab */}
+      <path
+        d="M22 34V24C22 22.8954 22.8954 22 24 22H36L39 25H64C65.1046 25 66 25.8954 66 27V34"
+        className="fill-surface stroke-current"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      {/* Incoming featured catalog card (terracotta accented) */}
+      <rect
+        x="27"
+        y="12"
+        width="34"
+        height="22"
+        rx="2.5"
+        className="fill-surface stroke-primary"
+        strokeWidth="1.5"
+      />
+      <rect
+        x="27"
+        y="12"
+        width="34"
+        height="5"
+        rx="1.5"
+        className="fill-primary/15"
+      />
+      {/* Ruled catalog lines on incoming card */}
+      <path
+        d="M32 21H52M32 25.5H46M32 30H42"
+        stroke="currentColor"
+        strokeOpacity="0.4"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      {/* Downward archival accession arrow */}
+      <path
+        d="M54 20V28M54 28L51.5 25.5M54 28L56.5 25.5"
+        className="stroke-primary"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * 10. ShelfViewfinderIllustration
+ * Monoline hardcover book spines framed inside brass/terracotta optical viewfinder corner brackets.
+ * Used for CameraScanner idle, AI-plan notice, and active optical extraction states.
+ */
+export function ShelfViewfinderIllustration({
+  className,
+  scanning = false,
+  ...props
+}: SpotIllustrationProps & {scanning?: boolean}) {
+  return (
+    <svg
+      viewBox="0 0 88 68"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={cn('w-20 h-16 text-on-surface', className)}
+      {...props}
+    >
+      {/* Soft warm backdrop */}
+      <ellipse
+        cx="44"
+        cy="55"
+        rx="28"
+        ry="5.5"
+        className="fill-primary/8 dark:fill-primary/15"
+      />
+      {/* Optical viewfinder corner brackets in terracotta */}
+      <path
+        d="M14 22V15C14 13.8954 14.8954 13 16 13H23M65 13H72C73.1046 13 74 13.8954 74 15V22M74 44V51C74 52.1046 73.1046 53 72 53H65M23 53H16C14.8954 53 14 52.1046 14 51V44"
+        className="stroke-primary"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Shelf base line inside frame */}
+      <path
+        d="M22 47H66"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      {/* Book spine 1 */}
+      <rect
+        x="26"
+        y="21"
+        width="9"
+        height="26"
+        rx="1.5"
+        className="fill-surface stroke-current"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M28.5 26H32.5"
+        stroke="currentColor"
+        strokeOpacity="0.4"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      {/* Book spine 2 (terracotta highlighted focal volume) */}
+      <rect
+        x="37"
+        y="18"
+        width="10"
+        height="29"
+        rx="1.5"
+        className="fill-primary/15 stroke-primary"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M39.5 23H44.5M39.5 41H44.5"
+        className="stroke-primary"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      {/* Book spine 3 (leaning volume) */}
+      <g transform="rotate(-10 50 47)">
+        <rect
+          x="49"
+          y="22"
+          width="9"
+          height="25"
+          rx="1.5"
+          className="fill-surface stroke-current"
+          strokeWidth="1.5"
+        />
+        <path
+          d="M51.5 27H55.5"
+          stroke="currentColor"
+          strokeOpacity="0.4"
+          strokeWidth="1.3"
+          strokeLinecap="round"
+        />
+      </g>
+      {/* Optical reticle / scanning line */}
+      {scanning ? (
+        <line
+          x1="18"
+          y1="33"
+          x2="70"
+          y2="33"
+          className="stroke-primary animate-pulse"
+          strokeWidth="1.6"
+          strokeDasharray="3 2.5"
+          strokeLinecap="round"
+        />
+      ) : (
+        <circle
+          cx="42"
+          cy="32"
+          r="2"
+          className="fill-primary/25 stroke-primary"
+          strokeWidth="1.3"
+        />
+      )}
+    </svg>
+  );
+}
+
+/**
+ * 11. ExLibrisStampIllustration
+ * Archival bookplate seal with a four-point terracotta star and monoline frame.
+ * Used for CuratorPickCard empty/unavailable states and corner watermark.
+ */
+export function ExLibrisStampIllustration({
+  className,
+  ...props
+}: SpotIllustrationProps) {
+  return (
+    <svg
+      viewBox="0 0 80 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={cn('w-16 h-14 text-on-surface', className)}
+      {...props}
+    >
+      {/* Soft warm base glow */}
+      <ellipse
+        cx="40"
+        cy="52"
+        rx="24"
+        ry="5"
+        className="fill-primary/8 dark:fill-primary/15"
+      />
+      {/* Outer archival bookplate frame */}
+      <rect
+        x="20"
+        y="9"
+        width="40"
+        height="46"
+        rx="4"
+        className="fill-surface stroke-current"
+        strokeWidth="1.5"
+      />
+      {/* Inner inset hairline border */}
+      <rect
+        x="24"
+        y="13"
+        width="32"
+        height="38"
+        rx="2"
+        stroke="currentColor"
+        strokeOpacity="0.3"
+        strokeWidth="1.2"
+      />
+      {/* Central four-point compass/curator star in terracotta */}
+      <path
+        d="M40 19L42.6 26.4L50 29L42.6 31.6L40 39L37.4 31.6L30 29L37.4 26.4L40 19Z"
+        className="fill-primary/18 stroke-primary"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      {/* Ex Libris rule lines at bottom of stamp */}
+      <path
+        d="M29 44H51M33 47.5H47"
+        stroke="currentColor"
+        strokeOpacity="0.45"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * 12. FallenBookendIllustration
+ * A stack/row of books where one volume has gently tipped on the shelf with a terracotta bookmark.
+ * Used for ErrorBoundary and Dashboard catalog error states.
+ */
+export function FallenBookendIllustration({
+  className,
+  ...props
+}: SpotIllustrationProps) {
+  return (
+    <svg
+      viewBox="0 0 88 68"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={cn('w-20 h-16 text-on-surface', className)}
+      {...props}
+    >
+      <ellipse
+        cx="44"
+        cy="54"
+        rx="32"
+        ry="5.5"
+        className="fill-primary/8 dark:fill-primary/15"
+      />
+      {/* Upright spine 1 */}
+      <rect
+        x="18"
+        y="18"
+        width="10"
+        height="32"
+        rx="1.5"
+        className="fill-surface stroke-current"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M20.5 24H25.5"
+        stroke="currentColor"
+        strokeOpacity="0.35"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      {/* Upright spine 2 */}
+      <rect
+        x="29"
+        y="21"
+        width="9"
+        height="29"
+        rx="1.5"
+        className="fill-surface stroke-current"
+        strokeWidth="1.5"
+      />
+      {/* Tipped / fallen volume resting diagonally */}
+      <g transform="rotate(62 52 43)">
+        <rect
+          x="45"
+          y="22"
+          width="10"
+          height="30"
+          rx="1.5"
+          className="fill-primary/15 stroke-primary"
+          strokeWidth="1.5"
+        />
+        <path
+          d="M47.5 28H52.5M47.5 45H52.5"
+          className="stroke-primary"
+          strokeWidth="1.3"
+          strokeLinecap="round"
+        />
+      </g>
+      {/* Slipped terracotta bookmark ribbon */}
+      <path
+        d="M64 44C67 44 69 46.5 68 50L71 48.5L73 51"
+        className="stroke-primary"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Shelf line */}
+      <path
+        d="M12 50H76"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * 13. ArchivalBookLoaderIllustration
+ * Animated monoline open-book motif with terracotta bookmark for loading states.
+ */
+export function ArchivalBookLoaderIllustration({
+  className,
+  ...props
+}: SpotIllustrationProps) {
+  return (
+    <svg
+      viewBox="0 0 64 52"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={cn('w-12 h-10 text-on-surface', className)}
+      {...props}
+    >
+      <ellipse
+        cx="32"
+        cy="42"
+        rx="20"
+        ry="4.5"
+        className="fill-primary/10 dark:fill-primary/18"
+      />
+      {/* Left open page */}
+      <path
+        d="M32 15C27 13 18 13 13 15V34C18 32 27 32 32 34V15Z"
+        className="fill-surface stroke-current"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      {/* Right open page */}
+      <path
+        d="M32 15C37 13 46 13 51 15V34C46 32 37 32 32 34V15Z"
+        className="fill-surface stroke-current"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      {/* Turning leaf in terracotta */}
+      <path
+        d="M32 15C35.5 11.5 43 11.5 47 13.5V31.5C43 29.5 35.5 30 32 34V15Z"
+        className="fill-primary/15 stroke-primary animate-pulse"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      {/* Terracotta ribbon bookmark */}
+      <path
+        d="M32 15V41L35 38.5L38 41V31"
+        className="fill-primary/20 stroke-primary"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Canonical Evergreen Spec Aliases (Section 6 of 01-DESIGN-SYSTEM-AND-UI.md)
+ */
+export const OpenBookBookmarkIllustration = NightstandBookIllustration;
+export const BookStackTeaIllustration = BedsideStackIllustration;
+export const CompassGlobeIllustration = CartographyCompassIllustration;

@@ -1,9 +1,9 @@
-import React, {memo} from 'react';
-import {Book as BookIcon} from 'lucide-react';
+import React, {memo, useState, useEffect} from 'react';
 import {toTitleCase} from '../../lib/utils';
 import {Book, FirestoreDate} from '../../types';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
+import {MonographCoverFallback} from './MonographCoverFallback';
 
 export interface BookCardProps {
   key?: React.Key;
@@ -29,6 +29,12 @@ function BookCardComponent({
   onSelect,
   onSelectBook,
 }: BookCardProps) {
+  const [coverError, setCoverError] = useState(false);
+
+  useEffect(() => {
+    setCoverError(false);
+  }, [book.coverUrl]);
+
   const pubYear =
     book.publishedDate && book.publishedDate.length >= 4
       ? book.publishedDate.slice(0, 4)
@@ -109,40 +115,23 @@ function BookCardComponent({
           </div>
         )}
 
-        {book.coverUrl ? (
+        {book.coverUrl && !coverError ? (
           <img
             src={book.coverUrl}
             alt={book.title}
+            onError={() => setCoverError(true)}
             className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
             referrerPolicy="no-referrer"
             loading="lazy"
           />
         ) : (
-          /* Monograph Typographic Cover Fallback (No thick left accent border) */
-          <div className="absolute inset-0 p-4 sm:p-5 flex flex-col justify-between text-on-surface bg-gradient-to-b from-surface-container-low via-surface-container to-surface-container-high">
-            <div className="flex items-center justify-between border-b border-outline-variant/60 pb-2">
-              <span className="font-mono text-[9px] uppercase tracking-widest text-on-surface-variant">
-                Archival Ed.
-              </span>
-              <BookIcon
-                size={13}
-                className="text-on-surface-variant/70"
-                strokeWidth={1.5}
-              />
-            </div>
-            <div className="my-auto py-2 space-y-1.5 overflow-hidden">
-              <h3 className="font-serif font-semibold text-sm sm:text-base leading-snug tracking-tight text-primary line-clamp-3">
-                {toTitleCase(book.title)}
-              </h3>
-              <p className="font-sans text-[11px] text-on-surface-variant font-medium tracking-wide uppercase line-clamp-2">
-                {toTitleCase(book.author)}
-              </p>
-            </div>
-            <div className="border-t border-outline-variant/60 pt-2 flex items-center justify-between text-[10px] font-mono tabular-nums text-on-surface-variant/80">
-              <span>{pubYear || 'Cataloged'}</span>
-              <span>book(ish)</span>
-            </div>
-          </div>
+          <MonographCoverFallback
+            title={book.title}
+            author={book.author}
+            publishedYear={pubYear}
+            variant="card"
+            className="absolute inset-0"
+          />
         )}
       </div>
 

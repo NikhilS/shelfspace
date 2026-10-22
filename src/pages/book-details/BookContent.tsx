@@ -3,18 +3,18 @@ import React, {useState, useEffect, useMemo} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useAuth} from '../../stores/authStore';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {toast} from 'sonner';
 import Markdown from 'react-markdown';
 import {cn, toTitleCase} from '../../lib/utils';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {MagnifyingBookmarkIllustration} from '@/components/ui/empty-state-illustrations';
+import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
 import {
   Loader2,
-  Book as BookIcon,
   User,
   Sparkles,
-  Globe,
   Compass,
   MapPin,
   Clock,
@@ -54,6 +54,7 @@ export function BookContent({
   const navigate = useNavigate();
   const {user} = useAuth();
   const {hasAiPlan} = useAppPermissions();
+  const isOnline = useOnlineStatus();
 
   const {
     book,
@@ -83,12 +84,14 @@ export function BookContent({
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [isSynopsisExpanded, setIsSynopsisExpanded] = useState(false);
   const [isBioExpanded, setIsBioExpanded] = useState(false);
+  const [coverError, setCoverError] = useState(false);
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setIsEditingDetails(false);
     setIsSynopsisExpanded(false);
     setIsBioExpanded(false);
+    setCoverError(false);
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
@@ -145,6 +148,9 @@ export function BookContent({
   };
 
   const startEditing = () => {
+    if (!isOnline) {
+      return;
+    }
     setIsEditingDetails(true);
   };
 
@@ -180,10 +186,14 @@ export function BookContent({
       <div className="layout-page-content h-full flex flex-col items-center justify-center text-center py-16">
         <MagnifyingBookmarkIllustration className="mb-3" />
         <p className="font-serif text-lg font-semibold text-primary mb-1">
-          We Couldn&apos;t Find That Book
+          {!isOnline
+            ? 'Not Available Offline Yet'
+            : "We Couldn't Find That Book"}
         </p>
-        <p className="font-sans text-xs text-on-surface-variant">
-          It may have been moved or removed from this shelf.
+        <p className="font-sans text-xs text-on-surface-variant max-w-sm">
+          {!isOnline
+            ? "This book's details haven't been saved to your device's offline archive yet."
+            : 'It may have been moved or removed from this shelf.'}
         </p>
       </div>
     );
@@ -203,28 +213,22 @@ export function BookContent({
               className="absolute inset-y-0 left-0 w-3 bg-gradient-to-r from-black/20 via-white/20 to-transparent z-10 pointer-events-none"
               aria-hidden="true"
             />
-            {book.coverUrl ? (
+            {book.coverUrl && !coverError ? (
               <img
                 src={book.coverUrl}
                 alt={book.title}
+                onError={() => setCoverError(true)}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="absolute inset-0 bg-gradient-to-b from-surface-container-low via-surface-container to-surface-container-high p-6 flex flex-col justify-between">
-                <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">
-                  No Cover Yet
-                </span>
-                <div className="my-auto space-y-2">
-                  <p className="font-serif text-xl font-semibold text-primary leading-snug">
-                    {toTitleCase(book.title)}
-                  </p>
-                  <p className="font-sans text-xs uppercase tracking-wider text-on-surface-variant">
-                    {toTitleCase(book.author)}
-                  </p>
-                </div>
-                <BookIcon className="w-6 h-6 text-primary/40" />
-              </div>
+              <MonographCoverFallback
+                title={book.title}
+                author={book.author}
+                publishedYear={book.publishedDate}
+                variant="card"
+                className="absolute inset-0 p-6"
+              />
             )}
             {/* Status Badge */}
             {book.userStatuses?.[user?.uid || ''] &&
@@ -317,8 +321,11 @@ export function BookContent({
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={isEnrichingSynopsis}
-                  onClick={() => void triggerManualEnrichment('synopsis')}
+                  disabled={!isOnline || isEnrichingSynopsis}
+                  title={!isOnline ? 'Unavailable while offline' : undefined}
+                  onClick={() =>
+                    isOnline && void triggerManualEnrichment('synopsis')
+                  }
                   className="gap-1.5 swiper-no-swiping text-xs h-8 px-3"
                 >
                   {isEnrichingSynopsis ? (
@@ -454,14 +461,9 @@ export function BookContent({
                 <section className="bento-card p-5 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-3.5">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant/50">
-                          <Globe className="w-4 h-4 text-primary" />
-                        </div>
-                        <h3 className="font-serif font-semibold text-base sm:text-lg text-primary truncate">
-                          Literary Setting
-                        </h3>
-                      </div>
+                      <h3 className="font-serif font-semibold text-base sm:text-lg text-primary truncate">
+                        Literary Setting
+                      </h3>
                       {book.geoMetadata.isNonEarth && (
                         <Badge
                           variant="outline"
@@ -547,14 +549,9 @@ export function BookContent({
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-3.5">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant/50">
-                          <Clock className="w-4 h-4 text-primary" />
-                        </div>
-                        <h3 className="font-serif font-semibold text-base sm:text-lg text-primary truncate">
-                          Temporal Setting
-                        </h3>
-                      </div>
+                      <h3 className="font-serif font-semibold text-base sm:text-lg text-primary truncate">
+                        Temporal Setting
+                      </h3>
                       {book.temporalMetadata.isNonHistorical && (
                         <Badge
                           variant="outline"
@@ -648,9 +645,12 @@ export function BookContent({
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={isEnrichingBio}
+                        disabled={!isOnline || isEnrichingBio}
+                        title={
+                          !isOnline ? 'Unavailable while offline' : undefined
+                        }
                         onClick={() =>
-                          void triggerManualEnrichment('authorBio')
+                          isOnline && void triggerManualEnrichment('authorBio')
                         }
                         className="gap-1.5 swiper-no-swiping text-xs h-7 px-2.5"
                       >

@@ -91,7 +91,7 @@ export const geminiRouter = router({
                     author: z.string().max(500).optional(),
                   }),
                 )
-                .max(200),
+                .max(2000),
             }),
           )
           .max(50),

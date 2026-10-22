@@ -2,6 +2,7 @@ import React, {Suspense, lazy} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
 import {RefreshCw, Plus} from 'lucide-react';
 import {useConstellationData} from '../hooks/useConstellationData';
+import {useOnlineStatus} from '../hooks/useOnlineStatus';
 import {Button} from '@/components/ui/button';
 import {ConstellationSkyIllustration} from '@/components/ui/empty-state-illustrations';
 import {BookLoader} from '../components/book/BookLoader';
@@ -17,6 +18,7 @@ const ConstellationChart = lazy(() =>
 export function ConstellationMap() {
   const {id: libraryId} = useParams<{id: string}>();
   const navigate = useNavigate();
+  const isOnline = useOnlineStatus();
   const {
     loading,
     progress,
@@ -59,8 +61,9 @@ export function ConstellationMap() {
           <Button
             variant="outline"
             onClick={handleRecluster}
-            disabled={loading}
-            className="flex items-center gap-2 rounded-lg whitespace-nowrap shrink-0"
+            disabled={loading || !isOnline}
+            title={!isOnline ? 'Unavailable while offline' : undefined}
+            className="flex items-center gap-2 rounded-lg whitespace-nowrap shrink-0 disabled:opacity-50"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Refresh Map
@@ -86,6 +89,8 @@ export function ConstellationMap() {
           </p>
           <Button
             type="button"
+            disabled={!isOnline}
+            title={!isOnline ? 'Unavailable while offline' : undefined}
             onClick={() =>
               void navigate(
                 isReadingMode || !libraryId
@@ -93,7 +98,7 @@ export function ConstellationMap() {
                   : `/library/${libraryId}/add`,
               )
             }
-            className="gap-2 rounded-lg font-sans font-semibold"
+            className="gap-2 rounded-lg font-sans font-semibold disabled:opacity-50"
           >
             <Plus className="w-4 h-4" />
             <span>{isReadingMode ? 'Track More Books' : 'Add More Books'}</span>

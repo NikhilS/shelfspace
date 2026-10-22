@@ -278,5 +278,65 @@ describe('Declarative TanStack React Query (useLibraryData)', () => {
       expect(mockLibRefetch).toHaveBeenCalled();
       expect(mockBooksRefetch).toHaveBeenCalled();
     });
+
+    it('automatically drains remaining nextCursor pages and reconciles library.bookCount', async () => {
+      const {trpcVanilla} = await import('../lib/trpc');
+      const mockVanillaList = vi.mocked(trpcVanilla.book.list.query);
+
+      mockTrpcLibraryQuery.mockReturnValue({
+        data: {
+          id: 'lib-defcol',
+          name: 'Defcol',
+          ownerId: 'user123',
+          callerRole: 'owner',
+          bookCount: 1000,
+        },
+        isLoading: false,
+        isFetching: false,
+        isStale: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      mockTrpcBooksQuery.mockReturnValue({
+        data: {
+          books: [
+            {id: 'book-1', title: 'Book 1', author: 'Author 1'},
+            {id: 'book-2', title: 'Book 2', author: 'Author 2'},
+          ],
+          nextCursor: 'book-2',
+          totalCount: 3,
+        },
+        isLoading: false,
+        isFetching: false,
+        isStale: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      mockVanillaList.mockResolvedValueOnce({
+        books: [{id: 'book-3', title: 'Book 3', author: 'Author 3'}],
+        nextCursor: undefined,
+      } as unknown as Awaited<ReturnType<typeof trpcVanilla.book.list.query>>);
+
+      const {result} = renderHook(
+        () => useLibraryData('lib-defcol', 'user123', navigate),
+        {wrapper: createWrapper()},
+      );
+
+      await waitFor(() => {
+        expect(result.current.books).toHaveLength(3);
+        expect(result.current.isPaginating).toBe(false);
+        expect(result.current.library?.bookCount).toBe(3);
+      });
+
+      expect(mockVanillaList).toHaveBeenCalledWith({
+        libraryId: 'lib-defcol',
+        cursor: 'book-2',
+        limit: 1000,
+      });
+    });
   });
 });

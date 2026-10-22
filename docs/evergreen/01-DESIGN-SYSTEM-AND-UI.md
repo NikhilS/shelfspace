@@ -43,8 +43,9 @@ All interactive and structural elements MUST use the centralized primitives in `
 ---
 
 ## 4. Signature Layout Patterns
-1. **Bento Editorial Cards (`BookCard` & `LibraryCard`):**
+1. **Bento Editorial Cards (`BookCard`, `LibraryCard` & `MonographCoverFallback`):**
    * Combine framed artwork (2:3 book covers with subtle spine lighting or 16:9 library banners) with editorial serif titles, author/curator bylines, unboxed `Genre · Year` metadata, and concise synopsis snippets inside a unified `bento-card` container.
+   * Any book without cover artwork—and marketing preview showcases—must render via the shared `<MonographCoverFallback />` component (`src/components/book/MonographCoverFallback.tsx`) in `card`, `compact`, or `micro` variants rather than generic gray `"No cover"` placeholders or external stock photos.
 2. **Unified Library Command Toolbar (`LibraryView` & `LibraryCollection`):**
    * Consolidates workspace mode tabs (*Overview · All Books · Shelf Care*), live search, filter/sort triggers, and *Grid / Table* view toggles into a coordinated sticky header system respecting the 15% mobile sticky height cap.
 3. **Magazine-Style Book Details Spread (`BookDetailsView` & `BookContent`):**
@@ -79,19 +80,25 @@ Every heading, subtitle, empty state, modal prompt, and status banner in `book(i
 ---
 
 ## 6. Empty States & Bespoke Spot Illustrations (`src/components/ui/empty-state-illustrations.tsx`)
-Empty states should feel like an inviting shelf waiting to be filled—never a dead end or a cold error screen:
+Empty states, ingestion dropzones, loaders, and error screens should feel like an inviting archival studio—never a dead end, a generic SaaS icon-in-a-circle, or a cold error screen:
 
 * **Three-Part Structure:**
-  1. **Monoline Ink + Terracotta Spot Illustration:** Every major empty state renders a lightweight, theme-aware SVG illustration from `src/components/ui/empty-state-illustrations.tsx` (`1.5px` warm ink strokes in `currentColor` paired with subtle `--color-accent-warm` terracotta highlights at 15–20% fill opacity).
+  1. **Monoline Ink + Terracotta Spot Illustration:** Every major empty, ingestion, loading, or error state renders a lightweight, theme-aware SVG illustration from `src/components/ui/empty-state-illustrations.tsx` (`1.5px` warm ink strokes in `currentColor` paired with `fill-surface` paper bodies and subtle `--color-accent-warm` terracotta highlights at 12–20% fill opacity).
   2. **Warm Editorial Heading:** Set in `--font-serif` (`Plus Jakarta Sans` semi-bold), stating the state invitingly (e.g., *"Ready for Its First Book"*, *"Your Nightstand Is Clear"*, *"All Tidy—No Duplicates Found"*).
   3. **Crisp One-Sentence Prompt & Single Primary Action:** A concise sentence explaining how to populate or adjust the view, followed by at most one clear action button (when applicable).
 * **Canonical Spot Illustration Catalog:**
-  * `OpenBookBookmarkIllustration` — Currently Reading / Nightstand empty state
-  * `BookStackTeaIllustration` — Finished Stack / Read history empty state
+  * `OpenBookBookmarkIllustration` (`NightstandBookIllustration`) — Currently Reading / Nightstand empty state
+  * `BookStackTeaIllustration` (`BedsideStackIllustration`) — Finished Stack / Read history empty state
   * `BookshelfBookendsIllustration` — Empty Library Overview, Collection, & Dashboard Libraries
   * `MagnifyingBookmarkIllustration` — Filtered shelf no-results, Book Search prompt/no-matches, & Missing Book view
   * `ConstellationSkyIllustration` — Constellation Map (`< 3` books)
   * `ChronicleSundialIllustration` — Historical Timeline empty state
-  * `CompassGlobeIllustration` — Literary World Map empty state
+  * `CompassGlobeIllustration` (`CartographyCompassIllustration`) — Literary World Map empty state
   * `TidyShelfCheckIllustration` — Shelf Care Duplicates clean state
+  * `ArchivalLedgerImportIllustration` — CSV Bulk Import dropzone
+  * `ShelfViewfinderIllustration` — Shelf Camera Scanner (idle, AI-plan notice, & active optical extraction states)
+  * `ExLibrisStampIllustration` — Curator's Pick empty/unavailable states & corner bookplate watermark
+  * `FallenBookendIllustration` — ErrorBoundary & Dashboard catalog error states
+  * `ArchivalBookLoaderIllustration` — Animated open-book motif used by `<BookLoader />` (`src/components/ui/loader.tsx`)
+
 

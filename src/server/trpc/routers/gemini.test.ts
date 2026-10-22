@@ -110,7 +110,13 @@ describe('geminiRouter tRPC procedures & security boundaries', () => {
     expect(
       await caller.generateClusterNames({
         clusters: [
-          {id: 0, books: [{title: 'Solaris', author: 'Stanislaw Lem'}]},
+          {
+            id: 0,
+            books: Array.from({length: 350}, (_, idx) => ({
+              title: `Book ${idx}`,
+              author: 'Stanislaw Lem',
+            })),
+          },
         ],
       }),
     ).toEqual({0: 'Cosmic Dread'});

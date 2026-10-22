@@ -89,24 +89,34 @@ async function startServer() {
     res.status(200).json({status: 'ok'});
   });
 
-  // Always serve self-unregistering Service Worker on SW endpoints so any browser
-  // with a stale precache SW automatically purges caches and reloads fresh HTML
-  app.get(
-    ['/sw.js', '/dev-sw.js', '/registerSW.js', '/workbox-*.js'],
-    (req, res) => {
-      console.log(
-        `[server] Serving self-destroying Service Worker cleanup script for ${req.originalUrl}`,
-      );
-      res
-        .status(200)
-        .set({
-          'Content-Type': 'application/javascript; charset=utf-8',
-          'Cache-Control':
-            'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-        })
-        .send(SELF_DESTROYING_SW);
-    },
-  );
+  // Serve the offline PWA Service Worker with no-cache headers so updates activate promptly
+  app.get('/sw.js', (_req, res) => {
+    const swPath = isProd
+      ? path.join(process.cwd(), 'dist', 'sw.js')
+      : path.join(process.cwd(), 'public', 'sw.js');
+    res.set({
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Service-Worker-Allowed': '/',
+      'Cache-Control':
+        'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    });
+    res.sendFile(swPath);
+  });
+
+  // Clean up any legacy Workbox/dev-sw endpoints
+  app.get(['/dev-sw.js', '/registerSW.js', '/workbox-*.js'], (req, res) => {
+    console.log(
+      `[server] Serving self-destroying Service Worker cleanup script for ${req.originalUrl}`,
+    );
+    res
+      .status(200)
+      .set({
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Cache-Control':
+          'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      })
+      .send(SELF_DESTROYING_SW);
+  });
 
   app.use(
     compression({

@@ -17,12 +17,10 @@ import {
 } from '@/components/ui/select';
 import {
   RotateCcw,
-  AlertTriangle,
   CheckCircle2,
   Loader2,
   ShieldAlert,
   Sparkles,
-  Database,
 } from 'lucide-react';
 import {toast} from 'sonner';
 import {trpc, trpcVanilla} from '../../lib/trpc';
@@ -194,20 +192,14 @@ export function ResetMetadataSection({
       {/* 1. Storage Hardening & Payload Sanitization Card */}
       <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl overflow-hidden shadow-sm flex flex-col">
         <div className="p-6 border-b border-outline-variant/30">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-              <Database className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-sans text-xl font-bold text-on-surface">
-                Optimize Library Storage
-              </h3>
-              <p className="text-sm text-on-surface-variant font-sans">
-                Keep your library fast and lightweight by storing long
-                summaries, author bios, and AI data separately from your main
-                book list.
-              </p>
-            </div>
+          <div>
+            <h3 className="font-serif text-xl font-semibold text-on-surface">
+              Optimize Library Storage
+            </h3>
+            <p className="text-sm text-on-surface-variant font-sans mt-0.5">
+              Keep your library fast and lightweight by storing long summaries,
+              author bios, and AI data separately from your main book list.
+            </p>
           </div>
         </div>
 
@@ -332,19 +324,14 @@ export function ResetMetadataSection({
       <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl overflow-hidden shadow-sm flex flex-col">
         <div className="p-6 border-b border-outline-variant/30">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-error/10 flex items-center justify-center text-error">
-                <RotateCcw className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-sans text-xl font-bold text-on-surface">
-                  Reset Book Details
-                </h3>
-                <p className="text-sm text-on-surface-variant font-sans">
-                  Clear a specific detail (like covers, genres, or summaries)
-                  across all books if you want to start fresh.
-                </p>
-              </div>
+            <div>
+              <h3 className="font-serif text-xl font-semibold text-on-surface">
+                Reset Book Details
+              </h3>
+              <p className="text-sm text-on-surface-variant font-sans mt-0.5">
+                Clear a specific detail (like covers, genres, or summaries)
+                across all books if you want to start fresh.
+              </p>
             </div>
           </div>
         </div>
@@ -417,10 +404,7 @@ export function ResetMetadataSection({
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <div className="w-12 h-12 rounded-full bg-error/10 text-error flex items-center justify-center mb-3">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <DialogTitle className="font-sans text-xl font-bold">
+              <DialogTitle className="font-serif text-xl font-semibold">
                 Confirm Metadata Reset
               </DialogTitle>
               <DialogDescription asChild>
@@ -467,10 +451,7 @@ export function ResetMetadataSection({
         >
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3">
-                <Database className="w-6 h-6" />
-              </div>
-              <DialogTitle className="font-sans text-xl font-bold">
+              <DialogTitle className="font-serif text-xl font-semibold">
                 Optimize Library Storage
               </DialogTitle>
               <DialogDescription asChild>

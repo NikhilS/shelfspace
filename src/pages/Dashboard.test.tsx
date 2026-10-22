@@ -216,7 +216,7 @@ describe('Dashboard', () => {
     expect(screen.getByRole('button', {name: 'Un-owned'})).toBeInTheDocument();
   });
 
-  it('navigates to the library view when clicking a library card and opens QuickAddBookDialog with Advanced link when clicking Track a Book', async () => {
+  it('navigates to the library view when clicking a library card and opens QuickAddBookDialog with Advanced link when clicking Find a Book', async () => {
     (
       useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
     ).mockReturnValue({
@@ -227,7 +227,7 @@ describe('Dashboard', () => {
     fireEvent.click(cardTitle);
     expect(mockNavigate).toHaveBeenCalledWith('/library/lib1');
 
-    const trackBtn = screen.getByRole('button', {name: /Track a Book/i});
+    const trackBtn = screen.getByRole('button', {name: /Find a Book/i});
     fireEvent.click(trackBtn);
 
     expect(
@@ -286,5 +286,45 @@ describe('Dashboard', () => {
     renderDashboard();
     expect(await screen.findByText('Test Library')).toBeInTheDocument();
     expect(screen.queryByText(/Something went wrong/i)).not.toBeInTheDocument();
+  });
+
+  it('disables write and AI actions in place with offline tooltips when offline', async () => {
+    const onLineSpy = vi
+      .spyOn(navigator, 'onLine', 'get')
+      .mockReturnValue(false);
+    (
+      useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
+    ).mockReturnValue({
+      user: {uid: 'user1', email: 'user@example.com'},
+    });
+
+    try {
+      renderDashboard();
+      const findBookBtn = await screen.findByRole('button', {
+        name: /Find a Book/i,
+      });
+      expect(findBookBtn).toBeDisabled();
+      expect(findBookBtn).toHaveAttribute('title', 'Unavailable while offline');
+
+      const createLibraryBtn = screen.getByRole('button', {
+        name: /Create Library/i,
+      });
+      expect(createLibraryBtn).toBeDisabled();
+      expect(createLibraryBtn).toHaveAttribute(
+        'title',
+        'Unavailable while offline',
+      );
+
+      const markFinishedBtn = screen.getByRole('button', {
+        name: /Mark Finished/i,
+      });
+      expect(markFinishedBtn).toBeDisabled();
+      expect(markFinishedBtn).toHaveAttribute(
+        'title',
+        'Unavailable while offline',
+      );
+    } finally {
+      onLineSpy.mockRestore();
+    }
   });
 });

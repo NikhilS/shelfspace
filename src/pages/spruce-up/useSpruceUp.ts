@@ -19,11 +19,12 @@ export function useSpruceUp(libraryId: string | undefined) {
   const utilsRef = useRef(utils);
   utilsRef.current = utils;
 
-  const {books, isBooksLoading: booksLoading} = useLibraryData(
-    libraryId,
-    user?.uid,
-    navigate,
-  );
+  const {
+    books,
+    isBooksLoading: rawBooksLoading,
+    isPaginating: booksPaginating,
+  } = useLibraryData(libraryId, user?.uid, navigate);
+  const booksLoading = Boolean(rawBooksLoading || booksPaginating);
 
   const allowedQuery = trpc.library.listAllowedDuplicates.useQuery(
     {libraryId: libraryId || ''},

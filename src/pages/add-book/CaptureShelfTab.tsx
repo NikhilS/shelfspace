@@ -1,8 +1,9 @@
 import React, {useState} from 'react';
-import {Camera, Sparkles} from 'lucide-react';
+import {Sparkles} from 'lucide-react';
 import {BookDetails} from '../../types';
 import {CameraScanner} from '../../components/import/CameraScanner';
 import {ExtractedBooksTable} from '../../components/import/ExtractedBooksTable';
+import {ShelfViewfinderIllustration} from '@/components/ui/empty-state-illustrations';
 import {logger} from '../../stores/debugStore';
 import {triggerHaptics} from '../../lib/utils';
 
@@ -43,9 +44,7 @@ export function CaptureShelfTab({
         className="w-full max-w-lg mx-auto py-14 px-6 text-center rounded-2xl border border-outline-variant/40 bg-surface-container-low/50 flex flex-col items-center gap-3"
         data-testid="capture-shelf-ai-plan-notice"
       >
-        <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-on-surface-variant border border-outline-variant/50">
-          <Camera className="w-6 h-6" />
-        </div>
+        <ShelfViewfinderIllustration className="w-20 h-16 mb-1" />
         <h3 className="font-serif text-lg font-semibold text-primary">
           Photo Shelf Scan
         </h3>

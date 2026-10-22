@@ -370,5 +370,46 @@ describe('BookService - Unified Write Layer', () => {
       expect(res.books).toHaveLength(1);
       expect(res.books[0].title).toBe('Missing Geo');
     });
+
+    it('uses limit + 1 lookahead to populate nextCursor only when more books exist', async () => {
+      mockBooksQueryGet.mockResolvedValueOnce({
+        docs: [
+          {id: 'book-1', data: () => ({title: 'Book 1'})},
+          {id: 'book-2', data: () => ({title: 'Book 2'})},
+          {id: 'book-3', data: () => ({title: 'Book 3'})},
+        ],
+      });
+
+      const res = await BookService.listBooks('user-1', 'lib-1', {limit: 2});
+      expect(res.books).toHaveLength(2);
+      expect(res.nextCursor).toBe('book-2');
+    });
+
+    it('self-heals parent library.bookCount when an unfiltered read detects count drift', async () => {
+      const mockLibUpdate = vi.fn().mockResolvedValue(undefined);
+      mockDoc.mockImplementationOnce((docId?: string) => ({
+        id: docId || 'lib-1',
+        update: mockLibUpdate,
+        collection: vi.fn(() => ({
+          orderBy: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          get: mockBooksQueryGet,
+        })),
+      }));
+
+      mockBooksQueryGet.mockResolvedValueOnce({
+        docs: [
+          {id: 'book-1', data: () => ({title: 'Book 1'})},
+          {id: 'book-2', data: () => ({title: 'Book 2'})},
+        ],
+      });
+
+      const res = await BookService.listBooks('user-1', 'lib-1', {
+        prefetchedLibraryData: {bookCount: 1000},
+      });
+
+      expect(res.books).toHaveLength(2);
+      expect(res.totalCount).toBe(2);
+    });
   });
 });

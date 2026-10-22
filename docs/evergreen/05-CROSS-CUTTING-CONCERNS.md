@@ -89,8 +89,16 @@ For deep runtime visibility into cache hit rates, network latency, and memory co
 ## 4. Progressive Web App (PWA) & Offline Resiliency
 
 ### Invariants for Offline Behavior
-- **Asset Caching:** Service Workers cache static application bundles (HTML, JavaScript, CSS, typography fonts).
-- **Graceful Degradation:** When `navigator.onLine === false`:
-  - Cached library data remains browsable via TanStack Query's IndexedDB / memory persistence.
-  - Destructive or mutating controls (e.g., "Add Book", "Delete Library", "AI Shelf Scanner") gracefully display an offline badge and disable execution to prevent desynchronization errors.
-  - A subtle offline banner informs the user that reads are served from local cache.
+- **Service Worker & Tiered Asset Caching (`public/sw.js`):**
+  - **App Shell (`bookish-shell-v1`):** HTML navigation requests (`request.mode === 'navigate'`) use Network-First with an offline fallback to the precached `/` app shell so deep links (`/library/:id`, `/library/:id/book/:bookId`, `/reading/timeline`, etc.) boot cleanly without a network connection.
+  - **Static Bundles & Web Workers (`bookish-static-v1`):** Hashed `/assets/*` bundles, scripts, stylesheets, and Web Workers (`umap.worker`, `duplicateDetection.worker`) are cached via Cache-First / Network-First fallback and warmed during browser idle periods via `preloadAllRouteChunks()`.
+  - **Typography (`bookish-fonts-v1`):** Google Fonts CSS (`fonts.googleapis.com`) and WOFF2 binaries (`fonts.gstatic.com`) use Cache-First to preserve `Manrope` and `Playfair Display` offline.
+  - **Book Covers (`bookish-covers-v1`):** Cross-origin book cover images use Stale-While-Revalidate with a bounded 500-entry FIFO cache. Uncached covers fall back to `<MonographCoverFallback />` via `onError` handlers.
+- **IndexedDB Cache Hydration Gate & Fast Offline Short-Circuit:**
+  - `src/lib/queryClient.ts` exposes `isQueryCacheRestored()` and `subscribeToQueryCacheRestore()` (with a 600ms safety timeout) so `PrivateRoute` waits for `idb-keyval` query cache restoration when `navigator.onLine === false` before evaluating route guards.
+  - `src/lib/trpc.ts` uses `getIdToken(false)` (cached Firebase JWT without forced token refresh) and immediately short-circuits outbound `/api/trpc` fetches when `navigator.onLine === false` so React Query never spins in retry loops offline.
+- **Graceful Read-Only Degradation:** When `navigator.onLine === false`:
+  - Cached library data, book details, and spatial visualizers (Timeline, World Map, Constellation Map) remain browsable via TanStack Query's IndexedDB persistence.
+  - Mutating controls and AI features ("Find a Book", "Add Books", "Shelf Care", "Create Library", "Edit Details", reading status selectors, "Write Review", "Catch Me Up", "Other Books Like This", "Surprise Me", "Refresh Map") remain visible in place with `disabled={!isOnline}` and `title="Unavailable while offline"`.
+  - Opening an uncached library or book while offline renders a dedicated offline empty state (`"Not Available Offline Yet"`) with a return button rather than a false `"Access Denied"` or `"Not Found"` redirect.
+

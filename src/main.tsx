@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {App} from './App';
 import './index.css';
 import {interceptConsoleLogs} from './lib/telemetry';
+import {preloadAllRouteChunks} from './lib/routePreload';
 
 // Activate console log interception so all console.log/info/warn/error entries
 // are captured in the in-app Telemetry HUD (Ctrl + ~) as well as Chrome DevTools.
@@ -21,16 +22,22 @@ console.info(
 );
 
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  // Proactively unregister any legacy Service Workers so stale precaches can never
-  // intercept navigation or serve outdated asset hashes.
-  void navigator.serviceWorker
-    .getRegistrations()
-    .then(registrations => {
-      for (const registration of registrations) {
-        void registration.unregister();
-      }
-    })
-    .catch(() => {});
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker
+      .register('/sw.js', {scope: '/'})
+      .then(() => {
+        const schedule =
+          'requestIdleCallback' in window
+            ? window.requestIdleCallback
+            : (cb: () => void) => setTimeout(cb, 1500);
+        schedule(() => {
+          preloadAllRouteChunks();
+        });
+      })
+      .catch(err => {
+        console.warn('[boot] Service Worker registration skipped:', err);
+      });
+  });
 }
 
 const rootElement = document.getElementById('root');

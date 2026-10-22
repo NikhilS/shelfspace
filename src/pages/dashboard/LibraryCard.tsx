@@ -1,4 +1,4 @@
-import React, {useCallback, useRef} from 'react';
+import React, {useCallback, useRef, useState, useEffect} from 'react';
 import {Link, useNavigate} from 'react-router-dom';
 import {Book, User, Users, Shield, ArrowUpRight} from 'lucide-react';
 import {Library} from '../../types';
@@ -21,6 +21,11 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
   const utils = trpc.useUtils();
   const utilsRef = useRef(utils);
   utilsRef.current = utils;
+  const [heroError, setHeroError] = useState(false);
+
+  useEffect(() => {
+    setHeroError(false);
+  }, [lib.heroImageUrl]);
 
   const seedLibraryCache = useCallback(() => {
     const currentUtils = utilsRef.current;
@@ -60,8 +65,10 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
 
   const handleMouseEnter = useCallback(() => {
     preloadRouteChunk('library');
+    const isOnline =
+      typeof navigator === 'undefined' || navigator.onLine !== false;
     const currentUtils = utilsRef.current;
-    if (lib.id && currentUtils?.book?.list?.prefetch) {
+    if (isOnline && lib.id && currentUtils?.book?.list?.prefetch) {
       void currentUtils.book.list.prefetch(
         {libraryId: lib.id},
         {staleTime: 1000 * 60 * 5},
@@ -78,8 +85,10 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
         return;
       }
       seedLibraryCache();
+      const isOnline =
+        typeof navigator === 'undefined' || navigator.onLine !== false;
       const currentUtils = utilsRef.current;
-      if (currentUtils?.book?.list?.prefetch) {
+      if (isOnline && currentUtils?.book?.list?.prefetch) {
         void currentUtils.book.list.prefetch(
           {libraryId: lib.id},
           {staleTime: 1000 * 60 * 5},
@@ -118,11 +127,12 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
         <article className="bento-card-interactive overflow-hidden flex flex-col h-full cursor-pointer">
           {/* Compact Bento Media Showcase Frame */}
           <div className="h-28 sm:h-32 w-full overflow-hidden bg-surface-container relative border-b border-outline-variant/50">
-            {lib.heroImageUrl ? (
+            {lib.heroImageUrl && !heroError ? (
               <img
                 alt={lib.name}
                 className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
                 src={lib.heroImageUrl}
+                onError={() => setHeroError(true)}
                 referrerPolicy="no-referrer"
               />
             ) : (

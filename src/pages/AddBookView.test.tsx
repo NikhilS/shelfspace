@@ -303,7 +303,7 @@ describe('AddBookView', () => {
     );
 
     expect(
-      screen.getByRole('heading', {name: 'Track a Book'}),
+      screen.getByRole('heading', {name: 'Find a Book'}),
     ).toBeInTheDocument();
     expect(screen.getByTestId('add-book-context-badge')).toHaveTextContent(
       'Un-owned · Personal Reading Shelf',

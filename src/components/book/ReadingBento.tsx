@@ -1,6 +1,6 @@
 import React, {useMemo, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {Plus, ArrowRight, Book as BookIcon, Play} from 'lucide-react';
+import {Plus, ArrowRight, Play} from 'lucide-react';
 import {toast} from 'sonner';
 import {toTitleCase} from '../../lib/utils';
 import {useAuth} from '../../stores/authStore';
@@ -14,6 +14,8 @@ import {GenreBreakdownCard} from './GenreBreakdownCard';
 import {CuratorPickCard, type CuratorPickItem} from './CuratorPickCard';
 import {ExplorePerspectivesStrip} from './ExplorePerspectivesStrip';
 import {usePickOfTheDay} from '../../hooks/usePickOfTheDay';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
+import {MonographCoverFallback} from './MonographCoverFallback';
 import {Button} from '@/components/ui/button';
 import type {Book} from '../../types';
 import type {
@@ -143,6 +145,8 @@ export function ReadingBento({
 }: ReadingBentoProps) {
   const {user} = useAuth();
   const navigate = useNavigate();
+  const isOnline = useOnlineStatus();
+  const [failedCovers, setFailedCovers] = useState<Set<string>>(new Set());
 
   const resolvedMode: 'personal-reading' | 'library' =
     mode ?? (libraryId ? 'library' : 'personal-reading');
@@ -402,8 +406,10 @@ export function ReadingBento({
                   type="button"
                   variant="ghost"
                   size="sm"
+                  disabled={!isOnline}
+                  title={!isOnline ? 'Unavailable while offline' : undefined}
                   onClick={() => handleTrackBookTrigger('want_to_read')}
-                  className="h-7 px-2.5 text-xs font-sans font-semibold text-on-surface-variant hover:text-primary gap-1"
+                  className="h-7 px-2.5 text-xs font-sans font-semibold text-on-surface-variant hover:text-primary gap-1 disabled:opacity-50"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add</span>
@@ -433,8 +439,10 @@ export function ReadingBento({
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={!isOnline}
+                  title={!isOnline ? 'Unavailable while offline' : undefined}
                   onClick={() => handleTrackBookTrigger('want_to_read')}
-                  className="h-8 px-3 text-xs font-semibold shrink-0 self-start sm:self-auto"
+                  className="h-8 px-3 text-xs font-semibold shrink-0 self-start sm:self-auto disabled:opacity-50"
                 >
                   Add to Want to Read
                 </Button>
@@ -460,34 +468,45 @@ export function ReadingBento({
                     className="group flex flex-col p-2.5 rounded-lg bg-surface hover:bg-surface-container-low border border-outline-variant/40 transition-colors cursor-pointer"
                   >
                     <div className="relative aspect-[2/3] w-full rounded overflow-hidden bg-surface-container mb-2 border border-outline-variant/40 book-cover-shadow">
-                      {item.coverUrl ? (
+                      {item.coverUrl && !failedCovers.has(item.id) ? (
                         <img
                           src={item.coverUrl}
                           alt={item.title}
+                          onError={() =>
+                            setFailedCovers(prev => new Set(prev).add(item.id))
+                          }
                           className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform"
                           loading="lazy"
                           referrerPolicy="no-referrer"
                         />
                       ) : (
-                        <div className="w-full h-full p-2 flex flex-col justify-between bg-gradient-to-b from-surface-container-low to-surface-container">
-                          <BookIcon className="w-3.5 h-3.5 text-on-surface-variant/60" />
-                          <span className="font-serif text-[10px] font-semibold text-primary line-clamp-2 leading-tight">
-                            {toTitleCase(item.title)}
-                          </span>
-                        </div>
+                        <MonographCoverFallback
+                          title={item.title}
+                          author={item.author}
+                          variant="compact"
+                          className="w-full h-full"
+                        />
                       )}
                       <button
                         type="button"
-                        title="Start Reading"
+                        disabled={!isOnline}
+                        title={
+                          !isOnline
+                            ? 'Unavailable while offline'
+                            : 'Start Reading'
+                        }
                         onClick={e => {
                           e.stopPropagation();
+                          if (!isOnline) {
+                            return;
+                          }
                           void handleStatusChange(
                             item.libraryId,
                             item.id,
                             'reading',
                           );
                         }}
-                        className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-primary text-on-primary text-[10px] font-sans font-semibold px-2 py-1 rounded shadow-xs inline-flex items-center gap-1 cursor-pointer"
+                        className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-primary text-on-primary text-[10px] font-sans font-semibold px-2 py-1 rounded shadow-xs inline-flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <Play className="w-2.5 h-2.5 fill-current" />
                         <span>Read</span>

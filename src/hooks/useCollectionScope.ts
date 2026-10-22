@@ -60,6 +60,7 @@ export function useCollectionScope(
     library,
     books: libraryBooks,
     isBooksLoading: isLibraryBooksLoading,
+    isPaginating: isLibraryBooksPaginating,
   } = useLibraryData(libraryId, user?.uid, navigate);
 
   const {canEdit: libraryCanEdit} = getAccessFromLibrary(
@@ -114,6 +115,12 @@ export function useCollectionScope(
     );
   }, [isReadingMode, scopedReadingBooks, libraryBooks, libraryId]);
 
+  const safeRefetchShelf = useCallback(async () => {
+    if (typeof refetchShelf === 'function') {
+      await refetchShelf();
+    }
+  }, [refetchShelf]);
+
   return {
     mode: isReadingMode ? 'reading' : 'library',
     isReadingMode,
@@ -122,12 +129,12 @@ export function useCollectionScope(
     books,
     isBooksLoading: isReadingMode
       ? isReadingShelfLoading
-      : isLibraryBooksLoading,
+      : Boolean(isLibraryBooksLoading || isLibraryBooksPaginating),
     canEdit: isReadingMode ? Boolean(user) : libraryCanEdit,
     includeWantToRead,
     setIncludeWantToRead,
     readAndReadingCount: readAndReadingBooks.length,
     wantToReadCount: wantToReadBooks.length,
-    refetchShelf,
+    refetchShelf: safeRefetchShelf,
   };
 }

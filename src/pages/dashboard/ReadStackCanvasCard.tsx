@@ -10,6 +10,7 @@ import {
 import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
 import {BedsideStackIllustration} from '@/components/ui/empty-state-illustrations';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import type {TrackedBookItem} from '../../server/services/readingTracker';
 
 interface ReadStackCanvasCardProps {
@@ -109,6 +110,7 @@ export function ReadStackCanvasCard({
   onTrackBook,
 }: ReadStackCanvasCardProps) {
   const navigate = useNavigate();
+  const isOnline = useOnlineStatus();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageCacheRef = useRef<Map<string, HTMLImageElement | 'error'>>(
     new Map(),
@@ -771,8 +773,10 @@ export function ReadStackCanvasCard({
             type="button"
             variant="outline"
             size="sm"
+            disabled={!isOnline}
+            title={!isOnline ? 'Unavailable while offline' : undefined}
             onClick={onTrackBook}
-            className="text-xs font-sans font-semibold rounded-lg h-8 px-3.5"
+            className="text-xs font-sans font-semibold rounded-lg h-8 px-3.5 disabled:opacity-50"
           >
             Log a Finished Book
           </Button>

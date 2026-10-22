@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState, useEffect} from 'react';
 import {Link} from 'react-router-dom';
 import {motion} from 'motion/react';
 import {Library, Book} from '../../types';
@@ -6,6 +6,7 @@ import {toTitleCase} from '../../lib/utils';
 import {CloudUpload, RefreshCw, ArrowLeft} from 'lucide-react';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 
 interface LibraryHeaderProps {
   library: Library;
@@ -30,16 +31,33 @@ export function LibraryHeader({
   isRefreshingHero = false,
   onRefreshHero,
 }: LibraryHeaderProps) {
+  const isOnline = useOnlineStatus();
+  const [heroError, setHeroError] = useState(false);
+
+  useEffect(() => {
+    setHeroError(false);
+  }, [library.heroImageUrl]);
+
+  const displayVolumeCount =
+    books.length === 0
+      ? (library.bookCount ?? 0)
+      : isSyncing && typeof library.bookCount === 'number'
+        ? Math.max(books.length, library.bookCount)
+        : books.length;
+
+  const showHeroImage = Boolean(library.heroImageUrl) && !heroError;
+
   return (
     <div
       className={`w-full min-h-[110px] sm:min-h-[180px] md:min-h-[220px] relative overflow-hidden flex flex-col justify-between transition-all duration-300 border-b border-outline-variant/50 ${
-        !library.heroImageUrl ? 'bg-primary' : ''
+        !showHeroImage ? 'bg-primary' : ''
       }`}
     >
-      {library.heroImageUrl && (
+      {showHeroImage && (
         <img
           src={library.heroImageUrl}
           alt={library.name}
+          onError={() => setHeroError(true)}
           className="w-full h-full object-cover absolute inset-0"
           referrerPolicy="no-referrer"
         />
@@ -83,9 +101,7 @@ export function LibraryHeader({
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <p className="font-mono tabular-nums text-label-caps-sm sm:text-label-caps uppercase tracking-wider text-white/90">
-              {books.length > 0 || library.bookCount === undefined
-                ? `${books.length} ${books.length === 1 ? 'volume' : 'volumes'}`
-                : `${library.bookCount} ${library.bookCount === 1 ? 'volume' : 'volumes'}`}
+              {`${displayVolumeCount} ${displayVolumeCount === 1 ? 'volume' : 'volumes'}`}
               {' • '}
               {isOwner
                 ? 'Owned by you'
@@ -106,15 +122,17 @@ export function LibraryHeader({
                 type="button"
                 variant="ghost"
                 size="icon"
-                onClick={hasAiPlan ? onRefreshHero : undefined}
-                disabled={isRefreshingHero || !hasAiPlan}
+                onClick={hasAiPlan && isOnline ? onRefreshHero : undefined}
+                disabled={isRefreshingHero || !hasAiPlan || !isOnline}
                 className="flex items-center justify-center text-white bg-white/15 hover:bg-white/25 active:bg-white/30 hover:text-white transition-colors w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-white/20 backdrop-blur-sm disabled:opacity-50 ml-auto sm:ml-4 shadow-xs"
                 title={
-                  !hasAiPlan
-                    ? 'Requires AI Plan (Admin-enabled)'
-                    : isRefreshingHero
-                      ? 'Refreshing...'
-                      : 'Refresh Banner'
+                  !isOnline
+                    ? 'Unavailable while offline'
+                    : !hasAiPlan
+                      ? 'Requires AI Plan (Admin-enabled)'
+                      : isRefreshingHero
+                        ? 'Refreshing...'
+                        : 'Refresh Banner'
                 }
                 aria-label="Refresh Banner"
               >

@@ -1,6 +1,5 @@
 import React, {useState, useEffect} from 'react';
 import {
-  Save,
   Loader2,
   Trash2,
   Camera,
@@ -671,10 +670,8 @@ export function EditBookForm({
                   }
                   className="h-10 shadow-sm px-5 flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  {isSavingDetails ? (
+                  {isSavingDetails && (
                     <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4" />
                   )}
                   {isOnline ? 'Save Changes' : 'Offline (Read Only)'}
                 </Button>

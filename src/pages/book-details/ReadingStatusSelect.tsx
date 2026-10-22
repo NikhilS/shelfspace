@@ -1,6 +1,7 @@
 import React, {memo} from 'react';
 import {toast} from 'sonner';
 import {useAuth} from '../../stores/authStore';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {Book, BookDetailsPayload} from './useBook';
 import {
   Select,
@@ -36,6 +37,7 @@ export const ReadingStatusSelect = memo(
     updateReadingStatus,
   }: ReadingStatusSelectProps) => {
     const {user} = useAuth();
+    const isOnline = useOnlineStatus();
 
     const rawStatus = book.userStatuses?.[user?.uid || ''] || 'unset';
     const currentStatus = rawStatus === 'completed' ? 'finished' : rawStatus;
@@ -51,7 +53,7 @@ export const ReadingStatusSelect = memo(
         <Select
           value={currentStatus}
           onValueChange={async (val: string) => {
-            if (!libraryId || !bookId || !user) {
+            if (!libraryId || !bookId || !user || !isOnline) {
               return;
             }
             const newStatus = val as
@@ -78,10 +80,11 @@ export const ReadingStatusSelect = memo(
               toast.error('Failed to update status');
             }
           }}
-          disabled={!user}
+          disabled={!user || !isOnline}
         >
           <SelectTrigger
             id="readingStatus"
+            title={!isOnline ? 'Unavailable while offline' : undefined}
             className="swiper-no-swiping min-w-[190px] h-9 bg-surface-container-low text-on-surface border-outline-variant/70 font-medium"
           >
             <SelectValue />

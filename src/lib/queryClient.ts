@@ -103,8 +103,42 @@ if (typeof window !== 'undefined') {
   });
 }
 
+let queryCacheRestored =
+  typeof window === 'undefined' || typeof indexedDB === 'undefined';
+const restoreListeners = new Set<() => void>();
+
+function markQueryCacheRestored(): void {
+  if (queryCacheRestored) {
+    return;
+  }
+  queryCacheRestored = true;
+  for (const listener of restoreListeners) {
+    listener();
+  }
+  restoreListeners.clear();
+}
+
+export function isQueryCacheRestored(): boolean {
+  return queryCacheRestored;
+}
+
+export function subscribeToQueryCacheRestore(listener: () => void): () => void {
+  if (queryCacheRestored) {
+    listener();
+    return () => {};
+  }
+  restoreListeners.add(listener);
+  return () => {
+    restoreListeners.delete(listener);
+  };
+}
+
 // Configure transparent IndexedDB backing for browser runtime
 if (typeof window !== 'undefined' && typeof indexedDB !== 'undefined') {
+  const safetyTimer = setTimeout(() => {
+    markQueryCacheRestored();
+  }, 600);
+
   try {
     DebugTelemetryEngine.getInstance().recordIdbPersistenceState('restoring');
     const idbPersister = createAsyncStoragePersister({
@@ -158,6 +192,8 @@ if (typeof window !== 'undefined' && typeof indexedDB !== 'undefined') {
     if (restorePromise && typeof restorePromise.then === 'function') {
       restorePromise
         .then(() => {
+          clearTimeout(safetyTimer);
+          markQueryCacheRestored();
           const currentStatus =
             DebugTelemetryEngine.getInstance().getMetrics().idbPersistStatus;
           if (currentStatus === 'restoring') {
@@ -168,11 +204,18 @@ if (typeof window !== 'undefined' && typeof indexedDB !== 'undefined') {
           }
         })
         .catch(err => {
+          clearTimeout(safetyTimer);
+          markQueryCacheRestored();
           DebugTelemetryEngine.getInstance().recordIdbPersistenceState('error');
           console.warn('[QueryClient] Failed to restore persisted cache:', err);
         });
+    } else {
+      clearTimeout(safetyTimer);
+      markQueryCacheRestored();
     }
   } catch (err) {
+    clearTimeout(safetyTimer);
+    markQueryCacheRestored();
     DebugTelemetryEngine.getInstance().recordIdbPersistenceState('error');
     console.warn(
       '[QueryClient] Failed to initialize IndexedDB persistence:',

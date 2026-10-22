@@ -65,7 +65,7 @@ export function initAuthListener(): () => void {
               typeof sessionStorage !== 'undefined' &&
               !sessionStorage.getItem(sessionSyncKey)
             ) {
-              void (async () => {
+              const syncUserProfile = async () => {
                 try {
                   await trpcVanilla.user.syncProfile.mutate({
                     uid: currentUser.uid,
@@ -75,12 +75,33 @@ export function initAuthListener(): () => void {
                   });
                   sessionStorage.setItem(sessionSyncKey, '1');
                 } catch (error) {
-                  console.warn(
-                    '[auth] Background user document sync failed:',
-                    error,
-                  );
+                  if (
+                    typeof navigator === 'undefined' ||
+                    navigator.onLine !== false
+                  ) {
+                    console.warn(
+                      '[auth] Background user document sync failed:',
+                      error,
+                    );
+                  }
                 }
-              })();
+              };
+
+              if (
+                typeof navigator !== 'undefined' &&
+                navigator.onLine === false &&
+                typeof window !== 'undefined'
+              ) {
+                window.addEventListener(
+                  'online',
+                  () => {
+                    void syncUserProfile();
+                  },
+                  {once: true},
+                );
+              } else {
+                void syncUserProfile();
+              }
             }
           } else {
             console.info('[auth] No active user session (unauthenticated).');

@@ -5,6 +5,7 @@ import Markdown from 'react-markdown';
 import {useBookInsights} from './useBookInsights';
 import {Book} from './useBook';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 
 interface AiInsightsPanelProps {
   libraryId: string;
@@ -29,6 +30,7 @@ export const AiInsightsPanel = memo(
     handleGenerateInsight: passedHandleGenerate,
   }: AiInsightsPanelProps) => {
     const {hasAiPlan: contextHasAiPlan} = useAppPermissions();
+    const isOnline = useOnlineStatus();
     const hasAiPlan = passedHasAiPlan ?? contextHasAiPlan;
 
     const internalInsights = useBookInsights(
@@ -52,22 +54,32 @@ export const AiInsightsPanel = memo(
     const handleGenerateInsight =
       passedHandleGenerate || internalInsights.handleGenerateInsight;
 
+    const buttonTooltip = !isOnline
+      ? 'Unavailable while offline'
+      : !hasAiPlan
+        ? 'Requires AI Plan (Admin-enabled)'
+        : undefined;
+
     return (
       <section className="mt-8">
         <div className="flex flex-wrap items-center gap-2 mb-6 swiper-no-swiping">
           <Button
             variant={activeInsight === 'catchup' ? 'default' : 'outline'}
-            disabled={!hasAiPlan || isGeneratingInsight}
-            title={!hasAiPlan ? 'Requires AI Plan (Admin-enabled)' : undefined}
-            onClick={() => hasAiPlan && handleGenerateInsight('catchup')}
+            disabled={!isOnline || !hasAiPlan || isGeneratingInsight}
+            title={buttonTooltip}
+            onClick={() =>
+              isOnline && hasAiPlan && handleGenerateInsight('catchup')
+            }
           >
             Catch Me Up (Spoilers)
           </Button>
           <Button
             variant={activeInsight === 'similar' ? 'default' : 'outline'}
-            disabled={!hasAiPlan || isGeneratingInsight}
-            title={!hasAiPlan ? 'Requires AI Plan (Admin-enabled)' : undefined}
-            onClick={() => hasAiPlan && handleGenerateInsight('similar')}
+            disabled={!isOnline || !hasAiPlan || isGeneratingInsight}
+            title={buttonTooltip}
+            onClick={() =>
+              isOnline && hasAiPlan && handleGenerateInsight('similar')
+            }
           >
             Other Books Like This
           </Button>

@@ -1,9 +1,10 @@
 import React, {useRef, useState} from 'react';
-import {UploadCloud, Loader2, FileText, WifiOff} from 'lucide-react';
+import {Loader2, FileText, WifiOff} from 'lucide-react';
 import {toast} from 'sonner';
 import {logger} from '../../stores/debugStore';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
+import {ArchivalLedgerImportIllustration} from '@/components/ui/empty-state-illustrations';
 import {trpc} from '../../lib/trpc';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 
@@ -114,9 +115,7 @@ export function BulkImport({
 
   return (
     <div className="bg-surface-container-lowest p-6 sm:p-12 rounded-3xl border-2 border-dashed border-outline-variant/60 flex flex-col items-center justify-center text-center">
-      <div className="w-16 h-16 sm:w-20 sm:h-20 bg-surface-container-low rounded-full flex items-center justify-center text-primary mb-6 shadow-elevation-1 border border-outline-variant/40">
-        <UploadCloud className="w-8 h-8 sm:w-10 sm:h-10" strokeWidth={2} />
-      </div>
+      <ArchivalLedgerImportIllustration className="w-24 h-20 mb-5" />
       <h3 className="font-headline-lg text-headline-lg sm:text-headline-xl text-on-surface mb-3 tracking-tight">
         {mode === 'reading' ? 'Upload Reading List CSV' : 'Upload Library CSV'}
       </h3>
@@ -160,16 +159,16 @@ export function BulkImport({
       >
         {isExtracting ? (
           <>
-            <Loader2 className="animate-spin" size={20} strokeWidth={2.5} />{' '}
+            <Loader2 className="animate-spin" size={20} strokeWidth={1.75} />{' '}
             {extractionStatus || 'Processing CSV...'}
           </>
         ) : !isOnline ? (
           <>
-            <WifiOff size={20} strokeWidth={2} /> Offline (Import Disabled)
+            <WifiOff size={20} strokeWidth={1.75} /> Offline (Import Disabled)
           </>
         ) : (
           <>
-            <FileText size={20} strokeWidth={2.5} /> Select CSV File
+            <FileText size={20} strokeWidth={1.75} /> Select CSV File
           </>
         )}
       </Button>

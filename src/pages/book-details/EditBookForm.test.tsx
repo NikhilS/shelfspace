@@ -29,7 +29,6 @@ vi.mock('lucide-react', async () => {
     Camera: () => <div data-testid="icon-camera" />,
     Sparkles: () => <div data-testid="icon-sparkles" />,
     Trash2: () => <div data-testid="icon-trash" />,
-    Save: () => <div data-testid="icon-save" />,
   };
 });
 

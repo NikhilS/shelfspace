@@ -13,6 +13,7 @@ import {Badge} from './badge';
 import {ArrowUp, ArrowDown, ArrowUpDown} from 'lucide-react';
 import {cn, toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {FirestoreDate} from '../../types';
+import {MonographCoverFallback} from '../book/MonographCoverFallback';
 
 export interface DataTableColumn<T> {
   id: string;
@@ -428,18 +429,6 @@ export function BookTitleCell({
   truncateSingleLine = false,
   size = 'md',
 }: BookTitleCellProps) {
-  const hash = (title || '')
-    .split('')
-    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const gradients = [
-    'from-on-tertiary-fixed-variant to-tertiary-container',
-    'from-secondary to-on-secondary-fixed',
-    'from-primary to-on-primary-fixed',
-    'from-on-primary-container to-surface-tint',
-    'from-surface-container-highest to-surface-dim',
-  ];
-  const gradientClass = gradients[hash % gradients.length];
-
   const coverSizes = {
     sm: 'h-9 w-6 rounded-xs',
     md: 'h-11 w-7 sm:h-12 sm:w-8 rounded-sm',
@@ -527,8 +516,11 @@ export function BookTitleCell({
                 loading="lazy"
               />
             ) : (
-              <div
-                className={`absolute inset-0 bg-gradient-to-br ${gradientClass} opacity-80`}
+              <MonographCoverFallback
+                title={title}
+                author={author}
+                variant="micro"
+                className="absolute inset-0 border-0 p-1"
               />
             )}
           </div>
