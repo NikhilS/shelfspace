@@ -115,7 +115,15 @@ export function ReadStackCanvasCard({
   );
   const animatedPosesRef = useRef<AnimatedBookPose[]>([]);
   const rafRef = useRef<number | null>(null);
-  const touchStartRef = useRef<{x: number; y: number} | null>(null);
+  const touchStartRef = useRef<{
+    x: number;
+    y: number;
+    lastX: number;
+    lastTime: number;
+    velocityPxPerSec: number;
+    axisLock: 'none' | 'horizontal' | 'vertical';
+  } | null>(null);
+  const dragOffsetPxRef = useRef<number>(0);
   const didSwipeRef = useRef(false);
 
   // stackBooks[0] is #1 (most recently read), up to stackBooks[4] (#5 most recent)
@@ -188,7 +196,7 @@ export function ReadStackCanvasCard({
     };
   }, [stackBooks]);
 
-  // Compute target pose for a given book index based on its current slot in drawOrder
+  // Compute target pose for a given book index based on its current slot in drawOrder and live drag offset
   const getTargetPoseForBook = useCallback(
     (bookIndex: number): AnimatedBookPose => {
       const total = stackBooks.length;
@@ -202,6 +210,42 @@ export function ReadStackCanvasCard({
 
       const isTopBook = bookIndex === safeActiveIndex;
       const isHovered = hoveredIndex === bookIndex;
+      const dragPx = dragOffsetPxRef.current;
+      const isDragging = Math.abs(dragPx) > 1;
+
+      if (isTopBook && isDragging) {
+        const clampedDrag = Math.max(-140, Math.min(140, dragPx));
+        return {
+          dxRatio: basePose.dxRatio + (clampedDrag / 280) * 0.65,
+          dyRatio: basePose.dyRatio - Math.abs(clampedDrag / 280) * 0.04,
+          angleDeg: basePose.angleDeg + (clampedDrag / 280) * 16,
+          lift: 1.1,
+        };
+      }
+
+      if (isDragging && total > 1) {
+        const nextCandidateIndex =
+          dragPx < 0
+            ? (safeActiveIndex + 1) % total
+            : (safeActiveIndex - 1 + total) % total;
+        if (bookIndex === nextCandidateIndex) {
+          const topPose = MESSY_STACK_POSES[MESSY_STACK_POSES.length - 1];
+          const progress = Math.min(1, Math.abs(dragPx) / 85);
+          return {
+            dxRatio:
+              basePose.dxRatio +
+              (topPose.dxRatio - basePose.dxRatio) * progress,
+            dyRatio:
+              basePose.dyRatio +
+              (topPose.dyRatio - basePose.dyRatio) * progress,
+            angleDeg:
+              basePose.angleDeg +
+              (topPose.angleDeg - basePose.angleDeg) * progress,
+            lift: 0.35 * progress,
+          };
+        }
+      }
+
       const lift = isHovered ? 1 : isTopBook ? 0.35 : 0;
 
       return {
@@ -439,11 +483,13 @@ export function ReadStackCanvasCard({
     ctx.restore();
   }, [stackBooks, drawOrder, getBookGeometry, safeActiveIndex]);
 
-  // Smoothly animate book positions, angles, and lift when activeIndex or hoveredIndex changes
-  useEffect(() => {
-    let needsMoreFrames = false;
+  const startPoseAnimationLoop = useCallback(() => {
+    if (rafRef.current !== null) {
+      window.cancelAnimationFrame(rafRef.current);
+    }
+
     const step = () => {
-      needsMoreFrames = false;
+      let needsMoreFrames = false;
       for (let i = 0; i < stackBooks.length; i++) {
         const target = getTargetPoseForBook(i);
         const current = animatedPosesRef.current[i] || {...target};
@@ -460,10 +506,10 @@ export function ReadStackCanvasCard({
           Math.abs(dLift) > 0.01
         ) {
           animatedPosesRef.current[i] = {
-            dxRatio: current.dxRatio + dDx * 0.24,
-            dyRatio: current.dyRatio + dDy * 0.24,
-            angleDeg: current.angleDeg + dAngle * 0.24,
-            lift: current.lift + dLift * 0.24,
+            dxRatio: current.dxRatio + dDx * 0.28,
+            dyRatio: current.dyRatio + dDy * 0.28,
+            angleDeg: current.angleDeg + dAngle * 0.28,
+            lift: current.lift + dLift * 0.28,
           };
           needsMoreFrames = true;
         } else {
@@ -473,13 +519,21 @@ export function ReadStackCanvasCard({
       renderStackCanvas();
       if (needsMoreFrames) {
         rafRef.current = window.requestAnimationFrame(step);
+      } else {
+        rafRef.current = null;
       }
     };
 
     rafRef.current = window.requestAnimationFrame(step);
+  }, [stackBooks.length, getTargetPoseForBook, renderStackCanvas]);
+
+  // Smoothly animate book positions, angles, and lift when activeIndex or hoveredIndex changes
+  useEffect(() => {
+    startPoseAnimationLoop();
     return () => {
       if (rafRef.current !== null) {
         window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
       }
     };
   }, [
@@ -487,8 +541,7 @@ export function ReadStackCanvasCard({
     hoveredIndex,
     stackBooks,
     imageTick,
-    getTargetPoseForBook,
-    renderStackCanvas,
+    startPoseAnimationLoop,
   ]);
 
   // Repaint on resize
@@ -543,26 +596,86 @@ export function ReadStackCanvasCard({
 
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (e.touches.length === 1) {
+      const now = performance.now();
       touchStartRef.current = {
         x: e.touches[0].clientX,
         y: e.touches[0].clientY,
+        lastX: e.touches[0].clientX,
+        lastTime: now,
+        velocityPxPerSec: 0,
+        axisLock: 'none',
       };
+      dragOffsetPxRef.current = 0;
       didSwipeRef.current = false;
     }
   };
 
-  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (!touchStartRef.current || e.changedTouches.length === 0) {
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const gesture = touchStartRef.current;
+    if (!gesture || e.touches.length !== 1 || stackBooks.length <= 1) {
       return;
     }
-    const deltaX = e.changedTouches[0].clientX - touchStartRef.current.x;
-    const deltaY = e.changedTouches[0].clientY - touchStartRef.current.y;
+
+    const touch = e.touches[0];
+    const dx = touch.clientX - gesture.x;
+    const dy = touch.clientY - gesture.y;
+
+    if (gesture.axisLock === 'none') {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) {
+        return;
+      }
+      if (Math.abs(dx) > Math.abs(dy) * 1.15) {
+        gesture.axisLock = 'horizontal';
+      } else {
+        gesture.axisLock = 'vertical';
+        return;
+      }
+    }
+
+    if (gesture.axisLock !== 'horizontal') {
+      return;
+    }
+
+    const now = performance.now();
+    const dt = now - gesture.lastTime;
+    if (dt > 0) {
+      const instVx = ((touch.clientX - gesture.lastX) / dt) * 1000;
+      gesture.velocityPxPerSec =
+        gesture.velocityPxPerSec * 0.35 + instVx * 0.65;
+      gesture.lastX = touch.clientX;
+      gesture.lastTime = now;
+    }
+
+    dragOffsetPxRef.current = dx;
+    if (animatedPosesRef.current[safeActiveIndex]) {
+      animatedPosesRef.current[safeActiveIndex] =
+        getTargetPoseForBook(safeActiveIndex);
+    }
+    startPoseAnimationLoop();
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const gesture = touchStartRef.current;
     touchStartRef.current = null;
+    dragOffsetPxRef.current = 0;
+
+    if (!gesture || e.changedTouches.length === 0) {
+      startPoseAnimationLoop();
+      return;
+    }
+
+    const deltaX = e.changedTouches[0].clientX - gesture.x;
+    const deltaY = e.changedTouches[0].clientY - gesture.y;
+    const vx = gesture.velocityPxPerSec;
+
+    const isHorizontalGesture =
+      gesture.axisLock === 'horizontal' ||
+      Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
 
     if (
       stackBooks.length > 1 &&
-      Math.abs(deltaX) > 30 &&
-      Math.abs(deltaX) > Math.abs(deltaY) * 1.2
+      isHorizontalGesture &&
+      (Math.abs(deltaX) > 30 || (Math.abs(deltaX) > 16 && Math.abs(vx) > 350))
     ) {
       didSwipeRef.current = true;
       if (deltaX < 0) {
@@ -572,6 +685,8 @@ export function ReadStackCanvasCard({
           prev => (prev - 1 + stackBooks.length) % stackBooks.length,
         );
       }
+    } else {
+      startPoseAnimationLoop();
     }
   };
 
@@ -671,7 +786,9 @@ export function ReadStackCanvasCard({
               onMouseMove={handleMouseMove}
               onMouseLeave={() => setHoveredIndex(null)}
               onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
               onClick={handleCanvasClick}
               aria-label={`Interactive stack of your last ${stackBooks.length} finished books`}
               className="w-full h-full block cursor-pointer touch-pan-y"

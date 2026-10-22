@@ -17,7 +17,10 @@ import {useAppPermissions} from './hooks/useAppPermissions';
 import {ErrorBoundary} from './components/layout/ErrorBoundary';
 import {Toaster} from 'sonner';
 import {AppLayout} from './components/layout/AppLayout';
-import {ScrollToTop} from './components/layout/ScrollToTop';
+import {
+  ScrollToTop,
+  getRouteBoundaryKey,
+} from './components/layout/ScrollToTop';
 import {RequireLibraryPermission} from './components/layout/RequireLibraryPermission';
 import {BookLoader} from './components/book/BookLoader';
 import {
@@ -86,11 +89,12 @@ function NavigationWarmthCommit() {
 
 function PageWrapper({children}: {children?: React.ReactNode}) {
   const location = useLocation();
+  const routeBoundaryKey = getRouteBoundaryKey(location.pathname);
 
   return (
     <div className="w-full flex-1">
-      <ErrorBoundary key={location.pathname}>
-        <Suspense key={location.pathname} fallback={<SuspenseFallbackRouter />}>
+      <ErrorBoundary key={routeBoundaryKey}>
+        <Suspense key={routeBoundaryKey} fallback={<SuspenseFallbackRouter />}>
           <NavigationWarmthCommit />
           {children || <Outlet />}
         </Suspense>
@@ -340,10 +344,16 @@ const routerLogger = createLogger('Router');
 function DebugDataClearer() {
   const location = useLocation();
   const {setDebugData} = useDebug();
+  const prevRouteKeyRef = React.useRef<string>(
+    getRouteBoundaryKey(location.pathname),
+  );
 
   React.useEffect(() => {
-    // Clear debug data on route change and emit structured navigation breadcrumb
-    setDebugData(null);
+    const nextRouteKey = getRouteBoundaryKey(location.pathname);
+    if (prevRouteKeyRef.current !== nextRouteKey) {
+      setDebugData(null);
+      prevRouteKeyRef.current = nextRouteKey;
+    }
     routerLogger.info(`Navigated to ${location.pathname}${location.search}`, {
       pathname: location.pathname,
       search: location.search,

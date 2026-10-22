@@ -78,11 +78,21 @@ export function BookContent({
     isEnrichingBio,
     triggerManualEnrichment,
     handleGenerateInsight,
-  } = useBookInsights(libraryId, book, canEdit);
+  } = useBookInsights(libraryId, book, canEdit, isActive);
 
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [isSynopsisExpanded, setIsSynopsisExpanded] = useState(false);
   const [isBioExpanded, setIsBioExpanded] = useState(false);
+  const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setIsEditingDetails(false);
+    setIsSynopsisExpanded(false);
+    setIsBioExpanded(false);
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [bookId]);
 
   // Filter huge payloads for DebugOverlay (only if active)
   const debugData = useMemo(() => {
@@ -180,7 +190,10 @@ export function BookContent({
   }
 
   return (
-    <div className="layout-page-content h-full overflow-y-auto">
+    <div
+      ref={scrollContainerRef}
+      className="layout-page-content h-full overflow-y-auto overscroll-y-contain"
+    >
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12 items-start">
         {/* Left Column: Edition Showcase & Archival Accession Ledger */}
         <div className="md:col-span-4 md:sticky md:top-24 flex flex-col gap-5 items-center md:items-stretch">
@@ -336,7 +349,11 @@ export function BookContent({
                     )}
                   >
                     <div className="markdown-body editorial-dropcap">
-                      <Markdown>{book.synopsis}</Markdown>
+                      {isActive ? (
+                        <Markdown>{book.synopsis}</Markdown>
+                      ) : (
+                        <p>{book.synopsis}</p>
+                      )}
                     </div>
                   </div>
                   {book.synopsis.length > 400 && !isSynopsisExpanded && (
@@ -666,7 +683,11 @@ export function BookContent({
                         )}
                       >
                         <div className="markdown-body">
-                          <Markdown>{book.authorBio}</Markdown>
+                          {isActive ? (
+                            <Markdown>{book.authorBio}</Markdown>
+                          ) : (
+                            <p>{book.authorBio}</p>
+                          )}
                         </div>
                       </div>
                       {book.authorBio.length > 320 && !isBioExpanded && (
@@ -704,26 +725,29 @@ export function BookContent({
             </div>
           </section>
 
-          {/* AI Features */}
-          <AiInsightsPanel
-            libraryId={libraryId}
-            book={book}
-            canEdit={canEdit}
-            activeInsight={activeInsight}
-            insightContent={insightContent}
-            isGeneratingInsight={isGeneratingInsight}
-            handleGenerateInsight={handleGenerateInsight}
-          />
+          {/* AI Features & Reviews (Mounted on Active Slot Only to Keep Flanking Drag Slots Lightweight) */}
+          {isActive && (
+            <>
+              <AiInsightsPanel
+                libraryId={libraryId}
+                book={book}
+                canEdit={canEdit}
+                activeInsight={activeInsight}
+                insightContent={insightContent}
+                isGeneratingInsight={isGeneratingInsight}
+                handleGenerateInsight={handleGenerateInsight}
+              />
 
-          {/* Reviews */}
-          <ReviewSection
-            libraryId={libraryId}
-            book={book}
-            reviews={reviews}
-            setReviewsOptimistically={setReviewsOptimistically}
-            canEdit={canEdit}
-            addReview={addReview}
-          />
+              <ReviewSection
+                libraryId={libraryId}
+                book={book}
+                reviews={reviews}
+                setReviewsOptimistically={setReviewsOptimistically}
+                canEdit={canEdit}
+                addReview={addReview}
+              />
+            </>
+          )}
         </div>
       </div>
 

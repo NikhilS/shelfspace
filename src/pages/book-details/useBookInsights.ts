@@ -8,6 +8,7 @@ export function useBookInsights(
   libraryId: string | undefined,
   book: (Book & BookDetailsPayload) | null,
   canEdit: boolean,
+  isActive: boolean = true,
 ) {
   const {hasAiPlan} = useAppPermissions();
   const [activeInsight, setActiveInsight] = useState<
@@ -85,7 +86,7 @@ export function useBookInsights(
   );
 
   useEffect(() => {
-    if (!book || !libraryId || !canEdit) {
+    if (!isActive || !book || !libraryId || !canEdit) {
       return;
     }
 
@@ -179,6 +180,7 @@ export function useBookInsights(
     book?.bookDetailsMetadata?.hasAuthorBio,
     libraryId,
     canEdit,
+    isActive,
     invalidateBookQueries,
   ]);
 

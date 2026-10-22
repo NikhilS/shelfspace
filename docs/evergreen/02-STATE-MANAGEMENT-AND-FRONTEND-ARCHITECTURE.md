@@ -104,3 +104,21 @@ The main browser thread must remain silky smooth ($60\text{fps}$). Any mathemati
   Components dispatch raw book vectors through a typed worker bridge, display a lightweight skeleton or progress indicator, and receive normalized $(x, y)$ coordinates asynchronously.
 - **Worker Termination:**
   Workers must be gracefully terminated on unmount using standard `useEffect` teardown routines to avoid memory leaks.
+
+---
+
+## 5. Constant-$O(1)$ 3-Slot Motion Deck & Gesture Physics
+
+To maintain locked 60/120fps frame pacing when swiping through large book collections in `BookDetailsView`, **book(ish)** uses a custom, zero-re-render **3-Slot GPU Motion Deck** (`src/pages/book-details/BookSwipeDeck.tsx`) rather than third-party imperative carousel libraries:
+
+1. **Constant $O(1)$ Virtual Window (`prev`, `active`, `next`):**
+   - Regardless of collection size, at most **3 physical slot containers** (`offset: -1 | 0 | 1`) are mounted in the DOM, keyed by `bookId`.
+   - During a touch drag or spring animation, pointer deltas drive a single `MotionValue` (`dragX`) via GPU `translate3d` with **zero React state updates**.
+   - On spring completion, `dragX` resets to `0` and `activeIndex` updates in a single atomic frame—allowing React to reuse the already-mounted flanking DOM node in place without unmounting or layout shift.
+2. **Route-Boundary Key Stabilization (`getRouteBoundaryKey`):**
+   - `PageWrapper` in `src/App.tsx` normalizes `/library/:libraryId/book/:bookId` paths to `/library/:libraryId/book`, and `ScrollToTop` skips window scroll resets on intra-library book transitions so URL updates never remount `BookDetailsView`.
+3. **Two-Tier Slot Lifecycle (Preview Shell vs. Active Editorial Spread):**
+   - Flanking slots (`isActive === false`) render synchronously from the TanStack Query cache (`utils.book.get.getData` / `utils.book.list.getData`) with `listReviews`, `useBookInsights` auto-enrichment timers, `Markdown` AST parsing, and `ReviewSection` disabled until the slot settles into `isActive === true`.
+4. **Idle-Deferred Data & Bitmap Pre-Warming:**
+   - `PrefetchAdjacentBooks` defers tRPC prefetching and `new Image().decode()` cover pre-warming for `[index - 2, index + 2]` to `requestIdleCallback` after the swipe spring settles.
+

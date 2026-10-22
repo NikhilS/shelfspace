@@ -1,9 +1,7 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {useParams, useNavigate, useLocation} from 'react-router-dom';
 import {BookContent} from './book-details/BookContent';
-import {Swiper, SwiperSlide} from 'swiper/react';
-import {Virtual} from 'swiper/modules';
-import type {Swiper as SwiperClass} from 'swiper';
+import {BookSwipeDeck, BookSwipeDeckHandle} from './book-details/BookSwipeDeck';
 import {useLibraryPermissions} from '../hooks/useLibraryPermissions';
 import {useAuth} from '../stores/authStore';
 import {PrefetchAdjacentBooks} from '../components/book/PrefetchAdjacentBooks';
@@ -13,9 +11,6 @@ import {Button} from '@/components/ui/button';
 import {MagnifyingBookmarkIllustration} from '@/components/ui/empty-state-illustrations';
 import {Book} from '../types';
 import {trpc} from '../lib/trpc';
-
-import 'swiper/css';
-import 'swiper/css/virtual';
 
 export function BookDetailsView() {
   const {libraryId, bookId} = useParams<{libraryId: string; bookId: string}>();
@@ -56,70 +51,59 @@ export function BookDetailsView() {
   const computedIndex = bookList.findIndex(id => id === bookId);
   const activeIndex = computedIndex >= 0 ? computedIndex : 0;
 
-  const [swiperInstance, setSwiperInstance] = useState<SwiperClass | null>(
-    null,
-  );
-  const [currentSlideIndex, setCurrentSlideIndex] = useState(activeIndex);
+  const deckRef = useRef<BookSwipeDeckHandle | null>(null);
+  const [committedIndex, setCommittedIndex] = useState(activeIndex);
 
-  // Sync internal slide tracker if activeIndex changes from URL change
+  // Sync committedIndex when activeIndex changes from URL/history navigation
   useEffect(() => {
-    setCurrentSlideIndex(activeIndex);
+    setCommittedIndex(activeIndex);
   }, [activeIndex]);
 
-  // Sync swiper physically when the derived activeIndex changes (e.g., via browser history)
-  useEffect(() => {
-    if (swiperInstance && swiperInstance.activeIndex !== activeIndex) {
-      swiperInstance.slideTo(activeIndex, 0); // instantly slide without animation so it feels like history navigation
-    }
-  }, [activeIndex, swiperInstance]);
+  const handleIndexCommit = useCallback(
+    (newIndex: number) => {
+      setCommittedIndex(newIndex);
 
-  const handleSlideChange = (swiper: SwiperClass) => {
-    // Keep internal index in sync during swipe for responsive counter and desktop chevrons
-    setCurrentSlideIndex(swiper.activeIndex);
-  };
-
-  const handleSlideChangeTransitionEnd = (swiper: SwiperClass) => {
-    const newIndex = swiper.activeIndex;
-    setCurrentSlideIndex(newIndex);
-
-    // Commit URL route change ONLY when gesture transition has completely settled
-    if (newIndex >= 0 && newIndex < bookList.length) {
-      const currentBookId = bookList[newIndex];
-      if (currentBookId !== bookId) {
-        void navigate(`/library/${libraryId}/book/${currentBookId}`, {
-          state: {from: backUrl, bookList},
-          replace: true,
-        });
+      if (newIndex >= 0 && newIndex < bookList.length && libraryId) {
+        const nextBookId = bookList[newIndex];
+        if (nextBookId && nextBookId !== bookId) {
+          void navigate(`/library/${libraryId}/book/${nextBookId}`, {
+            state: {from: backUrl, bookList},
+            replace: true,
+          });
+        }
       }
-    }
-  };
+    },
+    [backUrl, bookId, bookList, libraryId, navigate],
+  );
 
-  const handleNavigateBack = () => {
-    // If the book does not exist, or delete was performed, we want to go back
+  const handleNavigateBack = useCallback(() => {
     void navigate(backUrl, {replace: true});
-  };
+  }, [backUrl, navigate]);
 
-  // Keyboard navigation support for desktop
+  // Keyboard navigation support for desktop (ArrowLeft / ArrowRight)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
+      const target = e.target as HTMLElement | null;
       if (
         target?.tagName === 'INPUT' ||
         target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
         target?.isContentEditable
       ) {
         return;
       }
       if (e.key === 'ArrowLeft') {
-        swiperInstance?.slidePrev();
+        e.preventDefault();
+        deckRef.current?.slidePrev();
       } else if (e.key === 'ArrowRight') {
-        swiperInstance?.slideNext();
+        e.preventDefault();
+        deckRef.current?.slideNext();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [swiperInstance]);
+  }, []);
 
   if (!libraryId || bookList.length === 0) {
     const isVirtualShelf = Boolean(libraryId?.startsWith('virtual_'));
@@ -151,30 +135,33 @@ export function BookDetailsView() {
       <PrefetchAdjacentBooks
         libraryId={libraryId}
         bookList={bookList}
-        currentIndex={currentSlideIndex}
+        currentIndex={committedIndex}
         radius={2}
       />
 
-      <div className="h-full w-full bg-surface overflow-hidden relative flex flex-col">
+      <div className="h-[calc(100dvh-4rem)] w-full bg-surface overflow-hidden relative flex flex-col">
         {/* Top Navigation Bar with Back to Library */}
         <div className="w-full bg-surface/90 backdrop-blur-md border-b border-surface-variant/40 z-20 shrink-0 shadow-xs">
           <div className="layout-container py-1.5 flex items-center justify-between">
             <BackToLibrary libraryId={libraryId} customTo={backUrl} />
             {bookList.length > 1 && (
               <div className="flex items-center gap-2">
-                <span className="text-xs font-sans text-on-surface-variant font-medium">
-                  {currentSlideIndex + 1} of {bookList.length}
+                <span
+                  data-testid="book-deck-counter"
+                  className="text-xs font-sans font-mono tabular-nums text-on-surface-variant font-medium"
+                >
+                  {committedIndex + 1} of {bookList.length}
                 </span>
                 <div className="flex items-center gap-0.5 border border-outline-variant/30 rounded-lg p-0.5 bg-surface-container-low">
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    onClick={() => swiperInstance?.slidePrev()}
-                    disabled={currentSlideIndex <= 0}
+                    onClick={() => deckRef.current?.slidePrev()}
+                    disabled={committedIndex <= 0}
                     className="w-7 h-7 min-w-[28px] min-h-[28px] rounded-md flex items-center justify-center text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant disabled:cursor-not-allowed transition-colors"
                     aria-label="Previous Book"
-                    title="Previous Book"
+                    title="Previous Book (Left Arrow)"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </Button>
@@ -182,11 +169,11 @@ export function BookDetailsView() {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    onClick={() => swiperInstance?.slideNext()}
-                    disabled={currentSlideIndex >= bookList.length - 1}
+                    onClick={() => deckRef.current?.slideNext()}
+                    disabled={committedIndex >= bookList.length - 1}
                     className="w-7 h-7 min-w-[28px] min-h-[28px] rounded-md flex items-center justify-center text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:hover:text-on-surface-variant disabled:cursor-not-allowed transition-colors"
                     aria-label="Next Book"
-                    title="Next Book"
+                    title="Next Book (Right Arrow)"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />
                   </Button>
@@ -196,16 +183,16 @@ export function BookDetailsView() {
           </div>
         </div>
 
-        {/* Content & Swiper area */}
+        {/* 3-Slot GPU Motion Deck Area */}
         <div className="flex-1 min-h-0 w-full relative">
           {/* Desktop Previous Book Chevron */}
-          {currentSlideIndex > 0 && (
+          {committedIndex > 0 && (
             <Button
               type="button"
               variant="outline"
               size="icon"
-              onClick={() => swiperInstance?.slidePrev()}
-              className="hidden md:flex fixed left-76 top-1/2 -translate-y-1/2 z-20 min-w-[44px] min-h-[44px] w-11 h-11 rounded-lg bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100"
+              onClick={() => deckRef.current?.slidePrev()}
+              className="hidden md:flex fixed left-6 top-1/2 -translate-y-1/2 z-20 min-w-[44px] min-h-[44px] w-11 h-11 rounded-lg bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-75 hover:opacity-100"
               title="Previous Book (Left Arrow)"
               aria-label="Previous Book"
             >
@@ -214,13 +201,13 @@ export function BookDetailsView() {
           )}
 
           {/* Desktop Next Book Chevron */}
-          {currentSlideIndex < bookList.length - 1 && (
+          {committedIndex < bookList.length - 1 && (
             <Button
               type="button"
               variant="outline"
               size="icon"
-              onClick={() => swiperInstance?.slideNext()}
-              className="hidden md:flex fixed right-6 top-1/2 -translate-y-1/2 z-20 min-w-[44px] min-h-[44px] w-11 h-11 rounded-lg bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-70 hover:opacity-100"
+              onClick={() => deckRef.current?.slideNext()}
+              className="hidden md:flex fixed right-6 top-1/2 -translate-y-1/2 z-20 min-w-[44px] min-h-[44px] w-11 h-11 rounded-lg bg-surface-container-high/90 hover:bg-surface-container-highest text-primary border border-outline-variant/30 shadow-md items-center justify-center transition-all opacity-75 hover:opacity-100"
               title="Next Book (Right Arrow)"
               aria-label="Next Book"
             >
@@ -228,53 +215,21 @@ export function BookDetailsView() {
             </Button>
           )}
 
-          <Swiper
-            modules={[Virtual]}
-            virtual={{
-              enabled: true,
-              addSlidesAfter: 2,
-              addSlidesBefore: 2,
-              cache: true,
-            }}
-            slidesPerView={1}
-            initialSlide={activeIndex}
-            onSwiper={setSwiperInstance}
-            onSlideChange={handleSlideChange}
-            onSlideChangeTransitionEnd={handleSlideChangeTransitionEnd}
-            className="h-full w-full"
-            resistanceRatio={0.85} // Make 'bouncing' at edges feel nice
-            threshold={12} // Require deliberate gesture before initiating swipe
-            touchAngle={40} // Only swipe if gesture is predominantly horizontal
-            noSwiping={true}
-            noSwipingClass="swiper-no-swiping"
-          >
-            {bookList.map((id, index) => (
-              <SwiperSlide key={id} virtualIndex={index}>
-                {({isActive}) => {
-                  // Lazily load BookContent based on distance from active slide
-                  // to prevent Hook Spam and save connections.
-                  const distance = Math.abs(currentSlideIndex - index);
-                  const shouldLoad = distance <= 2; // only mount hooks for adjacent and active slides
-
-                  if (!shouldLoad) {
-                    return <div className="h-full w-full bg-surface" />; // skeleton placeholder
-                  }
-
-                  const isSlideActive = isActive || currentSlideIndex === index;
-
-                  return (
-                    <BookContent
-                      libraryId={libraryId}
-                      bookId={id}
-                      isActive={isSlideActive}
-                      onNavigateBack={handleNavigateBack}
-                      canEdit={canEdit}
-                    />
-                  );
-                }}
-              </SwiperSlide>
-            ))}
-          </Swiper>
+          <BookSwipeDeck
+            ref={deckRef}
+            bookIds={bookList}
+            activeIndex={activeIndex}
+            onIndexCommit={handleIndexCommit}
+            renderSlide={({bookId: slideBookId, isActive}) => (
+              <BookContent
+                libraryId={libraryId}
+                bookId={slideBookId}
+                isActive={isActive}
+                onNavigateBack={handleNavigateBack}
+                canEdit={canEdit}
+              />
+            )}
+          />
         </div>
       </div>
     </>

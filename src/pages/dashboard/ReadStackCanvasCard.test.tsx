@@ -65,11 +65,13 @@ describe('ReadStackCanvasCard', () => {
     expect(screen.getByText('#2 in Recent Stack')).toBeInTheDocument();
     expect(screen.getByText('Ninefox Gambit')).toBeInTheDocument();
 
-    // Swipe left on the canvas to advance to #3
+    // Swipe left with live touchMove drag on the canvas to advance to #3
     const canvas = screen.getByLabelText(
       /Interactive stack of your last 3 finished books/i,
     );
     fireEvent.touchStart(canvas, {touches: [{clientX: 220, clientY: 100}]});
+    fireEvent.touchMove(canvas, {touches: [{clientX: 165, clientY: 101}]});
+    fireEvent.touchMove(canvas, {touches: [{clientX: 120, clientY: 102}]});
     fireEvent.touchEnd(canvas, {
       changedTouches: [{clientX: 120, clientY: 102}],
     });

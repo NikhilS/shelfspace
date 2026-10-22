@@ -102,24 +102,36 @@ export function useBook(
   }, [libraryQuery.data, user, passedCanEdit]);
 
   // 2. Book query via tRPC (Single source of truth for book & heavy details)
+  const resolveCachedBook = useCallback((): FullBookRecord | undefined => {
+    if (!libraryId || !bookId) {
+      return undefined;
+    }
+    const cachedDetail = utils.book?.get?.getData?.({
+      libraryId,
+      bookId,
+    }) as FullBookRecord | undefined;
+    if (cachedDetail) {
+      return cachedDetail;
+    }
+    const cachedData = utils.book?.list?.getData?.({libraryId});
+    const cachedBooks = extractBookList(cachedData);
+    return cachedBooks?.find(b => b.id === bookId) as
+      FullBookRecord | undefined;
+  }, [libraryId, bookId, utils.book]);
+
   const trpcBookQuery = trpc.book.get.useQuery(
     {libraryId: libraryId || '', bookId: bookId || ''},
     {
       enabled: Boolean(libraryId && bookId && isLive),
-      initialData: () => {
-        if (!libraryId || !bookId) {
-          return undefined;
-        }
-        const cachedData = utils.book?.list?.getData?.({libraryId});
-        const cachedBooks = extractBookList(cachedData);
-        const match = cachedBooks?.find(b => b.id === bookId);
-        return match as unknown as ReturnType<typeof utils.book.get.getData>;
-      },
+      initialData: () =>
+        resolveCachedBook() as unknown as ReturnType<
+          typeof utils.book.get.getData
+        >,
       staleTime: 1000 * 60 * 5,
     },
   );
 
-  // 3. Reviews query via tRPC
+  // 3. Reviews query via tRPC (only active on the settled center slide)
   const trpcReviewsQuery = trpc.book.listReviews.useQuery(
     {libraryId: libraryId || '', bookId: bookId || ''},
     {
@@ -128,7 +140,10 @@ export function useBook(
     },
   );
 
-  const rawBook = trpcBookQuery.data as FullBookRecord | null | undefined;
+  const rawBook =
+    (trpcBookQuery.data as FullBookRecord | null | undefined) ??
+    resolveCachedBook() ??
+    null;
 
   const bookBase = useMemo<Book | null>(() => {
     if (!rawBook) {
