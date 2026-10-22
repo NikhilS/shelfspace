@@ -14,6 +14,7 @@ import {initAuthListener} from './services/authListener';
 import {useAuthStore} from './stores/authStore';
 import {useAppStore} from './stores/appStore';
 import {useAppPermissions} from './hooks/useAppPermissions';
+import {DebugConsoleHud} from './components/debug/DebugConsoleHud';
 import {ErrorBoundary} from './components/layout/ErrorBoundary';
 import {Toaster} from 'sonner';
 import {AppLayout} from './components/layout/AppLayout';
@@ -363,12 +364,12 @@ function DebugDataClearer() {
   return null;
 }
 
-function TelemetryHUD() {
+function TelemetryHud() {
   const isDebugMode = useDebug(state => state.isDebugMode);
   if (!isDebugMode) {
     return null;
   }
-  return <DebugConsoleHUD />;
+  return <DebugConsoleHud />;
 }
 
 export function App() {
@@ -381,7 +382,7 @@ export function App() {
               <BrowserRouter>
                 <AnimatedRoutes />
                 <DebugDataClearer />
-                <TelemetryHUD />
+                <TelemetryHud />
               </BrowserRouter>
             </AuthGuard>
             <Toaster position="bottom-right" />
