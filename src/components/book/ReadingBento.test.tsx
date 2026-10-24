@@ -119,4 +119,55 @@ describe('ReadingBento', () => {
     const timelineLink = screen.getByText('Historical Timeline').closest('a');
     expect(timelineLink).toHaveAttribute('href', '/library/lib-1/timeline');
   });
+
+  it('renders an Unread Library Pick card using CuratorPickCard when an unread library book exists', () => {
+    render(
+      <MemoryRouter>
+        <ReadingBento
+          mode="personal-reading"
+          books={sampleBooks}
+          unreadLibraryBooks={[
+            {
+              id: 'b-lib2-unread',
+              libraryId: 'lib-2',
+              libraryName: 'Shared Family Library',
+              readingStatus: 'unset',
+              title: 'The Dispossessed',
+              author: 'Ursula K. Le Guin',
+              primaryGenre: 'Science Fiction',
+              synopsis: 'An ambiguous utopia across twin worlds.',
+              addedAt: '2026-01-05',
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByText('From Your Shelves · Unread Pick'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('The Dispossessed')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Ursula K\. Le Guin · Shared Family Library/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('An ambiguous utopia across twin worlds.'),
+    ).toBeInTheDocument();
+  });
+
+  it('omits the Unread Library Pick card when no unread books exist across accessible libraries', () => {
+    render(
+      <MemoryRouter>
+        <ReadingBento
+          mode="personal-reading"
+          books={sampleBooks}
+          unreadLibraryBooks={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByText('From Your Shelves · Unread Pick'),
+    ).not.toBeInTheDocument();
+  });
 });

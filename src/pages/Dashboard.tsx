@@ -60,6 +60,7 @@ export function Dashboard() {
   } = useLibraries();
   const {
     allItems,
+    unreadLibraryBooks,
     counts: shelfCounts,
     isLoading: isLoadingShelf,
     updateItemStatus,
@@ -467,6 +468,7 @@ export function Dashboard() {
             <ReadingBento
               mode="personal-reading"
               books={allItems}
+              unreadLibraryBooks={unreadLibraryBooks}
               isLoading={isLoadingShelf}
               onStatusChange={updateItemStatus}
               onTrackBook={openTrackBookDialog}

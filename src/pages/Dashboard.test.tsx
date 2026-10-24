@@ -9,6 +9,13 @@ import {useAuth} from '../stores/authStore';
 vi.mock('../stores/authStore');
 
 const mockCreateMutateAsync = vi.fn().mockResolvedValue({id: 'newLibId'});
+const mockUpdateStatusMutate = vi.fn().mockResolvedValue({});
+const mockGetUnreadLibraryBooksUseQuery = vi.fn(
+  (): {data: unknown[]; isLoading: boolean} => ({
+    data: [],
+    isLoading: false,
+  }),
+);
 
 vi.mock('../lib/trpc', () => ({
   trpc: {
@@ -17,11 +24,15 @@ vi.mock('../lib/trpc', () => ({
         list: {invalidate: vi.fn()},
         get: {setData: vi.fn()},
       },
+      readingTracker: {
+        getShelf: {invalidate: vi.fn()},
+        getUnreadLibraryBooks: {invalidate: vi.fn()},
+      },
     })),
     auth: {
       getPermissions: {
         useQuery: vi.fn(() => ({
-          data: {isAllowed: true, role: 'user'},
+          data: {isAllowed: true, role: 'user', hasAiPlan: true},
           isLoading: false,
         })),
       },
@@ -108,9 +119,17 @@ vi.mock('../lib/trpc', () => ({
           isLoading: false,
         })),
       },
+      getUnreadLibraryBooks: {
+        useQuery: () => mockGetUnreadLibraryBooksUseQuery(),
+      },
     },
   },
   trpcVanilla: {
+    book: {
+      updateStatus: {
+        mutate: (...args: unknown[]) => mockUpdateStatusMutate(...args),
+      },
+    },
     library: {
       update: {
         mutate: vi.fn().mockResolvedValue({}),
@@ -155,6 +174,10 @@ describe('Dashboard', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetUnreadLibraryBooksUseQuery.mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
     queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -183,7 +206,7 @@ describe('Dashboard', () => {
     renderDashboard();
   });
 
-  it('renders libraries and Reading Room Bento cards when user is logged in', async () => {
+  it('renders libraries and Reading Room Bento cards when user is logged in, omitting the unread library card when none match', async () => {
     (
       useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
     ).mockReturnValue({
@@ -201,6 +224,9 @@ describe('Dashboard', () => {
       screen.getByLabelText(/Interactive stack of your last 1 finished books/i),
     ).toBeInTheDocument();
     expect(screen.getByText('Explore Your Reading')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('reading-discovery-row'),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('tab', {name: /Overview/i})).toBeInTheDocument();
     expect(screen.getByRole('tab', {name: /All Books/i})).toBeInTheDocument();
     expect(screen.queryByText('Shelf Care')).not.toBeInTheDocument();
@@ -214,6 +240,82 @@ describe('Dashboard', () => {
       screen.getByRole('button', {name: 'In Libraries'}),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Un-owned'})).toBeInTheDocument();
+  });
+
+  it('renders the unread library CuratorPickCard side-by-side in the discovery row when unread books exist and supports shuffle, Want to Read, and book detail navigation', async () => {
+    (
+      useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
+    ).mockReturnValue({
+      user: {uid: 'user1', email: 'user@example.com'},
+    });
+
+    mockGetUnreadLibraryBooksUseQuery.mockReturnValue({
+      data: [
+        {
+          id: 'unread-1',
+          libraryId: 'lib1',
+          libraryName: 'Test Library',
+          title: 'The Dispossessed',
+          author: 'Ursula K. Le Guin',
+          synopsis: 'An ambiguous utopia across twin worlds.',
+          readingStatus: 'unset',
+        },
+        {
+          id: 'unread-2',
+          libraryId: 'lib2',
+          libraryName: 'Shared Family Shelf',
+          title: 'Hyperion',
+          author: 'Dan Simmons',
+          primaryGenre: 'Science Fiction',
+          readingStatus: 'want_to_read',
+        },
+      ],
+      isLoading: false,
+    });
+
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    try {
+      renderDashboard();
+
+      const discoveryRow = await screen.findByTestId('reading-discovery-row');
+      expect(discoveryRow).toHaveClass('grid-cols-1', 'lg:grid-cols-12');
+      expect(
+        screen.getByText(/From Your Libraries · Test Library/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText('The Dispossessed')).toBeInTheDocument();
+
+      // Clicking the book title navigates to the book detail view
+      fireEvent.click(screen.getByText('The Dispossessed'));
+      expect(mockNavigate).toHaveBeenCalledWith('/library/lib1/book/unread-1', {
+        state: {from: '/'},
+      });
+
+      // Clicking Want to Read updates the book status to want_to_read
+      const wantToReadButtons = screen.getAllByRole('button', {
+        name: /^Want to Read$/i,
+      });
+      fireEvent.click(wantToReadButtons[wantToReadButtons.length - 1]);
+      await waitFor(() => {
+        expect(mockUpdateStatusMutate).toHaveBeenCalledWith({
+          libraryId: 'lib1',
+          bookId: 'unread-1',
+          status: 'want_to_read',
+        });
+      });
+
+      // Clicking the shuffle button switches to the other unread book
+      const shuffleBtn = screen.getByTitle(
+        'Pick another unread book from your shelves',
+      );
+      fireEvent.click(shuffleBtn);
+      expect(await screen.findByText('Hyperion')).toBeInTheDocument();
+      expect(
+        screen.getByText(/From Your Libraries · Shared Family Shelf/i),
+      ).toBeInTheDocument();
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 
   it('navigates to the library view when clicking a library card and opens QuickAddBookDialog with Advanced link when clicking Find a Book', async () => {

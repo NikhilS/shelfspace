@@ -1,134 +1,93 @@
-# Database Correctness, Scalability & Payload Efficiency Remediation
+# Unread Shelf Spotlight Card in the Reading Room
 
-Eliminates index-clobbering regressions on partial updates, fixes multi-word and series search post-filtering, repairs filtered pagination cursors and duplicate-merge rating preservation, bounds subcollection concurrency during library deletion, and strips heavy `searchTokens` arrays from client catalog payloads.
+Add a curated discovery card to the Reading Room that surfaces a random unread book from across all owned and shared libraries the user can access, sharing 100% of the `CuratorPickCard` component implementation and styling while omitting the card whenever no matching unread book exists.
 
-## User Review & Critical Decisions
+### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> Both scope and payload design choices have been confirmed and incorporated into this plan:
+> The following product and layout decisions were confirmed and govern this implementation:
 
-- **Confirmed Decision 1 — Full Remediation Scope (Findings A–F)**: We will resolve all four correctness bugs (partial update index preservation, unified search post-filtering & partial-index fallback, filtered `listBooks` cursor/fallback behavior, and `mergeDuplicates` rating preservation), the scalability bottleneck in `deleteLibrary`, and the client wire-payload optimization.
-- **Confirmed Decision 2 — Lightweight Client Index Flag (`hasSearchTokens`)**: Server responses will strip the raw `searchTokens` array (up to 40 tokens per book) when constructing client `Book` payloads and expose a lightweight `hasSearchTokens: boolean` flag so Shelf Care storage optimization can still detect unindexed books without adding ~1.2 MB of token bloat to large catalogs.
-
----
-
-## 1. Overview & Core Concept
-
-- **What It Does**: Hardens the end-to-end Firestore data plane so that every partial book edit, background enrichment job, unified catalog search, status/genre filter, duplicate merge, and library deletion behaves deterministically at scale while keeping browser cache payloads lean.
-- **Target Audience / Persona**: Readers and collectors managing personal and shared libraries of up to several thousand books across online and offline PWA sessions.
-- **Key Value**:
-  - Prevents partial edits or background enrichment (`series`, `isbn`) from erasing title/author search tokens or leaving stale `dedupeKey` values.
-  - Ensures multi-word queries (such as combining title and author words) and series queries return accurate matches across both fully indexed and partially backfilled libraries.
-  - Preserves user star ratings when merging duplicate books and eliminates redundant 1,000-document fallback reads when a filtered status shelf is legitimately empty.
-  - Reduces catalog wire and IndexedDB cache size by stripping server-only search token arrays from client book payloads.
+- **Confirmed Decision 1 — Eligible Unread Pool**: Include books from all owned and shared libraries the user has access to whose personal reading status is either `unset` (not yet tracked) or `want_to_read`, while excluding any book marked `reading`, `finished` (`completed`), or `abandoned` (and excluding unowned books on the virtual reading shelf).
+- **Confirmed Decision 2 — Responsive Side-by-Side Desktop & Stacked Mobile Layout**: When a matching unread library book exists, render it in a responsive 12-column grid (`grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6`) where **Pick of the Day** and **From Your Libraries** sit side-by-side (`lg:col-span-6` + `lg:col-span-6`) on desktop and automatically reflow to stack vertically (`grid-cols-1`) on mobile and compact tablet screens so neither card is cramped. When no book matches the unread criteria, omit the card entirely and preserve the existing two-card row (`Books Read by Genre` + `Pick of the Day`).
+- **Confirmed Decision 3 — Card Actions & Shared Implementation**: Reuse the existing `CuratorPickCard` component without duplicating card markup or styling. Display the **Want to Read** / **On Want-to-Read Shelf** action button on the card, make the book cover and title clickable to open the book's detail view, and wire the top-left refresh button to cycle through other eligible unread books from the user's libraries.
 
 ---
 
-## 2. User Experience & Visual Design
+### 1. Overview & Core Concept
+
+- **What It Does**: Surfaces a serendipitous, unread book that the reader already owns or has shared access to across their libraries, reminding them of waiting treasures on their own shelves alongside the AI-powered daily recommendation.
+- **Target Audience / Persona**: Readers with personal or shared home libraries who want to rediscover unread books already sitting on their shelves before acquiring new titles.
+- **Key Value**: Bridges physical/shared library cataloging with personal reading tracking—turning static shelves into active reading inspiration with zero visual or code duplication.
+
+---
+
+### 2. User Experience & Visual Design
 
 - **Key User Flows**:
-  - **Unified Reading Search**: Typing a multi-word title + author query (e.g., `"Dune Herbert"`) or a series name (e.g., `"Hainish Cycle"`) immediately surfaces matching books from owned, shared, and personal reading shelves—even in libraries that contain a mix of newly indexed and legacy unindexed books.
-  - **Catalog Status & Genre Filtering**: Filtering a library by reading status or primary genre paginates cleanly in descending `addedAt` order without skipping or repeating books across cursor pages, and empty status shelves return instantaneously without triggering a background collection scan.
-  - **Duplicate Resolution**: Merging two duplicate copies preserves both each member's highest reading progress (`userStatuses`) and their star ratings (`userRatings`) alongside migrated reviews.
-  - **Shelf Care Storage & Index Check**: The **Optimize Library Storage** card in Shelf Care accurately detects books missing `hasSearchTokens`, `cleanIsbn`, or `dedupeKey` without downloading raw token arrays to the browser.
+  1. **Serendipitous Shelf Discovery**: When opening the Reading Room, if the user has at least one unread book (`unset` or `want_to_read`) across their owned or shared libraries, a second `CuratorPickCard` appears with the eyebrow `From Your Libraries · <Library Name>`.
+  2. **Shuffle Another Unread Book**: Clicking the top-left refresh icon (`RefreshCw`) immediately selects a different random unread book from the eligible pool without requiring an AI Plan or extra Gemini call.
+  3. **Save to Want to Read**: If the surfaced book is currently `unset`, clicking **Want to Read** updates its reading status to `want_to_read` and transitions the button to **On Want-to-Read Shelf**. If the book is already `want_to_read`, it displays **On Want-to-Read Shelf** immediately.
+  4. **Inspect Book Details**: Clicking the book's cover or title navigates directly to `/library/:libraryId/book/:bookId`.
+  5. **Automatic Omission**: If the user has no accessible libraries or every book across their libraries is already `reading`, `finished`, or `abandoned`, the card is omitted completely.
 - **Visual Identity & Theme**:
-  - Preserves the **Modern Archivist** aesthetic, Natural Materials palette, Manrope typographic hierarchy, and **Warm, Friendly, Crisp** microcopy across all Shelf Care, Reading Tracker, and catalog views.
+  - *Aesthetic Direction*: Warm Archival Studio—100% shared via `CuratorPickCard` (`bento-card`, warm gradient surface, corner `ExLibrisStampIllustration` watermark, and 2:3 framed cover art with `MonographCoverFallback`).
+  - *Color Palette & Mood*: Warm alabaster/parchment surfaces (`--surface-container-low` to `--surface`), subtle `border-outline-variant/50` hairlines, and `--primary` archival ink accents.
+  - *Typography & Hierarchy*: Uppercase sans-serif `.metadata-eyebrow` with a primary status dot, `--font-serif` (`Plus Jakarta Sans`) book title, `--font-sans` (`Manrope`) author byline, and an italic editorial blurb below a hairline divider.
+  - *Responsive Layout & Mobile Reflow*:
+    - **Desktop (`lg` and above)**: **Pick of the Day** and **From Your Libraries** sit side-by-side (`lg:col-span-6` + `lg:col-span-6`) with equal height (`h-full`), while **Books Read by Genre** (`md:col-span-5`) and **Up Next · Want to Read** (`md:col-span-7`) pair cleanly in the adjacent row.
+    - **Mobile & Tablet (`< lg`)**: The discovery row automatically reflows into a single vertical stack (`grid-cols-1`) with `gap-5`, and inside each `CuratorPickCard` the book cover and text body gracefully stack (`flex-col sm:flex-row`) with centered mobile alignment and generous touch targets.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+### 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1 — Context-Aware Index Recomputation & Additive Token Merging on Partial Updates**
-  - *Chosen Approach*: When a partial update modifies `title`, `author`, `series`, or `isbn`, recompute `dedupeKey` and `searchTokens` using the complete book tuple (`title`, `author`, `isbn`, `series`) whenever baseline book context is available (or fetched in single-book `updateBook` and passed in `batchUpsert`'s `enrichOnCreate` and `EnrichmentService`). If `partitionUpdatePayload` is invoked with only `series` or `isbn` and no baseline `title`/`author`, use `FieldValue.arrayUnion(...newTokens)` rather than overwriting `searchTokens`.
-  - *Why*: Overwriting `searchTokens` from a partial 1-field patch clobbers existing title and author tokens in Firestore. Using full context (or `arrayUnion` for additive fields) guarantees existing search tokens are never lost.
-  - *Alternatives Considered*: Requiring callers to always send full book objects on every partial mutation was rejected because background enrichment providers only emit delta patches.
-
-- **Decision 2 — Tokenized Multi-Field Post-Filtering & Post-Filter Fallback in Unified Search**
-  - *Chosen Approach*: Split the user's search query into normalized terms and verify that every query term matches across the union of `title`, `author`, `series`, and `cleanIsbn`. Evaluate this post-filter per library before deciding whether the native `.where('searchTokens', 'array-contains', ...)` query succeeded; if the indexed query yields zero post-filtered matches and any returned document or library metadata indicates unindexed legacy records, fall back to scanning only unindexed documents (`!Array.isArray(data.searchTokens)`).
-  - *Why*: Prevents false negatives on multi-word title+author queries, enables series search, and closes the blind spot where a single false-positive prefix match in a partially indexed library suppresses legacy fallback.
-
-- **Decision 3 — Stripping `searchTokens` in Favor of `hasSearchTokens` on Client Payloads**
-  - *Chosen Approach*: In `BookPartitioner.mergeBookAndDetails`, compute `hasSearchTokens = Array.isArray(bookData.searchTokens) && bookData.searchTokens.length > 0`, delete `searchTokens` from the returned client `Book` object, and check `!b.hasSearchTokens` in Shelf Care's `needsIndexBackfill` detector.
-  - *Why*: `searchTokens` is strictly a Firestore server-side inverted index field. Stripping the 40-element string array saves ~400–600 bytes per book (~1.2 MB across a 2,500-book library) on every tRPC catalog response and IndexedDB cache persistence cycle.
+- **Decision 1: Single Shared `CuratorPickCard` Component**
+  - *Chosen Approach*: Extend `CuratorPickCard` with optional props (`requiresAiPlan`, `requiresOnline`, `refreshTitle`, and `onSelectPick` for cover/title navigation) rather than creating a second card component.
+  - *Why*: Guarantees identical visual proportions, responsive `flex-col sm:flex-row` behavior, typography, cover fallback handling, and button styling while eliminating duplicated JSX/CSS maintenance.
+  - *Alternatives Considered*: Building a separate `RandomLibraryBookCard` component—rejected because it violates the DRY requirement and risks visual drift.
+- **Decision 2: Cross-Library Unread Candidate Pool with Cross-Shelf Deduplication**
+  - *Chosen Approach*: Fetch lightweight unread book candidates across the user's owned and shared libraries on the server (`getUnreadLibraryBooks`) and cross-filter against all books marked `reading`, `finished`, or `abandoned` by ID, ISBN, and normalized `title::author` key.
+  - *Why*: Most books in a user's physical/shared libraries have no `userStatuses[userId]` entry yet (`unset`), so `getPersonalReadingShelf` (which only queries books with active `userStatuses`) does not return them. A dedicated lightweight query with field projection surfaces both `unset` and `want_to_read` library books while excluding any title the user has already started, finished, or abandoned on another shelf.
 
 ---
 
-## 4. Technical Architecture & Data Strategy *(Technical Reference)*
+### 4. Technical Architecture & Data Strategy *(Technical Reference)*
 
-### Architecture & Data Flow Diagram
+- **Architecture & Component Diagram**:
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                        Client Application (Browser)                          │
-│                                                                              │
-│  ┌─────────────────────────┐  ┌─────────────────────────┐  ┌──────────────┐  │
-│  │  Catalog & Reading View │  │   Unified Search Modal  │  │  Shelf Care  │  │
-│  │  (Sorted Cursor Pages)  │  │ (Multi-Term + Series)   │  │ (Backfill UI)│  │
-│  └────────────┬────────────┘  └────────────┬────────────┘  └──────┬───────┘  │
-│               │                            │                      │          │
-│               └────────────────────────────┼──────────────────────┘          │
-│                                            ▼                                 │
-│                     Lean Client Book Payload (hasSearchTokens: boolean)      │
-└────────────────────────────────────────────┬─────────────────────────────────┘
-                                             │ tRPC v11 Gateway
-┌────────────────────────────────────────────▼─────────────────────────────────┐
-│                       Server Data Authority (Admin SDK)                      │
-│                                                                              │
-│  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │ BookPartitioner                                                        │  │
-│  │ • Create: Full cleanIsbn + dedupeKey + searchTokens                    │  │
-│  │ • Partial Update: Merges baseline (title, author, isbn, series) or     │  │
-│  │   uses FieldValue.arrayUnion for additive series/isbn patches          │  │
-│  │ • Read Merge: Sets hasSearchTokens boolean & strips raw searchTokens   │  │
-│  └───────────────┬────────────────────────────────────────┬───────────────┘  │
-│                  ▼                                        ▼                  │
-│  ┌────────────────────────────────────┐   ┌───────────────────────────────┐  │
-│  │ Write & Maintenance Services       │   │ Read & Search Services        │  │
-│  │ • updateBook / enrichOnCreate /    │   │ • listBooks: Sorted-slice     │  │
-│  │   EnrichmentService: Preserves     │   │   nextCursor + targeted       │  │
-│  │   full index tuple on edits        │   │   legacy status fallback      │  │
-│  │ • mergeDuplicates: Unions both     │   │ • searchUnifiedCatalog:       │  │
-│  │   userStatuses & userRatings       │   │   Multi-term (title/author/   │  │
-│  │ • deleteLibrary: .select() refs,   │   │   series/isbn) post-filter +  │  │
-│  │   direct bookDetails sweep,        │   │   partial-index fallback      │  │
-│  │   bounded review concurrency       │   │                               │  │
-│  └────────────────────────────────────┘   └───────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     ReadingTrackerService (Server)                       │
+│  getUnreadLibraryBooks(userId, userEmail)                                │
+│  ├─ Resolves owned + shared libraries (excludes virtual_ shelf)          │
+│  ├─ Queries lightweight book projections per accessible library          │
+│  └─ Excludes books where user status is reading / finished / abandoned   │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │ tRPC (readingTracker.getUnreadLibraryBooks)
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       useReadingShelf & ReadingBento                     │
+│  ├─ Merges server unread pool + eligible non-virtual library books       │
+│  ├─ Cross-filters against active reading / finished / abandoned titles   │
+│  └─ Maintains stable random pick + shuffle handler                       │
+└─────────────────┬────────────────────────────────────┬───────────────────┘
+                  │                                    │
+                  ▼ (Always rendered)                  ▼ (Rendered iff unreadPick !== null)
+┌────────────────────────────────────┐ ┌───────────────────────────────────┐
+│          CuratorPickCard           │ │          CuratorPickCard          │
+│  Pick of the Day (AI History Pick) │ │  From Your Libraries (Unread)     │
+│  ├─ Desktop: lg:col-span-6         │ │  ├─ Desktop: lg:col-span-6        │
+│  ├─ Mobile/Tablet: full-width stack│ │  ├─ Mobile/Tablet: stacks below   │
+│  ├─ Refresh via Gemini Curator     │ │  ├─ Refresh shuffles local pool   │
+│  └─ CTA: Want to Read              │ │  ├─ Cover/Title -> Book Details   │
+│                                    │ │  └─ CTA: Want to Read             │
+└────────────────────────────────────┘ └───────────────────────────────────┘
 ```
 
-### Interactive Component & Service Mapping
-
-1. **Safe Index Maintenance on Partial Updates (`BookPartitioner`, `BookWriteService`, `EnrichmentService`)**:
-   - Extend `PartitionUpdateOptions` with `existingBook?: {title?: string; author?: string; isbn?: string; series?: string}`.
-   - When `title` or `author` changes, compute `dedupeKey` using `coreUpdates.title ?? existingBook?.title` and `coreUpdates.author ?? existingBook?.author` whenever both values are available.
-   - When any of `title`, `author`, `series`, or `isbn` changes:
-     - If effective `title` and `author` are both known (from `coreUpdates` or `existingBook`), compute the complete `searchTokens` array across effective `{title, author, isbn, series}`.
-     - If only `series` or `isbn` is present in `coreUpdates` without `existingBook` context, compute tokens for the updated field(s) and set `coreUpdates.searchTokens = FieldValue.arrayUnion(...newTokens)` so existing title/author tokens are preserved.
-     - In `batchUpsert` (`enrichOnCreate` background callback) and `mergeDuplicates`, pass `existingBook` from the in-memory `booksToEnrich` / `survivorSnap` record.
-     - In `updateBook`, if `updates` modifies `title`, `author`, `series`, or `isbn` without providing both `title` and `author`, read the current book document first so `dedupeKey` and `searchTokens` are recomputed accurately.
-     - In `EnrichmentService.triggerBatchEnrichment` (`MetadataKey.SERIES`), compute updated `searchTokens` from `bookData` (`title`, `author`, `isbn`) + the newly enriched `series` string and write `searchTokens` alongside `series`.
-
-2. **Multi-Term & Series-Aware Unified Catalog Search (`ReadingTrackerService.searchUnifiedCatalog`)**:
-   - Tokenize `queryLower` into individual search terms (`queryTerms = queryLower.split(/\s+/).filter(Boolean)`).
-   - Match a book if `isbnMatch` is true OR every term in `queryTerms` appears in at least one of `titleLower`, `authorLower`, `seriesLower`, or `cleanBookIsbn`.
-   - Include `series: data.series` in the returned `UnifiedLibrarySearchMatch` payload.
-   - Apply the post-filter inside each library's search task: if the native `.where('searchTokens', 'array-contains', primarySearchToken)` query yields zero post-filtered matches and the library is non-empty (`libMeta.bookCount !== 0`), fall back to checking unindexed legacy documents (`!Array.isArray(data.searchTokens)`) so mixed indexed/unindexed libraries never drop legacy matches.
-
-3. **Filtered `listBooks` Cursor Alignment & Targeted Legacy Fallback (`BookReadService.listBooks`)**:
-   - When `appliedNativeWhereFilter` is `true` and `rawDocs.length === 0`:
-     - If `options?.filters?.status` was requested, only query legacy top-level `.where('status', '==', options.filters.status).limit(fetchLimit).get()` instead of scanning 1,001 arbitrary documents.
-     - If `options?.filters?.primaryGenre` was requested, only run the bounded fallback scan if the collection could contain case-mismatched genre strings.
-   - When computing `nextCursor` on line 282, use `slicedBooks[slicedBooks.length - 1]?.id` whenever `appliedNativeWhereFilter` is `true` (since `books` has already been sorted in memory by `addedAt desc`), ensuring subsequent cursor pages slice from the exact sorted boundary.
-
-4. **Rating Preservation in Duplicate Merge (`BookWriteService.mergeDuplicates`)**:
-   - Alongside `mergedUserStatuses`, iterate through `bookDocs` (survivor first, then duplicates) to union `userRatings` (`Record<string, number>`): preserve the survivor's rating for a user if present, or adopt the highest valid numeric rating ($\ge 1$) from the duplicate records.
-   - Include `userRatings: mergedUserRatings` in `combinedUpdates` and allow `userRatings` passthrough when `allowFullUserStatuses: true` is set in `BookPartitioner.partitionUpdatePayload`.
-
-5. **Bounded Concurrency & Orphan-Free Cleanup in `LibraryService.deleteLibrary`**:
-   - Fetch `books`, `bookDetails`, and `allowedDuplicates` references in parallel using `.select()` (empty field projection when supported by Admin SDK, falling back to `.get()` in mocks) so full document payloads are not pulled into memory and any orphaned `bookDetails` docs are also deleted.
-   - Fetch `reviews` subcollections across `booksSnap.docs` in bounded concurrency chunks (e.g., 25 books at a time) rather than firing thousands of simultaneous RPCs in a single `Promise.all`.
-
-6. **Lean Client Payload (`BookPartitioner.mergeBookAndDetails` & `ResetMetadataSection`)**:
-   - Add `hasSearchTokens?: boolean` to `Book` in `src/types/book.ts`.
-   - In `BookPartitioner.mergeBookAndDetails`, set `hasSearchTokens: Array.isArray(bookData.searchTokens) && bookData.searchTokens.length > 0` and omit `searchTokens` from the returned client `Book` object.
-   - Update `needsIndexBackfill` in `ResetMetadataSection.tsx` to check `!b.hasSearchTokens && (!Array.isArray(b.searchTokens) || b.searchTokens.length === 0)`.
+- **Data Model & State**:
+  - `UnreadLibraryBookItem`: Lightweight projection (`id`, `libraryId`, `libraryName`, `title`, `author`, `isbn`, `coverUrl`, `publishedDate`, `primaryGenre`, `subgenres`, `series`, `synopsis`, `readingStatus: 'unset' | 'want_to_read'`).
+  - `CuratorPickItem`: Extended with optional `bookId`, `libraryId`, and `libraryName` so `CuratorPickCard` can navigate to the book's detail page and update its library status.
+- **Interactive Component & State Mapping**:
+  - **Shuffle (`RefreshCw`)**: Selects a random candidate from `unreadCandidates` (guaranteeing a different book when `unreadCandidates.length > 1`) without network round-trips.
+  - **Want to Read CTA**: Invokes `handleStatusChange(libraryId, bookId, 'want_to_read')`, optimistic/invalidated via `useReadingShelf`, transitioning the button to `On Want-to-Read Shelf`.
+  - **Cover / Title Click**: Navigates to `/library/:libraryId/book/:bookId` with `{state: {from: '/'}}` so the back button returns cleanly to the Reading Room.

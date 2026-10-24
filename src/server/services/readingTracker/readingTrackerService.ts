@@ -42,6 +42,12 @@ export interface ReadingShelfSummary {
   };
 }
 
+export interface UnreadLibraryBookItem extends Book {
+  libraryId: string;
+  libraryName: string;
+  readingStatus: 'unset' | 'want_to_read';
+}
+
 export interface UnifiedLibrarySearchMatch {
   bookId: string;
   libraryId: string;
@@ -236,6 +242,180 @@ export async function getPersonalReadingShelf(
     items: filteredItems,
     counts,
   };
+}
+
+/**
+ * Retrieves unread books ('unset' or 'want_to_read') across all non-virtual libraries
+ * accessible to the user (owned and shared), excluding any book that the user has
+ * marked as 'reading', 'finished'/'completed', or 'abandoned' in any library or virtual shelf.
+ */
+export async function getUnreadLibraryBooks(
+  userId: string,
+  userEmail: string | undefined,
+): Promise<UnreadLibraryBookItem[]> {
+  const db = getAdminDb();
+  const virtualLibraryId = getVirtualLibraryId(userId);
+
+  const {libraries} = await LibraryService.getUserLibraries(
+    userId,
+    userEmail,
+    ['owned', 'shared'],
+    false,
+  );
+
+  const nonVirtualLibraries = libraries.filter(
+    lib => !lib.id.startsWith('virtual_'),
+  );
+
+  if (nonVirtualLibraries.length === 0) {
+    return [];
+  }
+
+  const [librarySnaps, virtualSnap] = await Promise.all([
+    Promise.all(
+      nonVirtualLibraries.map(async lib => {
+        try {
+          const snap = await db
+            .collection('libraries')
+            .doc(lib.id)
+            .collection('books')
+            .get();
+          return {
+            libId: lib.id,
+            libName: lib.name || 'Untitled Library',
+            docs: snap.docs || [],
+          };
+        } catch {
+          return {
+            libId: lib.id,
+            libName: lib.name || 'Untitled Library',
+            docs: [],
+          };
+        }
+      }),
+    ),
+    (async () => {
+      try {
+        const vRef = db
+          .collection('libraries')
+          .doc(virtualLibraryId)
+          .collection('books');
+        if (typeof (vRef as {where?: unknown}).where === 'function') {
+          const snap = await vRef
+            .where(new FieldPath('userStatuses', userId), 'in', [
+              'reading',
+              'finished',
+              'completed',
+              'abandoned',
+            ])
+            .get();
+          return snap.docs || [];
+        }
+        const snap = await vRef.get();
+        return snap.docs || [];
+      } catch {
+        return [];
+      }
+    })(),
+  ]);
+
+  const excludedDedupeKeys = new Set<string>();
+  const excludedIsbns = new Set<string>();
+
+  const recordExcludedBook = (rawData: Partial<Book>) => {
+    const cleanIsbn =
+      rawData.cleanIsbn || normalizeIsbnForDedupe(rawData.isbn || '');
+    if (cleanIsbn) {
+      excludedIsbns.add(cleanIsbn);
+    }
+    const dedupeKey =
+      rawData.dedupeKey ||
+      computeBookDedupeKey(rawData.title || '', rawData.author);
+    if (dedupeKey && dedupeKey !== '::') {
+      excludedDedupeKeys.add(dedupeKey);
+    }
+  };
+
+  for (const docSnap of virtualSnap) {
+    const rawData = (docSnap.data() || {}) as Partial<Book>;
+    const status = normalizeStatus(
+      rawData.userStatuses?.[userId] ?? rawData.status,
+    );
+    if (
+      status === 'reading' ||
+      status === 'finished' ||
+      status === 'abandoned'
+    ) {
+      recordExcludedBook(rawData);
+    }
+  }
+
+  for (const {docs} of librarySnaps) {
+    for (const docSnap of docs) {
+      const rawData = (docSnap.data() || {}) as Partial<Book>;
+      if (rawData.ownershipStatus === 'unowned') {
+        continue;
+      }
+      const status = normalizeStatus(rawData.userStatuses?.[userId]);
+      if (
+        status === 'reading' ||
+        status === 'finished' ||
+        status === 'abandoned'
+      ) {
+        recordExcludedBook(rawData);
+      }
+    }
+  }
+
+  const unreadItems: UnreadLibraryBookItem[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const {libId, libName, docs} of librarySnaps) {
+    for (const docSnap of docs) {
+      const rawData = (docSnap.data() || {}) as Partial<Book>;
+      if (rawData.ownershipStatus === 'unowned') {
+        continue;
+      }
+      const merged = BookPartitioner.mergeBookAndDetails(docSnap.id, rawData);
+      const status = normalizeStatus(merged.userStatuses?.[userId]);
+
+      if (status !== 'unset' && status !== 'want_to_read') {
+        continue;
+      }
+
+      const cleanIsbn =
+        merged.cleanIsbn || normalizeIsbnForDedupe(merged.isbn || '');
+      const dedupeKey =
+        merged.dedupeKey ||
+        computeBookDedupeKey(merged.title || '', merged.author);
+
+      if (
+        (cleanIsbn && excludedIsbns.has(cleanIsbn)) ||
+        (dedupeKey && dedupeKey !== '::' && excludedDedupeKeys.has(dedupeKey))
+      ) {
+        continue;
+      }
+
+      const uniqueIdentity =
+        cleanIsbn ||
+        (dedupeKey && dedupeKey !== '::'
+          ? dedupeKey
+          : `${libId}::${docSnap.id}`);
+      if (seenKeys.has(uniqueIdentity)) {
+        continue;
+      }
+      seenKeys.add(uniqueIdentity);
+
+      unreadItems.push({
+        ...merged,
+        libraryId: libId,
+        libraryName: libName,
+        readingStatus: status,
+      });
+    }
+  }
+
+  return unreadItems;
 }
 
 /**

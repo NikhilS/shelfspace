@@ -5,6 +5,7 @@ import {ReadingTrackerService} from '../../services/readingTracker';
 vi.mock('../../services/readingTracker', () => ({
   ReadingTrackerService: {
     getPersonalReadingShelf: vi.fn(),
+    getUnreadLibraryBooks: vi.fn(),
     searchUnifiedCatalog: vi.fn(),
     trackBook: vi.fn(),
   },
@@ -48,6 +49,30 @@ describe('readingTrackerRouter', () => {
       'user-1',
       'reader@example.com',
       {shelf: 'want_to_read'},
+    );
+  });
+
+  it('getUnreadLibraryBooks delegates to ReadingTrackerService.getUnreadLibraryBooks', async () => {
+    vi.mocked(ReadingTrackerService.getUnreadLibraryBooks).mockResolvedValue([
+      {
+        id: 'book-unread-1',
+        libraryId: 'lib-1',
+        libraryName: 'Home Library',
+        readingStatus: 'unset',
+        title: 'Hyperion',
+        author: 'Dan Simmons',
+        addedAt: '2026-01-01',
+      },
+    ]);
+
+    const caller = appRouter.createCaller(mockUserCtx);
+    const res = await caller.readingTracker.getUnreadLibraryBooks();
+
+    expect(res).toHaveLength(1);
+    expect(res[0].title).toBe('Hyperion');
+    expect(ReadingTrackerService.getUnreadLibraryBooks).toHaveBeenCalledWith(
+      'user-1',
+      'reader@example.com',
     );
   });
 

@@ -6,6 +6,7 @@ import type {
   TrackedBookItem,
   TrackedShelfStatus,
   ReadingShelfSummary,
+  UnreadLibraryBookItem,
   TrackBookInput,
 } from '../../server/services/readingTracker';
 
@@ -40,6 +41,7 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
     | {
         data?: unknown;
         isLoading?: boolean;
+        error?: unknown;
         refetch?: () => Promise<unknown>;
       }
     | undefined;
@@ -57,6 +59,27 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
     shelfQuery = undefined;
   }
 
+  let unreadQuery:
+    | {
+        data?: UnreadLibraryBookItem[] | {books?: UnreadLibraryBookItem[]};
+        isLoading?: boolean;
+        refetch?: () => Promise<unknown>;
+      }
+    | undefined;
+  try {
+    if (trpc?.readingTracker?.getUnreadLibraryBooks?.useQuery) {
+      unreadQuery = trpc.readingTracker.getUnreadLibraryBooks.useQuery(
+        undefined,
+        {
+          enabled: Boolean(user) && isEnabled,
+          staleTime: 1000 * 60 * 2,
+        },
+      );
+    }
+  } catch {
+    unreadQuery = undefined;
+  }
+
   const summary: ReadingShelfSummary = useMemo(() => {
     const data = shelfQuery?.data as ReadingShelfSummary | undefined;
     if (!data || !Array.isArray(data.items)) {
@@ -64,6 +87,17 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
     }
     return data;
   }, [shelfQuery?.data]);
+
+  const unreadLibraryBooks = useMemo<UnreadLibraryBookItem[]>(() => {
+    const raw = unreadQuery?.data;
+    if (Array.isArray(raw)) {
+      return raw;
+    }
+    if (raw && typeof raw === 'object' && Array.isArray(raw.books)) {
+      return raw.books;
+    }
+    return [];
+  }, [unreadQuery?.data]);
 
   const filteredItems = useMemo<TrackedBookItem[]>(() => {
     if (activeShelf === 'all') {
@@ -75,11 +109,13 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
   const invalidateAll = useCallback(async () => {
     try {
       await utils?.readingTracker?.getShelf?.invalidate?.();
+      await utils?.readingTracker?.getUnreadLibraryBooks?.invalidate?.();
       await utils?.library?.list?.invalidate?.();
     } catch {
       void shelfQuery?.refetch?.();
+      void unreadQuery?.refetch?.();
     }
-  }, [utils, shelfQuery]);
+  }, [utils, shelfQuery, unreadQuery]);
 
   const updateItemStatus = useCallback(
     async (
@@ -134,6 +170,7 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
   return {
     items: filteredItems,
     allItems: summary.items,
+    unreadLibraryBooks,
     counts: summary.counts,
     activeShelf,
     setActiveShelf,

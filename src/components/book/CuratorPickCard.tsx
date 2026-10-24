@@ -13,6 +13,9 @@ export interface CuratorPickItem {
   author: string;
   coverUrl?: string;
   reason: string;
+  libraryId?: string;
+  bookId?: string;
+  libraryName?: string;
 }
 
 export interface CuratorPickCardProps {
@@ -21,12 +24,15 @@ export interface CuratorPickCardProps {
   generateNewPick: () => void;
   pickError?: string | null;
   hasAiPlan?: boolean;
+  requiresAiPlan?: boolean;
+  refreshTitle?: string;
   eyebrow?: string;
   emptyTitle?: string;
   emptyDescription?: string;
   onAddToWantToRead?: (pick: CuratorPickItem) => Promise<void> | void;
   isAddedToWantToRead?: boolean;
   isAddingToWantToRead?: boolean;
+  onOpenBook?: (pick: CuratorPickItem) => void;
   className?: string;
 }
 
@@ -36,17 +42,23 @@ export function CuratorPickCard({
   generateNewPick,
   pickError,
   hasAiPlan: passedHasAiPlan,
+  requiresAiPlan = true,
+  refreshTitle = 'Get another recommendation',
   eyebrow = "Curator's Recommendation",
   emptyTitle = "Curator's Pick",
   emptyDescription = 'Looking for your next great read? Let our curator suggest a standout title from this shelf.',
   onAddToWantToRead,
   isAddedToWantToRead = false,
   isAddingToWantToRead = false,
+  onOpenBook,
   className = '',
 }: CuratorPickCardProps) {
   const {hasAiPlan: contextHasAiPlan} = useAppPermissions();
-  const hasAiPlan = passedHasAiPlan ?? contextHasAiPlan;
   const isOnline = useOnlineStatus();
+  const hasAiPlan = !requiresAiPlan || (passedHasAiPlan ?? contextHasAiPlan);
+  const canRefresh = requiresAiPlan
+    ? Boolean(hasAiPlan) && isOnline && !isGeneratingPick
+    : !isGeneratingPick;
   const [coverError, setCoverError] = useState(false);
 
   useEffect(() => {
@@ -65,15 +77,15 @@ export function CuratorPickCard({
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => hasAiPlan && isOnline && generateNewPick()}
-        disabled={!hasAiPlan || !isOnline || isGeneratingPick}
+        onClick={() => canRefresh && generateNewPick()}
+        disabled={!canRefresh}
         className="absolute top-3 left-3 z-20 hover:bg-surface-container text-on-surface-variant hover:text-primary w-8 h-8 rounded-lg disabled:opacity-40"
         title={
-          !isOnline
+          requiresAiPlan && !isOnline
             ? 'Unavailable while offline'
-            : !hasAiPlan
+            : requiresAiPlan && !hasAiPlan
               ? 'Requires AI Plan (Admin-enabled)'
-              : 'Get another recommendation'
+              : refreshTitle
         }
       >
         <RefreshCw size={15} strokeWidth={1.6} />
@@ -87,7 +99,12 @@ export function CuratorPickCard({
         </div>
       ) : pickOfTheDay ? (
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 w-full z-10 relative items-center sm:items-start pt-6 sm:pt-0">
-          <div className="w-20 sm:w-24 mx-auto sm:mx-0 flex-shrink-0 mt-1">
+          <div
+            onClick={onOpenBook ? () => onOpenBook(pickOfTheDay) : undefined}
+            className={`w-20 sm:w-24 mx-auto sm:mx-0 flex-shrink-0 mt-1 ${
+              onOpenBook ? 'cursor-pointer' : ''
+            }`}
+          >
             {pickOfTheDay.coverUrl && !coverError ? (
               <img
                 alt="Book Cover"
@@ -114,14 +131,20 @@ export function CuratorPickCard({
               />
               {eyebrow}
             </span>
-            <h3 className="font-serif text-lg sm:text-xl font-semibold tracking-tight text-primary line-clamp-1">
+            <h3
+              onClick={onOpenBook ? () => onOpenBook(pickOfTheDay) : undefined}
+              className={`font-serif text-lg sm:text-xl font-semibold tracking-tight text-primary line-clamp-1 ${
+                onOpenBook ? 'hover:underline cursor-pointer' : ''
+              }`}
+            >
               {toTitleCase(pickOfTheDay.title)}
             </h3>
             <p className="font-sans text-xs text-on-surface-variant mb-2.5">
               {toTitleCase(pickOfTheDay.author)}
+              {pickOfTheDay.libraryName ? ` · ${pickOfTheDay.libraryName}` : ''}
             </p>
             <div className="pt-2 border-t border-outline-variant/50 text-left">
-              <p className="font-serif text-xs sm:text-sm text-on-surface leading-relaxed italic">
+              <p className="font-serif text-xs sm:text-sm text-on-surface leading-relaxed italic line-clamp-3">
                 &ldquo;{pickOfTheDay.reason}&rdquo;
               </p>
             </div>

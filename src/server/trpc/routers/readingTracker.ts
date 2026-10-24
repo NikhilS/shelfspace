@@ -30,6 +30,13 @@ export const readingTrackerRouter = router({
       );
     }),
 
+  getUnreadLibraryBooks: protectedProcedure.query(async ({ctx}) => {
+    return await ReadingTrackerService.getUnreadLibraryBooks(
+      ctx.user.uid,
+      ctx.user.email,
+    );
+  }),
+
   searchUnified: protectedProcedure
     .input(
       z.object({

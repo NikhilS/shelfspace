@@ -152,6 +152,114 @@ describe('ReadingTrackerService', () => {
     });
   });
 
+  describe('getUnreadLibraryBooks', () => {
+    it('returns unset and want_to_read books across non-virtual libraries while excluding books read/reading/abandoned in any library or virtual shelf', async () => {
+      vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
+        libraries: [
+          {
+            id: 'lib-1',
+            name: 'Home Library',
+            ownerId: 'u1',
+            ownerName: 'Reader',
+            callerRole: 'owner',
+            createdAt: '2026-01-01',
+            bookCount: 3,
+          },
+          {
+            id: 'lib-2',
+            name: 'Shared Library',
+            ownerId: 'u2',
+            ownerName: 'Friend',
+            callerRole: 'viewer',
+            createdAt: '2026-01-01',
+            bookCount: 2,
+          },
+        ],
+      });
+
+      mockCollectionGet
+        // lib-1 books
+        .mockResolvedValueOnce({
+          docs: [
+            {
+              id: 'b1-unread',
+              data: () => ({
+                title: 'The Dispossessed',
+                author: 'Ursula K. Le Guin',
+                isbn: '9780061054884',
+              }),
+            },
+            {
+              id: 'b1-reading',
+              data: () => ({
+                title: 'Project Hail Mary',
+                author: 'Andy Weir',
+                userStatuses: {u1: 'reading'},
+              }),
+            },
+            {
+              id: 'b1-read-on-virtual',
+              data: () => ({
+                title: 'Piranesi',
+                author: 'Susanna Clarke',
+                isbn: '9781635575637',
+              }),
+            },
+          ],
+        })
+        // lib-2 books
+        .mockResolvedValueOnce({
+          docs: [
+            {
+              id: 'b2-want-to-read',
+              data: () => ({
+                title: 'Hyperion',
+                author: 'Dan Simmons',
+                userStatuses: {u1: 'want_to_read'},
+              }),
+            },
+            {
+              id: 'b2-abandoned',
+              data: () => ({
+                title: 'Infinite Jest',
+                author: 'David Foster Wallace',
+                userStatuses: {u1: 'abandoned'},
+              }),
+            },
+          ],
+        })
+        // virtual_u1 active/finished/abandoned query
+        .mockResolvedValueOnce({
+          docs: [
+            {
+              id: 'v-piranesi',
+              data: () => ({
+                title: 'Piranesi',
+                author: 'Susanna Clarke',
+                isbn: '9781635575637',
+                userStatuses: {u1: 'finished'},
+              }),
+            },
+          ],
+        });
+
+      const unread = await ReadingTrackerService.getUnreadLibraryBooks(
+        'u1',
+        'u1@example.com',
+      );
+
+      expect(unread).toHaveLength(2);
+      expect(unread.map(b => b.title)).toEqual([
+        'The Dispossessed',
+        'Hyperion',
+      ]);
+      expect(unread[0].readingStatus).toBe('unset');
+      expect(unread[0].libraryName).toBe('Home Library');
+      expect(unread[1].readingStatus).toBe('want_to_read');
+      expect(unread[1].libraryName).toBe('Shared Library');
+    });
+  });
+
   describe('searchUnifiedCatalog', () => {
     it('queries searchTokens via array-contains and cross-references external catalog matches', async () => {
       vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
