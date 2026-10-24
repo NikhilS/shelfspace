@@ -489,14 +489,16 @@ describe('BookService - Unified Write Layer', () => {
   });
 
   describe('mergeDuplicates', () => {
-    it('fetches survivor and duplicate books in bulk via db.getAll and commits merge in batch', async () => {
+    it('fetches survivor and duplicate books in bulk via db.getAll, unions userStatuses and userRatings, and commits merge in batch', async () => {
       mockGetAll.mockResolvedValueOnce([
         {
           exists: true,
           id: 'book-1',
           data: () => ({
             title: 'Dune',
+            author: 'Frank Herbert',
             userStatuses: {'user-1': 'want_to_read'},
+            userRatings: {'user-1': 4},
           }),
         },
         {
@@ -504,7 +506,9 @@ describe('BookService - Unified Write Layer', () => {
           id: 'book-dup-1',
           data: () => ({
             title: 'Dune (Duplicate)',
+            author: 'Frank Herbert',
             userStatuses: {'user-1': 'reading', 'user-2': 'completed'},
+            userRatings: {'user-1': 5, 'user-2': 5},
           }),
         },
       ]);
@@ -526,14 +530,96 @@ describe('BookService - Unified Write Layer', () => {
         expect.anything(),
         expect.objectContaining({
           title: 'Dune (Definitive Edition)',
+          dedupeKey: 'dune::frank herbert',
+          searchTokens: expect.arrayContaining(['dune', 'frank', 'herbert']),
           userStatuses: {
             'user-1': 'reading',
             'user-2': 'completed',
+          },
+          userRatings: {
+            'user-1': 4,
+            'user-2': 5,
           },
         }),
         {merge: true},
       );
       expect(mockCommit).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('partial update index & client payload hardening', () => {
+    it('preserves existing title/author searchTokens and dedupeKey when updating a single field on updateBook', async () => {
+      mockBookGet.mockResolvedValueOnce({
+        exists: true,
+        id: 'book-1',
+        data: () => ({
+          title: 'The Left Hand of Darkness',
+          author: 'Ursula K. Le Guin',
+          isbn: '9780441478125',
+        }),
+      });
+
+      await BookService.updateBook('user-1', {
+        libraryId: 'lib-1',
+        bookId: 'book-1',
+        updates: {
+          series: 'Hainish Cycle',
+        },
+      });
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          series: 'Hainish Cycle',
+          searchTokens: expect.arrayContaining([
+            'left',
+            'hand',
+            'darkness',
+            'ursula',
+            'guin',
+            'hainish',
+            'cycle',
+          ]),
+        }),
+      );
+    });
+
+    it('strips raw searchTokens array and exposes hasSearchTokens boolean on listBooks payloads, and aligns filtered nextCursor with sorted books', async () => {
+      mockBooksQueryGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'book-older',
+            data: () => ({
+              title: 'Older Sci-Fi',
+              author: 'Author A',
+              primaryGenre: 'Sci-Fi',
+              searchTokens: ['older', 'author'],
+              addedAt: '2026-01-01T00:00:00.000Z',
+            }),
+          },
+          {
+            id: 'book-newer',
+            data: () => ({
+              title: 'Newer Sci-Fi',
+              author: 'Author B',
+              primaryGenre: 'Sci-Fi',
+              searchTokens: ['newer', 'author'],
+              addedAt: '2026-02-01T00:00:00.000Z',
+            }),
+          },
+        ],
+      });
+
+      const res = await BookService.listBooks('user-1', 'lib-1', {
+        filters: {primaryGenre: 'Sci-Fi'},
+        limit: 1,
+      });
+
+      expect(res.books).toHaveLength(1);
+      expect(res.books[0].id).toBe('book-newer');
+      expect(res.books[0].hasSearchTokens).toBe(true);
+      expect(res.books[0].searchTokens).toBeUndefined();
+      expect(res.nextCursor).toBe('book-newer');
     });
   });
 

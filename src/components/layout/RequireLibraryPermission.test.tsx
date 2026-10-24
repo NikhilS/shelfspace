@@ -4,11 +4,16 @@ import {MemoryRouter, Routes, Route} from 'react-router-dom';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {RequireLibraryPermission} from './RequireLibraryPermission';
 import {useAuth} from '../../stores/authStore';
+import {useAppPermissions} from '../../hooks/useAppPermissions';
 import {useLibraryPermissions} from '../../hooks/useLibraryPermissions';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 
 vi.mock('../../stores/authStore', () => ({
   useAuth: vi.fn(),
+}));
+
+vi.mock('../../hooks/useAppPermissions', () => ({
+  useAppPermissions: vi.fn(),
 }));
 
 vi.mock('../../hooks/useLibraryPermissions', () => ({
@@ -37,6 +42,13 @@ describe('RequireLibraryPermission', () => {
     vi.mocked(useAuth).mockReturnValue({
       user: {uid: 'user-1', email: 'reader@example.com'},
     } as unknown as ReturnType<typeof useAuth>);
+    vi.mocked(useAppPermissions).mockReturnValue({
+      isAppAllowed: true,
+      isAdmin: false,
+      hasAiPlan: false,
+      isLoadingPermissions: false,
+      refetchPermissions: vi.fn(),
+    });
   });
 
   it('renders children when user has required viewer permission online', () => {
@@ -67,6 +79,79 @@ describe('RequireLibraryPermission', () => {
     );
 
     expect(screen.getByText('Library Content')).toBeInTheDocument();
+  });
+
+  it('blocks non-admin owners when requireAdmin is true (e.g. Shelf Care route)', () => {
+    vi.mocked(useOnlineStatus).mockReturnValue(true);
+    vi.mocked(useLibraryPermissions).mockReturnValue({
+      role: 'owner',
+      isOwner: true,
+      canEdit: true,
+      canView: true,
+      loading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/library/lib-1/spruce-up']}>
+        <Routes>
+          <Route
+            path="/library/:id/spruce-up"
+            element={
+              <RequireLibraryPermission requires="editor" requireAdmin>
+                <div>Shelf Care Content</div>
+              </RequireLibraryPermission>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Access Denied')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /You don't have the necessary permissions \(admin\) to view this page\./i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Shelf Care Content')).not.toBeInTheDocument();
+  });
+
+  it('allows admin editors when requireAdmin is true', () => {
+    vi.mocked(useOnlineStatus).mockReturnValue(true);
+    vi.mocked(useAppPermissions).mockReturnValue({
+      isAppAllowed: true,
+      isAdmin: true,
+      hasAiPlan: true,
+      isLoadingPermissions: false,
+      refetchPermissions: vi.fn(),
+    });
+    vi.mocked(useLibraryPermissions).mockReturnValue({
+      role: 'owner',
+      isOwner: true,
+      canEdit: true,
+      canView: true,
+      loading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/library/lib-1/spruce-up']}>
+        <Routes>
+          <Route
+            path="/library/:id/spruce-up"
+            element={
+              <RequireLibraryPermission requires="editor" requireAdmin>
+                <div>Shelf Care Content</div>
+              </RequireLibraryPermission>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Shelf Care Content')).toBeInTheDocument();
   });
 
   it('renders offline read-only notice when accessing an editor route while offline', () => {

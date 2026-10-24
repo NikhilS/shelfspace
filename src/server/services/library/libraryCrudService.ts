@@ -421,24 +421,63 @@ export async function deleteLibrary(
     const db = getAdminDb();
     const libRef = db.collection('libraries').doc(libraryId);
 
-    const [booksSnap, dupSnap] = await Promise.all([
-      libRef.collection('books').get(),
-      libRef.collection('allowedDuplicates').get(),
+    const fetchCollectionRefs = async (
+      colRef: FirebaseFirestore.CollectionReference,
+    ): Promise<FirebaseFirestore.QuerySnapshot> => {
+      const selectable = colRef as unknown as {
+        select?: () => {get: () => Promise<FirebaseFirestore.QuerySnapshot>};
+      };
+      if (typeof selectable?.select === 'function') {
+        return selectable.select().get();
+      }
+      return colRef.get();
+    };
+
+    const detailsCol = libRef.collection('bookDetails');
+    const canListDetails =
+      typeof (detailsCol as unknown as {get?: unknown})?.get === 'function' ||
+      typeof (detailsCol as unknown as {select?: unknown})?.select ===
+        'function';
+
+    const [booksSnap, dupSnap, detailsSnap] = await Promise.all([
+      fetchCollectionRefs(libRef.collection('books')),
+      fetchCollectionRefs(libRef.collection('allowedDuplicates')),
+      canListDetails
+        ? fetchCollectionRefs(detailsCol).catch(() => undefined)
+        : Promise.resolve(undefined),
     ]);
 
-    // Pre-fetch reviews subcollections for all books in parallel
-    const reviewSnaps = await Promise.all(
-      booksSnap.docs.map(async bookDoc => {
-        try {
-          if (typeof bookDoc.ref?.collection === 'function') {
-            return await bookDoc.ref.collection('reviews').get();
+    // Pre-fetch reviews subcollections in bounded concurrency chunks of 25
+    const REVIEW_FETCH_CONCURRENCY = 25;
+    const reviewSnaps: Array<FirebaseFirestore.QuerySnapshot | undefined> =
+      new Array(booksSnap.docs.length);
+    for (
+      let start = 0;
+      start < booksSnap.docs.length;
+      start += REVIEW_FETCH_CONCURRENCY
+    ) {
+      const slice = booksSnap.docs.slice(
+        start,
+        start + REVIEW_FETCH_CONCURRENCY,
+      );
+      const chunkResults = await Promise.all(
+        slice.map(async bookDoc => {
+          try {
+            if (typeof bookDoc.ref?.collection === 'function') {
+              return await fetchCollectionRefs(
+                bookDoc.ref.collection('reviews'),
+              );
+            }
+          } catch {
+            // Non-fatal if reviews subcollection is empty or mocked
           }
-        } catch {
-          // Non-fatal if reviews subcollection is empty or mocked
-        }
-        return undefined;
-      }),
-    );
+          return undefined;
+        }),
+      );
+      for (let offset = 0; offset < chunkResults.length; offset++) {
+        reviewSnaps[start + offset] = chunkResults[offset];
+      }
+    }
 
     const batchSize = 400;
     let batch = db.batch();
@@ -452,10 +491,13 @@ export async function deleteLibrary(
       }
     };
 
+    const deletedDetailIds = new Set<string>();
+
     for (let i = 0; i < booksSnap.docs.length; i++) {
       const bookDoc = booksSnap.docs[i];
       batch.delete(bookDoc.ref);
-      batch.delete(libRef.collection('bookDetails').doc(bookDoc.id));
+      batch.delete(detailsCol.doc(bookDoc.id));
+      deletedDetailIds.add(bookDoc.id);
       count += 2;
       await commitIfFull();
 
@@ -467,6 +509,16 @@ export async function deleteLibrary(
         });
         for (const revRef of revRefs) {
           batch.delete(revRef);
+          count++;
+          await commitIfFull();
+        }
+      }
+    }
+
+    if (detailsSnap?.docs) {
+      for (const detailDoc of detailsSnap.docs) {
+        if (!deletedDetailIds.has(detailDoc.id)) {
+          batch.delete(detailDoc.ref);
           count++;
           await commitIfFull();
         }

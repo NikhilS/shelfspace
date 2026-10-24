@@ -13,9 +13,12 @@ import {
   Check,
   Clock,
   CheckCircle2,
+  ArrowUpRight,
 } from 'lucide-react';
 import {Library} from '../../types';
 import {trpc} from '../../lib/trpc';
+import {useAppPermissions} from '../../hooks/useAppPermissions';
+import {AdminAllowlistDialog} from '../../components/admin/AdminAllowlistDialog';
 import {toast} from 'sonner';
 import {Dialog, DialogContent, DialogTitle} from '@/components/ui/dialog';
 import {Button} from '@/components/ui/button';
@@ -38,6 +41,7 @@ interface LibrarySettingsModalsProps {
   library: Library;
   isOwner: boolean;
   canEdit: boolean;
+  isAdmin?: boolean;
   addShareEmail: (email: string, role: 'editor' | 'viewer') => Promise<void>;
   handleRemoveShare: (email: string) => void;
   handleUpdateRole?: (
@@ -67,6 +71,7 @@ export function LibrarySettingsModals({
   library,
   isOwner,
   canEdit,
+  isAdmin,
   addShareEmail,
   handleRemoveShare,
   handleUpdateRole,
@@ -75,12 +80,24 @@ export function LibrarySettingsModals({
   handleDeleteLibrary,
   confirmDeleteLibrary,
 }: LibrarySettingsModalsProps) {
+  const {isAdmin: hookIsAdmin} = useAppPermissions();
+  const effectiveIsAdmin = isAdmin ?? hookIsAdmin;
   const [isSharing, setIsSharing] = React.useState(false);
   const [copiedLink, setCopiedLink] = React.useState(false);
   const [libraryNameInput, setLibraryNameInput] = React.useState(
     library.name || '',
   );
   const [isSavingName, setIsSavingName] = React.useState(false);
+  const [isAllowlistDialogOpen, setIsAllowlistDialogOpen] =
+    React.useState(false);
+  const [allowlistTargetEmail, setAllowlistTargetEmail] = React.useState<
+    string | null
+  >(null);
+
+  const handleOpenAllowlistDialog = (email?: string) => {
+    setAllowlistTargetEmail(email || null);
+    setIsAllowlistDialogOpen(true);
+  };
 
   React.useEffect(() => {
     setLibraryNameInput(library.name || '');
@@ -286,9 +303,24 @@ export function LibrarySettingsModals({
                         {email}
                       </div>
                       {allowlistStatus === 'pending_approval' ? (
-                        <div className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                          <Clock size={11} />
-                          <span>Pending Admin Approval</span>
+                        <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                          <div className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+                            <Clock size={11} />
+                            <span>Pending Admin Approval</span>
+                          </div>
+                          {effectiveIsAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAllowlistDialog(email)}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                              title="Open Admin Allowlist to approve this user"
+                              aria-label={`Open Admin Allowlist for ${email}`}
+                            >
+                              <Shield size={11} />
+                              <span>Manage Allowlist</span>
+                              <ArrowUpRight size={11} />
+                            </button>
+                          )}
                         </div>
                       ) : allowlistStatus === 'approved' ? (
                         <div className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">
@@ -336,6 +368,17 @@ export function LibrarySettingsModals({
           </div>
         </DialogContent>
       </Dialog>
+
+      {effectiveIsAdmin && (
+        <AdminAllowlistDialog
+          isOpen={isAllowlistDialogOpen}
+          onClose={() => setIsAllowlistDialogOpen(false)}
+          initialEmail={allowlistTargetEmail}
+          onAllowlistUpdated={() => {
+            void collaboratorsQuery?.refetch?.();
+          }}
+        />
+      )}
 
       <Dialog
         open={isAdvancedSettingsOpen && canEdit}

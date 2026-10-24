@@ -1,6 +1,6 @@
 {
-  "summary":  "Architectural plan to migrate server-side full-collection scans (Reading Shelf, trackBook deduplication, Unified Catalog Search, and listBooks filters) to native Firestore single-field indexed queries, introduce deterministic normalized index fields (cleanIsbn, dedupeKey, searchTokens) with a Shelf Care index backfill and unindexed fallback, and upgrade the Web Worker fuzzy duplicate detector to use multi-key blocking instead of an O(N^2) format loop.",
-  "updatedAt":  "2026-10-24T01:57:23.317697062Z",
+  "summary":  "Comprehensive remediation plan covering all 6 audit findings across database correctness, scalability, and wire-payload efficiency: safe partial index updates without clobbering searchTokens or dedupeKey, multi-term and series-aware unified catalog search with per-library fallback, native filtered pagination cursor alignment and targeted legacy status fallback, userRatings unioning during duplicate merges, bounded subcollection cleanup and orphan-free bookDetails deletion on library removal, and stripping searchTokens from client payloads in favor of a lightweight hasSearchTokens flag.",
+  "updatedAt":  "2026-10-24T13:28:56.645907624Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

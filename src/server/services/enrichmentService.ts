@@ -3,6 +3,7 @@ import {TRPCError} from '@trpc/server';
 import {LibraryService} from './library';
 import {MetadataRegistry} from './metadata';
 import {MetadataKey, CoreBookData, BookGenreData} from '../../types/metadata';
+import {computeBookSearchTokens} from '../../lib/duplicateDetection';
 
 export type PerBookJobStage =
   | 'queued'
@@ -482,11 +483,20 @@ export class EnrichmentService {
           processedCount++;
           results.push({id: bookId, coverUrl: value});
         } else if (metadataKey === MetadataKey.SERIES) {
+          const updatedSearchTokens = computeBookSearchTokens({
+            title: bookData.title,
+            author: bookData.author,
+            isbn: bookData.isbn,
+            series: typeof value === 'string' ? value : undefined,
+          });
           pendingWrites.push({
             type: 'update',
             ref: bookRef,
             data: {
               series: value,
+              ...(updatedSearchTokens.length > 0
+                ? {searchTokens: updatedSearchTokens}
+                : {}),
               enrichmentStatus: {
                 ...existingStatus,
                 series: 'completed',

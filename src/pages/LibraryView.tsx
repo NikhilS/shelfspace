@@ -59,7 +59,7 @@ import {
 export function LibraryView() {
   const {id} = useParams<{id: string}>();
   const {user} = useAuth();
-  const {hasAiPlan} = useAppPermissions();
+  const {hasAiPlan, isAdmin} = useAppPermissions();
   const isOnline = useOnlineStatus();
   const navigate = useNavigate();
   const utils = trpc.useUtils();
@@ -683,7 +683,8 @@ export function LibraryView() {
                   </Badge>
                 </Button>
 
-                {canEdit &&
+                {isAdmin &&
+                  canEdit &&
                   (isOnline ? (
                     <Link
                       to={`/library/${id}/spruce-up`}
@@ -842,6 +843,7 @@ export function LibraryView() {
             library={library}
             isOwner={isOwner}
             canEdit={canEdit}
+            isAdmin={isAdmin}
             addShareEmail={async (email, role) => {
               if (!id || !library || !email.trim()) {
                 return;

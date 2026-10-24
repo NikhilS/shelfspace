@@ -50,6 +50,7 @@ export interface UnifiedLibrarySearchMatch {
   ownershipStatus: 'owned' | 'unowned';
   title: string;
   author: string;
+  series?: string;
   isbn?: string;
   coverUrl?: string;
   publishedDate?: string;
@@ -257,11 +258,56 @@ export async function searchUnifiedCatalog(
   const db = getAdminDb();
   const virtualLibraryId = getVirtualLibraryId(userId);
   const queryLower = query.toLowerCase();
+  const queryTerms = queryLower
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .map(t => t.trim())
+    .filter(Boolean);
   const queryIsbn = normalizeIsbnKey(query);
   const isLikelyIsbn =
     (queryIsbn.length === 10 || queryIsbn.length === 13) &&
     /^[0-9X]+$/.test(queryIsbn);
   const primarySearchToken = extractPrimarySearchToken(query);
+
+  const matchesSearchCriteria = (data: Partial<Book>): boolean => {
+    const title = data.title || 'Untitled Book';
+    const author = data.author || 'Unknown Author';
+    const series = data.series || '';
+    const isbn = data.isbn || '';
+    const cleanBookIsbn = data.cleanIsbn || normalizeIsbnKey(isbn);
+
+    const titleLower = title.toLowerCase();
+    const authorLower = author.toLowerCase();
+    const seriesLower = series.toLowerCase();
+
+    const directSubstringMatch =
+      titleLower.includes(queryLower) ||
+      authorLower.includes(queryLower) ||
+      (seriesLower.length > 0 && seriesLower.includes(queryLower));
+
+    const isbnMatch =
+      Boolean(queryIsbn && queryIsbn.length >= 4) &&
+      cleanBookIsbn.includes(queryIsbn);
+
+    if (directSubstringMatch || isbnMatch) {
+      return true;
+    }
+
+    if (queryTerms.length > 0) {
+      const normalizedHaystack = normalizeTextKey(
+        `${title} ${author} ${series} ${cleanBookIsbn}`,
+      );
+      return queryTerms.every(
+        term =>
+          titleLower.includes(term) ||
+          authorLower.includes(term) ||
+          seriesLower.includes(term) ||
+          normalizedHaystack.includes(term),
+      );
+    }
+
+    return false;
+  };
 
   const librariesPromise = (async (): Promise<UnifiedLibrarySearchMatch[]> => {
     const {libraries} = await LibraryService.getUserLibraries(
@@ -294,22 +340,34 @@ export async function searchUnifiedCatalog(
             .doc(libMeta.id)
             .collection('books');
 
+          let ranIndexedTokenQuery = false;
+
           if (typeof (booksRef as {where?: unknown}).where === 'function') {
             if (isLikelyIsbn) {
               const isbnSnap = await booksRef
                 .where('cleanIsbn', '==', queryIsbn)
                 .limit(25)
                 .get();
-              if (isbnSnap?.docs && isbnSnap.docs.length > 0) {
-                return {libMeta, docs: isbnSnap.docs};
+              const matchedIsbnDocs = (isbnSnap?.docs || []).filter(docSnap =>
+                matchesSearchCriteria((docSnap.data() || {}) as Partial<Book>),
+              );
+              if (matchedIsbnDocs.length > 0) {
+                return {libMeta, docs: matchedIsbnDocs};
+              }
+              if (libMeta.bookCount === 0) {
+                return {libMeta, docs: []};
               }
             } else if (primarySearchToken) {
+              ranIndexedTokenQuery = true;
               const tokenSnap = await booksRef
                 .where('searchTokens', 'array-contains', primarySearchToken)
                 .limit(100)
                 .get();
-              if (tokenSnap?.docs && tokenSnap.docs.length > 0) {
-                return {libMeta, docs: tokenSnap.docs};
+              const matchedTokenDocs = (tokenSnap?.docs || []).filter(docSnap =>
+                matchesSearchCriteria((docSnap.data() || {}) as Partial<Book>),
+              );
+              if (matchedTokenDocs.length > 0) {
+                return {libMeta, docs: matchedTokenDocs};
               }
               // If library is explicitly empty, skip fallback scan
               if (libMeta.bookCount === 0) {
@@ -320,7 +378,18 @@ export async function searchUnifiedCatalog(
 
           // Fallback scan for legacy libraries containing un-backfilled books
           const snap = await booksRef.get();
-          return {libMeta, docs: snap.docs || []};
+          const fallbackDocs = (snap.docs || []).filter(docSnap => {
+            const data = (docSnap.data() || {}) as Partial<Book>;
+            if (
+              ranIndexedTokenQuery &&
+              Array.isArray(data.searchTokens) &&
+              data.searchTokens.length > 0
+            ) {
+              return false;
+            }
+            return matchesSearchCriteria(data);
+          });
+          return {libMeta, docs: fallbackDocs};
         } catch {
           return {libMeta, docs: []};
         }
@@ -333,18 +402,6 @@ export async function searchUnifiedCatalog(
         const data = (docSnap.data() || {}) as Partial<Book>;
         const title = data.title || 'Untitled Book';
         const author = data.author || 'Unknown Author';
-        const isbn = data.isbn || '';
-        const cleanBookIsbn = data.cleanIsbn || normalizeIsbnKey(isbn);
-
-        const titleMatch = title.toLowerCase().includes(queryLower);
-        const authorMatch = author.toLowerCase().includes(queryLower);
-        const isbnMatch =
-          Boolean(queryIsbn && queryIsbn.length >= 4) &&
-          cleanBookIsbn.includes(queryIsbn);
-
-        if (!titleMatch && !authorMatch && !isbnMatch) {
-          continue;
-        }
 
         const rawStatus =
           data.userStatuses?.[userId] ??
@@ -363,6 +420,7 @@ export async function searchUnifiedCatalog(
           ownershipStatus,
           title,
           author,
+          ...(data.series ? {series: data.series} : {}),
           isbn: data.isbn,
           coverUrl: data.coverUrl,
           publishedDate: data.publishedDate,

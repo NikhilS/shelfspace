@@ -30,7 +30,8 @@ export function needsIndexBackfill(
   const hasDedupeKey =
     typeof rec.dedupeKey === 'string' && rec.dedupeKey.length > 0;
   const hasSearchTokens =
-    Array.isArray(rec.searchTokens) && rec.searchTokens.length > 0;
+    rec.hasSearchTokens === true ||
+    (Array.isArray(rec.searchTokens) && rec.searchTokens.length > 0);
   const hasUnindexedIsbn =
     typeof rec.isbn === 'string' &&
     rec.isbn.trim().length > 0 &&

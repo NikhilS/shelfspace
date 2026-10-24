@@ -60,6 +60,7 @@ export const ALLOWED_CORE_BOOK_FIELDS = new Set([
   'skippedProviders',
 ]);
 
+import {FieldValue} from 'firebase-admin/firestore';
 import {hasControlCharacters} from '../../../schemas/common';
 import {
   normalizeIsbnForDedupe,
@@ -126,6 +127,12 @@ export function sanitizeTemporalMetadata(
 export interface PartitionUpdateOptions {
   callerUserId?: string;
   allowFullUserStatuses?: boolean;
+  existingBook?: {
+    title?: string;
+    author?: string;
+    isbn?: string;
+    series?: string;
+  };
 }
 
 /**
@@ -347,25 +354,68 @@ export class BookPartitioner {
     const hasSeriesUpdate = typeof coreUpdates.series === 'string';
     const hasIsbnUpdate = typeof coreUpdates.isbn === 'string';
 
-    if (hasTitleUpdate && hasAuthorUpdate) {
-      const dedupeKey = computeBookDedupeKey(
-        coreUpdates.title as string,
-        coreUpdates.author as string,
-      );
+    const effectiveTitle = hasTitleUpdate
+      ? (coreUpdates.title as string)
+      : options?.existingBook?.title;
+    const effectiveAuthor = hasAuthorUpdate
+      ? (coreUpdates.author as string)
+      : options?.existingBook?.author;
+    const effectiveIsbn = hasIsbnUpdate
+      ? (coreUpdates.isbn as string)
+      : options?.existingBook?.isbn;
+    const effectiveSeries = hasSeriesUpdate
+      ? (coreUpdates.series as string)
+      : options?.existingBook?.series;
+
+    if (
+      (hasTitleUpdate || hasAuthorUpdate) &&
+      effectiveTitle &&
+      effectiveAuthor
+    ) {
+      const dedupeKey = computeBookDedupeKey(effectiveTitle, effectiveAuthor);
       if (dedupeKey) {
         coreUpdates.dedupeKey = dedupeKey;
       }
     }
 
     if (hasTitleUpdate || hasAuthorUpdate || hasSeriesUpdate || hasIsbnUpdate) {
-      const searchTokens = computeBookSearchTokens({
-        title: hasTitleUpdate ? (coreUpdates.title as string) : undefined,
-        author: hasAuthorUpdate ? (coreUpdates.author as string) : undefined,
-        isbn: hasIsbnUpdate ? (coreUpdates.isbn as string) : undefined,
-        series: hasSeriesUpdate ? (coreUpdates.series as string) : undefined,
-      });
-      if (searchTokens.length > 0) {
-        coreUpdates.searchTokens = searchTokens;
+      if (effectiveTitle && effectiveAuthor) {
+        const searchTokens = computeBookSearchTokens({
+          title: effectiveTitle,
+          author: effectiveAuthor,
+          isbn: effectiveIsbn,
+          series: effectiveSeries,
+        });
+        if (searchTokens.length > 0) {
+          coreUpdates.searchTokens = searchTokens;
+        }
+      } else if (
+        !hasTitleUpdate &&
+        !hasAuthorUpdate &&
+        (hasSeriesUpdate || hasIsbnUpdate)
+      ) {
+        // Additive token merge when only series or isbn is patched without baseline title/author
+        const deltaTokens = computeBookSearchTokens({
+          isbn: hasIsbnUpdate ? (coreUpdates.isbn as string) : undefined,
+          series: hasSeriesUpdate ? (coreUpdates.series as string) : undefined,
+        });
+        if (deltaTokens.length > 0) {
+          coreUpdates.searchTokens =
+            typeof (FieldValue as {arrayUnion?: (...el: unknown[]) => unknown})
+              ?.arrayUnion === 'function'
+              ? FieldValue.arrayUnion(...deltaTokens)
+              : deltaTokens;
+        }
+      } else {
+        const searchTokens = computeBookSearchTokens({
+          title: effectiveTitle,
+          author: effectiveAuthor,
+          isbn: effectiveIsbn,
+          series: effectiveSeries,
+        });
+        if (searchTokens.length > 0) {
+          coreUpdates.searchTokens = searchTokens;
+        }
       }
     }
 
@@ -457,6 +507,10 @@ export class BookPartitioner {
     const normalizedAddedAt =
       normalizeFirestoreTimestamp(bookData.addedAt) || new Date().toISOString();
     const normalizedUpdatedAt = normalizeFirestoreTimestamp(bookData.updatedAt);
+    const hasSearchTokens =
+      Boolean(bookData.hasSearchTokens) ||
+      (Array.isArray(bookData.searchTokens) &&
+        bookData.searchTokens.length > 0);
 
     const merged: Book = {
       title: bookData.title || 'Untitled Book',
@@ -469,6 +523,7 @@ export class BookPartitioner {
       primaryGenre: bookData.primaryGenre || undefined,
       subgenres: Array.isArray(bookData.subgenres) ? bookData.subgenres : [],
       isCustomPrimary: Boolean(bookData.isCustomPrimary),
+      ...(hasSearchTokens ? {hasSearchTokens: true} : {}),
       ...(heavyData?.synopsis ? {synopsis: heavyData.synopsis} : {}),
       ...(heavyData?.authorBio ? {authorBio: heavyData.authorBio} : {}),
       ...(heavyData?.embedding ? {embedding: heavyData.embedding} : {}),
@@ -476,6 +531,8 @@ export class BookPartitioner {
         ? {clusterCoordinates: heavyData.clusterCoordinates}
         : {}),
     };
+
+    delete merged.searchTokens;
 
     if (merged.temporalMetadata) {
       const cleanTemporal = sanitizeTemporalMetadata(merged.temporalMetadata);

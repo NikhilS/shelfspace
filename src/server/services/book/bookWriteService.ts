@@ -124,10 +124,42 @@ export async function updateBook(
     .doc(bookId);
   const libraryRef = db.collection('libraries').doc(libraryId);
 
+  let existingBook:
+    | {title?: string; author?: string; isbn?: string; series?: string}
+    | undefined;
+  const touchesIndexFields =
+    typeof updates.title === 'string' ||
+    typeof updates.author === 'string' ||
+    typeof updates.series === 'string' ||
+    typeof updates.isbn === 'string';
+  const hasBothTitleAndAuthor =
+    typeof updates.title === 'string' && typeof updates.author === 'string';
+
+  if (
+    touchesIndexFields &&
+    !hasBothTitleAndAuthor &&
+    typeof bookRef.get === 'function'
+  ) {
+    try {
+      const existingSnap = await bookRef.get();
+      if (existingSnap?.exists) {
+        const data = (existingSnap.data() || {}) as Record<string, unknown>;
+        existingBook = {
+          title: typeof data.title === 'string' ? data.title : undefined,
+          author: typeof data.author === 'string' ? data.author : undefined,
+          isbn: typeof data.isbn === 'string' ? data.isbn : undefined,
+          series: typeof data.series === 'string' ? data.series : undefined,
+        };
+      }
+    } catch {
+      // Non-fatal in test mocks where bookRef.get is unconfigured
+    }
+  }
+
   const {coreUpdates, heavyUpdates} = BookPartitioner.partitionUpdatePayload(
     updates as Record<string, unknown>,
     FieldValue.serverTimestamp(),
-    {callerUserId: userId},
+    {callerUserId: userId, existingBook},
   );
 
   const batch = db.batch();
@@ -412,10 +444,34 @@ export async function batchUpsert(
               if (!patch || Object.keys(patch).length === 0) {
                 continue;
               }
+              const baseData = (opById.get(bookId)?.data || {}) as Record<
+                string,
+                unknown
+              >;
               const {coreUpdates, heavyUpdates} =
                 BookPartitioner.partitionUpdatePayload(
                   patch,
                   FieldValue.serverTimestamp(),
+                  {
+                    existingBook: {
+                      title:
+                        typeof baseData.title === 'string'
+                          ? baseData.title
+                          : undefined,
+                      author:
+                        typeof baseData.author === 'string'
+                          ? baseData.author
+                          : 'Unknown Author',
+                      isbn:
+                        typeof baseData.isbn === 'string'
+                          ? baseData.isbn
+                          : undefined,
+                      series:
+                        typeof baseData.series === 'string'
+                          ? baseData.series
+                          : undefined,
+                    },
+                  },
                 );
               const bRef = db
                 .collection('libraries')
@@ -846,8 +902,17 @@ export async function mergeDuplicates(
     });
   }
 
-  // Union userStatuses across survivor and all duplicates (highest progress wins)
+  const survivorData = (survivorSnap.data() || {}) as Record<string, unknown>;
+  const survivorRatings =
+    survivorData.userRatings &&
+    typeof survivorData.userRatings === 'object' &&
+    !Array.isArray(survivorData.userRatings)
+      ? (survivorData.userRatings as Record<string, number>)
+      : {};
+
+  // Union userStatuses (highest progress wins) and userRatings (survivor takes precedence, else highest rating)
   const mergedUserStatuses: Record<string, string> = {};
+  const mergedUserRatings: Record<string, number> = {};
   for (const snap of bookDocs) {
     if (!snap?.exists) {
       continue;
@@ -868,6 +933,29 @@ export async function mergeDuplicates(
         mergedUserStatuses[uidKey] = st;
       }
     }
+
+    const ratings =
+      data.userRatings &&
+      typeof data.userRatings === 'object' &&
+      !Array.isArray(data.userRatings)
+        ? (data.userRatings as Record<string, number>)
+        : {};
+    for (const [uidKey, ratingVal] of Object.entries(ratings)) {
+      if (typeof ratingVal !== 'number' || ratingVal < 1) {
+        continue;
+      }
+      if (
+        typeof survivorRatings[uidKey] === 'number' &&
+        survivorRatings[uidKey] >= 1
+      ) {
+        mergedUserRatings[uidKey] = survivorRatings[uidKey];
+      } else {
+        const prev = mergedUserRatings[uidKey] ?? 0;
+        if (ratingVal > prev) {
+          mergedUserRatings[uidKey] = ratingVal;
+        }
+      }
+    }
   }
 
   const combinedUpdates: Record<string, unknown> = {
@@ -876,11 +964,32 @@ export async function mergeDuplicates(
   if (Object.keys(mergedUserStatuses).length > 0) {
     combinedUpdates.userStatuses = mergedUserStatuses;
   }
+  if (Object.keys(mergedUserRatings).length > 0) {
+    combinedUpdates.userRatings = mergedUserRatings;
+  }
 
   const {coreUpdates, heavyUpdates} = BookPartitioner.partitionUpdatePayload(
     combinedUpdates,
     FieldValue.serverTimestamp(),
-    {allowFullUserStatuses: true},
+    {
+      allowFullUserStatuses: true,
+      existingBook: {
+        title:
+          typeof survivorData.title === 'string'
+            ? survivorData.title
+            : undefined,
+        author:
+          typeof survivorData.author === 'string'
+            ? survivorData.author
+            : undefined,
+        isbn:
+          typeof survivorData.isbn === 'string' ? survivorData.isbn : undefined,
+        series:
+          typeof survivorData.series === 'string'
+            ? survivorData.series
+            : undefined,
+      },
+    },
   );
 
   const BATCH_LIMIT = 400;

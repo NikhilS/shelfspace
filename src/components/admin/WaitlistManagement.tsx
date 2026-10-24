@@ -75,7 +75,13 @@ function formatExactDate(dateInput?: string | null): string {
 
 type FilterTab = 'all' | 'pending' | 'approved' | 'rejected';
 
-export function WaitlistManagement() {
+interface WaitlistManagementProps {
+  onEntryReviewed?: () => void;
+}
+
+export function WaitlistManagement({
+  onEntryReviewed,
+}: WaitlistManagementProps = {}) {
   const [filter, setFilter] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
@@ -93,6 +99,8 @@ export function WaitlistManagement() {
     onSuccess: (_result, variables) => {
       void utils.auth.listWaitlist.invalidate();
       void utils.auth.listAllowlist.invalidate();
+      void utils.library?.getCollaborators?.invalidate?.();
+      onEntryReviewed?.();
       if (variables.action === 'approve') {
         toast.success(`Access granted for ${variables.email}`);
       } else {

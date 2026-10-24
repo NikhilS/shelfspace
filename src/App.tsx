@@ -213,7 +213,7 @@ function AnimatedRoutes() {
           <Route
             path="/library/:id/spruce-up"
             element={
-              <RequireLibraryPermission requires="editor">
+              <RequireLibraryPermission requires="editor" requireAdmin>
                 <SpruceUpView />
               </RequireLibraryPermission>
             }

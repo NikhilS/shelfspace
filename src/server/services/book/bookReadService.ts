@@ -165,13 +165,22 @@ export async function listBooks(
 
   let rawDocs = snapshot.docs || [];
 
-  // If a native .where() filter returned 0 docs (e.g. case mismatch on primaryGenre or legacy status field),
-  // fall back to the collection snapshot so legacy records are still matched.
+  // If a native .where() filter returned 0 docs, check targeted legacy status or case-insensitive primaryGenre
   if (appliedNativeWhereFilter && rawDocs.length === 0) {
     try {
-      const fallbackSnap = await booksCollection.limit(fetchLimit).get();
-      if (fallbackSnap?.docs && fallbackSnap.docs.length > 0) {
-        rawDocs = fallbackSnap.docs;
+      if (options?.filters?.status) {
+        const legacyStatusSnap = await booksCollection
+          .where('status', '==', options.filters.status)
+          .limit(fetchLimit)
+          .get();
+        if (legacyStatusSnap?.docs && legacyStatusSnap.docs.length > 0) {
+          rawDocs = legacyStatusSnap.docs;
+        }
+      } else if (options?.filters?.primaryGenre) {
+        const fallbackSnap = await booksCollection.limit(fetchLimit).get();
+        if (fallbackSnap?.docs && fallbackSnap.docs.length > 0) {
+          rawDocs = fallbackSnap.docs;
+        }
       }
     } catch {
       // Keep empty result if fallback fails
@@ -280,11 +289,15 @@ export async function listBooks(
     : books.length > limitCount;
   const slicedBooks = books.slice(0, limitCount);
   const nextCursor = hasMore
-    ? hasAnyFilter
-      ? rawDocs[Math.min(limitCount, rawDocs.length) - 1]?.id ||
-        slicedBooks[slicedBooks.length - 1]?.id
-      : slicedBooks[slicedBooks.length - 1]?.id ||
-        rawDocs[rawDocs.length - 1]?.id
+    ? appliedNativeWhereFilter
+      ? slicedBooks[slicedBooks.length - 1]?.id
+      : hasMissingFilter
+        ? books.length > limitCount
+          ? slicedBooks[slicedBooks.length - 1]?.id
+          : rawDocs[rawDocs.length - 1]?.id ||
+            slicedBooks[slicedBooks.length - 1]?.id
+        : slicedBooks[slicedBooks.length - 1]?.id ||
+          rawDocs[rawDocs.length - 1]?.id
     : undefined;
 
   const authoritativeTotalCount =

@@ -220,6 +220,74 @@ describe('ReadingTrackerService', () => {
       expect(result.externalMatches[0].existingMatch?.libraryId).toBe('lib-1');
       expect(result.externalMatches[1].existingMatch).toBeUndefined();
     });
+
+    it('matches multi-word title+author queries, series names, and falls back to unindexed docs when indexed prefix match is a false positive', async () => {
+      vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
+        libraries: [
+          {
+            id: 'lib-mixed',
+            name: 'Mixed Library',
+            ownerId: 'u1',
+            ownerName: 'Reader',
+            callerRole: 'owner',
+            createdAt: '2026-01-01',
+            bookCount: 2,
+          },
+        ],
+      });
+
+      mockCollectionGet
+        // 1. Indexed searchTokens query on lib-mixed returns a false-positive prefix hit ('herber' -> 'Herbarium')
+        .mockResolvedValueOnce({
+          docs: [
+            {
+              id: 'book-false-pos',
+              data: () => ({
+                title: 'The Royal Herbarium',
+                author: 'Jane Botanist',
+                searchTokens: ['royal', 'herber', 'herbarium'],
+              }),
+            },
+          ],
+        })
+        // 2. Fallback scan on lib-mixed returns both the indexed false positive and an unindexed legacy book
+        .mockResolvedValueOnce({
+          docs: [
+            {
+              id: 'book-false-pos',
+              data: () => ({
+                title: 'The Royal Herbarium',
+                author: 'Jane Botanist',
+                searchTokens: ['royal', 'herber', 'herbarium'],
+              }),
+            },
+            {
+              id: 'book-legacy-dune',
+              data: () => ({
+                title: 'Dune',
+                author: 'Frank Herbert',
+                series: 'Dune Chronicles',
+              }),
+            },
+          ],
+        })
+        // 3. virtual_u1 indexed query
+        .mockResolvedValueOnce({docs: []})
+        // 4. virtual_u1 fallback scan
+        .mockResolvedValueOnce({docs: []});
+
+      vi.mocked(catalogOrchestrator.searchByQuery).mockResolvedValue([]);
+
+      const result = await ReadingTrackerService.searchUnifiedCatalog(
+        'u1',
+        'u1@example.com',
+        'Dune Herbert',
+      );
+
+      expect(result.libraryMatches).toHaveLength(1);
+      expect(result.libraryMatches[0].bookId).toBe('book-legacy-dune');
+      expect(result.libraryMatches[0].series).toBe('Dune Chronicles');
+    });
   });
 
   describe('trackBook', () => {

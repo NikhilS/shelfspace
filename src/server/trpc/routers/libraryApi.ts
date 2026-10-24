@@ -1,3 +1,4 @@
+import {TRPCError} from '@trpc/server';
 import {z} from 'zod';
 import {router, protectedProcedure, libraryProcedure} from '../trpc';
 import {LibraryService} from '../../services/library';
@@ -158,7 +159,13 @@ export const libraryApiRouter = router({
         bookIds: z.array(safeIdSchema).min(2).max(100),
       }),
     )
-    .mutation(async ({input}) => {
+    .mutation(async ({ctx, input}) => {
+      if (!ctx.isAdmin) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Administrator access is required for Shelf Care.',
+        });
+      }
       return await LibraryService.allowDuplicateGroup(
         input.libraryId,
         input.bookIds,
@@ -168,6 +175,12 @@ export const libraryApiRouter = router({
   resetMetadata: libraryProcedure('editor')
     .input(libraryResetMetadataSchema)
     .mutation(async ({ctx, input}) => {
+      if (!ctx.isAdmin) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Administrator access is required for Shelf Care.',
+        });
+      }
       return await LibraryService.resetMetadata(
         ctx.user.uid,
         ctx.user.email,

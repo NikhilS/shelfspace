@@ -1,6 +1,7 @@
 import React, {useEffect, useRef} from 'react';
 import {useParams, useLocation, useNavigate} from 'react-router-dom';
 import {useAuth} from '../../stores/authStore';
+import {useAppPermissions} from '../../hooks/useAppPermissions';
 import {useLibraryPermissions} from '../../hooks/useLibraryPermissions';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {AlertCircle, ArrowLeft} from 'lucide-react';
@@ -13,11 +14,13 @@ import {preloadRouteByPathname} from '../../lib/routePreload';
 interface RequireLibraryPermissionProps {
   children?: React.ReactNode;
   requires: 'owner' | 'editor' | 'viewer';
+  requireAdmin?: boolean;
 }
 
 export function RequireLibraryPermission({
   children,
   requires,
+  requireAdmin = false,
 }: RequireLibraryPermissionProps) {
   const params = useParams<Record<string, string>>();
   const location = useLocation();
@@ -25,6 +28,7 @@ export function RequireLibraryPermission({
   const isOnline = useOnlineStatus();
   const libraryId = params.id || params.libraryId;
   const {user} = useAuth();
+  const {isAdmin, isLoadingPermissions} = useAppPermissions();
   const {canEdit, isOwner, canView, role, loading, isError} =
     useLibraryPermissions(libraryId, user?.uid);
 
@@ -90,15 +94,15 @@ export function RequireLibraryPermission({
 
   // For viewer routes, mount children immediately while library.get is in flight
   // so lazy chunks and child queries run in parallel with server-enforced RBAC.
-  if (loading) {
-    if (requires === 'viewer' && !isError) {
+  if (loading || (requireAdmin && isLoadingPermissions)) {
+    if (requires === 'viewer' && !requireAdmin && !isError) {
       return <>{children}</>;
     }
     return <SuspenseFallbackRouter />;
   }
 
   let hasAccess = false;
-  if (role) {
+  if (role && (!requireAdmin || isAdmin)) {
     if (requires === 'viewer' && canView) {
       hasAccess = true;
     }
@@ -142,6 +146,9 @@ export function RequireLibraryPermission({
       );
     }
 
+    const requiredPermissionLabel =
+      requireAdmin && !isAdmin ? 'admin' : requires;
+
     return (
       <div className="flex-1 bg-surface flex flex-col items-center justify-center p-6 text-center text-on-surface">
         <div className="max-w-md w-full bg-surface-variant/30 border border-outline-variant/30 rounded-2xl p-8 space-y-6">
@@ -152,8 +159,8 @@ export function RequireLibraryPermission({
             Access Denied
           </h1>
           <p className="text-on-surface-variant leading-relaxed">
-            You don't have the necessary permissions ({requires}) to view this
-            page.
+            You don&apos;t have the necessary permissions (
+            {requiredPermissionLabel}) to view this page.
           </p>
           <div className="pt-4">
             <Button

@@ -94,6 +94,7 @@ export interface Book extends Omit<
   cleanIsbn?: string;
   dedupeKey?: string;
   searchTokens?: string[];
+  hasSearchTokens?: boolean;
   coverUrlRaw?: string;
   synopsis?: string;
   authorBio?: string;

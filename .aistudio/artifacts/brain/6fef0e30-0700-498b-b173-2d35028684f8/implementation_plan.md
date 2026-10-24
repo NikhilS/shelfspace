@@ -1,149 +1,134 @@
-# Native Firestore Indexing, Query Pushdown & Blocked Duplicate Detection
+# Database Correctness, Scalability & Payload Efficiency Remediation
 
-Eliminate full-collection Firestore reads across the server data plane by leveraging native Firestore single-field and array indexes (`cleanIsbn`, `dedupeKey`, `searchTokens`, and `userStatuses.<userId>`), while upgrading client-side fuzzy duplicate detection from an $O(N^2)$ format pass to a multi-key blocking algorithm with no 2,500-book ceiling.
-
----
+Eliminates index-clobbering regressions on partial updates, fixes multi-word and series search post-filtering, repairs filtered pagination cursors and duplicate-merge rating preservation, bounds subcollection concurrency during library deletion, and strips heavy `searchTokens` arrays from client catalog payloads.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> All core architectural choices below incorporate your confirmed preferences from the clarification phase.
+> Both scope and payload design choices have been confirmed and incorporated into this plan:
 
-- **Confirmed Decision 1 — Server Query Migration Scope**: Migrate **all four** server-side full-collection scans to native Firestore indexed queries:
-  1. **Personal Reading Shelf (`getPersonalReadingShelf`)**: Query non-virtual libraries using `.where(new FieldPath('userStatuses', userId), 'in', ['want_to_read', 'reading', 'finished', 'completed', 'abandoned'])` instead of reading every book document in every owned and shared library.
-  2. **External Book Tracking Deduplication (`trackBook`)**: Query destination libraries by indexed `cleanIsbn` and `dedupeKey` (`.limit(1)`) instead of downloading the entire `books` subcollection on every track mutation.
-  3. **Cross-Library Unified Search (`searchUnifiedCatalog`)**: Query accessible libraries using native Firestore `cleanIsbn` equality (for ISBN queries) or `searchTokens` `array-contains` (for text queries), refining multi-term matches in memory.
-  4. **Single-Library Filtered Reads (`listBooks`)**: Push `primaryGenre` and `status` filters down to native Firestore `.where()` queries rather than slicing an arbitrary `orderBy('addedAt')` window in Node memory.
-- **Confirmed Decision 2 — Index Field Rollout & Backfill Strategy**: Automatically compute and persist `cleanIsbn`, `dedupeKey`, and `searchTokens` on every book create, update, batch upsert, and duplicate merge; surface a one-click **Optimize Storage & Search Index** action in **Shelf Care → Storage & Reset** to backfill legacy books in chunked batches ($\le 400$ ops); and retain a transparent fallback when a library has unindexed legacy books.
-- **Confirmed Decision 3 — Client Catalog Filtering & Fuzzy Duplicate Blocking**: Keep interactive single-library catalog search and faceted filtering (`useBookFilters`) in memory over the hydrated TanStack Query / IndexedDB cache for `<16ms` responsiveness and offline PWA support, and replace the $O(N^2)$ format-bucket loop in the Web Worker duplicate detector with **author-prefix and title-token blocking** so large libraries (>2,500 books) are scanned rapidly without truncation.
+- **Confirmed Decision 1 — Full Remediation Scope (Findings A–F)**: We will resolve all four correctness bugs (partial update index preservation, unified search post-filtering & partial-index fallback, filtered `listBooks` cursor/fallback behavior, and `mergeDuplicates` rating preservation), the scalability bottleneck in `deleteLibrary`, and the client wire-payload optimization.
+- **Confirmed Decision 2 — Lightweight Client Index Flag (`hasSearchTokens`)**: Server responses will strip the raw `searchTokens` array (up to 40 tokens per book) when constructing client `Book` payloads and expose a lightweight `hasSearchTokens: boolean` flag so Shelf Care storage optimization can still detect unindexed books without adding ~1.2 MB of token bloat to large catalogs.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Replaces brute-force full-collection scans on the backend with targeted Firestore index lookups and upgrades the duplicate detection engine to scale linearly on multi-thousand-book collections.
-- **Target Audience / Persona**: Readers and curators managing large personal libraries, shared family/club shelves, and cross-library reading trackers.
+- **What It Does**: Hardens the end-to-end Firestore data plane so that every partial book edit, background enrichment job, unified catalog search, status/genre filter, duplicate merge, and library deletion behaves deterministically at scale while keeping browser cache payloads lean.
+- **Target Audience / Persona**: Readers and collectors managing personal and shared libraries of up to several thousand books across online and offline PWA sessions.
 - **Key Value**:
-  - **90–99% Fewer Firestore Reads on Reading Tracker & Track Actions**: Opening the Reading Room or tracking a book reads only matching documents instead of scanning every book across every accessible library.
-  - **Zero Composite Index Maintenance**: Every new query is carefully structured around Firestore's automatic **single-field and array-membership indexes** (`==`, `in`, `array-contains`), requiring zero manual composite index provisioning.
-  - **Unbounded, Fast Fuzzy Duplicate Scanning**: Eliminates the hard `n > 2500` cutoff in the duplicate detector by grouping candidate pairs through shared author and title blocking keys before computing Sørensen–Dice similarity.
+  - Prevents partial edits or background enrichment (`series`, `isbn`) from erasing title/author search tokens or leaving stale `dedupeKey` values.
+  - Ensures multi-word queries (such as combining title and author words) and series queries return accurate matches across both fully indexed and partially backfilled libraries.
+  - Preserves user star ratings when merging duplicate books and eliminates redundant 1,000-document fallback reads when a filtered status shelf is legitimately empty.
+  - Reduces catalog wire and IndexedDB cache size by stripping server-only search token arrays from client book payloads.
 
 ---
 
 ## 2. User Experience & Visual Design
 
 - **Key User Flows**:
-  1. **Automatic Indexing on Write**: Whenever a user adds, imports, edits, or merges a book, the server partitioner transparently computes `cleanIsbn`, `dedupeKey`, and `searchTokens` alongside core metadata.
-  2. **Shelf Care — Storage & Search Index Optimization**:
-     - In **Shelf Care → Storage & Reset**, the existing *Optimize Library Storage* card detects both books with unpartitioned heavy fields and legacy books missing normalized search/dedupe index fields (`cleanIsbn` / `dedupeKey` / `searchTokens`).
-     - When legacy unindexed books are present, a warm, non-alarmist status banner informs the curator how many books can be indexed for faster search and duplicate matching, with a single primary action button (`Optimize Storage`).
-     - Running the optimization relocates any leaked heavy fields to `bookDetails` and backfills `cleanIsbn`, `dedupeKey`, and `searchTokens` across all books in chunked Firestore batches ($\le 400$ operations).
-  3. **Instant Cross-Library Search & Reading Room**: Searching in the Add/Track Book bar or loading the Reading Room returns identical results to today, but completes with minimal Firestore document reads.
-  4. **Large-Library Duplicate Detection**: Opening **Shelf Care → Duplicates** on a 3,000+ book library smoothly identifies both exact and fuzzy title/subtitle duplicates without silently skipping large format buckets.
-
+  - **Unified Reading Search**: Typing a multi-word title + author query (e.g., `"Dune Herbert"`) or a series name (e.g., `"Hainish Cycle"`) immediately surfaces matching books from owned, shared, and personal reading shelves—even in libraries that contain a mix of newly indexed and legacy unindexed books.
+  - **Catalog Status & Genre Filtering**: Filtering a library by reading status or primary genre paginates cleanly in descending `addedAt` order without skipping or repeating books across cursor pages, and empty status shelves return instantaneously without triggering a background collection scan.
+  - **Duplicate Resolution**: Merging two duplicate copies preserves both each member's highest reading progress (`userStatuses`) and their star ratings (`userRatings`) alongside migrated reviews.
+  - **Shelf Care Storage & Index Check**: The **Optimize Library Storage** card in Shelf Care accurately detects books missing `hasSearchTokens`, `cleanIsbn`, or `dedupeKey` without downloading raw token arrays to the browser.
 - **Visual Identity & Theme**:
-  - *Aesthetic Direction*: Preserves the **Warm Archival Studio** aesthetic—clean warm stone surfaces (`--surface-container-low`), crisp `1px` hairlines (`border-outline-variant/30`), and zero mechanical telemetry clutter.
-  - *Color Palette & Mood*: Warm amber notice state (`bg-amber-500/10`, `text-amber-800 dark:text-amber-300`) when books need storage/index optimization; calm forest-emerald confirmation state (`bg-emerald-500/10`, `text-emerald-800 dark:text-emerald-300`) once all books are optimized.
-  - *Typography & Hierarchy*: Section headers in `Plus Jakarta Sans` (`font-serif`), body copy and controls in `Manrope` (`font-sans`), and book counts in tabular monospace (`font-mono tabular-nums`).
-  - *Voice & Microcopy*: Follows the **Warm, Friendly, Crisp** standard—speaking in terms of *faster search and duplicate matching* rather than raw database index jargon.
+  - Preserves the **Modern Archivist** aesthetic, Natural Materials palette, Manrope typographic hierarchy, and **Warm, Friendly, Crisp** microcopy across all Shelf Care, Reading Tracker, and catalog views.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Single-Field Firestore Queries Without Composite Indexes**
-  - *Chosen Approach*: Formulate all new Firestore `.where()` queries (`userStatuses.<userId> in [...]`, `cleanIsbn == ...`, `dedupeKey == ...`, `searchTokens array-contains ...`, `primaryGenre == ...`) without combining them with a cross-field `.orderBy('addedAt')` on the server; sort the matched subset in Node memory when a `.where()` filter is active.
-  - *Why*: Combining `.where('fieldA', '==', x)` with `.orderBy('addedAt', 'desc')` in Firestore requires a custom composite index per field—and for dynamic map keys like `userStatuses.<userId>`, composite indexes cannot be pre-created for every user ID. Sorting the matched results in memory after an indexed `.where()` filter uses Firestore's built-in single-field index with zero configuration and zero `FAILED_PRECONDITION` errors.
-  - *Alternatives Considered*: Requiring manual composite indexes in `firestore.indexes.json` (rejected because dynamic `userStatuses.<userId>` keys cannot be statically indexed with `addedAt`).
+- **Decision 1 — Context-Aware Index Recomputation & Additive Token Merging on Partial Updates**
+  - *Chosen Approach*: When a partial update modifies `title`, `author`, `series`, or `isbn`, recompute `dedupeKey` and `searchTokens` using the complete book tuple (`title`, `author`, `isbn`, `series`) whenever baseline book context is available (or fetched in single-book `updateBook` and passed in `batchUpsert`'s `enrichOnCreate` and `EnrichmentService`). If `partitionUpdatePayload` is invoked with only `series` or `isbn` and no baseline `title`/`author`, use `FieldValue.arrayUnion(...newTokens)` rather than overwriting `searchTokens`.
+  - *Why*: Overwriting `searchTokens` from a partial 1-field patch clobbers existing title and author tokens in Firestore. Using full context (or `arrayUnion` for additive fields) guarantees existing search tokens are never lost.
+  - *Alternatives Considered*: Requiring callers to always send full book objects on every partial mutation was rejected because background enrichment providers only emit delta patches.
 
-- **Decision 2: Deterministic Token Generation (`searchTokens`) + Fallback for Legacy Libraries**
-  - *Chosen Approach*: Tokenize normalized words (and meaningful word prefixes of length $\ge 3$, capped at 40 tokens per book) from `title`, `author`, `isbn`, and `series` into `searchTokens: string[]`. In `searchUnifiedCatalog`, query `.where('searchTokens', 'array-contains', primaryToken)` and verify full substring matches in memory; if a library has not been backfilled yet (e.g. token query returns 0 matches on a library whose `bookCount > 0` and has unindexed docs), gracefully fall back so zero search matches are ever lost prior to backfill.
-  - *Why*: Firestore does not natively support arbitrary `LIKE '%substring%'` queries, but `array-contains` on normalized word tokens narrows candidate documents by >95% in a single indexed lookup while preserving exact substring verification on the returned candidates.
-  - *Alternatives Considered*: Third-party search services like Algolia or Typesense (rejected to keep the architecture self-contained within Firebase without external credentials).
+- **Decision 2 — Tokenized Multi-Field Post-Filtering & Post-Filter Fallback in Unified Search**
+  - *Chosen Approach*: Split the user's search query into normalized terms and verify that every query term matches across the union of `title`, `author`, `series`, and `cleanIsbn`. Evaluate this post-filter per library before deciding whether the native `.where('searchTokens', 'array-contains', ...)` query succeeded; if the indexed query yields zero post-filtered matches and any returned document or library metadata indicates unindexed legacy records, fall back to scanning only unindexed documents (`!Array.isArray(data.searchTokens)`).
+  - *Why*: Prevents false negatives on multi-word title+author queries, enables series search, and closes the blind spot where a single false-positive prefix match in a partially indexed library suppresses legacy fallback.
 
-- **Decision 3: Multi-Key Blocking for Fuzzy Duplicate Detection**
-  - *Chosen Approach*: Instead of comparing all $\binom{N}{2}$ pairs within each format bucket (which required a hard `n <= 2500` cutoff), assign each book 1–3 deterministic **blocking keys** inside the Web Worker:
-    1. Normalized author surname / prefix (`authorBlock`: first 6 chars of normalized author or primary surname token) + format.
-    2. First significant title word ($\ge 3$ chars) + format.
-    3. Core title 4-character prefix + format.
-    Only pairs sharing at least one blocking bucket are evaluated with `diceCoefficient`.
-  - *Why*: Two books cannot achieve the required $\ge 0.82$ author Dice similarity and $\ge 0.86$ title Dice similarity without sharing either an author token/prefix or a title token/prefix. Blocking reduces comparisons on a 5,000-book library from ~12.5 million pairs to a few thousand pairs (<15ms in the Web Worker), allowing us to remove the 2,500-book ceiling completely.
-  - *Alternatives Considered*: Running fuzzy duplicate detection on the server (rejected because the client already holds the hydrated catalog in memory, so running in the Web Worker costs 0 Firestore reads and works instantaneously).
+- **Decision 3 — Stripping `searchTokens` in Favor of `hasSearchTokens` on Client Payloads**
+  - *Chosen Approach*: In `BookPartitioner.mergeBookAndDetails`, compute `hasSearchTokens = Array.isArray(bookData.searchTokens) && bookData.searchTokens.length > 0`, delete `searchTokens` from the returned client `Book` object, and check `!b.hasSearchTokens` in Shelf Care's `needsIndexBackfill` detector.
+  - *Why*: `searchTokens` is strictly a Firestore server-side inverted index field. Stripping the 40-element string array saves ~400–600 bytes per book (~1.2 MB across a 2,500-book library) on every tRPC catalog response and IndexedDB cache persistence cycle.
 
 ---
 
 ## 4. Technical Architecture & Data Strategy *(Technical Reference)*
 
-### Architecture & Query Flow Diagram
+### Architecture & Data Flow Diagram
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                     WRITE PATH: BOOK PARTITIONER & SANITIZER                 │
+│                        Client Application (Browser)                          │
 │                                                                              │
-│  createBook / updateBook / batchUpsert / mergeDuplicates / sanitize          │
-│         │                                                                    │
-│         ▼                                                                    │
+│  ┌─────────────────────────┐  ┌─────────────────────────┐  ┌──────────────┐  │
+│  │  Catalog & Reading View │  │   Unified Search Modal  │  │  Shelf Care  │  │
+│  │  (Sorted Cursor Pages)  │  │ (Multi-Term + Series)   │  │ (Backfill UI)│  │
+│  └────────────┬────────────┘  └────────────┬────────────┘  └──────┬───────┘  │
+│               │                            │                      │          │
+│               └────────────────────────────┼──────────────────────┘          │
+│                                            ▼                                 │
+│                     Lean Client Book Payload (hasSearchTokens: boolean)      │
+└────────────────────────────────────────────┬─────────────────────────────────┘
+                                             │ tRPC v11 Gateway
+┌────────────────────────────────────────────▼─────────────────────────────────┐
+│                       Server Data Authority (Admin SDK)                      │
+│                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │ Deterministic Index Key Builder                                        │  │
-│  │ • cleanIsbn    = normalizeIsbnKey(isbn)                                │  │
-│  │ • dedupeKey    = `${normalizeTitle(title, true)}::${normalizeAuthor}`  │  │
-│  │ • searchTokens = tokenize(title, author, cleanIsbn, series) (max 40)   │  │
-│  └────────────────────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────┬──────────────────────────────────────┘
-                                        │
-                                        ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                   READ PATH: NATIVE FIRESTORE INDEXED QUERIES                │
-├───────────────────────────────────────┬──────────────────────────────────────┤
-│ 1. getPersonalReadingShelf            │ 2. trackBook Duplicate Lookup        │
-│ • Virtual shelf: books.get()          │ • Query 1: where('cleanIsbn','==',…) │
-│ • Owned/Shared libraries:             │ • Query 2: where('dedupeKey','==',…) │
-│   where(FieldPath('userStatuses',uid),│ • Legacy fallback: where('isbn' /    │
-│         'in', TRACKED_STATUSES)       │   'title', '==', …) if unindexed     │
-├───────────────────────────────────────┼──────────────────────────────────────┤
-│ 3. searchUnifiedCatalog               │ 4. BookService.listBooks(filters)    │
-│ • ISBN query: where('cleanIsbn', …)   │ • primaryGenre: where('primaryGenre')│
-│ • Text query: where('searchTokens',   │ • status: where(FieldPath(           │
-│   'array-contains', bestToken)        │     'userStatuses', uid), '==', …)   │
-│ • In-memory multi-token verification  │ • In-memory sort by addedAt desc     │
-│   + legacy fallback if unindexed      │   (avoids composite index requirement│
-└───────────────────────────────────────┴──────────────────────────────────────┘
-                                        │
-                                        ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                CLIENT PATH: WEB WORKER BLOCKED DUPLICATE ENGINE              │
-│                                                                              │
-│  Pass 1 (Exact O(N)): Hash buckets on `cleanIsbn:format` & `fullTitle|author`│
-│  Pass 2 (Fuzzy Blocked):                                                     │
-│    • Generate candidate pairs via Author Token/Prefix & Title Token blocks   │
-│    • Deduplicate candidate pairs -> Compute Sørensen–Dice similarity         │
-│    • Connected-components BFS graph -> Filter `allowedDuplicates`            │
+│  │ BookPartitioner                                                        │  │
+│  │ • Create: Full cleanIsbn + dedupeKey + searchTokens                    │  │
+│  │ • Partial Update: Merges baseline (title, author, isbn, series) or     │  │
+│  │   uses FieldValue.arrayUnion for additive series/isbn patches          │  │
+│  │ • Read Merge: Sets hasSearchTokens boolean & strips raw searchTokens   │  │
+│  └───────────────┬────────────────────────────────────────┬───────────────┘  │
+│                  ▼                                        ▼                  │
+│  ┌────────────────────────────────────┐   ┌───────────────────────────────┐  │
+│  │ Write & Maintenance Services       │   │ Read & Search Services        │  │
+│  │ • updateBook / enrichOnCreate /    │   │ • listBooks: Sorted-slice     │  │
+│  │   EnrichmentService: Preserves     │   │   nextCursor + targeted       │  │
+│  │   full index tuple on edits        │   │   legacy status fallback      │  │
+│  │ • mergeDuplicates: Unions both     │   │ • searchUnifiedCatalog:       │  │
+│  │   userStatuses & userRatings       │   │   Multi-term (title/author/   │  │
+│  │ • deleteLibrary: .select() refs,   │   │   series/isbn) post-filter +  │  │
+│  │   direct bookDetails sweep,        │   │   partial-index fallback      │  │
+│  │   bounded review concurrency       │   │                               │  │
+│  └────────────────────────────────────┘   └───────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Data Model & Indexed Fields on `/libraries/{libraryId}/books/{bookId}`
+### Interactive Component & Service Mapping
 
-| Field | Type | Purpose & Firestore Index Used |
-| :--- | :--- | :--- |
-| `cleanIsbn` | `string` (optional) | Uppercase alphanumeric ISBN-10/13 stripped of hyphens/spaces. Powers $O(1)$ exact ISBN lookup in `trackBook` and `searchUnifiedCatalog` via single-field `==` index. |
-| `dedupeKey` | `string` | Normalized `${coreTitle}::${cleanAuthor}` key. Powers $O(1)$ title+author duplicate lookup in `trackBook` via single-field `==` index. |
-| `searchTokens` | `string[]` | Deduplicated array (max 40 items) of lowercase tokens and 3–6 char word prefixes derived from `title`, `author`, `cleanIsbn`, and `series`. Powers cross-library `array-contains` search in `searchUnifiedCatalog`. |
-| `userStatuses.{uid}` | `string` | Existing per-user reading status map entry. Queried via `new FieldPath('userStatuses', userId)` with `in` (`getPersonalReadingShelf`) and `==` (`listBooks` status filter). |
+1. **Safe Index Maintenance on Partial Updates (`BookPartitioner`, `BookWriteService`, `EnrichmentService`)**:
+   - Extend `PartitionUpdateOptions` with `existingBook?: {title?: string; author?: string; isbn?: string; series?: string}`.
+   - When `title` or `author` changes, compute `dedupeKey` using `coreUpdates.title ?? existingBook?.title` and `coreUpdates.author ?? existingBook?.author` whenever both values are available.
+   - When any of `title`, `author`, `series`, or `isbn` changes:
+     - If effective `title` and `author` are both known (from `coreUpdates` or `existingBook`), compute the complete `searchTokens` array across effective `{title, author, isbn, series}`.
+     - If only `series` or `isbn` is present in `coreUpdates` without `existingBook` context, compute tokens for the updated field(s) and set `coreUpdates.searchTokens = FieldValue.arrayUnion(...newTokens)` so existing title/author tokens are preserved.
+     - In `batchUpsert` (`enrichOnCreate` background callback) and `mergeDuplicates`, pass `existingBook` from the in-memory `booksToEnrich` / `survivorSnap` record.
+     - In `updateBook`, if `updates` modifies `title`, `author`, `series`, or `isbn` without providing both `title` and `author`, read the current book document first so `dedupeKey` and `searchTokens` are recomputed accurately.
+     - In `EnrichmentService.triggerBatchEnrichment` (`MetadataKey.SERIES`), compute updated `searchTokens` from `bookData` (`title`, `author`, `isbn`) + the newly enriched `series` string and write `searchTokens` alongside `series`.
 
-### Interactive Component & State Mapping
+2. **Multi-Term & Series-Aware Unified Catalog Search (`ReadingTrackerService.searchUnifiedCatalog`)**:
+   - Tokenize `queryLower` into individual search terms (`queryTerms = queryLower.split(/\s+/).filter(Boolean)`).
+   - Match a book if `isbnMatch` is true OR every term in `queryTerms` appears in at least one of `titleLower`, `authorLower`, `seriesLower`, or `cleanBookIsbn`.
+   - Include `series: data.series` in the returned `UnifiedLibrarySearchMatch` payload.
+   - Apply the post-filter inside each library's search task: if the native `.where('searchTokens', 'array-contains', primarySearchToken)` query yields zero post-filtered matches and the library is non-empty (`libMeta.bookCount !== 0`), fall back to checking unindexed legacy documents (`!Array.isArray(data.searchTokens)`) so mixed indexed/unindexed libraries never drop legacy matches.
 
-1. **Deterministic Index Computation (`BookPartitioner`)**:
-   - On `partitionCreatePayload`: Computes `cleanIsbn`, `dedupeKey`, and `searchTokens` from the incoming `title`, `author`, `isbn`, and `series` fields.
-   - On `partitionUpdatePayload`: Whenever `title`, `author`, `isbn`, or `series` is present in an update payload, recomputes the corresponding index fields (`cleanIsbn`, `dedupeKey`, `searchTokens`) so edits never leave stale index tokens.
-2. **Shelf Care Storage & Search Index Optimization (`ResetMetadataSection` + `librarySpruceService`)**:
-   - `hasHeavyLeaks` / storage inspection helper checks if a book has leaked heavy fields **or** is missing `dedupeKey` / `searchTokens`.
-   - Executing `resetMetadata({ libraryId, metadataType: 'sanitize' })` on the server migrates any leaked heavy fields to `bookDetails` **and** backfills `cleanIsbn`, `dedupeKey`, and `searchTokens` on any book document missing them, committing in chunks of $\le 400$ batch operations.
-3. **Server Query Guardrails & Legacy Fallbacks**:
-   - **`getPersonalReadingShelf`**: For `virtual_${userId}`, reads the virtual shelf collection (where every book is tracked by the owner). For owned and shared libraries, executes `.where(new FieldPath('userStatuses', userId), 'in', ['want_to_read', 'reading', 'finished', 'completed', 'abandoned']).get()`.
-   - **`trackBook`**: Runs parallel `.where('cleanIsbn', '==', targetIsbn).limit(1)` and `.where('dedupeKey', '==', targetDedupeKey).limit(1)` queries on the destination library. If neither matches, runs a lightweight exact `.where('title', '==', rawTitle).limit(5)` check (and only falls back to a collection scan if the mock/environment lacks `.where()` or returns unindexed legacy candidates).
-   - **`searchUnifiedCatalog`**: Extracts the highest-selectivity token from the search query. Queries each accessible library using `.where('cleanIsbn', '==', queryIsbn)` (when ISBN-shaped) or `.where('searchTokens', 'array-contains', primaryToken)`. If a library has books (`bookCount > 0`) and the token query returns empty because legacy books have not yet been backfilled with `searchTokens`, falls back to scanning that specific legacy library so search results remain 100% complete before and after backfill.
-   - **`BookService.listBooks`**: When `filters.primaryGenre` or `filters.status` is requested, applies native `.where()` clauses and sorts the resulting documents in memory by `addedAt` descending before applying cursor slicing.
-4. **Blocked Fuzzy Duplicate Detection (`duplicateDetection.ts`)**:
-   - Removes the `n > 2500` skip condition.
-   - Indexes each `PreparedBook` into lightweight blocking buckets by `(format, authorSurnameOrPrefix)` and `(format, primaryTitleToken)`.
-   - Evaluates pairwise `diceCoefficient` only across unique candidate pairs sharing a bucket, preserving 100% of existing duplicate matches and confidence scores while bounding worst-case work.
+3. **Filtered `listBooks` Cursor Alignment & Targeted Legacy Fallback (`BookReadService.listBooks`)**:
+   - When `appliedNativeWhereFilter` is `true` and `rawDocs.length === 0`:
+     - If `options?.filters?.status` was requested, only query legacy top-level `.where('status', '==', options.filters.status).limit(fetchLimit).get()` instead of scanning 1,001 arbitrary documents.
+     - If `options?.filters?.primaryGenre` was requested, only run the bounded fallback scan if the collection could contain case-mismatched genre strings.
+   - When computing `nextCursor` on line 282, use `slicedBooks[slicedBooks.length - 1]?.id` whenever `appliedNativeWhereFilter` is `true` (since `books` has already been sorted in memory by `addedAt desc`), ensuring subsequent cursor pages slice from the exact sorted boundary.
+
+4. **Rating Preservation in Duplicate Merge (`BookWriteService.mergeDuplicates`)**:
+   - Alongside `mergedUserStatuses`, iterate through `bookDocs` (survivor first, then duplicates) to union `userRatings` (`Record<string, number>`): preserve the survivor's rating for a user if present, or adopt the highest valid numeric rating ($\ge 1$) from the duplicate records.
+   - Include `userRatings: mergedUserRatings` in `combinedUpdates` and allow `userRatings` passthrough when `allowFullUserStatuses: true` is set in `BookPartitioner.partitionUpdatePayload`.
+
+5. **Bounded Concurrency & Orphan-Free Cleanup in `LibraryService.deleteLibrary`**:
+   - Fetch `books`, `bookDetails`, and `allowedDuplicates` references in parallel using `.select()` (empty field projection when supported by Admin SDK, falling back to `.get()` in mocks) so full document payloads are not pulled into memory and any orphaned `bookDetails` docs are also deleted.
+   - Fetch `reviews` subcollections across `booksSnap.docs` in bounded concurrency chunks (e.g., 25 books at a time) rather than firing thousands of simultaneous RPCs in a single `Promise.all`.
+
+6. **Lean Client Payload (`BookPartitioner.mergeBookAndDetails` & `ResetMetadataSection`)**:
+   - Add `hasSearchTokens?: boolean` to `Book` in `src/types/book.ts`.
+   - In `BookPartitioner.mergeBookAndDetails`, set `hasSearchTokens: Array.isArray(bookData.searchTokens) && bookData.searchTokens.length > 0` and omit `searchTokens` from the returned client `Book` object.
+   - Update `needsIndexBackfill` in `ResetMetadataSection.tsx` to check `!b.hasSearchTokens && (!Array.isArray(b.searchTokens) || b.searchTokens.length === 0)`.
