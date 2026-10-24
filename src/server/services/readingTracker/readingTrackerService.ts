@@ -1,9 +1,23 @@
 import {getAdminDb} from '../firebaseAdmin';
+import {FieldPath} from 'firebase-admin/firestore';
 import {LibraryService} from '../library';
 import {getVirtualLibraryId} from '../library/libraryShareService';
 import {BookService, BookPartitioner} from '../book';
 import {catalogOrchestrator} from '../catalog';
+import {
+  normalizeIsbnForDedupe,
+  computeBookDedupeKey,
+  extractPrimarySearchToken,
+} from '../../../lib/duplicateDetection';
 import type {Book, BookDetails} from '../../../types';
+
+const TRACKED_STATUS_VALUES = [
+  'want_to_read',
+  'reading',
+  'finished',
+  'completed',
+  'abandoned',
+] as const;
 
 export type TrackedShelfStatus =
   'want_to_read' | 'reading' | 'finished' | 'abandoned';
@@ -131,11 +145,22 @@ export async function getPersonalReadingShelf(
   const snapshots = await Promise.all(
     libraryEntries.map(async libMeta => {
       try {
-        const snap = await db
+        const booksRef = db
           .collection('libraries')
           .doc(libMeta.id)
-          .collection('books')
-          .get();
+          .collection('books');
+        if (
+          !libMeta.isVirtual &&
+          typeof (booksRef as {where?: unknown}).where === 'function'
+        ) {
+          const snap = await booksRef
+            .where(new FieldPath('userStatuses', userId), 'in', [
+              ...TRACKED_STATUS_VALUES,
+            ])
+            .get();
+          return {libMeta, docs: snap.docs || []};
+        }
+        const snap = await booksRef.get();
         return {libMeta, docs: snap.docs || []};
       } catch {
         return {libMeta, docs: []};
@@ -236,6 +261,7 @@ export async function searchUnifiedCatalog(
   const isLikelyIsbn =
     (queryIsbn.length === 10 || queryIsbn.length === 13) &&
     /^[0-9X]+$/.test(queryIsbn);
+  const primarySearchToken = extractPrimarySearchToken(query);
 
   const librariesPromise = (async (): Promise<UnifiedLibrarySearchMatch[]> => {
     const {libraries} = await LibraryService.getUserLibraries(
@@ -250,22 +276,50 @@ export async function searchUnifiedCatalog(
         id: l.id,
         name: l.name || 'Untitled Library',
         isVirtual: false,
+        bookCount: l.bookCount,
       })),
       {
         id: virtualLibraryId,
         name: 'Personal Reading Shelf',
         isVirtual: true,
+        bookCount: undefined as number | undefined,
       },
     ];
 
     const snaps = await Promise.all(
       libEntries.map(async libMeta => {
         try {
-          const snap = await db
+          const booksRef = db
             .collection('libraries')
             .doc(libMeta.id)
-            .collection('books')
-            .get();
+            .collection('books');
+
+          if (typeof (booksRef as {where?: unknown}).where === 'function') {
+            if (isLikelyIsbn) {
+              const isbnSnap = await booksRef
+                .where('cleanIsbn', '==', queryIsbn)
+                .limit(25)
+                .get();
+              if (isbnSnap?.docs && isbnSnap.docs.length > 0) {
+                return {libMeta, docs: isbnSnap.docs};
+              }
+            } else if (primarySearchToken) {
+              const tokenSnap = await booksRef
+                .where('searchTokens', 'array-contains', primarySearchToken)
+                .limit(100)
+                .get();
+              if (tokenSnap?.docs && tokenSnap.docs.length > 0) {
+                return {libMeta, docs: tokenSnap.docs};
+              }
+              // If library is explicitly empty, skip fallback scan
+              if (libMeta.bookCount === 0) {
+                return {libMeta, docs: []};
+              }
+            }
+          }
+
+          // Fallback scan for legacy libraries containing un-backfilled books
+          const snap = await booksRef.get();
           return {libMeta, docs: snap.docs || []};
         } catch {
           return {libMeta, docs: []};
@@ -280,7 +334,7 @@ export async function searchUnifiedCatalog(
         const title = data.title || 'Untitled Book';
         const author = data.author || 'Unknown Author';
         const isbn = data.isbn || '';
-        const cleanBookIsbn = normalizeIsbnKey(isbn);
+        const cleanBookIsbn = data.cleanIsbn || normalizeIsbnKey(isbn);
 
         const titleMatch = title.toLowerCase().includes(queryLower);
         const authorMatch = author.toLowerCase().includes(queryLower);
@@ -498,29 +552,95 @@ export async function trackBook(
     author: 'Unknown Author',
   };
 
-  // Check if book already exists in destination library by ISBN or normalized title+author
+  // Check if book already exists in destination library via native Firestore indexed queries
+  // (`cleanIsbn` and `dedupeKey`), with fallback for legacy unindexed books.
   let existingBookId: string | undefined;
   try {
-    const existingSnap = await db
+    const booksRef = db
       .collection('libraries')
       .doc(destinationLibraryId)
-      .collection('books')
-      .get();
-
-    const targetIsbn = normalizeIsbnKey(bookData.isbn);
+      .collection('books');
+    const targetIsbn = normalizeIsbnForDedupe(bookData.isbn);
+    const targetDedupeKey = computeBookDedupeKey(
+      bookData.title,
+      bookData.author || 'Unknown Author',
+    );
     const targetKey = `${normalizeTextKey(bookData.title)}::${normalizeTextKey(bookData.author || 'Unknown Author')}`;
 
-    for (const docSnap of existingSnap.docs || []) {
-      const d = (docSnap.data() || {}) as Partial<Book>;
-      const docIsbn = normalizeIsbnKey(d.isbn);
-      if (targetIsbn && docIsbn && targetIsbn === docIsbn) {
-        existingBookId = docSnap.id;
-        break;
+    if (typeof (booksRef as {where?: unknown}).where === 'function') {
+      const indexQueries: Array<Promise<FirebaseFirestore.QuerySnapshot>> = [];
+      if (targetIsbn) {
+        indexQueries.push(
+          booksRef.where('cleanIsbn', '==', targetIsbn).limit(1).get(),
+        );
       }
-      const docKey = `${normalizeTextKey(d.title)}::${normalizeTextKey(d.author)}`;
-      if (targetKey === docKey) {
-        existingBookId = docSnap.id;
-        break;
+      if (targetDedupeKey) {
+        indexQueries.push(
+          booksRef.where('dedupeKey', '==', targetDedupeKey).limit(1).get(),
+        );
+      }
+
+      if (indexQueries.length > 0) {
+        const indexSnaps = await Promise.all(indexQueries);
+        for (const snap of indexSnaps) {
+          const matchedDoc = snap?.docs?.[0];
+          if (matchedDoc?.id) {
+            existingBookId = matchedDoc.id;
+            break;
+          }
+        }
+      }
+
+      // Secondary exact-field query for un-backfilled legacy books before scanning
+      if (!existingBookId) {
+        const legacyQueries: Array<Promise<FirebaseFirestore.QuerySnapshot>> =
+          [];
+        if (bookData.isbn?.trim()) {
+          legacyQueries.push(
+            booksRef.where('isbn', '==', bookData.isbn.trim()).limit(1).get(),
+          );
+        }
+        if (bookData.title?.trim()) {
+          legacyQueries.push(
+            booksRef.where('title', '==', bookData.title.trim()).limit(5).get(),
+          );
+        }
+        if (legacyQueries.length > 0) {
+          const legacySnaps = await Promise.all(legacyQueries);
+          for (const snap of legacySnaps) {
+            for (const docSnap of snap?.docs || []) {
+              const d = (docSnap.data() || {}) as Partial<Book>;
+              const docIsbn = normalizeIsbnKey(d.isbn);
+              if (targetIsbn && docIsbn && targetIsbn === docIsbn) {
+                existingBookId = docSnap.id;
+                break;
+              }
+              const docKey = `${normalizeTextKey(d.title)}::${normalizeTextKey(d.author)}`;
+              if (targetKey === docKey) {
+                existingBookId = docSnap.id;
+                break;
+              }
+            }
+            if (existingBookId) {
+              break;
+            }
+          }
+        }
+      }
+    } else {
+      const existingSnap = await booksRef.get();
+      for (const docSnap of existingSnap.docs || []) {
+        const d = (docSnap.data() || {}) as Partial<Book>;
+        const docIsbn = normalizeIsbnKey(d.isbn);
+        if (targetIsbn && docIsbn && targetIsbn === docIsbn) {
+          existingBookId = docSnap.id;
+          break;
+        }
+        const docKey = `${normalizeTextKey(d.title)}::${normalizeTextKey(d.author)}`;
+        if (targetKey === docKey) {
+          existingBookId = docSnap.id;
+          break;
+        }
       }
     }
   } catch {

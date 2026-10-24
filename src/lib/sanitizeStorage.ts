@@ -23,6 +23,27 @@ export function hasHeavyLeaks(book: Book | Record<string, unknown>): boolean {
   );
 }
 
+export function needsIndexBackfill(
+  book: Book | Record<string, unknown>,
+): boolean {
+  const rec = book as Record<string, unknown>;
+  const hasDedupeKey =
+    typeof rec.dedupeKey === 'string' && rec.dedupeKey.length > 0;
+  const hasSearchTokens =
+    Array.isArray(rec.searchTokens) && rec.searchTokens.length > 0;
+  const hasUnindexedIsbn =
+    typeof rec.isbn === 'string' &&
+    rec.isbn.trim().length > 0 &&
+    (!rec.cleanIsbn || typeof rec.cleanIsbn !== 'string');
+  return !hasDedupeKey || !hasSearchTokens || hasUnindexedIsbn;
+}
+
+export function needsStorageOptimization(
+  book: Book | Record<string, unknown>,
+): boolean {
+  return hasHeavyLeaks(book) || needsIndexBackfill(book);
+}
+
 export async function sanitizeBookStorage(
   libraryId: string,
   books?: Book[],

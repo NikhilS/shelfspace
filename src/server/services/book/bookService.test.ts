@@ -22,6 +22,7 @@ const mockReviewsGet = vi.fn().mockResolvedValue({
 const mockBooksQueryGet = vi.fn().mockResolvedValue({
   docs: [],
 });
+const mockWhere = vi.fn().mockReturnThis();
 
 const mockBookDoc = {
   id: 'book-1',
@@ -54,6 +55,7 @@ const mockDoc: (docId?: string) => Record<string, unknown> = vi.fn(
             doc: vi.fn((id?: string): unknown =>
               id === 'book-1' ? mockBookDoc : mockDoc(id),
             ),
+            where: mockWhere,
             orderBy: vi.fn().mockReturnThis(),
             limit: vi.fn().mockReturnThis(),
             get: mockBooksQueryGet,
@@ -103,6 +105,12 @@ vi.mock('firebase-admin/firestore', () => ({
     serverTimestamp: () => 'MOCK_SERVER_TIMESTAMP',
     increment: (n: number) => ({_increment: n}),
   },
+  FieldPath: class {
+    fields: string[];
+    constructor(...f: string[]) {
+      this.fields = f;
+    }
+  },
 }));
 
 describe('BookService - Unified Write Layer', () => {
@@ -111,12 +119,13 @@ describe('BookService - Unified Write Layer', () => {
   });
 
   describe('createBook', () => {
-    it('creates book and partitions heavy details to bookDetails subcollection', async () => {
+    it('creates book and partitions heavy details to bookDetails subcollection with deterministic index fields', async () => {
       const res = await BookService.createBook('user-1', {
         libraryId: 'lib-1',
         bookId: 'book-1',
         title: 'Dune',
         author: 'Frank Herbert',
+        isbn: '978-0-441-17271-9',
         synopsis: 'Desert planet spice story',
         authorBio: 'American sci-fi master',
         embedding: [0.1, 0.2, 0.3],
@@ -126,13 +135,16 @@ describe('BookService - Unified Write Layer', () => {
       expect(res.success).toBe(true);
       expect(res.id).toBe('book-1');
 
-      // Verify core book write
+      // Verify core book write includes deterministic index fields
       expect(mockSet).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
           id: 'book-1',
           title: 'Dune',
           author: 'Frank Herbert',
+          cleanIsbn: '9780441172719',
+          dedupeKey: 'dune::frank herbert',
+          searchTokens: expect.arrayContaining(['dune', 'frank', 'herbert']),
           userStatuses: {'user-1': 'reading'},
           bookDetailsMetadata: {
             hasSynopsis: true,
@@ -422,6 +434,57 @@ describe('BookService - Unified Write Layer', () => {
 
       expect(res.books).toHaveLength(2);
       expect(res.totalCount).toBe(2);
+    });
+
+    it('pushes status and primaryGenre filters down to native Firestore .where() queries', async () => {
+      mockBooksQueryGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'book-1',
+            data: () => ({
+              title: 'Hyperion',
+              author: 'Dan Simmons',
+              primaryGenre: 'Sci-Fi',
+              userStatuses: {'user-1': 'reading'},
+              addedAt: 2000,
+            }),
+          },
+        ],
+      });
+
+      const resStatus = await BookService.listBooks('user-1', 'lib-1', {
+        filters: {status: 'reading'},
+      });
+
+      expect(resStatus.books).toHaveLength(1);
+      expect(resStatus.books[0].title).toBe('Hyperion');
+      expect(mockWhere).toHaveBeenCalledWith(
+        expect.objectContaining({fields: ['userStatuses', 'user-1']}),
+        '==',
+        'reading',
+      );
+
+      mockBooksQueryGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'book-2',
+            data: () => ({
+              title: 'Foundation',
+              author: 'Isaac Asimov',
+              primaryGenre: 'Sci-Fi',
+              addedAt: 3000,
+            }),
+          },
+        ],
+      });
+
+      const resGenre = await BookService.listBooks('user-1', 'lib-1', {
+        filters: {primaryGenre: 'Sci-Fi'},
+      });
+
+      expect(resGenre.books).toHaveLength(1);
+      expect(resGenre.books[0].title).toBe('Foundation');
+      expect(mockWhere).toHaveBeenCalledWith('primaryGenre', '==', 'Sci-Fi');
     });
   });
 

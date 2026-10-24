@@ -1,80 +1,149 @@
-# Firestore Read & Write Efficiency and Atomicity Plan
+# Native Firestore Indexing, Query Pushdown & Blocked Duplicate Detection
 
-## Goal
-Eliminate $N+1$ individual Firestore reads and sequential/unbatched writes across the backend service layer by replacing them with bulk reads (`db.getAll`) and chunked, atomic `db.batch()` commits ($\le 400$ operations per batch). Rather than adding fallback branches in production code for incomplete test mocks, update any unit test mocks to directly support `db.getAll` and `db.batch()`.
-
----
-
-## 1. Bulk Read Optimizations (`db.getAll`)
-
-### 1.1 Batch Metadata Enrichment (`src/server/services/enrichmentService.ts`)
-- **Problem**: `triggerBatchEnrichment` currently executes $N$ individual `booksCollection.doc(bookId).get()` calls followed by up to $N$ individual `detailsCollection.doc(bookId).get()` calls when `needsSynopsisContext` is true ($2N$ RPC round-trips).
-- **Solution**:
-  - Fetch all $N$ book documents in a single `db.getAll(...bookRefs)` call.
-  - Collect the subset of valid books that still lack an inline synopsis when `needsSynopsisContext` is true, and fetch all corresponding `bookDetails/{bookId}` documents in a single `db.getAll(...missingDetailRefs)` call.
-
-### 1.2 Duplicate Book Merge (`src/server/services/book/bookWriteService.ts`)
-- **Problem**: `mergeDuplicates` fetches `[survivorBookId, ...cleanDupIds]` via `Promise.all(allBookIds.map(id => booksCol.doc(id).get()))`.
-- **Solution**:
-  - Use `db.getAll(...bookRefs)` directly to retrieve the survivor and all duplicate books in a single bulk read RPC.
-  - Pre-fetch the `reviews` subcollections for all `cleanDupIds` in parallel via `Promise.all` prior to assembling the write batches, rather than awaiting `.collection('reviews').get()` sequentially inside the batch loop.
-
-### 1.3 Bulk Allowlist & Collaborator Status Resolution (`src/server/auth/allowlistService.ts`, `src/server/services/library/libraryShareService.ts`, `src/server/services/library/libraryCrudService.ts`)
-- **Problem**: `getCollaboratorStatuses` and `updateLibrary` call `AllowlistService.getPermissions(email)` individually for each collaborator, causing $M$ separate Firestore reads on cold cache, and `updateLibrary` awaits waitlist registration sequentially inside a `for` loop.
-- **Solution**:
-  - Add `AllowlistService.getPermissionsBulk(emails: string[]): Promise<Map<string, SecurityPermissions>>`:
-    - Normalizes emails, resolves superadmin and L1 cache hits immediately, and fetches all remaining cache-miss documents from `appSettings/allowlist/users/{email}` in a single `db.getAll(...refs)` call, populating the L1 cache for each.
-  - Update `getCollaboratorStatuses` and `updateLibrary` to call `AllowlistService.getPermissionsBulk(...)`.
-  - Add `WaitlistService.ensureInvitedEntriesBulk(...)` (using `db.getAll` + `db.batch()`) so `updateLibrary` registers any unapproved invitees in a single bulk read + single batch write instead of a sequential loop.
-
-### 1.4 Geolocation L2 Cache Bulk Read & Batch Write (`src/server/services/geolocation.ts` & `src/server/services/metadata/providers/GeoMetadataProvider.ts`)
-- **Problem**: During batch geo enrichment, up to 50 locations are geocoded per chunk, each triggering individual Firestore `geolocationCache/{slug}` reads and writes.
-- **Solution**:
-  - Add `warmGeocodeCacheBulk(names: string[]): Promise<void>` in `geolocation.ts` that identifies all location slugs missing from the L1 in-memory cache and fetches them in a single `db.getAll(...docRefs)` call from `geolocationCache`, populating L1 and persisting to disk once.
-  - Add `cacheGeocodesBulk(entries: Array<{name: string; coordinates: {lat: number; lng: number}}>): Promise<void>` using `db.batch()` + single disk flush.
-  - Update `GeoMetadataProvider.bulkFetch` to pre-warm all extracted location names in bulk before geocoding and flush newly resolved coordinates in a batch.
+Eliminate full-collection Firestore reads across the server data plane by leveraging native Firestore single-field and array indexes (`cleanIsbn`, `dedupeKey`, `searchTokens`, and `userStatuses.<userId>`), while upgrading client-side fuzzy duplicate detection from an $O(N^2)$ format pass to a multi-key blocking algorithm with no 2,500-book ceiling.
 
 ---
 
-## 2. Bulk & Atomic Write Optimizations (`db.batch()`)
+## User Review & Critical Decisions
 
-### 2.1 Batch Metadata Enrichment Commits (`src/server/services/enrichmentService.ts`)
-- **Problem**: `triggerBatchEnrichment` executes individual `.update()` and `.set()` calls per book inside `Promise.all` (up to $2N$ separate write RPCs per chunk, and non-atomic updates between `books/{id}` and `bookDetails/{id}`).
-- **Solution**:
-  - Stage all `books/{bookId}` and `bookDetails/{bookId}` writes into chunked `db.batch()` commits ($\le 400$ operations per batch).
-  - Emit `onBookProgress` callbacks after the batch commit succeeds so progress reporting accurately reflects committed state.
+> [!IMPORTANT]
+> All core architectural choices below incorporate your confirmed preferences from the clarification phase.
 
-### 2.2 Background On-Create Enrichment Chunking & Safe Cascade Deletes (`src/server/services/book/bookWriteService.ts` & `src/server/services/library/libraryCrudService.ts`)
-- **Problem**:
-  1. In `batchUpsert`, the background `enrichOnCreate` callback (`bgBatch`) accumulates all `books` and `bookDetails` updates into a single unchunked `db.batch()`, which can exceed Firestore's 500-operation limit on large CSV imports (>250 books).
-  2. In `batchUpsert` and `deleteLibrary`, cascading review deletions await `bookRef.collection('reviews').get()` sequentially inside the `for` loop and can push `currentBatchOps` past `BATCH_LIMIT` inside `reviewsSnap.forEach` before the outer commit check runs.
-  3. In `deleteLibrary`, `await libRef.delete()` is executed as a separate sequential write after committing the batch.
-- **Solution**:
-  - Chunk `bgBatch` commits at `BATCH_LIMIT = 400` operations.
-  - Pre-fetch review snapshots for all books being deleted in parallel (`Promise.all`) before building write batches, and check `currentBatchOps >= BATCH_LIMIT` inside the review deletion loop.
-  - Include `batch.delete(libRef)` in the final batch commit of `deleteLibrary` (when `count < batchSize`).
-
-### 2.3 Atomic Review & Reading Status Writes (`src/server/services/book/bookReviewService.ts` & `src/server/services/readingTracker/readingTrackerService.ts`)
-- **Problem**:
-  - `BookReviewService.addReview` sequentially awaits `reviewRef.set(reviewDoc)` and `bookRef.update({ userRatings... })`.
-  - `ReadingTrackerService.trackBook` sequentially awaits `BookService.updateBookStatus` and then `BookService.addReview` or `bookRef.update({ userRatings... })`, writing to the same `books/{bookId}` document twice in sequence.
-- **Solution**:
-  - Update `BookReviewService.addReview` to commit both `reviewRef.set(reviewDoc)` and `bookRef.update(...)` in a single `db.batch()` (and accept an optional `statusUpdate?: string` so status + rating + review can be committed together).
-  - Update `ReadingTrackerService.trackBook` to combine `userStatuses.${userId}`, `userRatings.${userId}`, and any new review document into a single atomic `db.batch()` operation (or single `bookRef.update` when no review text is provided).
-
-### 2.4 Atomic Waitlist Review & Allowlist Grant (`src/server/auth/waitlistService.ts` & `src/server/auth/allowlistService.ts`)
-- **Problem**: Approving a user via `WaitlistService.review` calls `AllowlistService.addUser` (which writes `allowlist/users/{email}`, reads `waitlist/entries/{email}`, and updates `waitlist/entries/{email}`) and then `WaitlistService.review` writes to `waitlist/entries/{email}` a second time (1 read + 3 sequential writes).
-- **Solution**:
-  - Always use a single `db.batch()` in `WaitlistService.review` (and `AllowlistService.addUser` when syncing waitlist status) to commit both `allowlist/users/{email}` and `waitlist/entries/{email}` atomically in one batch without redundant reads or double-writes.
+- **Confirmed Decision 1 — Server Query Migration Scope**: Migrate **all four** server-side full-collection scans to native Firestore indexed queries:
+  1. **Personal Reading Shelf (`getPersonalReadingShelf`)**: Query non-virtual libraries using `.where(new FieldPath('userStatuses', userId), 'in', ['want_to_read', 'reading', 'finished', 'completed', 'abandoned'])` instead of reading every book document in every owned and shared library.
+  2. **External Book Tracking Deduplication (`trackBook`)**: Query destination libraries by indexed `cleanIsbn` and `dedupeKey` (`.limit(1)`) instead of downloading the entire `books` subcollection on every track mutation.
+  3. **Cross-Library Unified Search (`searchUnifiedCatalog`)**: Query accessible libraries using native Firestore `cleanIsbn` equality (for ISBN queries) or `searchTokens` `array-contains` (for text queries), refining multi-term matches in memory.
+  4. **Single-Library Filtered Reads (`listBooks`)**: Push `primaryGenre` and `status` filters down to native Firestore `.where()` queries rather than slicing an arbitrary `orderBy('addedAt')` window in Node memory.
+- **Confirmed Decision 2 — Index Field Rollout & Backfill Strategy**: Automatically compute and persist `cleanIsbn`, `dedupeKey`, and `searchTokens` on every book create, update, batch upsert, and duplicate merge; surface a one-click **Optimize Storage & Search Index** action in **Shelf Care → Storage & Reset** to backfill legacy books in chunked batches ($\le 400$ ops); and retain a transparent fallback when a library has unindexed legacy books.
+- **Confirmed Decision 3 — Client Catalog Filtering & Fuzzy Duplicate Blocking**: Keep interactive single-library catalog search and faceted filtering (`useBookFilters`) in memory over the hydrated TanStack Query / IndexedDB cache for `<16ms` responsiveness and offline PWA support, and replace the $O(N^2)$ format-bucket loop in the Web Worker duplicate detector with **author-prefix and title-token blocking** so large libraries (>2,500 books) are scanned rapidly without truncation.
 
 ---
 
-## 3. Verification & Test Suite Plan
-- Update existing unit test Firestore mocks to provide `db.getAll` and `db.batch()` where needed instead of adding fallback logic in production code.
-- Add and update unit tests across:
-  - `src/server/services/enrichmentService.test.ts` (verifying `db.getAll` bulk reads for `books` and `bookDetails` and `db.batch` atomic writes).
-  - `src/server/services/book/bookService.test.ts` (verifying `db.getAll` in `mergeDuplicates`, chunked `bgBatch` in `batchUpsert`, and atomic `db.batch` in `addReview`).
-  - `src/server/services/readingTracker/readingTrackerService.test.ts` (verifying consolidated status+rating+review writes via `db.batch`).
-  - `src/server/auth/allowlistService.test.ts`, `src/server/auth/waitlistService.test.ts`, & `src/server/services/library/libraryService.test.ts` (verifying `getPermissionsBulk`, `ensureInvitedEntriesBulk`, and single-batch atomic waitlist approval).
-  - `src/server/services/geolocation.test.ts` (verifying `warmGeocodeCacheBulk` and `cacheGeocodesBulk`).
-- Run full test suite (`npx vitest run`), `lint_applet`, and `compile_applet` to ensure zero regressions.
+## 1. Overview & Core Concept
+
+- **What It Does**: Replaces brute-force full-collection scans on the backend with targeted Firestore index lookups and upgrades the duplicate detection engine to scale linearly on multi-thousand-book collections.
+- **Target Audience / Persona**: Readers and curators managing large personal libraries, shared family/club shelves, and cross-library reading trackers.
+- **Key Value**:
+  - **90–99% Fewer Firestore Reads on Reading Tracker & Track Actions**: Opening the Reading Room or tracking a book reads only matching documents instead of scanning every book across every accessible library.
+  - **Zero Composite Index Maintenance**: Every new query is carefully structured around Firestore's automatic **single-field and array-membership indexes** (`==`, `in`, `array-contains`), requiring zero manual composite index provisioning.
+  - **Unbounded, Fast Fuzzy Duplicate Scanning**: Eliminates the hard `n > 2500` cutoff in the duplicate detector by grouping candidate pairs through shared author and title blocking keys before computing Sørensen–Dice similarity.
+
+---
+
+## 2. User Experience & Visual Design
+
+- **Key User Flows**:
+  1. **Automatic Indexing on Write**: Whenever a user adds, imports, edits, or merges a book, the server partitioner transparently computes `cleanIsbn`, `dedupeKey`, and `searchTokens` alongside core metadata.
+  2. **Shelf Care — Storage & Search Index Optimization**:
+     - In **Shelf Care → Storage & Reset**, the existing *Optimize Library Storage* card detects both books with unpartitioned heavy fields and legacy books missing normalized search/dedupe index fields (`cleanIsbn` / `dedupeKey` / `searchTokens`).
+     - When legacy unindexed books are present, a warm, non-alarmist status banner informs the curator how many books can be indexed for faster search and duplicate matching, with a single primary action button (`Optimize Storage`).
+     - Running the optimization relocates any leaked heavy fields to `bookDetails` and backfills `cleanIsbn`, `dedupeKey`, and `searchTokens` across all books in chunked Firestore batches ($\le 400$ operations).
+  3. **Instant Cross-Library Search & Reading Room**: Searching in the Add/Track Book bar or loading the Reading Room returns identical results to today, but completes with minimal Firestore document reads.
+  4. **Large-Library Duplicate Detection**: Opening **Shelf Care → Duplicates** on a 3,000+ book library smoothly identifies both exact and fuzzy title/subtitle duplicates without silently skipping large format buckets.
+
+- **Visual Identity & Theme**:
+  - *Aesthetic Direction*: Preserves the **Warm Archival Studio** aesthetic—clean warm stone surfaces (`--surface-container-low`), crisp `1px` hairlines (`border-outline-variant/30`), and zero mechanical telemetry clutter.
+  - *Color Palette & Mood*: Warm amber notice state (`bg-amber-500/10`, `text-amber-800 dark:text-amber-300`) when books need storage/index optimization; calm forest-emerald confirmation state (`bg-emerald-500/10`, `text-emerald-800 dark:text-emerald-300`) once all books are optimized.
+  - *Typography & Hierarchy*: Section headers in `Plus Jakarta Sans` (`font-serif`), body copy and controls in `Manrope` (`font-sans`), and book counts in tabular monospace (`font-mono tabular-nums`).
+  - *Voice & Microcopy*: Follows the **Warm, Friendly, Crisp** standard—speaking in terms of *faster search and duplicate matching* rather than raw database index jargon.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Single-Field Firestore Queries Without Composite Indexes**
+  - *Chosen Approach*: Formulate all new Firestore `.where()` queries (`userStatuses.<userId> in [...]`, `cleanIsbn == ...`, `dedupeKey == ...`, `searchTokens array-contains ...`, `primaryGenre == ...`) without combining them with a cross-field `.orderBy('addedAt')` on the server; sort the matched subset in Node memory when a `.where()` filter is active.
+  - *Why*: Combining `.where('fieldA', '==', x)` with `.orderBy('addedAt', 'desc')` in Firestore requires a custom composite index per field—and for dynamic map keys like `userStatuses.<userId>`, composite indexes cannot be pre-created for every user ID. Sorting the matched results in memory after an indexed `.where()` filter uses Firestore's built-in single-field index with zero configuration and zero `FAILED_PRECONDITION` errors.
+  - *Alternatives Considered*: Requiring manual composite indexes in `firestore.indexes.json` (rejected because dynamic `userStatuses.<userId>` keys cannot be statically indexed with `addedAt`).
+
+- **Decision 2: Deterministic Token Generation (`searchTokens`) + Fallback for Legacy Libraries**
+  - *Chosen Approach*: Tokenize normalized words (and meaningful word prefixes of length $\ge 3$, capped at 40 tokens per book) from `title`, `author`, `isbn`, and `series` into `searchTokens: string[]`. In `searchUnifiedCatalog`, query `.where('searchTokens', 'array-contains', primaryToken)` and verify full substring matches in memory; if a library has not been backfilled yet (e.g. token query returns 0 matches on a library whose `bookCount > 0` and has unindexed docs), gracefully fall back so zero search matches are ever lost prior to backfill.
+  - *Why*: Firestore does not natively support arbitrary `LIKE '%substring%'` queries, but `array-contains` on normalized word tokens narrows candidate documents by >95% in a single indexed lookup while preserving exact substring verification on the returned candidates.
+  - *Alternatives Considered*: Third-party search services like Algolia or Typesense (rejected to keep the architecture self-contained within Firebase without external credentials).
+
+- **Decision 3: Multi-Key Blocking for Fuzzy Duplicate Detection**
+  - *Chosen Approach*: Instead of comparing all $\binom{N}{2}$ pairs within each format bucket (which required a hard `n <= 2500` cutoff), assign each book 1–3 deterministic **blocking keys** inside the Web Worker:
+    1. Normalized author surname / prefix (`authorBlock`: first 6 chars of normalized author or primary surname token) + format.
+    2. First significant title word ($\ge 3$ chars) + format.
+    3. Core title 4-character prefix + format.
+    Only pairs sharing at least one blocking bucket are evaluated with `diceCoefficient`.
+  - *Why*: Two books cannot achieve the required $\ge 0.82$ author Dice similarity and $\ge 0.86$ title Dice similarity without sharing either an author token/prefix or a title token/prefix. Blocking reduces comparisons on a 5,000-book library from ~12.5 million pairs to a few thousand pairs (<15ms in the Web Worker), allowing us to remove the 2,500-book ceiling completely.
+  - *Alternatives Considered*: Running fuzzy duplicate detection on the server (rejected because the client already holds the hydrated catalog in memory, so running in the Web Worker costs 0 Firestore reads and works instantaneously).
+
+---
+
+## 4. Technical Architecture & Data Strategy *(Technical Reference)*
+
+### Architecture & Query Flow Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     WRITE PATH: BOOK PARTITIONER & SANITIZER                 │
+│                                                                              │
+│  createBook / updateBook / batchUpsert / mergeDuplicates / sanitize          │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │ Deterministic Index Key Builder                                        │  │
+│  │ • cleanIsbn    = normalizeIsbnKey(isbn)                                │  │
+│  │ • dedupeKey    = `${normalizeTitle(title, true)}::${normalizeAuthor}`  │  │
+│  │ • searchTokens = tokenize(title, author, cleanIsbn, series) (max 40)   │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────┬──────────────────────────────────────┘
+                                        │
+                                        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                   READ PATH: NATIVE FIRESTORE INDEXED QUERIES                │
+├───────────────────────────────────────┬──────────────────────────────────────┤
+│ 1. getPersonalReadingShelf            │ 2. trackBook Duplicate Lookup        │
+│ • Virtual shelf: books.get()          │ • Query 1: where('cleanIsbn','==',…) │
+│ • Owned/Shared libraries:             │ • Query 2: where('dedupeKey','==',…) │
+│   where(FieldPath('userStatuses',uid),│ • Legacy fallback: where('isbn' /    │
+│         'in', TRACKED_STATUSES)       │   'title', '==', …) if unindexed     │
+├───────────────────────────────────────┼──────────────────────────────────────┤
+│ 3. searchUnifiedCatalog               │ 4. BookService.listBooks(filters)    │
+│ • ISBN query: where('cleanIsbn', …)   │ • primaryGenre: where('primaryGenre')│
+│ • Text query: where('searchTokens',   │ • status: where(FieldPath(           │
+│   'array-contains', bestToken)        │     'userStatuses', uid), '==', …)   │
+│ • In-memory multi-token verification  │ • In-memory sort by addedAt desc     │
+│   + legacy fallback if unindexed      │   (avoids composite index requirement│
+└───────────────────────────────────────┴──────────────────────────────────────┘
+                                        │
+                                        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                CLIENT PATH: WEB WORKER BLOCKED DUPLICATE ENGINE              │
+│                                                                              │
+│  Pass 1 (Exact O(N)): Hash buckets on `cleanIsbn:format` & `fullTitle|author`│
+│  Pass 2 (Fuzzy Blocked):                                                     │
+│    • Generate candidate pairs via Author Token/Prefix & Title Token blocks   │
+│    • Deduplicate candidate pairs -> Compute Sørensen–Dice similarity         │
+│    • Connected-components BFS graph -> Filter `allowedDuplicates`            │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Model & Indexed Fields on `/libraries/{libraryId}/books/{bookId}`
+
+| Field | Type | Purpose & Firestore Index Used |
+| :--- | :--- | :--- |
+| `cleanIsbn` | `string` (optional) | Uppercase alphanumeric ISBN-10/13 stripped of hyphens/spaces. Powers $O(1)$ exact ISBN lookup in `trackBook` and `searchUnifiedCatalog` via single-field `==` index. |
+| `dedupeKey` | `string` | Normalized `${coreTitle}::${cleanAuthor}` key. Powers $O(1)$ title+author duplicate lookup in `trackBook` via single-field `==` index. |
+| `searchTokens` | `string[]` | Deduplicated array (max 40 items) of lowercase tokens and 3–6 char word prefixes derived from `title`, `author`, `cleanIsbn`, and `series`. Powers cross-library `array-contains` search in `searchUnifiedCatalog`. |
+| `userStatuses.{uid}` | `string` | Existing per-user reading status map entry. Queried via `new FieldPath('userStatuses', userId)` with `in` (`getPersonalReadingShelf`) and `==` (`listBooks` status filter). |
+
+### Interactive Component & State Mapping
+
+1. **Deterministic Index Computation (`BookPartitioner`)**:
+   - On `partitionCreatePayload`: Computes `cleanIsbn`, `dedupeKey`, and `searchTokens` from the incoming `title`, `author`, `isbn`, and `series` fields.
+   - On `partitionUpdatePayload`: Whenever `title`, `author`, `isbn`, or `series` is present in an update payload, recomputes the corresponding index fields (`cleanIsbn`, `dedupeKey`, `searchTokens`) so edits never leave stale index tokens.
+2. **Shelf Care Storage & Search Index Optimization (`ResetMetadataSection` + `librarySpruceService`)**:
+   - `hasHeavyLeaks` / storage inspection helper checks if a book has leaked heavy fields **or** is missing `dedupeKey` / `searchTokens`.
+   - Executing `resetMetadata({ libraryId, metadataType: 'sanitize' })` on the server migrates any leaked heavy fields to `bookDetails` **and** backfills `cleanIsbn`, `dedupeKey`, and `searchTokens` on any book document missing them, committing in chunks of $\le 400$ batch operations.
+3. **Server Query Guardrails & Legacy Fallbacks**:
+   - **`getPersonalReadingShelf`**: For `virtual_${userId}`, reads the virtual shelf collection (where every book is tracked by the owner). For owned and shared libraries, executes `.where(new FieldPath('userStatuses', userId), 'in', ['want_to_read', 'reading', 'finished', 'completed', 'abandoned']).get()`.
+   - **`trackBook`**: Runs parallel `.where('cleanIsbn', '==', targetIsbn).limit(1)` and `.where('dedupeKey', '==', targetDedupeKey).limit(1)` queries on the destination library. If neither matches, runs a lightweight exact `.where('title', '==', rawTitle).limit(5)` check (and only falls back to a collection scan if the mock/environment lacks `.where()` or returns unindexed legacy candidates).
+   - **`searchUnifiedCatalog`**: Extracts the highest-selectivity token from the search query. Queries each accessible library using `.where('cleanIsbn', '==', queryIsbn)` (when ISBN-shaped) or `.where('searchTokens', 'array-contains', primaryToken)`. If a library has books (`bookCount > 0`) and the token query returns empty because legacy books have not yet been backfilled with `searchTokens`, falls back to scanning that specific legacy library so search results remain 100% complete before and after backfill.
+   - **`BookService.listBooks`**: When `filters.primaryGenre` or `filters.status` is requested, applies native `.where()` clauses and sorts the resulting documents in memory by `addedAt` descending before applying cursor slicing.
+4. **Blocked Fuzzy Duplicate Detection (`duplicateDetection.ts`)**:
+   - Removes the `n > 2500` skip condition.
+   - Indexes each `PreparedBook` into lightweight blocking buckets by `(format, authorSurnameOrPrefix)` and `(format, primaryTitleToken)`.
+   - Evaluates pairwise `diceCoefficient` only across unique candidate pairs sharing a bucket, preserving 100% of existing duplicate matches and confidence scores while bounding worst-case work.

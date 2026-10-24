@@ -1,10 +1,19 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {uploadImage, hasValidRasterMagicBytes} from './librarySpruceService';
+import {
+  uploadImage,
+  hasValidRasterMagicBytes,
+  resetMetadata,
+} from './librarySpruceService';
 
 const mockFileSave = vi.fn().mockResolvedValue(undefined);
 const mockBucketFile = vi.fn(() => ({
   save: mockFileSave,
 }));
+
+const mockBatchUpdate = vi.fn();
+const mockBatchSet = vi.fn();
+const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
+const mockBooksSnapshotGet = vi.fn();
 
 vi.mock('../firebaseAdmin', () => ({
   getAdminApp: () => ({}),
@@ -12,9 +21,31 @@ vi.mock('../firebaseAdmin', () => ({
     projectId: 'test-project',
     storageBucket: 'test-project.firebasestorage.app',
   },
-  getAdminDb: () => ({}),
+  getAdminDb: () => ({
+    batch: () => ({
+      update: mockBatchUpdate,
+      set: mockBatchSet,
+      commit: mockBatchCommit,
+    }),
+    collection: () => ({
+      doc: () => ({
+        collection: (sub: string) => {
+          if (sub === 'books') {
+            return {get: mockBooksSnapshotGet};
+          }
+          return {doc: (id: string) => ({id})};
+        },
+      }),
+    }),
+  }),
   formatFirestoreAdminError: (err: unknown) =>
     err instanceof Error ? err.message : String(err),
+}));
+
+vi.mock('firebase-admin/firestore', () => ({
+  FieldValue: {
+    delete: () => 'MOCK_DELETE_FIELD',
+  },
 }));
 
 vi.mock('firebase-admin', () => ({
@@ -138,5 +169,58 @@ describe('librarySpruceService — Image Upload & Magic-Byte Validation (SEC-02)
         'image/webp',
       ),
     ).toBe(true);
+  });
+
+  it('backfills cleanIsbn, dedupeKey, and searchTokens during resetMetadata sanitize', async () => {
+    mockBooksSnapshotGet.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'legacy-book-1',
+          ref: {id: 'legacy-book-1'},
+          data: () => ({
+            title: 'The Left Hand of Darkness',
+            author: 'Ursula K. Le Guin',
+            isbn: '978-0-441-47812-5',
+            synopsis: 'A winter planet story',
+          }),
+        },
+      ],
+    });
+
+    const res = await resetMetadata(
+      'u1',
+      'u1@example.com',
+      'lib1',
+      'sanitize',
+      {
+        skipAccessCheck: true,
+      },
+    );
+
+    expect(res.count).toBe(1);
+    expect(mockBatchUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        cleanIsbn: '9780441478125',
+        dedupeKey: 'left hand of darkness::ursula k le guin',
+        searchTokens: expect.arrayContaining([
+          'left',
+          'hand',
+          'darkness',
+          'ursula',
+          'guin',
+        ]),
+        synopsis: 'MOCK_DELETE_FIELD',
+      }),
+    );
+    expect(mockBatchSet).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        synopsis: 'A winter planet story',
+      }),
+      {merge: true},
+    );
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
   });
 });

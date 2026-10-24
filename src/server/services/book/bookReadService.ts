@@ -1,4 +1,5 @@
 import {getAdminDb} from '../firebaseAdmin';
+import {FieldPath} from 'firebase-admin/firestore';
 import {TRPCError} from '@trpc/server';
 import {LibraryService} from '../library';
 import type {
@@ -90,20 +91,37 @@ export async function listBooks(
     .collection('books');
   let query: FirebaseFirestore.Query = booksCollection;
 
-  try {
-    query = query.orderBy('addedAt', 'desc');
-  } catch {
-    // In tests or if index not configured
+  let appliedNativeWhereFilter = false;
+  if (typeof (query as {where?: unknown}).where === 'function') {
+    if (options?.filters?.status && _userId) {
+      query = query.where(
+        new FieldPath('userStatuses', _userId),
+        '==',
+        options.filters.status,
+      );
+      appliedNativeWhereFilter = true;
+    } else if (options?.filters?.primaryGenre) {
+      query = query.where('primaryGenre', '==', options.filters.primaryGenre);
+      appliedNativeWhereFilter = true;
+    }
   }
 
-  if (options?.cursor && typeof query.startAfter === 'function') {
+  if (!appliedNativeWhereFilter) {
     try {
-      const cursorSnap = await booksCollection.doc(options.cursor).get();
-      if (cursorSnap?.exists) {
-        query = query.startAfter(cursorSnap);
-      }
+      query = query.orderBy('addedAt', 'desc');
     } catch {
-      // Fallback if cursor doc cannot be loaded in test mocks
+      // In tests or if index not configured
+    }
+
+    if (options?.cursor && typeof query.startAfter === 'function') {
+      try {
+        const cursorSnap = await booksCollection.doc(options.cursor).get();
+        if (cursorSnap?.exists) {
+          query = query.startAfter(cursorSnap);
+        }
+      } catch {
+        // Fallback if cursor doc cannot be loaded in test mocks
+      }
     }
   }
 
@@ -117,7 +135,9 @@ export async function listBooks(
   const fetchLimit = hasMissingFilter
     ? Math.min(2000, limitCount * 3)
     : limitCount + 1;
-  query = query.limit(fetchLimit);
+  if (!appliedNativeWhereFilter) {
+    query = query.limit(fetchLimit);
+  }
 
   const countAggregatePromise =
     !hasAnyFilter &&
@@ -145,6 +165,19 @@ export async function listBooks(
 
   let rawDocs = snapshot.docs || [];
 
+  // If a native .where() filter returned 0 docs (e.g. case mismatch on primaryGenre or legacy status field),
+  // fall back to the collection snapshot so legacy records are still matched.
+  if (appliedNativeWhereFilter && rawDocs.length === 0) {
+    try {
+      const fallbackSnap = await booksCollection.limit(fetchLimit).get();
+      if (fallbackSnap?.docs && fallbackSnap.docs.length > 0) {
+        rawDocs = fallbackSnap.docs;
+      }
+    } catch {
+      // Keep empty result if fallback fails
+    }
+  }
+
   // If an unfiltered single-page query returned fewer documents than the collection's
   // true count (e.g. legacy imported documents missing `addedAt` excluded by orderBy),
   // fall back to an unordered collection read and sort in memory so zero books are lost.
@@ -170,6 +203,18 @@ export async function listBooks(
     const data = (doc.data() || {}) as Partial<Book>;
     return BookPartitioner.mergeBookAndDetails(doc.id, data);
   });
+
+  if (appliedNativeWhereFilter) {
+    books.sort((a, b) =>
+      String(b.addedAt || '').localeCompare(String(a.addedAt || '')),
+    );
+    if (options?.cursor) {
+      const cursorIdx = books.findIndex(b => b.id === options.cursor);
+      if (cursorIdx >= 0) {
+        books = books.slice(cursorIdx + 1);
+      }
+    }
+  }
 
   if (options?.filters?.primaryGenre) {
     const targetGenre = options.filters.primaryGenre.toLowerCase();

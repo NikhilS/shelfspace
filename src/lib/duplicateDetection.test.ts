@@ -3,6 +3,9 @@ import {
   detectDuplicatesWithConfidence,
   normalizeTitleForDedupe,
   normalizeAuthorForDedupe,
+  computeBookDedupeKey,
+  computeBookSearchTokens,
+  extractPrimarySearchToken,
   diceCoefficient,
 } from './duplicateDetection';
 import {Book} from '../types';
@@ -30,6 +33,30 @@ describe('duplicateDetection', () => {
 
   it('normalizes Last, First author formats', () => {
     expect(normalizeAuthorForDedupe('Herbert, Frank')).toBe('frank herbert');
+  });
+
+  it('computes deterministic dedupeKey and prefix-capable searchTokens', () => {
+    expect(
+      computeBookDedupeKey(
+        'The Fellowship of the Ring: Illustrated Edition',
+        'Tolkien, J.R.R.',
+      ),
+    ).toBe('fellowship of the ring::j r r tolkien');
+
+    const tokens = computeBookSearchTokens({
+      title: 'The Fellowship of the Ring',
+      author: 'J.R.R. Tolkien',
+      isbn: '978-0544003415',
+      series: 'Middle-earth',
+    });
+
+    expect(tokens).toContain('9780544003415');
+    expect(tokens).toContain('fellowship');
+    expect(tokens).toContain('fellow');
+    expect(tokens).toContain('tolkien');
+    expect(tokens).toContain('tolk');
+    expect(extractPrimarySearchToken('Fellowship Ring')).toBe('fellow');
+    expect(extractPrimarySearchToken('978-0544003415')).toBe('9780544003415');
   });
 
   it('detects Exact ISBN duplicates with 100% confidence', () => {
@@ -73,5 +100,76 @@ describe('duplicateDetection', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].confidence).toBeGreaterThanOrEqual(88);
     expect(diceCoefficient('ursula k le guin', 'ursula k le guin')).toBe(1);
+  });
+
+  it('scales blocked fuzzy duplicate detection past 2,600 books without skipping format buckets', () => {
+    const syllables = [
+      'al',
+      'ber',
+      'cor',
+      'dan',
+      'el',
+      'fen',
+      'gar',
+      'hal',
+      'iri',
+      'jor',
+      'kal',
+      'lor',
+      'mar',
+      'nor',
+      'or',
+      'pel',
+      'quen',
+      'ral',
+      'sar',
+      'tor',
+      'ul',
+      'val',
+      'wen',
+      'xan',
+      'yor',
+      'zen',
+    ];
+    const fillerBooks: Book[] = Array.from({length: 2600}, (_, idx) => {
+      const s1 = syllables[idx % syllables.length];
+      const s2 =
+        syllables[Math.floor(idx / syllables.length) % syllables.length];
+      const s3 = syllables[(idx * 7) % syllables.length];
+      return makeBook({
+        id: `filler-${idx}`,
+        title: `${s1}${s2}${idx} ${s3}us`,
+        author: `${s2}${s3} ${s1}son-${idx}`,
+        format: 'physical',
+      });
+    });
+
+    const fuzzyPair: Book[] = [
+      makeBook({
+        id: 'fuzzy-a',
+        title: 'The Left Hand of Darkness',
+        author: 'Ursula K. Le Guin',
+        format: 'physical',
+      }),
+      makeBook({
+        id: 'fuzzy-b',
+        title: 'Left Hand of Darkness: 50th Anniversary Edition',
+        author: 'Ursula K Le Guin',
+        format: 'physical',
+      }),
+    ];
+
+    const groups = detectDuplicatesWithConfidence([
+      ...fillerBooks,
+      ...fuzzyPair,
+    ]);
+    const matchedFuzzyGroup = groups.find(g =>
+      g.books.some(b => b.id === 'fuzzy-a'),
+    );
+    expect(matchedFuzzyGroup).toBeDefined();
+    expect(matchedFuzzyGroup?.books.map(b => b.id).sort()).toEqual([
+      'fuzzy-a',
+      'fuzzy-b',
+    ]);
   });
 });

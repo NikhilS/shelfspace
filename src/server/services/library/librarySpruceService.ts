@@ -9,6 +9,11 @@ import crypto from 'crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {TRPCError} from '@trpc/server';
 import {LibraryService} from './index';
+import {
+  normalizeIsbnForDedupe,
+  computeBookDedupeKey,
+  computeBookSearchTokens,
+} from '../../../lib/duplicateDetection';
 
 /**
  * Generalized metadata reset: purges any supported metadata category from all books
@@ -112,7 +117,7 @@ export async function resetMetadata(
       let totalSanitized = 0;
 
       for (const doc of snapshot.docs) {
-        const raw = doc.data();
+        const raw = doc.data() || {};
         const hasLeaks =
           raw.synopsis !== undefined ||
           raw.authorBio !== undefined ||
@@ -120,48 +125,85 @@ export async function resetMetadata(
           raw.clusterCoordinates !== undefined ||
           raw.description !== undefined;
 
-        if (hasLeaks) {
-          const detailPayload: Record<string, unknown> = {};
-          if (raw.synopsis || raw.description) {
-            detailPayload.synopsis = raw.synopsis || raw.description;
+        const computedCleanIsbn = normalizeIsbnForDedupe(
+          typeof raw.isbn === 'string' ? raw.isbn : undefined,
+        );
+        const computedDedupeKey = computeBookDedupeKey(
+          typeof raw.title === 'string' ? raw.title : undefined,
+          typeof raw.author === 'string' ? raw.author : undefined,
+        );
+        const computedSearchTokens = computeBookSearchTokens({
+          title: typeof raw.title === 'string' ? raw.title : undefined,
+          author: typeof raw.author === 'string' ? raw.author : undefined,
+          isbn: typeof raw.isbn === 'string' ? raw.isbn : undefined,
+          series: typeof raw.series === 'string' ? raw.series : undefined,
+        });
+
+        const needsIndexBackfill =
+          (Boolean(computedCleanIsbn) && raw.cleanIsbn !== computedCleanIsbn) ||
+          (Boolean(computedDedupeKey) && raw.dedupeKey !== computedDedupeKey) ||
+          !Array.isArray(raw.searchTokens) ||
+          raw.searchTokens.length === 0;
+
+        if (hasLeaks || needsIndexBackfill) {
+          const bookUpdates: Record<string, unknown> = {};
+
+          if (computedCleanIsbn) {
+            bookUpdates.cleanIsbn = computedCleanIsbn;
           }
-          if (raw.authorBio) {
-            detailPayload.authorBio = raw.authorBio;
+          if (computedDedupeKey) {
+            bookUpdates.dedupeKey = computedDedupeKey;
           }
-          if (raw.embedding) {
-            detailPayload.embedding = raw.embedding;
-          }
-          if (raw.clusterCoordinates) {
-            detailPayload.clusterCoordinates = raw.clusterCoordinates;
+          if (computedSearchTokens.length > 0) {
+            bookUpdates.searchTokens = computedSearchTokens;
           }
 
-          const detailRef = db
-            .collection('libraries')
-            .doc(libraryId)
-            .collection('bookDetails')
-            .doc(doc.id);
-          if (typeof batch.set === 'function') {
-            batch.set(detailRef, detailPayload, {merge: true});
-          }
+          if (hasLeaks) {
+            const detailPayload: Record<string, unknown> = {};
+            if (raw.synopsis || raw.description) {
+              detailPayload.synopsis = raw.synopsis || raw.description;
+            }
+            if (raw.authorBio) {
+              detailPayload.authorBio = raw.authorBio;
+            }
+            if (raw.embedding) {
+              detailPayload.embedding = raw.embedding;
+            }
+            if (raw.clusterCoordinates) {
+              detailPayload.clusterCoordinates = raw.clusterCoordinates;
+            }
 
-          const bookUpdates: Record<string, unknown> = {
-            'bookDetailsMetadata.hasSynopsis': Boolean(
+            const detailRef = db
+              .collection('libraries')
+              .doc(libraryId)
+              .collection('bookDetails')
+              .doc(doc.id);
+            if (typeof batch.set === 'function') {
+              batch.set(detailRef, detailPayload, {merge: true});
+              count++;
+            }
+
+            bookUpdates['bookDetailsMetadata.hasSynopsis'] = Boolean(
               raw.synopsis || raw.description,
-            ),
-            'bookDetailsMetadata.hasAuthorBio': Boolean(raw.authorBio),
-            'bookDetailsMetadata.hasEmbedding': Boolean(raw.embedding),
-            'bookDetailsMetadata.hasClusterCoordinates': Boolean(
+            );
+            bookUpdates['bookDetailsMetadata.hasAuthorBio'] = Boolean(
+              raw.authorBio,
+            );
+            bookUpdates['bookDetailsMetadata.hasEmbedding'] = Boolean(
+              raw.embedding,
+            );
+            bookUpdates['bookDetailsMetadata.hasClusterCoordinates'] = Boolean(
               raw.clusterCoordinates,
-            ),
-            synopsis: FieldValue.delete(),
-            authorBio: FieldValue.delete(),
-            embedding: FieldValue.delete(),
-            clusterCoordinates: FieldValue.delete(),
-            description: FieldValue.delete(),
-          };
+            );
+            bookUpdates.synopsis = FieldValue.delete();
+            bookUpdates.authorBio = FieldValue.delete();
+            bookUpdates.embedding = FieldValue.delete();
+            bookUpdates.clusterCoordinates = FieldValue.delete();
+            bookUpdates.description = FieldValue.delete();
+          }
 
           batch.update(doc.ref, bookUpdates);
-          count += 2;
+          count++;
           totalSanitized++;
 
           if (count >= batchSize) {

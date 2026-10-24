@@ -91,6 +91,9 @@ export interface Book extends Omit<
   temporalMetadata?: BookTemporalMetadata;
   enrichmentStatus?: BookEnrichmentStatus;
   bookDetailsMetadata?: BookDetailsMetadata;
+  cleanIsbn?: string;
+  dedupeKey?: string;
+  searchTokens?: string[];
   coverUrlRaw?: string;
   synopsis?: string;
   authorBio?: string;

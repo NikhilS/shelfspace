@@ -25,7 +25,11 @@ import {
 import {toast} from 'sonner';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {Book} from '../../types';
-import {hasHeavyLeaks} from '../../lib/sanitizeStorage';
+import {
+  hasHeavyLeaks,
+  needsIndexBackfill,
+  needsStorageOptimization,
+} from '../../lib/sanitizeStorage';
 
 interface ResetMetadataSectionProps {
   libraryId: string;
@@ -124,8 +128,15 @@ export function ResetMetadataSection({
   } | null>(null);
 
   const booksWithLeaks = useMemo(() => {
-    const leaks = (books || []).filter(hasHeavyLeaks);
-    return leaks;
+    return (books || []).filter(needsStorageOptimization);
+  }, [books]);
+
+  const unindexedCount = useMemo(() => {
+    return (books || []).filter(needsIndexBackfill).length;
+  }, [books]);
+
+  const heavyLeaksCount = useMemo(() => {
+    return (books || []).filter(hasHeavyLeaks).length;
   }, [books]);
 
   const isPending = isResetting || isSanitizing;
@@ -149,12 +160,12 @@ export function ResetMetadataSection({
         purged: res.count,
       });
       toast.success(
-        `Sanitized ${res.count} books. Relocated heavy payloads to bookDetails and purged leaked root fields.`,
+        `Optimized ${res.count} books for faster search, duplicate matching, and lightweight shelf loading.`,
       );
       setIsSanitizeDialogOpen(false);
     } catch (err: unknown) {
       console.error('Failed to sanitize books:', err);
-      toast.error('Failed to sanitize storage');
+      toast.error('Failed to optimize library storage');
     } finally {
       setIsSanitizing(false);
       setSanitizeProgress(null);
@@ -189,7 +200,7 @@ export function ResetMetadataSection({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* 1. Storage Hardening & Payload Sanitization Card */}
+      {/* 1. Storage Hardening & Search Index Optimization Card */}
       <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl overflow-hidden shadow-sm flex flex-col">
         <div className="p-6 border-b border-outline-variant/30">
           <div>
@@ -197,8 +208,9 @@ export function ResetMetadataSection({
               Optimize Library Storage
             </h3>
             <p className="text-sm text-on-surface-variant font-sans mt-0.5">
-              Keep your library fast and lightweight by storing long summaries,
-              author bios, and AI data separately from your main book list.
+              Keep your library fast and lightweight by indexing search &amp;
+              duplicate keys and storing long summaries separately from your
+              main book list.
             </p>
           </div>
         </div>
@@ -211,17 +223,19 @@ export function ResetMetadataSection({
                 <div className="space-y-1 font-sans text-sm">
                   <p className="font-semibold text-amber-800 dark:text-amber-300">
                     {booksWithLeaks.length === 1
-                      ? '1 book can be optimized for faster loading'
-                      : `${booksWithLeaks.length} books can be optimized for faster loading`}
+                      ? '1 book can be optimized for faster search and loading'
+                      : `${booksWithLeaks.length} books can be optimized for faster search and loading`}
                   </p>
                   <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Some books still store full summaries or AI vectors on their
-                    main shelf entry. Optimizing moves those details into the
-                    dedicated{' '}
+                    {heavyLeaksCount > 0 && unindexedCount > 0
+                      ? 'Optimizing builds fast search and duplicate-matching keys and moves long summaries or AI vectors into the dedicated '
+                      : unindexedCount > 0
+                        ? 'Some earlier books are missing normalized search and duplicate-matching keys. Optimizing indexes them and keeps long summaries in '
+                        : 'Some books still store full summaries or AI vectors on their main shelf entry. Optimizing moves those details into the dedicated '}
                     <code className="font-mono font-body-xs text-body-xs px-1 py-0.5 rounded bg-surface-container">
                       bookDetails
                     </code>{' '}
-                    collection and leaves lightweight{' '}
+                    collection with lightweight{' '}
                     <code className="font-mono font-body-xs text-body-xs px-1 py-0.5 rounded bg-surface-container">
                       bookDetailsMetadata
                     </code>{' '}
@@ -254,9 +268,9 @@ export function ResetMetadataSection({
                     Library Storage Is Optimized
                   </p>
                   <p className="text-xs text-on-surface-variant">
-                    All {books?.length || 0} books are cleanly organized for
-                    fast loading, with long summaries and AI vectors stored
-                    separately in{' '}
+                    All {books?.length || 0} books are indexed for fast search
+                    and duplicate matching, with long summaries and AI vectors
+                    stored separately in{' '}
                     <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-surface-container">
                       bookDetails
                     </code>

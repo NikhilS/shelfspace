@@ -1,6 +1,6 @@
 {
-  "summary":  "Revised implementation plan removing mock-fallback branches in production code (updating test mocks instead), dropping the reading tracker duplicate lookup query change, and committing waitlist review + allowlist grant in a single db.batch().",
-  "updatedAt":  "2026-10-24T00:19:59.169517026Z",
+  "summary":  "Architectural plan to migrate server-side full-collection scans (Reading Shelf, trackBook deduplication, Unified Catalog Search, and listBooks filters) to native Firestore single-field indexed queries, introduce deterministic normalized index fields (cleanIsbn, dedupeKey, searchTokens) with a Shelf Care index backfill and unindexed fallback, and upgrade the Web Worker fuzzy duplicate detector to use multi-key blocking instead of an O(N^2) format loop.",
+  "updatedAt":  "2026-10-24T01:57:23.317697062Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -1,7 +1,7 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {ReadingTrackerService} from './index';
 import {LibraryService} from '../library';
-import {BookService, BookPartitioner} from '../book';
+import {BookService} from '../book';
 import {catalogOrchestrator} from '../catalog';
 import {getAdminDb} from '../firebaseAdmin';
 
@@ -41,11 +41,24 @@ vi.mock('../firebaseAdmin', () => ({
 
 describe('ReadingTrackerService', () => {
   const mockCollectionGet = vi.fn();
+  const mockWhere = vi.fn();
+  const mockLimit = vi.fn();
   const mockDocGet = vi.fn();
   const mockDocSet = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    const queryChain = {
+      where: mockWhere,
+      limit: mockLimit,
+      get: mockCollectionGet,
+      doc: vi.fn(() => ({
+        set: mockDocSet,
+      })),
+    };
+    mockWhere.mockReturnValue(queryChain);
+    mockLimit.mockReturnValue(queryChain);
 
     vi.mocked(getAdminDb).mockReturnValue({
       collection: vi.fn((colName: string) => {
@@ -55,12 +68,7 @@ describe('ReadingTrackerService', () => {
               id: libId,
               get: mockDocGet,
               set: mockDocSet,
-              collection: vi.fn(() => ({
-                get: mockCollectionGet,
-                doc: vi.fn(() => ({
-                  set: mockDocSet,
-                })),
-              })),
+              collection: vi.fn(() => queryChain),
             })),
           };
         }
@@ -70,7 +78,7 @@ describe('ReadingTrackerService', () => {
   });
 
   describe('getPersonalReadingShelf', () => {
-    it('aggregates tracked books across accessible libraries and virtual shelf with deduplication', async () => {
+    it('queries non-virtual libraries using FieldPath userStatuses in filter and aggregates virtual shelf', async () => {
       vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
         libraries: [
           {
@@ -78,6 +86,7 @@ describe('ReadingTrackerService', () => {
             name: 'Home Library',
             ownerId: 'u1',
             ownerName: 'Reader',
+            callerRole: 'owner',
             createdAt: '2026-01-01',
             bookCount: 2,
           },
@@ -122,6 +131,17 @@ describe('ReadingTrackerService', () => {
         {shelf: 'all'},
       );
 
+      expect(mockWhere).toHaveBeenCalledWith(
+        expect.anything(),
+        'in',
+        expect.arrayContaining([
+          'want_to_read',
+          'reading',
+          'finished',
+          'completed',
+          'abandoned',
+        ]),
+      );
       expect(summary.counts.all).toBe(2);
       expect(summary.counts.reading).toBe(1);
       expect(summary.counts.want_to_read).toBe(1);
@@ -133,7 +153,7 @@ describe('ReadingTrackerService', () => {
   });
 
   describe('searchUnifiedCatalog', () => {
-    it('returns library matches and external catalog matches cross-referenced with library state', async () => {
+    it('queries searchTokens via array-contains and cross-references external catalog matches', async () => {
       vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
         libraries: [
           {
@@ -141,6 +161,7 @@ describe('ReadingTrackerService', () => {
             name: 'Home Library',
             ownerId: 'u1',
             ownerName: 'Reader',
+            callerRole: 'owner',
             createdAt: '2026-01-01',
             bookCount: 1,
           },
@@ -156,11 +177,13 @@ describe('ReadingTrackerService', () => {
                 title: 'Dune',
                 author: 'Frank Herbert',
                 isbn: '9780441172719',
+                searchTokens: ['dune', 'frank', 'herbert'],
                 userStatuses: {u1: 'finished'},
               }),
             },
           ],
         })
+        .mockResolvedValueOnce({docs: []})
         .mockResolvedValueOnce({docs: []});
 
       vi.mocked(catalogOrchestrator.searchByQuery).mockResolvedValue([
@@ -168,11 +191,15 @@ describe('ReadingTrackerService', () => {
           title: 'Dune',
           author: 'Frank Herbert',
           isbn: '9780441172719',
+          coverUrl: '',
+          publishedDate: '1965',
         },
         {
           title: 'Dune Messiah',
           author: 'Frank Herbert',
           isbn: '9780593098233',
+          coverUrl: '',
+          publishedDate: '1969',
         },
       ]);
 
@@ -182,6 +209,11 @@ describe('ReadingTrackerService', () => {
         'Dune',
       );
 
+      expect(mockWhere).toHaveBeenCalledWith(
+        'searchTokens',
+        'array-contains',
+        'dune',
+      );
       expect(result.libraryMatches).toHaveLength(1);
       expect(result.libraryMatches[0].title).toBe('Dune');
       expect(result.externalMatches).toHaveLength(2);
@@ -261,17 +293,12 @@ describe('ReadingTrackerService', () => {
       expect(BookService.addReview).not.toHaveBeenCalled();
     });
 
-    it('creates an unowned book in virtual_${userId} when tracking an external book without targetLibraryId', async () => {
+    it('queries cleanIsbn and dedupeKey indexes and creates an unowned book in virtual_${userId} when no match exists', async () => {
       vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue('owner');
-      mockCollectionGet.mockResolvedValueOnce({docs: []});
+      mockCollectionGet.mockResolvedValue({docs: []});
       vi.mocked(BookService.createBook).mockResolvedValue({
         success: true,
         id: 'vbook-99',
-      });
-      vi.mocked(BookPartitioner.partitionBookPayload).mockReturnValue({
-        coreBook: {},
-        bookDetails: {},
-        hasDetailsMutations: false,
       });
 
       const res = await ReadingTrackerService.trackBook(
@@ -284,11 +311,21 @@ describe('ReadingTrackerService', () => {
           bookData: {
             title: ' Piranesi ',
             author: 'Susanna Clarke',
-            isbn: '9781635575637',
+            isbn: '978-1635575637',
           },
         },
       );
 
+      expect(mockWhere).toHaveBeenCalledWith(
+        'cleanIsbn',
+        '==',
+        '9781635575637',
+      );
+      expect(mockWhere).toHaveBeenCalledWith(
+        'dedupeKey',
+        '==',
+        'piranesi::susanna clarke',
+      );
       expect(res.libraryId).toBe('virtual_u1');
       expect(res.bookId).toBe('vbook-99');
       expect(res.ownershipStatus).toBe('unowned');
@@ -300,6 +337,46 @@ describe('ReadingTrackerService', () => {
           ownershipStatus: 'unowned',
           status: 'reading',
         }),
+      );
+    });
+
+    it('reuses existing book in destination library when cleanIsbn index query matches', async () => {
+      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue('editor');
+      mockCollectionGet
+        .mockResolvedValueOnce({
+          docs: [{id: 'existing-book-42', data: () => ({title: 'Piranesi'})}],
+        })
+        .mockResolvedValueOnce({docs: []});
+      vi.mocked(BookService.updateBookStatus).mockResolvedValue({
+        success: true,
+        id: 'existing-book-42',
+        status: 'finished',
+      });
+
+      const res = await ReadingTrackerService.trackBook(
+        'u1',
+        'u1@example.com',
+        'Reader',
+        {
+          source: 'external',
+          targetLibraryId: 'lib-home',
+          status: 'finished',
+          bookData: {
+            title: 'Piranesi',
+            author: 'Susanna Clarke',
+            isbn: '9781635575637',
+          },
+        },
+      );
+
+      expect(res.bookId).toBe('existing-book-42');
+      expect(BookService.createBook).not.toHaveBeenCalled();
+      expect(BookService.updateBookStatus).toHaveBeenCalledWith(
+        'u1',
+        'lib-home',
+        'existing-book-42',
+        'finished',
+        undefined,
       );
     });
   });

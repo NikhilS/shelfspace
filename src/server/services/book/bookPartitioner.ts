@@ -35,6 +35,9 @@ export const ALLOWED_CORE_BOOK_FIELDS = new Set([
   'title',
   'author',
   'isbn',
+  'cleanIsbn',
+  'dedupeKey',
+  'searchTokens',
   'coverUrl',
   'coverUrlRaw',
   'publishedDate',
@@ -58,6 +61,11 @@ export const ALLOWED_CORE_BOOK_FIELDS = new Set([
 ]);
 
 import {hasControlCharacters} from '../../../schemas/common';
+import {
+  normalizeIsbnForDedupe,
+  computeBookDedupeKey,
+  computeBookSearchTokens,
+} from '../../../lib/duplicateDetection';
 
 export function isUnsafeFieldKey(key: string): boolean {
   return (
@@ -234,12 +242,31 @@ export class BookPartitioner {
       }
     }
 
+    const titleStr = (input.title as string) || '';
+    const authorStr = (input.author as string) || 'Unknown Author';
+    const isbnStr = input.isbn as string | undefined;
+    const seriesStr = input.series as string | undefined;
+
+    const computedCleanIsbn = normalizeIsbnForDedupe(isbnStr);
+    const computedDedupeKey = computeBookDedupeKey(titleStr, authorStr);
+    const computedSearchTokens = computeBookSearchTokens({
+      title: titleStr,
+      author: authorStr,
+      isbn: isbnStr,
+      series: seriesStr,
+    });
+
     const coreData: Record<string, unknown> = {
       ...rawInput,
       id: bookId,
       title: input.title,
-      author: (input.author as string) || 'Unknown Author',
+      author: authorStr,
       format: (input.format as string) || 'physical',
+      ...(computedCleanIsbn ? {cleanIsbn: computedCleanIsbn} : {}),
+      ...(computedDedupeKey ? {dedupeKey: computedDedupeKey} : {}),
+      ...(computedSearchTokens.length > 0
+        ? {searchTokens: computedSearchTokens}
+        : {}),
       addedBy: userId || null,
       addedAt: serverTimestamp,
       updatedAt: serverTimestamp,
@@ -304,6 +331,41 @@ export class BookPartitioner {
         }
       } else if (ALLOWED_CORE_BOOK_FIELDS.has(key)) {
         coreUpdates[key] = value;
+      }
+    }
+
+    // Recompute normalized index fields when searchable/dedupe fields are updated
+    if (typeof coreUpdates.isbn === 'string') {
+      const cleanIsbn = normalizeIsbnForDedupe(coreUpdates.isbn);
+      if (cleanIsbn) {
+        coreUpdates.cleanIsbn = cleanIsbn;
+      }
+    }
+
+    const hasTitleUpdate = typeof coreUpdates.title === 'string';
+    const hasAuthorUpdate = typeof coreUpdates.author === 'string';
+    const hasSeriesUpdate = typeof coreUpdates.series === 'string';
+    const hasIsbnUpdate = typeof coreUpdates.isbn === 'string';
+
+    if (hasTitleUpdate && hasAuthorUpdate) {
+      const dedupeKey = computeBookDedupeKey(
+        coreUpdates.title as string,
+        coreUpdates.author as string,
+      );
+      if (dedupeKey) {
+        coreUpdates.dedupeKey = dedupeKey;
+      }
+    }
+
+    if (hasTitleUpdate || hasAuthorUpdate || hasSeriesUpdate || hasIsbnUpdate) {
+      const searchTokens = computeBookSearchTokens({
+        title: hasTitleUpdate ? (coreUpdates.title as string) : undefined,
+        author: hasAuthorUpdate ? (coreUpdates.author as string) : undefined,
+        isbn: hasIsbnUpdate ? (coreUpdates.isbn as string) : undefined,
+        series: hasSeriesUpdate ? (coreUpdates.series as string) : undefined,
+      });
+      if (searchTokens.length > 0) {
+        coreUpdates.searchTokens = searchTokens;
       }
     }
 
