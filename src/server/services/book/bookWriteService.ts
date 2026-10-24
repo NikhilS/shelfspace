@@ -179,6 +179,7 @@ export async function updateBookStatus(
     | 'finished'
     | 'completed'
     | 'abandoned',
+  options?: {skipAccessCheck?: boolean; rating?: number},
 ): Promise<{success: true; id: string; status: string}> {
   const libraryId = assertSafeDocId(libraryIdRaw, 'libraryId');
   const bookId = assertSafeDocId(bookIdRaw, 'bookId');
@@ -190,11 +191,16 @@ export async function updateBookStatus(
     .collection('books')
     .doc(bookId);
 
+  const updatePayload: Record<string, unknown> = {
+    [`userStatuses.${userId}`]: status,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (typeof options?.rating === 'number' && options.rating >= 1) {
+    updatePayload[`userRatings.${userId}`] = options.rating;
+  }
+
   try {
-    await bookRef.update({
-      [`userStatuses.${userId}`]: status,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    await bookRef.update(updatePayload);
   } catch (err: unknown) {
     const errMsg = formatFirestoreAdminError(err);
     console.error(
@@ -399,7 +405,8 @@ export async function batchUpsert(
       if (!syncCompleted) {
         void enrichmentPromise
           .then(async enrichedMap => {
-            const bgBatch = db.batch();
+            const BG_BATCH_LIMIT = 400;
+            let bgBatch = db.batch();
             let bgOps = 0;
             for (const [bookId, patch] of enrichedMap.entries()) {
               if (!patch || Object.keys(patch).length === 0) {
@@ -455,6 +462,12 @@ export async function batchUpsert(
                   {merge: true},
                 );
                 bgOps++;
+              }
+
+              if (bgOps >= BG_BATCH_LIMIT) {
+                await bgBatch.commit();
+                bgBatch = db.batch();
+                bgOps = 0;
               }
             }
             if (bgOps > 0) {
@@ -595,6 +608,32 @@ export async function batchUpsert(
   let currentBatch = db.batch();
   let currentBatchOps = 0;
 
+  // Pre-fetch reviews subcollections in parallel for all delete operations
+  const deleteOps = ops.filter(op => op.type === 'delete');
+  const reviewsByDeletedBookId = new Map<
+    string,
+    FirebaseFirestore.QuerySnapshot
+  >();
+  if (deleteOps.length > 0) {
+    await Promise.all(
+      deleteOps.map(async op => {
+        try {
+          const bookRef = db
+            .collection('libraries')
+            .doc(libraryId)
+            .collection('books')
+            .doc(op.bookId);
+          if (typeof bookRef?.collection === 'function') {
+            const reviewsSnap = await bookRef.collection('reviews').get();
+            reviewsByDeletedBookId.set(op.bookId, reviewsSnap);
+          }
+        } catch {
+          // Non-fatal if reviews subcollection is empty or mocked
+        }
+      }),
+    );
+  }
+
   for (const op of ops) {
     const bookRef = db
       .collection('libraries')
@@ -613,16 +652,21 @@ export async function batchUpsert(
       currentBatchOps += 2;
       deletedCount++;
 
-      try {
-        if (typeof bookRef?.collection === 'function') {
-          const reviewsSnap = await bookRef.collection('reviews').get();
-          reviewsSnap.forEach(reviewDoc => {
-            currentBatch.delete(reviewDoc.ref);
-            currentBatchOps++;
-          });
+      const reviewsSnap = reviewsByDeletedBookId.get(op.bookId);
+      if (reviewsSnap) {
+        const reviewRefs: FirebaseFirestore.DocumentReference[] = [];
+        reviewsSnap.forEach(reviewDoc => {
+          reviewRefs.push(reviewDoc.ref);
+        });
+        for (const revRef of reviewRefs) {
+          if (currentBatchOps >= BATCH_LIMIT) {
+            await currentBatch.commit();
+            currentBatch = db.batch();
+            currentBatchOps = 0;
+          }
+          currentBatch.delete(revRef);
+          currentBatchOps++;
         }
-      } catch {
-        // Non-fatal if reviews subcollection is empty or mocked
       }
     } else if (op.type === 'create' || (op.type === 'set' && !op.merge)) {
       const cleanCore = Object.fromEntries(
@@ -791,9 +835,8 @@ export async function mergeDuplicates(
   const detailsCol = libraryRef.collection('bookDetails');
 
   const allBookIds = [survivorBookId, ...cleanDupIds];
-  const bookDocs = await Promise.all(
-    allBookIds.map(id => booksCol.doc(id).get()),
-  );
+  const bookRefs = allBookIds.map(id => booksCol.doc(id));
+  const bookDocs = await db.getAll(...bookRefs);
 
   const survivorSnap = bookDocs[0];
   if (!survivorSnap?.exists) {
@@ -892,6 +935,21 @@ export async function mergeDuplicates(
     batchOps++;
   }
 
+  // Pre-fetch reviews subcollections for all duplicate books in parallel
+  const dupReviewSnaps = await Promise.all(
+    cleanDupIds.map(async dupId => {
+      try {
+        const dupBookRef = booksCol.doc(dupId);
+        if (typeof dupBookRef?.collection === 'function') {
+          return await dupBookRef.collection('reviews').get();
+        }
+      } catch {
+        // Non-fatal if reviews subcollection is empty or mocked
+      }
+      return undefined;
+    }),
+  );
+
   let deletedCount = 0;
   try {
     for (let i = 0; i < cleanDupIds.length; i++) {
@@ -899,35 +957,26 @@ export async function mergeDuplicates(
       const dupBookRef = booksCol.doc(dupId);
       const dupDetailRef = detailsCol.doc(dupId);
 
-      // Migrate reviews from duplicate to survivor before deleting
-      try {
-        if (
-          typeof dupBookRef?.collection === 'function' &&
-          typeof survivorBookRef?.collection === 'function'
-        ) {
-          const reviewsSnap = await dupBookRef.collection('reviews').get();
-          const reviewDocs: Array<{
-            id: string;
-            data: () => Record<string, unknown>;
-            ref: FirebaseFirestore.DocumentReference;
-          }> = [];
-          reviewsSnap.forEach(reviewDoc => {
-            reviewDocs.push(
-              reviewDoc as unknown as (typeof reviewDocs)[number],
-            );
-          });
-          for (const reviewDoc of reviewDocs) {
-            const targetReviewRef = survivorBookRef
-              .collection('reviews')
-              .doc(reviewDoc.id);
-            batch.set(targetReviewRef, reviewDoc.data(), {merge: true});
-            batch.delete(reviewDoc.ref);
-            batchOps += 2;
-            await commitBatchIfNeeded();
-          }
+      // Migrate pre-fetched reviews from duplicate to survivor before deleting
+      const reviewsSnap = dupReviewSnaps[i];
+      if (reviewsSnap && typeof survivorBookRef?.collection === 'function') {
+        const reviewDocs: Array<{
+          id: string;
+          data: () => Record<string, unknown>;
+          ref: FirebaseFirestore.DocumentReference;
+        }> = [];
+        reviewsSnap.forEach(reviewDoc => {
+          reviewDocs.push(reviewDoc as unknown as (typeof reviewDocs)[number]);
+        });
+        for (const reviewDoc of reviewDocs) {
+          const targetReviewRef = survivorBookRef
+            .collection('reviews')
+            .doc(reviewDoc.id);
+          batch.set(targetReviewRef, reviewDoc.data(), {merge: true});
+          batch.delete(reviewDoc.ref);
+          batchOps += 2;
+          await commitBatchIfNeeded();
         }
-      } catch {
-        // Non-fatal if reviews subcollection is empty or mocked
       }
 
       batch.delete(dupBookRef);

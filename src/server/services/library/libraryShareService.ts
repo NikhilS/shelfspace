@@ -602,26 +602,30 @@ export async function getCollaboratorStatuses(
     (data.access as Record<string, LibraryRole> | undefined) || {};
   const entries = Object.entries(accessMap);
 
-  const collaborators = await Promise.all(
-    entries.map(async ([rawEmail, role]) => {
-      const email = rawEmail.trim().toLowerCase();
-      let isAppAllowed = role === 'owner';
-      if (!isAppAllowed) {
-        try {
-          const perms = await AllowlistService.getPermissions(email);
-          isAppAllowed = Boolean(perms?.isAppAllowed);
-        } catch {
-          isAppAllowed = false;
-        }
-      }
-      return {
-        email,
-        role,
-        allowlistStatus: (isAppAllowed ? 'approved' : 'pending_approval') as
-          'approved' | 'pending_approval',
-      };
-    }),
-  );
+  const nonOwnerEmails = entries
+    .filter(([, role]) => role !== 'owner')
+    .map(([rawEmail]) => rawEmail.trim().toLowerCase());
+
+  let permsMap = new Map<string, {isAppAllowed: boolean}>();
+  if (nonOwnerEmails.length > 0) {
+    try {
+      permsMap = await AllowlistService.getPermissionsBulk(nonOwnerEmails);
+    } catch {
+      permsMap = new Map();
+    }
+  }
+
+  const collaborators = entries.map(([rawEmail, role]) => {
+    const email = rawEmail.trim().toLowerCase();
+    const isAppAllowed =
+      role === 'owner' || Boolean(permsMap.get(email)?.isAppAllowed);
+    return {
+      email,
+      role,
+      allowlistStatus: (isAppAllowed ? 'approved' : 'pending_approval') as
+        'approved' | 'pending_approval',
+    };
+  });
 
   return {collaborators};
 }

@@ -3,11 +3,27 @@ import {AllowlistService} from './allowlistService';
 import {SUPERADMIN_EMAIL} from '../../constants/auth';
 
 const mockDocGet = vi.fn();
+const mockDocSet = vi.fn();
+const mockGetAll = vi.fn(
+  async (...refs: Array<{get: () => Promise<unknown>}>) =>
+    Promise.all(refs.map(r => r.get())),
+);
+const mockBatchSet = vi.fn();
+const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
 const mockDoc = vi.fn(() => ({
   get: mockDocGet,
+  set: mockDocSet,
 }));
 const mockFirestore = vi.fn(() => ({
   doc: mockDoc,
+  collection: vi.fn(() => ({
+    doc: mockDoc,
+  })),
+  getAll: mockGetAll,
+  batch: () => ({
+    set: mockBatchSet,
+    commit: mockBatchCommit,
+  }),
 }));
 
 vi.mock('firebase-admin', () => ({
@@ -18,12 +34,16 @@ vi.mock('firebase-admin', () => ({
 
 vi.mock('../services/firebaseAdmin', () => ({
   getAdminDb: () => mockFirestore(),
+  FieldValue: {
+    serverTimestamp: () => 'MOCK_TIMESTAMP',
+  },
 }));
 
 describe('AllowlistService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDocGet.mockReset();
+    mockGetAll.mockClear();
     AllowlistService.clearCache();
   });
 
@@ -163,5 +183,53 @@ describe('AllowlistService', () => {
       hasAiPlan: false,
     });
     expect(mockDocGet).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves permissions in bulk via getPermissionsBulk using L1 cache and a single db.getAll call for misses', async () => {
+    AllowlistService.setCache('cached@example.com', {
+      isAppAllowed: true,
+      isAdmin: false,
+      hasAiPlan: true,
+    });
+
+    mockGetAll.mockResolvedValueOnce([
+      {
+        exists: true,
+        data: () => ({role: 'admin'}),
+      },
+      {
+        exists: false,
+      },
+    ]);
+
+    const resultMap = await AllowlistService.getPermissionsBulk([
+      SUPERADMIN_EMAIL,
+      'cached@example.com',
+      'admin-miss@example.com',
+      'stranger-miss@example.com',
+    ]);
+
+    expect(mockGetAll).toHaveBeenCalledTimes(1);
+    expect(mockDoc).toHaveBeenCalledTimes(2);
+    expect(resultMap.get(SUPERADMIN_EMAIL.toLowerCase().trim())).toEqual({
+      isAppAllowed: true,
+      isAdmin: true,
+      hasAiPlan: true,
+    });
+    expect(resultMap.get('cached@example.com')).toEqual({
+      isAppAllowed: true,
+      isAdmin: false,
+      hasAiPlan: true,
+    });
+    expect(resultMap.get('admin-miss@example.com')).toEqual({
+      isAppAllowed: true,
+      isAdmin: true,
+      hasAiPlan: true,
+    });
+    expect(resultMap.get('stranger-miss@example.com')).toEqual({
+      isAppAllowed: false,
+      isAdmin: false,
+      hasAiPlan: false,
+    });
   });
 });

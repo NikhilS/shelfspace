@@ -9,7 +9,12 @@ import {
   BatchExtractedGeoBookResult,
   ExtractedGeoLocation,
 } from '../../gemini';
-import {geocodeLocation} from '../../geolocation';
+import {
+  geocodeLocation,
+  getCachedGeocode,
+  warmGeocodeCacheBulk,
+  cacheGeocodesBulk,
+} from '../../geolocation';
 import {resolveBookSynopses} from '../utils';
 
 export class GeoMetadataProvider implements IMetadataProvider<unknown> {
@@ -17,10 +22,16 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
     return MetadataKey.GEO;
   }
 
-  private async processLocations(item: {
-    isNonEarth: boolean;
-    locations: ExtractedGeoLocation[] | undefined;
-  }) {
+  private async processLocations(
+    item: {
+      isNonEarth: boolean;
+      locations: ExtractedGeoLocation[] | undefined;
+    },
+    pendingCacheEntries?: Array<{
+      name: string;
+      coordinates: {lat: number; lng: number};
+    }>,
+  ) {
     if (item.isNonEarth) {
       return {
         isNonEarth: true,
@@ -32,7 +43,21 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
     const rawLocations = (item.locations || []).slice(0, 5);
     const locationsWithCoords = await Promise.all(
       rawLocations.map(async loc => {
-        let coords = await geocodeLocation(loc.name);
+        const preCached = pendingCacheEntries
+          ? await getCachedGeocode(loc.name, {skipL2Read: true})
+          : undefined;
+        let coords =
+          preCached ??
+          (await geocodeLocation(
+            loc.name,
+            pendingCacheEntries
+              ? {skipPersist: true, skipL2Read: true}
+              : undefined,
+          ));
+
+        if (coords && !preCached && pendingCacheEntries) {
+          pendingCacheEntries.push({name: loc.name, coordinates: coords});
+        }
 
         // Fallback geocoding dictionary
         if (!coords) {
@@ -124,6 +149,26 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
         });
 
         if (geoResult && geoResult.enrichment) {
+          const allLocationNames: string[] = [];
+          for (const item of geoResult.enrichment) {
+            if (!item.isNonEarth && Array.isArray(item.locations)) {
+              for (const loc of item.locations.slice(0, 5)) {
+                if (loc?.name) {
+                  allLocationNames.push(loc.name);
+                }
+              }
+            }
+          }
+
+          if (allLocationNames.length > 0) {
+            await warmGeocodeCacheBulk(allLocationNames);
+          }
+
+          const pendingCacheEntries: Array<{
+            name: string;
+            coordinates: {lat: number; lng: number};
+          }> = [];
+
           await Promise.all(
             geoResult.enrichment.map(
               async (item: BatchExtractedGeoBookResult) => {
@@ -131,11 +176,18 @@ export class GeoMetadataProvider implements IMetadataProvider<unknown> {
                   return;
                 }
                 if (item.id) {
-                  results[item.id] = await this.processLocations(item);
+                  results[item.id] = await this.processLocations(
+                    item,
+                    pendingCacheEntries,
+                  );
                 }
               },
             ),
           );
+
+          if (pendingCacheEntries.length > 0) {
+            await cacheGeocodesBulk(pendingCacheEntries);
+          }
         }
       }),
     );

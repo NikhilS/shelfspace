@@ -9,6 +9,11 @@ vi.mock('./metadata');
 const mockBookGet = vi.fn();
 const mockBookUpdate = vi.fn();
 const mockBookDetailsSet = vi.fn();
+const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
+const mockGetAll = vi.fn(
+  async (...refs: Array<{get: () => Promise<unknown>}>) =>
+    Promise.all(refs.map(ref => ref.get())),
+);
 
 const mockCollection = vi.fn(() => ({
   doc: vi.fn(() => ({
@@ -25,6 +30,23 @@ const mockCollection = vi.fn(() => ({
 vi.mock('./firebaseAdmin', () => ({
   getAdminDb: () => ({
     collection: mockCollection,
+    getAll: mockGetAll,
+    batch: () => ({
+      update: (
+        ref: {update?: (d: unknown) => unknown},
+        data: Record<string, unknown>,
+      ) => {
+        ref?.update?.(data);
+      },
+      set: (
+        ref: {set?: (d: unknown, o?: unknown) => unknown},
+        data: Record<string, unknown>,
+        opts?: {merge?: boolean},
+      ) => {
+        ref?.set?.(data, opts);
+      },
+      commit: mockBatchCommit,
+    }),
   }),
 }));
 
@@ -469,5 +491,99 @@ describe('EnrichmentService', () => {
       }),
       {merge: true},
     );
+  });
+
+  it('uses db.getAll() and db.batch() to eliminate N+1 Firestore RPCs when available', async () => {
+    vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
+
+    const mockProvider = {
+      isAvailable: () => true,
+      bulkFetch: vi.fn().mockResolvedValue({
+        b1: {
+          primaryGenre: 'Science Fiction',
+          subgenres: ['Dystopian'],
+          isCustomPrimary: false,
+        },
+        b2: {
+          primaryGenre: 'Literary Fiction',
+          subgenres: ['Classics'],
+          isCustomPrimary: false,
+        },
+      }),
+    };
+
+    vi.mocked(MetadataRegistry.getInstance).mockReturnValue({
+      getProvider: () => mockProvider,
+    } as unknown as MetadataRegistry);
+
+    const mockBatchUpdate = vi.fn();
+    const mockBatchSet = vi.fn();
+    const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
+    const mockGetAll = vi
+      .fn()
+      // First getAll: primary book docs (missing inline synopsis so bookDetails getAll is triggered)
+      .mockResolvedValueOnce([
+        {
+          exists: true,
+          data: () => ({title: '1984', author: 'George Orwell'}),
+        },
+        {
+          exists: true,
+          data: () => ({title: 'Middlemarch', author: 'George Eliot'}),
+        },
+      ])
+      // Second getAll: bookDetails docs for synopsis context
+      .mockResolvedValueOnce([
+        {
+          exists: true,
+          data: () => ({synopsis: 'Totalitarian surveillance state.'}),
+        },
+        {
+          exists: true,
+          data: () => ({synopsis: 'Provincial life in 19th-century England.'}),
+        },
+      ]);
+
+    const firebaseAdminModule = await import('./firebaseAdmin');
+    vi.spyOn(firebaseAdminModule, 'getAdminDb').mockReturnValueOnce({
+      collection: mockCollection,
+      getAll: mockGetAll,
+      batch: () => ({
+        update: mockBatchUpdate,
+        set: mockBatchSet,
+        commit: mockBatchCommit,
+      }),
+    } as unknown as ReturnType<typeof firebaseAdminModule.getAdminDb>);
+
+    const res = await EnrichmentService.triggerBatchEnrichment(
+      'u1',
+      'u1@example.com',
+      {
+        libraryId: 'lib1',
+        enrichmentType: 'genre',
+        bookIds: ['b1', 'b2'],
+      },
+    );
+
+    expect(res.status).toBe('success');
+    expect(res.processedCount).toBe(2);
+    expect(mockGetAll).toHaveBeenCalledTimes(2);
+    expect(mockBookGet).not.toHaveBeenCalled();
+    expect(mockProvider.bulkFetch).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'b1',
+          synopsis: 'Totalitarian surveillance state.',
+        }),
+        expect.objectContaining({
+          id: 'b2',
+          synopsis: 'Provincial life in 19th-century England.',
+        }),
+      ]),
+      expect.any(Object),
+    );
+    expect(mockBatchUpdate).toHaveBeenCalledTimes(2);
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+    expect(mockBookUpdate).not.toHaveBeenCalled();
   });
 });

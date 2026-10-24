@@ -18,6 +18,13 @@ export interface UseLibraryDataResult {
   refetch: () => Promise<void>;
 }
 
+interface InFlightDrainResult {
+  extraBooks: Book[];
+  latestTotalCount?: number;
+}
+
+const activeLibraryDrains = new Map<string, Promise<InFlightDrainResult>>();
+
 export function mapDocToBook(docSnap: {
   id: string;
   data: () => Record<string, unknown> | undefined;
@@ -125,19 +132,13 @@ export function useLibraryData(
     },
   );
 
-  const [drainedState, setDrainedState] = useState<{
-    libraryId: string;
-    startCursor: string;
-    books: Book[];
-    isComplete: boolean;
-  }>({
-    libraryId: '',
-    startCursor: '',
-    books: [],
-    isComplete: false,
-  });
+  const [completedDrainKey, setCompletedDrainKey] = useState<string>('');
   const [isDrainingCursor, setIsDrainingCursor] = useState(false);
   const [drainEpoch, setDrainEpoch] = useState(0);
+  const fallbackOverflowRef = useRef<{key: string; books: Book[]}>({
+    key: '',
+    books: [],
+  });
 
   const baseBooks = useMemo(() => {
     if (!booksQuery.data) {
@@ -182,7 +183,12 @@ export function useLibraryData(
     return undefined;
   }, [booksQuery.data]);
 
-  // 2b. Background Cursor Drain for Libraries > 1,000 Books
+  // Release fallback ref buffer once canonical TanStack Query cache clears nextCursor
+  if (!initialNextCursor && fallbackOverflowRef.current.books.length > 0) {
+    fallbackOverflowRef.current = {key: '', books: []};
+  }
+
+  // 2b. Background Cursor Drain for Libraries > 1,000 Books (deduplicated per library + cursor)
   useEffect(() => {
     const isOffline =
       typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -197,11 +203,8 @@ export function useLibraryData(
       return undefined;
     }
 
-    if (
-      drainedState.libraryId === libraryId &&
-      drainedState.startCursor === initialNextCursor &&
-      drainedState.isComplete
-    ) {
+    const drainKey = `${libraryId}:${initialNextCursor}`;
+    if (completedDrainKey === drainKey) {
       setIsDrainingCursor(false);
       return undefined;
     }
@@ -209,31 +212,81 @@ export function useLibraryData(
     let cancelled = false;
     setIsDrainingCursor(true);
 
-    async function drainRemainingPages(
+    const mergeBooksIntoQueryCache = (
       targetLibId: string,
-      startCursor: string,
-    ) {
-      const visitedCursors = new Set<string>();
-      let currentCursor: string | undefined = startCursor;
-      const accumulatedExtra: Book[] = [];
-      let latestTotalCount: number | undefined;
+      extraBooks: Book[],
+      nextCursor: string | undefined,
+      latestTotalCount: number | undefined,
+    ) => {
+      const currentUtils = utilsRef.current;
+      if (!currentUtils?.book?.list?.setData) {
+        return;
+      }
+      let finalMergedLength = 0;
+      currentUtils.book.list.setData({libraryId: targetLibId}, old => {
+        if (!old || Array.isArray(old)) {
+          return old;
+        }
+        const existing = Array.isArray(old.books) ? old.books : [];
+        const seen = new Set<string>();
+        const merged: Book[] = [];
+        for (const b of existing) {
+          if (b?.id && !seen.has(b.id)) {
+            seen.add(b.id);
+            merged.push(b);
+          }
+        }
+        for (const b of extraBooks) {
+          if (b?.id && !seen.has(b.id)) {
+            seen.add(b.id);
+            merged.push(b);
+          }
+        }
+        finalMergedLength = merged.length;
+        return {
+          ...old,
+          books: merged,
+          nextCursor,
+          totalCount: latestTotalCount ?? merged.length,
+        };
+      });
 
-      try {
-        while (
-          currentCursor &&
-          !visitedCursors.has(currentCursor) &&
-          !cancelled
-        ) {
+      if (
+        !nextCursor &&
+        finalMergedLength > 0 &&
+        currentUtils.library?.get?.setData
+      ) {
+        currentUtils.library.get.setData({libraryId: targetLibId}, oldLib => {
+          if (!oldLib) {
+            return oldLib;
+          }
+          return {
+            ...oldLib,
+            bookCount: finalMergedLength,
+          };
+        });
+      }
+    };
+
+    let sharedPromise = activeLibraryDrains.get(drainKey);
+    if (!sharedPromise) {
+      sharedPromise = (async (): Promise<InFlightDrainResult> => {
+        const visitedCursors = new Set<string>();
+        let currentCursor: string | undefined = initialNextCursor;
+        const accumulatedExtra: Book[] = [];
+        let latestTotalCount: number | undefined;
+
+        while (currentCursor && !visitedCursors.has(currentCursor)) {
           visitedCursors.add(currentCursor);
           const page = (await trpcVanilla.book.list.query({
-            libraryId: targetLibId,
+            libraryId,
             cursor: currentCursor,
             limit: 1000,
           })) as
             | {books?: Book[]; nextCursor?: string; totalCount?: number}
             | undefined;
 
-          if (cancelled || !page) {
+          if (!page) {
             break;
           }
 
@@ -252,82 +305,53 @@ export function useLibraryData(
                 : undefined;
           }
 
-          setDrainedState({
-            libraryId: targetLibId,
-            startCursor,
-            books: [...accumulatedExtra],
-            isComplete: !currentCursor,
-          });
+          mergeBooksIntoQueryCache(
+            libraryId,
+            accumulatedExtra,
+            currentCursor,
+            latestTotalCount,
+          );
         }
 
-        if (!cancelled) {
-          setDrainedState({
-            libraryId: targetLibId,
-            startCursor,
-            books: [...accumulatedExtra],
-            isComplete: true,
-          });
+        return {
+          extraBooks: accumulatedExtra,
+          latestTotalCount,
+        };
+      })().finally(() => {
+        activeLibraryDrains.delete(drainKey);
+      });
 
-          const currentUtils = utilsRef.current;
-          if (currentUtils?.book?.list?.setData) {
-            let finalMergedLength = 0;
-            currentUtils.book.list.setData({libraryId: targetLibId}, old => {
-              if (!old || Array.isArray(old)) {
-                return old;
-              }
-              const existing = Array.isArray(old.books) ? old.books : [];
-              const seen = new Set<string>();
-              const merged: Book[] = [];
-              for (const b of existing) {
-                if (b?.id && !seen.has(b.id)) {
-                  seen.add(b.id);
-                  merged.push(b);
-                }
-              }
-              for (const b of accumulatedExtra) {
-                if (b?.id && !seen.has(b.id)) {
-                  seen.add(b.id);
-                  merged.push(b);
-                }
-              }
-              finalMergedLength = merged.length;
-              return {
-                ...old,
-                books: merged,
-                nextCursor: undefined,
-                totalCount: latestTotalCount ?? merged.length,
-              };
-            });
+      activeLibraryDrains.set(drainKey, sharedPromise);
+    }
 
-            if (finalMergedLength > 0 && currentUtils.library?.get?.setData) {
-              currentUtils.library.get.setData(
-                {libraryId: targetLibId},
-                oldLib => {
-                  if (!oldLib) {
-                    return oldLib;
-                  }
-                  return {
-                    ...oldLib,
-                    bookCount: finalMergedLength,
-                  };
-                },
-              );
-            }
-          }
+    void sharedPromise
+      .then(({extraBooks, latestTotalCount}) => {
+        if (cancelled) {
+          return;
         }
-      } catch (err) {
+        mergeBooksIntoQueryCache(
+          libraryId,
+          extraBooks,
+          undefined,
+          latestTotalCount,
+        );
+        fallbackOverflowRef.current = {
+          key: drainKey,
+          books: extraBooks,
+        };
+        setCompletedDrainKey(drainKey);
+      })
+      .catch(err => {
         console.warn(
-          `[useLibraryData] Failed to drain additional book pages for library '${targetLibId}':`,
+          `[useLibraryData] Failed to drain additional book pages for library '${libraryId}':`,
           err,
         );
-      } finally {
+      })
+      .finally(() => {
         if (!cancelled) {
           setIsDrainingCursor(false);
         }
-      }
-    }
-
-    void drainRemainingPages(libraryId, initialNextCursor);
+      });
 
     return () => {
       cancelled = true;
@@ -338,15 +362,17 @@ export function useLibraryData(
     initialNextCursor,
     booksQuery.isLoading,
     drainEpoch,
-    drainedState.libraryId,
-    drainedState.startCursor,
-    drainedState.isComplete,
+    completedDrainKey,
   ]);
 
-  // 3. Normalized Data Derivation
+  // 3. Normalized Data Derivation (single source of truth in TanStack Query cache)
   const books = useMemo(() => {
+    const activeDrainKey =
+      libraryId && initialNextCursor ? `${libraryId}:${initialNextCursor}` : '';
     const extra =
-      drainedState.libraryId === libraryId ? drainedState.books : [];
+      activeDrainKey && fallbackOverflowRef.current.key === activeDrainKey
+        ? fallbackOverflowRef.current.books
+        : [];
     if (extra.length === 0) {
       return baseBooks;
     }
@@ -365,13 +391,11 @@ export function useLibraryData(
       }
     }
     return merged;
-  }, [baseBooks, drainedState, libraryId]);
+  }, [baseBooks, completedDrainKey, libraryId, initialNextCursor]);
 
   const isCursorExhausted =
     !initialNextCursor ||
-    (drainedState.libraryId === libraryId &&
-      drainedState.startCursor === initialNextCursor &&
-      drainedState.isComplete);
+    completedDrainKey === `${libraryId}:${initialNextCursor}`;
   const isPaginating = isDrainingCursor || !isCursorExhausted;
 
   const library = useMemo(() => {
@@ -498,12 +522,8 @@ export function useLibraryData(
   const isCachedFirstPaint = !booksQuery.isLoading && books.length > 0;
 
   const refetch = async () => {
-    setDrainedState({
-      libraryId: '',
-      startCursor: '',
-      books: [],
-      isComplete: false,
-    });
+    fallbackOverflowRef.current = {key: '', books: []};
+    setCompletedDrainKey('');
     setDrainEpoch(prev => prev + 1);
     await Promise.all([libraryQuery.refetch(), booksQuery.refetch()]);
   };

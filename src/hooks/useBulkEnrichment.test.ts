@@ -299,4 +299,142 @@ describe('useBulkEnrichment', () => {
 
     expect(result.current.isBackfilling).toBe(false);
   });
+
+  it('patches cache in-place on SSE batch:committed without invalidating until job:completed, and skips polling while SSE is healthy', async () => {
+    vi.useFakeTimers();
+
+    const listeners: Record<string, Array<(evt: MessageEvent) => void>> = {};
+
+    class MockEventSource {
+      static instances: MockEventSource[] = [];
+      onopen: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      close = vi.fn();
+      constructor(readonly url: string) {
+        MockEventSource.instances.push(this);
+      }
+      addEventListener(type: string, cb: (evt: MessageEvent) => void) {
+        if (!listeners[type]) {
+          listeners[type] = [];
+        }
+        listeners[type].push(cb);
+      }
+    }
+
+    vi.stubGlobal('EventSource', MockEventSource);
+
+    const firebaseModule = (await import('../firebase')) as unknown as {
+      auth?: {currentUser?: {getIdToken?: () => Promise<string>}};
+    };
+    firebaseModule.auth = {
+      currentUser: {
+        getIdToken: vi.fn().mockResolvedValue('mock-jwt-token'),
+      },
+    };
+
+    const mockStartJobMutate = vi.fn().mockResolvedValue({
+      jobId: 'job-sse-1',
+      status: 'running',
+      totalBooks: 2,
+      completedBooks: 0,
+      failedBooks: 0,
+      skippedBooks: 0,
+    });
+    const mockGetJobStatusQuery = vi.fn().mockResolvedValue({
+      jobId: 'job-sse-1',
+      status: 'running',
+      totalBooks: 2,
+      completedBooks: 1,
+      failedBooks: 0,
+      skippedBooks: 0,
+    });
+
+    const enrichmentClient = trpcVanilla.enrichment as unknown as {
+      startJob?: {mutate: typeof mockStartJobMutate};
+      getJobStatus?: {query: typeof mockGetJobStatusQuery};
+    };
+    enrichmentClient.startJob = {mutate: mockStartJobMutate};
+    enrichmentClient.getJobStatus = {query: mockGetJobStatusQuery};
+
+    const books: Book[] = [
+      {...baseBook, id: 'b1', title: 'Book 1'},
+      {...baseBook, id: 'b2', title: 'Book 2'},
+    ];
+
+    const {result} = renderHook(() =>
+      useBulkEnrichment({
+        books,
+        isBooksLoading: false,
+        libraryId: 'lib1',
+        providerKey: 'genre',
+        metadataField: 'genre',
+        filterPredicate: b => !b.primaryGenre,
+        autoTrigger: false,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.triggerBackfill();
+    });
+
+    expect(mockStartJobMutate).toHaveBeenCalledTimes(1);
+    expect(MockEventSource.instances).toHaveLength(1);
+
+    // Advance timers by 3 seconds while SSE is healthy: polling should NOT fire
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(mockGetJobStatusQuery).not.toHaveBeenCalled();
+
+    // Emit batch:committed with updated book payload -> patches setData, does NOT invalidate
+    act(() => {
+      for (const cb of listeners['batch:committed'] || []) {
+        cb({
+          data: JSON.stringify({
+            jobId: 'job-sse-1',
+            results: [{id: 'b1', primaryGenre: 'Sci-Fi'}],
+            completedBooks: 1,
+            totalBooks: 2,
+          }),
+        } as MessageEvent);
+      }
+    });
+
+    expect(mockBookListSetData).toHaveBeenCalledTimes(1);
+    expect(mockBookListInvalidate).not.toHaveBeenCalled();
+
+    // Simulate SSE disconnect -> fallback polling should activate on next tick
+    act(() => {
+      MockEventSource.instances[0]?.onerror?.();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(mockGetJobStatusQuery).toHaveBeenCalledTimes(1);
+
+    // Emit job:completed -> performs final authoritative invalidation
+    act(() => {
+      for (const cb of listeners['job:completed'] || []) {
+        cb({
+          data: JSON.stringify({
+            jobId: 'job-sse-1',
+            status: 'completed',
+            completedBooks: 2,
+            failedBooks: 0,
+            skippedBooks: 0,
+            totalBooks: 2,
+          }),
+        } as MessageEvent);
+      }
+    });
+
+    expect(mockBookListInvalidate).toHaveBeenCalledTimes(1);
+    expect(result.current.isBackfilling).toBe(false);
+
+    delete enrichmentClient.startJob;
+    delete enrichmentClient.getJobStatus;
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
 });

@@ -28,7 +28,10 @@ const mockBookDoc = {
   get: mockBookGet,
   collection: vi.fn((sub: string) => {
     if (sub === 'reviews') {
-      return {get: mockReviewsGet};
+      return {
+        get: mockReviewsGet,
+        doc: vi.fn(() => ({id: 'rev-1'})),
+      };
     }
     return {doc: vi.fn()};
   }),
@@ -67,6 +70,7 @@ const mockDoc: (docId?: string) => Record<string, unknown> = vi.fn(
         if (sub === 'reviews') {
           return {
             get: mockReviewsGet,
+            doc: vi.fn(() => ({id: 'rev-1'})),
           };
         }
         return {doc: mockDoc};
@@ -79,11 +83,19 @@ const mockCollection = vi.fn(() => ({
   doc: mockDoc,
 }));
 
+const mockGetAll = vi.fn(
+  async (...refs: Array<{get: () => Promise<unknown>}>) =>
+    Promise.all(refs.map(r => r.get())),
+);
+
 vi.mock('../firebaseAdmin', () => ({
   getAdminDb: () => ({
     collection: mockCollection,
     batch: mockBatch,
+    getAll: mockGetAll,
   }),
+  formatFirestoreAdminError: (err: unknown) =>
+    err instanceof Error ? err.message : String(err),
 }));
 
 vi.mock('firebase-admin/firestore', () => ({
@@ -410,6 +422,88 @@ describe('BookService - Unified Write Layer', () => {
 
       expect(res.books).toHaveLength(2);
       expect(res.totalCount).toBe(2);
+    });
+  });
+
+  describe('mergeDuplicates', () => {
+    it('fetches survivor and duplicate books in bulk via db.getAll and commits merge in batch', async () => {
+      mockGetAll.mockResolvedValueOnce([
+        {
+          exists: true,
+          id: 'book-1',
+          data: () => ({
+            title: 'Dune',
+            userStatuses: {'user-1': 'want_to_read'},
+          }),
+        },
+        {
+          exists: true,
+          id: 'book-dup-1',
+          data: () => ({
+            title: 'Dune (Duplicate)',
+            userStatuses: {'user-1': 'reading', 'user-2': 'completed'},
+          }),
+        },
+      ]);
+
+      const res = await BookService.mergeDuplicates('user-1', {
+        libraryId: 'lib-1',
+        survivorBookId: 'book-1',
+        duplicateBookIds: ['book-dup-1'],
+        mergedFields: {
+          title: 'Dune (Definitive Edition)',
+        },
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.survivorBookId).toBe('book-1');
+      expect(res.deletedCount).toBe(1);
+      expect(mockGetAll).toHaveBeenCalledTimes(1);
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          title: 'Dune (Definitive Edition)',
+          userStatuses: {
+            'user-1': 'reading',
+            'user-2': 'completed',
+          },
+        }),
+        {merge: true},
+      );
+      expect(mockCommit).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('addReview', () => {
+    it('commits review document and parent book rating/status atomically in a single batch', async () => {
+      const res = await BookService.addReview(
+        'user-1',
+        'user1@example.com',
+        'Reader One',
+        'lib-1',
+        'book-1',
+        {rating: 5, text: 'Masterpiece!'},
+        {skipAccessCheck: true, status: 'finished'},
+      );
+
+      expect(res.success).toBe(true);
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          userId: 'user-1',
+          userName: 'Reader One',
+          rating: 5,
+          text: 'Masterpiece!',
+        }),
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          'userRatings.user-1': 5,
+          'userStatuses.user-1': 'finished',
+        }),
+      );
+      expect(mockCommit).toHaveBeenCalledTimes(1);
     });
   });
 });

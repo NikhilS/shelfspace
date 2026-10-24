@@ -338,5 +338,68 @@ describe('Declarative TanStack React Query (useLibraryData)', () => {
         limit: 1000,
       });
     });
+
+    it('deduplicates concurrent background cursor drains across multiple mounted hooks', async () => {
+      const {trpcVanilla} = await import('../lib/trpc');
+      const mockVanillaList = vi.mocked(trpcVanilla.book.list.query);
+
+      mockTrpcLibraryQuery.mockReturnValue({
+        data: {
+          id: 'lib-shared-drain',
+          name: 'Shared Drain Library',
+          ownerId: 'user123',
+          callerRole: 'owner',
+          bookCount: 1000,
+        },
+        isLoading: false,
+        isFetching: false,
+        isStale: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      mockTrpcBooksQuery.mockReturnValue({
+        data: {
+          books: [
+            {id: 'book-1', title: 'Book 1', author: 'Author 1'},
+            {id: 'book-2', title: 'Book 2', author: 'Author 2'},
+          ],
+          nextCursor: 'cursor-page-2',
+          totalCount: 3,
+        },
+        isLoading: false,
+        isFetching: false,
+        isStale: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      mockVanillaList.mockResolvedValue({
+        books: [{id: 'book-3', title: 'Book 3', author: 'Author 3'}],
+        nextCursor: undefined,
+        totalCount: 3,
+      } as unknown as Awaited<ReturnType<typeof trpcVanilla.book.list.query>>);
+
+      const wrapper = createWrapper();
+      const hookA = renderHook(
+        () => useLibraryData('lib-shared-drain', 'user123', navigate),
+        {wrapper},
+      );
+      const hookB = renderHook(
+        () => useLibraryData('lib-shared-drain', 'user123', navigate),
+        {wrapper},
+      );
+
+      await waitFor(() => {
+        expect(hookA.result.current.books).toHaveLength(3);
+        expect(hookB.result.current.books).toHaveLength(3);
+        expect(hookA.result.current.isPaginating).toBe(false);
+        expect(hookB.result.current.isPaginating).toBe(false);
+      });
+
+      expect(mockVanillaList).toHaveBeenCalledTimes(1);
+    });
   });
 });

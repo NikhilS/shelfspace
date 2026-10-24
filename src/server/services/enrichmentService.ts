@@ -190,96 +190,122 @@ export class EnrichmentService {
         metadataKey === MetadataKey.SERIES ||
         metadataKey === MetadataKey.EMBEDDING;
 
-      await Promise.all(
-        bookIds.map(async bookId => {
-          if (callbacks?.signal?.aborted) {
-            return;
-          }
-          const snap = await booksCollection.doc(bookId).get();
-          if (!snap.exists) {
-            callbacks?.onBookProgress?.({
-              bookId,
-              stage: 'skipped',
-            });
-            return;
-          }
+      if (callbacks?.signal?.aborted) {
+        return {
+          status: 'success',
+          enrichmentType: statusKey,
+          processedCount: 0,
+          results: [],
+        };
+      }
 
-          const rawDoc = (snap.data() || {}) as Record<string, unknown>;
-          const title =
-            typeof rawDoc.title === 'string' ? rawDoc.title.trim() : '';
-          if (!title) {
-            callbacks?.onBookProgress?.({
-              bookId,
-              stage: 'skipped',
-            });
-            return;
-          }
+      const bookRefs = bookIds.map(bookId => booksCollection.doc(bookId));
+      const bookSnaps = await db.getAll(...bookRefs);
 
-          let synopsis =
-            typeof rawDoc.synopsis === 'string' && rawDoc.synopsis.trim()
-              ? rawDoc.synopsis.trim()
-              : typeof rawDoc.description === 'string' &&
-                  rawDoc.description.trim()
-                ? rawDoc.description.trim()
-                : undefined;
+      const missingSynopsisIndices: Array<{
+        bookId: string;
+        validIndex: number;
+      }> = [];
 
-          if (!synopsis && needsSynopsisContext) {
-            try {
-              const detailDoc = detailsCollection.doc(bookId) as {
-                get?: () => Promise<{
-                  exists?: boolean;
-                  data?: () => Record<string, unknown> | undefined;
-                }>;
-              };
-              if (typeof detailDoc?.get === 'function') {
-                const detailSnap = await detailDoc.get();
-                if (detailSnap?.exists) {
-                  const detailData = detailSnap.data() || {};
-                  const detailSyn =
-                    typeof detailData.synopsis === 'string' &&
-                    detailData.synopsis.trim()
-                      ? detailData.synopsis.trim()
-                      : typeof detailData.description === 'string' &&
-                          detailData.description.trim()
-                        ? detailData.description.trim()
-                        : undefined;
-                  if (detailSyn) {
-                    synopsis = detailSyn;
-                  }
+      for (let i = 0; i < bookIds.length; i++) {
+        if (callbacks?.signal?.aborted) {
+          break;
+        }
+        const bookId = bookIds[i];
+        const snap = bookSnaps[i];
+        if (!snap?.exists) {
+          callbacks?.onBookProgress?.({
+            bookId,
+            stage: 'skipped',
+          });
+          continue;
+        }
+
+        const rawDoc = (snap.data?.() || {}) as Record<string, unknown>;
+        const title =
+          typeof rawDoc.title === 'string' ? rawDoc.title.trim() : '';
+        if (!title) {
+          callbacks?.onBookProgress?.({
+            bookId,
+            stage: 'skipped',
+          });
+          continue;
+        }
+
+        const synopsis =
+          typeof rawDoc.synopsis === 'string' && rawDoc.synopsis.trim()
+            ? rawDoc.synopsis.trim()
+            : typeof rawDoc.description === 'string' &&
+                rawDoc.description.trim()
+              ? rawDoc.description.trim()
+              : undefined;
+
+        const validIndex = validBooks.length;
+        validBooks.push({
+          rawDoc,
+          bookData: {
+            ...rawDoc,
+            id: bookId,
+            title,
+            author:
+              typeof rawDoc.author === 'string' && rawDoc.author.trim()
+                ? rawDoc.author.trim()
+                : 'Unknown Author',
+            isbn: typeof rawDoc.isbn === 'string' ? rawDoc.isbn : undefined,
+            primaryGenre:
+              typeof rawDoc.primaryGenre === 'string'
+                ? rawDoc.primaryGenre
+                : undefined,
+            subgenres: Array.isArray(rawDoc.subgenres)
+              ? (rawDoc.subgenres as string[])
+              : undefined,
+            synopsis,
+            description:
+              typeof rawDoc.description === 'string'
+                ? rawDoc.description
+                : undefined,
+          },
+        });
+
+        if (!synopsis && needsSynopsisContext) {
+          missingSynopsisIndices.push({bookId, validIndex});
+        }
+      }
+
+      if (missingSynopsisIndices.length > 0 && !callbacks?.signal?.aborted) {
+        try {
+          const detailRefs = missingSynopsisIndices.map(item =>
+            detailsCollection.doc(item.bookId),
+          );
+          const detailSnaps = await db.getAll(...detailRefs);
+
+          for (let i = 0; i < missingSynopsisIndices.length; i++) {
+            const detailSnap = detailSnaps[i];
+            if (detailSnap?.exists) {
+              const detailData = (detailSnap.data?.() || {}) as Record<
+                string,
+                unknown
+              >;
+              const detailSyn =
+                typeof detailData.synopsis === 'string' &&
+                detailData.synopsis.trim()
+                  ? detailData.synopsis.trim()
+                  : typeof detailData.description === 'string' &&
+                      detailData.description.trim()
+                    ? detailData.description.trim()
+                    : undefined;
+              if (detailSyn) {
+                const target = validBooks[missingSynopsisIndices[i].validIndex];
+                if (target) {
+                  target.bookData.synopsis = detailSyn;
                 }
               }
-            } catch {
-              // Non-fatal if bookDetails doc does not exist or mock lacks .get()
             }
           }
-
-          validBooks.push({
-            rawDoc,
-            bookData: {
-              ...rawDoc,
-              id: bookId,
-              title,
-              author:
-                typeof rawDoc.author === 'string' && rawDoc.author.trim()
-                  ? rawDoc.author.trim()
-                  : 'Unknown Author',
-              isbn: typeof rawDoc.isbn === 'string' ? rawDoc.isbn : undefined,
-              primaryGenre:
-                typeof rawDoc.primaryGenre === 'string'
-                  ? rawDoc.primaryGenre
-                  : undefined,
-              subgenres: Array.isArray(rawDoc.subgenres)
-                ? (rawDoc.subgenres as string[])
-                : undefined,
-              synopsis,
-              description:
-                typeof rawDoc.description === 'string'
-                  ? rawDoc.description
-                  : undefined,
-            },
-          });
-        }),
-      );
+        } catch {
+          // Non-fatal if bookDetails docs do not exist
+        }
+      }
 
       if (validBooks.length === 0 || callbacks?.signal?.aborted) {
         return {
@@ -321,85 +347,110 @@ export class EnrichmentService {
       const results: Array<Record<string, unknown>> = [];
       let processedCount = 0;
 
-      await Promise.all(
-        validBooks.map(async ({bookData, rawDoc}) => {
-          if (callbacks?.signal?.aborted) {
-            return;
-          }
-          const bookId = bookData.id;
-          const value = extractedMap ? extractedMap[bookId] : undefined;
+      interface PendingWriteOperation {
+        type: 'update' | 'set_merge';
+        ref: FirebaseFirestore.DocumentReference;
+        data: Record<string, unknown>;
+      }
 
-          const existingStatus =
-            rawDoc.enrichmentStatus &&
-            typeof rawDoc.enrichmentStatus === 'object'
-              ? {...(rawDoc.enrichmentStatus as Record<string, unknown>)}
-              : {};
-          const existingDetailsMeta =
-            rawDoc.bookDetailsMetadata &&
-            typeof rawDoc.bookDetailsMetadata === 'object'
-              ? {...(rawDoc.bookDetailsMetadata as Record<string, unknown>)}
-              : {};
+      const pendingWrites: PendingWriteOperation[] = [];
+      const pendingProgressUpdates: PerBookProgressUpdate[] = [];
+      const nowIso = new Date().toISOString();
 
-          const hasValidValue =
-            value !== undefined &&
-            value !== null &&
-            !(typeof value === 'string' && value.trim() === '') &&
-            !(Array.isArray(value) && value.length === 0);
+      for (const {bookData, rawDoc} of validBooks) {
+        if (callbacks?.signal?.aborted) {
+          break;
+        }
+        const bookId = bookData.id;
+        const bookRef = booksCollection.doc(bookId);
+        const detailRef = detailsCollection.doc(bookId);
+        const value = extractedMap ? extractedMap[bookId] : undefined;
 
-          if (!hasValidValue) {
-            const isHybridWithAiFallback =
-              metadataKey === MetadataKey.SYNOPSIS ||
-              metadataKey === MetadataKey.AUTHOR_BIO ||
-              metadataKey === MetadataKey.SERIES;
-            const skippedAiFallback =
-              isHybridWithAiFallback && input.allowAiFallback === false;
+        const existingStatus =
+          rawDoc.enrichmentStatus && typeof rawDoc.enrichmentStatus === 'object'
+            ? {...(rawDoc.enrichmentStatus as Record<string, unknown>)}
+            : {};
+        const existingDetailsMeta =
+          rawDoc.bookDetailsMetadata &&
+          typeof rawDoc.bookDetailsMetadata === 'object'
+            ? {...(rawDoc.bookDetailsMetadata as Record<string, unknown>)}
+            : {};
 
-            if (!skippedAiFallback) {
-              await booksCollection.doc(bookId).update({
+        const hasValidValue =
+          value !== undefined &&
+          value !== null &&
+          !(typeof value === 'string' && value.trim() === '') &&
+          !(Array.isArray(value) && value.length === 0);
+
+        if (!hasValidValue) {
+          const isHybridWithAiFallback =
+            metadataKey === MetadataKey.SYNOPSIS ||
+            metadataKey === MetadataKey.AUTHOR_BIO ||
+            metadataKey === MetadataKey.SERIES;
+          const skippedAiFallback =
+            isHybridWithAiFallback && input.allowAiFallback === false;
+
+          if (!skippedAiFallback) {
+            pendingWrites.push({
+              type: 'update',
+              ref: bookRef,
+              data: {
                 enrichmentStatus: {
                   ...existingStatus,
                   [statusKey]: 'unsupported',
                 },
-              });
-            }
-            callbacks?.onBookProgress?.({
-              bookId,
-              stage: 'skipped',
+              },
             });
-            return;
           }
+          pendingProgressUpdates.push({
+            bookId,
+            stage: 'skipped',
+          });
+          continue;
+        }
 
-          if (metadataKey === MetadataKey.GEO) {
-            const geoObj = value as {isNonEarth?: boolean};
-            const resolvedStatus = geoObj?.isNonEarth
-              ? 'unsupported'
-              : 'completed';
-            await booksCollection.doc(bookId).update({
+        if (metadataKey === MetadataKey.GEO) {
+          const geoObj = value as {isNonEarth?: boolean};
+          const resolvedStatus = geoObj?.isNonEarth
+            ? 'unsupported'
+            : 'completed';
+          pendingWrites.push({
+            type: 'update',
+            ref: bookRef,
+            data: {
               geoMetadata: value,
               enrichmentStatus: {
                 ...existingStatus,
                 geo: resolvedStatus,
               },
-            });
-            processedCount++;
-            results.push({id: bookId, geoMetadata: value});
-          } else if (metadataKey === MetadataKey.TEMPORAL) {
-            const tempObj = value as {isNonHistorical?: boolean};
-            const resolvedStatus = tempObj?.isNonHistorical
-              ? 'unsupported'
-              : 'completed';
-            await booksCollection.doc(bookId).update({
+            },
+          });
+          processedCount++;
+          results.push({id: bookId, geoMetadata: value});
+        } else if (metadataKey === MetadataKey.TEMPORAL) {
+          const tempObj = value as {isNonHistorical?: boolean};
+          const resolvedStatus = tempObj?.isNonHistorical
+            ? 'unsupported'
+            : 'completed';
+          pendingWrites.push({
+            type: 'update',
+            ref: bookRef,
+            data: {
               temporalMetadata: value,
               enrichmentStatus: {
                 ...existingStatus,
                 temporal: resolvedStatus,
               },
-            });
-            processedCount++;
-            results.push({id: bookId, temporalMetadata: value});
-          } else if (metadataKey === MetadataKey.GENRE) {
-            const genreVal = value as BookGenreData;
-            await booksCollection.doc(bookId).update({
+            },
+          });
+          processedCount++;
+          results.push({id: bookId, temporalMetadata: value});
+        } else if (metadataKey === MetadataKey.GENRE) {
+          const genreVal = value as BookGenreData;
+          pendingWrites.push({
+            type: 'update',
+            ref: bookRef,
+            data: {
               primaryGenre: genreVal.primaryGenre,
               subgenres: genreVal.subgenres || [],
               isCustomPrimary: Boolean(genreVal.isCustomPrimary),
@@ -407,54 +458,49 @@ export class EnrichmentService {
                 ...existingStatus,
                 genre: 'completed',
               },
-            });
-            processedCount++;
-            results.push({
-              id: bookId,
-              primaryGenre: genreVal.primaryGenre,
-              subgenres: genreVal.subgenres || [],
-              isCustomPrimary: Boolean(genreVal.isCustomPrimary),
-            });
-          } else if (metadataKey === MetadataKey.COVER_IMAGE) {
-            await booksCollection.doc(bookId).update({
+            },
+          });
+          processedCount++;
+          results.push({
+            id: bookId,
+            primaryGenre: genreVal.primaryGenre,
+            subgenres: genreVal.subgenres || [],
+            isCustomPrimary: Boolean(genreVal.isCustomPrimary),
+          });
+        } else if (metadataKey === MetadataKey.COVER_IMAGE) {
+          pendingWrites.push({
+            type: 'update',
+            ref: bookRef,
+            data: {
               coverUrl: value,
               enrichmentStatus: {
                 ...existingStatus,
                 coverImage: 'completed',
               },
-            });
-            processedCount++;
-            results.push({id: bookId, coverUrl: value});
-          } else if (metadataKey === MetadataKey.SERIES) {
-            await booksCollection.doc(bookId).update({
+            },
+          });
+          processedCount++;
+          results.push({id: bookId, coverUrl: value});
+        } else if (metadataKey === MetadataKey.SERIES) {
+          pendingWrites.push({
+            type: 'update',
+            ref: bookRef,
+            data: {
               series: value,
               enrichmentStatus: {
                 ...existingStatus,
                 series: 'completed',
               },
-            });
-            processedCount++;
-            results.push({id: bookId, series: value});
-          }
-
-          const upsertDetailDoc = async (payload: Record<string, unknown>) => {
-            const detailDocRef = detailsCollection.doc(bookId) as {
-              set?: (
-                data: Record<string, unknown>,
-                opts?: {merge?: boolean},
-              ) => Promise<unknown>;
-              update?: (data: Record<string, unknown>) => Promise<unknown>;
-            };
-            if (typeof detailDocRef.set === 'function') {
-              await detailDocRef.set(payload, {merge: true});
-            } else if (typeof detailDocRef.update === 'function') {
-              await detailDocRef.update(payload);
-            }
-          };
-
-          if (metadataKey === MetadataKey.SYNOPSIS) {
-            await Promise.all([
-              booksCollection.doc(bookId).update({
+            },
+          });
+          processedCount++;
+          results.push({id: bookId, series: value});
+        } else if (metadataKey === MetadataKey.SYNOPSIS) {
+          pendingWrites.push(
+            {
+              type: 'update',
+              ref: bookRef,
+              data: {
                 bookDetailsMetadata: {
                   ...existingDetailsMeta,
                   hasSynopsis: true,
@@ -463,23 +509,31 @@ export class EnrichmentService {
                   ...existingStatus,
                   synopsis: 'completed',
                 },
-              }),
-              upsertDetailDoc({
-                synopsis: value,
-                updatedAt: new Date().toISOString(),
-              }),
-            ]);
-            processedCount++;
-            results.push({
-              id: bookId,
-              bookDetailsMetadata: {
-                ...existingDetailsMeta,
-                hasSynopsis: true,
               },
-            });
-          } else if (metadataKey === MetadataKey.AUTHOR_BIO) {
-            await Promise.all([
-              booksCollection.doc(bookId).update({
+            },
+            {
+              type: 'set_merge',
+              ref: detailRef,
+              data: {
+                synopsis: value,
+                updatedAt: nowIso,
+              },
+            },
+          );
+          processedCount++;
+          results.push({
+            id: bookId,
+            bookDetailsMetadata: {
+              ...existingDetailsMeta,
+              hasSynopsis: true,
+            },
+          });
+        } else if (metadataKey === MetadataKey.AUTHOR_BIO) {
+          pendingWrites.push(
+            {
+              type: 'update',
+              ref: bookRef,
+              data: {
                 bookDetailsMetadata: {
                   ...existingDetailsMeta,
                   hasAuthorBio: true,
@@ -488,23 +542,31 @@ export class EnrichmentService {
                   ...existingStatus,
                   authorBio: 'completed',
                 },
-              }),
-              upsertDetailDoc({
-                authorBio: value,
-                updatedAt: new Date().toISOString(),
-              }),
-            ]);
-            processedCount++;
-            results.push({
-              id: bookId,
-              bookDetailsMetadata: {
-                ...existingDetailsMeta,
-                hasAuthorBio: true,
               },
-            });
-          } else if (metadataKey === MetadataKey.EMBEDDING) {
-            await Promise.all([
-              booksCollection.doc(bookId).update({
+            },
+            {
+              type: 'set_merge',
+              ref: detailRef,
+              data: {
+                authorBio: value,
+                updatedAt: nowIso,
+              },
+            },
+          );
+          processedCount++;
+          results.push({
+            id: bookId,
+            bookDetailsMetadata: {
+              ...existingDetailsMeta,
+              hasAuthorBio: true,
+            },
+          });
+        } else if (metadataKey === MetadataKey.EMBEDDING) {
+          pendingWrites.push(
+            {
+              type: 'update',
+              ref: bookRef,
+              data: {
                 bookDetailsMetadata: {
                   ...existingDetailsMeta,
                   hasEmbedding: true,
@@ -513,30 +575,56 @@ export class EnrichmentService {
                   ...existingStatus,
                   embedding: 'completed',
                 },
-              }),
-              upsertDetailDoc({
-                embedding: value,
-                updatedAt: new Date().toISOString(),
-              }),
-            ]);
-            processedCount++;
-            results.push({
-              id: bookId,
-              bookDetailsMetadata: {
-                ...existingDetailsMeta,
-                hasEmbedding: true,
               },
-            });
-          }
-
-          callbacks?.onBookProgress?.({
-            bookId,
-            stage: 'completed',
-            winningProviders: {[statusKey]: providerLabel},
-            updatedFields: [statusKey],
+            },
+            {
+              type: 'set_merge',
+              ref: detailRef,
+              data: {
+                embedding: value,
+                updatedAt: nowIso,
+              },
+            },
+          );
+          processedCount++;
+          results.push({
+            id: bookId,
+            bookDetailsMetadata: {
+              ...existingDetailsMeta,
+              hasEmbedding: true,
+            },
           });
-        }),
-      );
+        }
+
+        pendingProgressUpdates.push({
+          bookId,
+          stage: 'completed',
+          winningProviders: {[statusKey]: providerLabel},
+          updatedFields: [statusKey],
+        });
+      }
+
+      if (pendingWrites.length > 0 && !callbacks?.signal?.aborted) {
+        const MAX_BATCH_OPS = 400;
+        for (let i = 0; i < pendingWrites.length; i += MAX_BATCH_OPS) {
+          const chunk = pendingWrites.slice(i, i + MAX_BATCH_OPS);
+          const writeBatch = db.batch();
+          for (const op of chunk) {
+            if (op.type === 'update') {
+              writeBatch.update(op.ref, op.data);
+            } else {
+              writeBatch.set(op.ref, op.data, {merge: true});
+            }
+          }
+          await writeBatch.commit();
+        }
+      }
+
+      if (callbacks?.onBookProgress && !callbacks?.signal?.aborted) {
+        for (const progressUpdate of pendingProgressUpdates) {
+          callbacks.onBookProgress(progressUpdate);
+        }
+      }
 
       return {
         status: 'success',

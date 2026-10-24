@@ -10,16 +10,22 @@ const mockLibWhere = vi.fn(() => ({
 const mockBooksGet = vi.fn();
 const mockBookDocGet = vi.fn();
 const mockBatchUpdate = vi.fn();
+const mockBatchDelete = vi.fn();
+const mockBatchSet = vi.fn();
 const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
 const mockBatch = vi.fn(() => ({
   update: mockBatchUpdate,
+  delete: mockBatchDelete,
+  set: mockBatchSet,
   commit: mockBatchCommit,
 }));
+const mockGetAll = vi.fn(async () => []);
 
 const mockCollection = vi.fn((path: string) => {
   if (path === 'libraries') {
     return {
-      doc: vi.fn(() => ({
+      doc: vi.fn((libId?: string) => ({
+        id: libId || 'lib1',
         get: mockLibGet,
         collection: vi.fn((subPath: string) => {
           if (subPath === 'books') {
@@ -40,6 +46,16 @@ const mockCollection = vi.fn((path: string) => {
               })),
             };
           }
+          if (subPath === 'bookDetails') {
+            return {
+              doc: vi.fn((id: string) => ({id})),
+            };
+          }
+          if (subPath === 'allowedDuplicates') {
+            return {
+              get: vi.fn().mockResolvedValue({docs: []}),
+            };
+          }
           return {};
         }),
       })),
@@ -58,6 +74,8 @@ vi.mock('../firebaseAdmin', () => ({
   },
   getAdminDb: () => ({
     collection: mockCollection,
+    doc: vi.fn((docPath: string) => ({path: docPath})),
+    getAll: mockGetAll,
     batch: mockBatch,
   }),
   formatFirestoreAdminError: (err: unknown) =>
@@ -473,6 +491,81 @@ describe('LibraryService', () => {
         'https://example.com/existing.png',
       );
       expect(res.url).toBe('https://example.com/existing.png');
+    });
+  });
+
+  describe('getCollaboratorStatuses & deleteLibrary batching', () => {
+    it('resolves non-owner collaborator statuses in bulk via AllowlistService.getPermissionsBulk', async () => {
+      mockGetAll.mockResolvedValueOnce([
+        {exists: true, data: () => ({role: 'user'})},
+        {exists: false},
+      ]);
+
+      const res = await LibraryService.getCollaboratorStatuses(
+        'u1',
+        'owner@example.com',
+        'lib1',
+        {
+          skipAccessCheck: true,
+          prefetchedData: {
+            access: {
+              'owner@example.com': 'owner',
+              'approved@example.com': 'editor',
+              'pending@example.com': 'viewer',
+            },
+          },
+        },
+      );
+
+      expect(mockGetAll).toHaveBeenCalledTimes(1);
+      expect(res.collaborators).toEqual([
+        {
+          email: 'owner@example.com',
+          role: 'owner',
+          allowlistStatus: 'approved',
+        },
+        {
+          email: 'approved@example.com',
+          role: 'editor',
+          allowlistStatus: 'approved',
+        },
+        {
+          email: 'pending@example.com',
+          role: 'viewer',
+          allowlistStatus: 'pending_approval',
+        },
+      ]);
+    });
+
+    it('deletes books, bookDetails, reviews, and parent library doc in a single batch commit', async () => {
+      mockBooksGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'b1',
+            ref: {
+              id: 'b1',
+              collection: vi.fn(() => ({
+                get: vi.fn().mockResolvedValue({
+                  forEach: (cb: (r: {ref: {id: string}}) => void) =>
+                    cb({ref: {id: 'rev1'}}),
+                }),
+              })),
+            },
+          },
+        ],
+      });
+
+      const res = await LibraryService.deleteLibrary(
+        'u1',
+        'owner@example.com',
+        'lib1',
+        {skipAccessCheck: true},
+      );
+
+      expect(res.success).toBe(true);
+      // 1 book + 1 bookDetail + 1 review + 1 parent libRef = 4 deletes in 1 commit
+      expect(mockBatchDelete).toHaveBeenCalledTimes(4);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
     });
   });
 });

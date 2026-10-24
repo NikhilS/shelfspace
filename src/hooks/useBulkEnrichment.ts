@@ -166,10 +166,12 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
   const cancelledRef = useRef(false);
   const autoTriggeredForLibRef = useRef<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const isSseConnectedRef = useRef(false);
 
   const sseListenerUnregisterRef = useRef<(() => void) | null>(null);
 
   const closeEventSource = useCallback(() => {
+    isSseConnectedRef.current = false;
     if (sseListenerUnregisterRef.current) {
       sseListenerUnregisterRef.current();
       sseListenerUnregisterRef.current = null;
@@ -183,6 +185,7 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
   const connectSseStream = useCallback(
     async (targetLibId: string, expectedJobId?: string) => {
       if (typeof EventSource === 'undefined') {
+        isSseConnectedRef.current = false;
         return;
       }
       closeEventSource();
@@ -193,6 +196,7 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
             auth as {currentUser?: {getIdToken?: () => Promise<string>}}
           )?.currentUser?.getIdToken?.()) || '';
         if (!token || cancelledRef.current) {
+          isSseConnectedRef.current = false;
           return;
         }
 
@@ -201,6 +205,10 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
         )}&token=${encodeURIComponent(token)}`;
         const es = new EventSource(url);
         eventSourceRef.current = es;
+        isSseConnectedRef.current = true;
+        es.onopen = () => {
+          isSseConnectedRef.current = true;
+        };
 
         if (DebugTelemetryEngine.isHudActive()) {
           sseListenerUnregisterRef.current =
@@ -297,6 +305,7 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
         });
 
         es.addEventListener('batch:committed', (evt: MessageEvent) => {
+          let patchedInPlace = false;
           try {
             const data = JSON.parse(evt.data);
             if (expectedJobId && data.jobId && data.jobId !== expectedJobId) {
@@ -337,13 +346,16 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
                   };
                 },
               );
+              patchedInPlace = true;
             }
           } catch {
             // Ignore malformed SSE payload
           }
-          void utilsRef.current?.book?.list?.invalidate({
-            libraryId: targetLibId,
-          });
+          if (!patchedInPlace) {
+            void utilsRef.current?.book?.list?.invalidate({
+              libraryId: targetLibId,
+            });
+          }
         });
 
         es.addEventListener('job:completed', (evt: MessageEvent) => {
@@ -391,11 +403,13 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
         });
 
         es.onerror = () => {
+          isSseConnectedRef.current = false;
           if (!isRunningRef.current) {
             closeEventSource();
           }
         };
       } catch {
+        isSseConnectedRef.current = false;
         // Non-fatal in test environments
       }
     },
@@ -683,7 +697,11 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
     }
 
     const interval = setInterval(async () => {
-      if (cancelledRef.current || !isRunningRef.current) {
+      if (
+        cancelledRef.current ||
+        !isRunningRef.current ||
+        isSseConnectedRef.current
+      ) {
         return;
       }
       try {

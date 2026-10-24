@@ -86,6 +86,112 @@ export class AllowlistService {
   }
 
   /**
+   * Resolves permission flags for multiple emails in bulk using L1 cache and a single db.getAll() RPC for cache misses.
+   */
+  static async getPermissionsBulk(
+    emails: string[],
+  ): Promise<Map<string, SecurityPermissions>> {
+    const results = new Map<string, SecurityPermissions>();
+    if (!emails || emails.length === 0) {
+      return results;
+    }
+
+    const now = Date.now();
+    const superAdminEmail = SUPERADMIN_EMAIL.toLowerCase().trim();
+    const missingEmails: string[] = [];
+    const seenNormalized = new Set<string>();
+
+    for (const rawEmail of emails) {
+      if (!rawEmail) {
+        continue;
+      }
+      let normalizedEmail: string;
+      try {
+        normalizedEmail = validateAndNormalizeEmail(rawEmail);
+      } catch {
+        results.set(rawEmail.toLowerCase().trim(), {
+          isAppAllowed: false,
+          isAdmin: false,
+          hasAiPlan: false,
+        });
+        continue;
+      }
+
+      if (seenNormalized.has(normalizedEmail)) {
+        continue;
+      }
+      seenNormalized.add(normalizedEmail);
+
+      if (normalizedEmail === superAdminEmail) {
+        results.set(normalizedEmail, {
+          isAppAllowed: true,
+          isAdmin: true,
+          hasAiPlan: true,
+        });
+        continue;
+      }
+
+      const cached = this.cache.get(normalizedEmail);
+      if (cached && cached.expiresAt > now) {
+        results.set(normalizedEmail, cached.perms);
+        continue;
+      }
+
+      missingEmails.push(normalizedEmail);
+    }
+
+    if (missingEmails.length > 0) {
+      try {
+        const db = getAdminDb();
+        const refs = missingEmails.map(email =>
+          db.doc(`appSettings/allowlist/users/${email}`),
+        );
+        const snaps = await db.getAll(...refs);
+
+        for (let i = 0; i < missingEmails.length; i++) {
+          const email = missingEmails[i];
+          const snap = snaps[i];
+          let perm: SecurityPermissions = {
+            isAppAllowed: false,
+            isAdmin: false,
+            hasAiPlan: false,
+          };
+          if (snap && snap.exists) {
+            const data = snap.data() as
+              {role?: string; hasAiPlan?: boolean} | undefined;
+            const isAdmin = data?.role === 'admin';
+            perm = {
+              isAppAllowed: true,
+              isAdmin,
+              hasAiPlan: isAdmin || Boolean(data?.hasAiPlan),
+            };
+          }
+          this.cache.set(email, {
+            perms: perm,
+            expiresAt: now + this.DEFAULT_TTL_MS,
+          });
+          results.set(email, perm);
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(
+          '[AllowlistService] Error bulk-querying allowlist:',
+          errMsg,
+        );
+        for (const email of missingEmails) {
+          results.set(email, {
+            isAppAllowed: false,
+            isAdmin: false,
+            hasAiPlan: false,
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
    * Manually invalidate or clear the permission cache (useful for testing or admin updates).
    */
   static clearCache(): void {
@@ -163,7 +269,29 @@ export class AllowlistService {
     const effectiveAiPlan = isAdmin ? true : Boolean(hasAiPlan);
 
     const db = getAdminDb();
-    await db.collection('appSettings/allowlist/users').doc(normalized).set(
+    const allowlistRef = db
+      .collection('appSettings/allowlist/users')
+      .doc(normalized);
+
+    let shouldApproveWaitlist = false;
+    let waitlistRef: FirebaseFirestore.DocumentReference | undefined;
+    try {
+      waitlistRef = db.doc(`appSettings/waitlist/entries/${normalized}`);
+      const waitlistSnap = await waitlistRef.get();
+      if (waitlistSnap && waitlistSnap.exists) {
+        const currentData = waitlistSnap.data() as
+          {status?: string} | undefined;
+        if (currentData?.status !== 'approved') {
+          shouldApproveWaitlist = true;
+        }
+      }
+    } catch {
+      // Non-fatal if waitlist collection is unavailable
+    }
+
+    const batch = db.batch();
+    batch.set(
+      allowlistRef,
       {
         email: normalized,
         role,
@@ -172,33 +300,24 @@ export class AllowlistService {
       },
       {merge: true},
     );
+    if (shouldApproveWaitlist && waitlistRef) {
+      batch.set(
+        waitlistRef,
+        {
+          email: normalized,
+          status: 'approved',
+          reviewedAt: new Date().toISOString(),
+        },
+        {merge: true},
+      );
+    }
+    await batch.commit();
+
     this.setCache(normalized, {
       isAppAllowed: true,
       isAdmin,
       hasAiPlan: effectiveAiPlan,
     });
-
-    // Synchronize existing waitlist record if one exists so approved users don't remain in pending queue
-    try {
-      const waitlistRef = db.doc(`appSettings/waitlist/entries/${normalized}`);
-      const waitlistSnap = await waitlistRef.get();
-      if (waitlistSnap && waitlistSnap.exists) {
-        const currentData = waitlistSnap.data() as
-          {status?: string} | undefined;
-        if (currentData?.status !== 'approved') {
-          await waitlistRef.set(
-            {
-              email: normalized,
-              status: 'approved',
-              reviewedAt: new Date().toISOString(),
-            },
-            {merge: true},
-          );
-        }
-      }
-    } catch {
-      // Non-fatal if waitlist collection is unavailable or unmocked in isolated tests
-    }
   }
 
   /**

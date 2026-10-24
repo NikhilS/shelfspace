@@ -1,5 +1,4 @@
 import {getAdminDb} from '../firebaseAdmin';
-import {FieldValue} from 'firebase-admin/firestore';
 import {LibraryService} from '../library';
 import {getVirtualLibraryId} from '../library/libraryShareService';
 import {BookService, BookPartitioner} from '../book';
@@ -435,6 +434,9 @@ export async function trackBook(
   isVirtual: boolean;
 }> {
   const db = getAdminDb();
+  const hasValidRating = typeof input.rating === 'number' && input.rating >= 1;
+  const trimmedReviewText = input.reviewText?.trim() || '';
+  const hasReview = hasValidRating && trimmedReviewText.length > 0;
 
   if (input.source === 'library' && input.libraryId && input.bookId) {
     await LibraryService.verifyLibraryAccess(
@@ -444,44 +446,27 @@ export async function trackBook(
       'viewer',
     );
 
-    await BookService.updateBookStatus(
-      userId,
-      input.libraryId,
-      input.bookId,
-      input.status,
-    );
-
-    if (typeof input.rating === 'number' && input.rating >= 1) {
-      if (input.reviewText && input.reviewText.trim().length > 0) {
-        await BookService.addReview(
-          userId,
-          userEmail,
-          userName,
-          input.libraryId,
-          input.bookId,
-          {
-            rating: input.rating,
-            text: input.reviewText.trim(),
-          },
-          {skipAccessCheck: true},
-        );
-      } else {
-        try {
-          const bookRef = db
-            .collection('libraries')
-            .doc(input.libraryId)
-            .collection('books')
-            .doc(input.bookId);
-          if (typeof (bookRef as {update?: unknown}).update === 'function') {
-            await bookRef.update({
-              [`userRatings.${userId}`]: input.rating,
-              updatedAt: FieldValue.serverTimestamp(),
-            });
-          }
-        } catch {
-          // Non-fatal in minimal test mocks
-        }
-      }
+    if (hasReview && input.rating !== undefined) {
+      await BookService.addReview(
+        userId,
+        userEmail,
+        userName,
+        input.libraryId,
+        input.bookId,
+        {
+          rating: input.rating,
+          text: trimmedReviewText,
+        },
+        {skipAccessCheck: true, status: input.status},
+      );
+    } else {
+      await BookService.updateBookStatus(
+        userId,
+        input.libraryId,
+        input.bookId,
+        input.status,
+        hasValidRating ? {rating: input.rating} : undefined,
+      );
     }
 
     const isVirtual = input.libraryId === getVirtualLibraryId(userId);
@@ -546,12 +531,28 @@ export async function trackBook(
 
   if (existingBookId) {
     resolvedBookId = existingBookId;
-    await BookService.updateBookStatus(
-      userId,
-      destinationLibraryId,
-      resolvedBookId,
-      input.status,
-    );
+    if (hasReview && input.rating !== undefined) {
+      await BookService.addReview(
+        userId,
+        userEmail,
+        userName,
+        destinationLibraryId,
+        resolvedBookId,
+        {
+          rating: input.rating,
+          text: trimmedReviewText,
+        },
+        {skipAccessCheck: true, status: input.status},
+      );
+    } else {
+      await BookService.updateBookStatus(
+        userId,
+        destinationLibraryId,
+        resolvedBookId,
+        input.status,
+        hasValidRating ? {rating: input.rating} : undefined,
+      );
+    }
   } else {
     const created = await BookService.createBook(userId, {
       libraryId: destinationLibraryId,
@@ -568,15 +569,13 @@ export async function trackBook(
       format: bookData.format || 'physical',
       ownershipStatus,
       status: input.status,
-      ...(typeof input.rating === 'number'
+      ...(hasValidRating && input.rating !== undefined
         ? {userRatings: {[userId]: input.rating}}
         : {}),
     });
     resolvedBookId = created.id;
-  }
 
-  if (typeof input.rating === 'number' && input.rating >= 1) {
-    if (input.reviewText && input.reviewText.trim().length > 0) {
+    if (hasReview && input.rating !== undefined) {
       await BookService.addReview(
         userId,
         userEmail,
@@ -585,26 +584,10 @@ export async function trackBook(
         resolvedBookId,
         {
           rating: input.rating,
-          text: input.reviewText.trim(),
+          text: trimmedReviewText,
         },
         {skipAccessCheck: true},
       );
-    } else if (existingBookId) {
-      try {
-        const bookRef = db
-          .collection('libraries')
-          .doc(destinationLibraryId)
-          .collection('books')
-          .doc(resolvedBookId);
-        if (typeof (bookRef as {update?: unknown}).update === 'function') {
-          await bookRef.update({
-            [`userRatings.${userId}`]: input.rating,
-            updatedAt: FieldValue.serverTimestamp(),
-          });
-        }
-      } catch {
-        // Non-fatal in minimal test mocks
-      }
     }
   }
 

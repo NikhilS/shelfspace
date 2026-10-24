@@ -360,21 +360,26 @@ export async function updateLibrary(
     }
     updatePayload.access = normalizedAccess;
 
-    for (const [email, role] of Object.entries(normalizedAccess)) {
-      if (role === 'owner') {
-        continue;
-      }
+    const nonOwnerEmails = Object.entries(normalizedAccess)
+      .filter(([, role]) => role !== 'owner')
+      .map(([email]) => email);
+
+    if (nonOwnerEmails.length > 0) {
       try {
-        const perms = await AllowlistService.getPermissions(email);
-        if (!perms.isAppAllowed) {
-          await WaitlistService.ensureInvitedEntry({
+        const permsMap =
+          await AllowlistService.getPermissionsBulk(nonOwnerEmails);
+        const unapprovedInvitees = nonOwnerEmails
+          .filter(email => !permsMap.get(email)?.isAppAllowed)
+          .map(email => ({
             email,
             invitedByEmail: callerEmail,
             libraryName: updates.name,
-          });
+          }));
+        if (unapprovedInvitees.length > 0) {
+          await WaitlistService.ensureInvitedEntriesBulk(unapprovedInvitees);
         }
       } catch (e) {
-        console.warn('Failed to register invited user on waitlist:', e);
+        console.warn('Failed to register invited users on waitlist:', e);
       }
     }
   }
@@ -416,52 +421,68 @@ export async function deleteLibrary(
     const db = getAdminDb();
     const libRef = db.collection('libraries').doc(libraryId);
 
-    const booksSnap = await libRef.collection('books').get();
+    const [booksSnap, dupSnap] = await Promise.all([
+      libRef.collection('books').get(),
+      libRef.collection('allowedDuplicates').get(),
+    ]);
+
+    // Pre-fetch reviews subcollections for all books in parallel
+    const reviewSnaps = await Promise.all(
+      booksSnap.docs.map(async bookDoc => {
+        try {
+          if (typeof bookDoc.ref?.collection === 'function') {
+            return await bookDoc.ref.collection('reviews').get();
+          }
+        } catch {
+          // Non-fatal if reviews subcollection is empty or mocked
+        }
+        return undefined;
+      }),
+    );
+
     const batchSize = 400;
     let batch = db.batch();
     let count = 0;
 
-    for (const bookDoc of booksSnap.docs) {
+    const commitIfFull = async () => {
+      if (count >= batchSize) {
+        await batch.commit();
+        batch = db.batch();
+        count = 0;
+      }
+    };
+
+    for (let i = 0; i < booksSnap.docs.length; i++) {
+      const bookDoc = booksSnap.docs[i];
       batch.delete(bookDoc.ref);
       batch.delete(libRef.collection('bookDetails').doc(bookDoc.id));
       count += 2;
+      await commitIfFull();
 
-      // Cascade delete reviews subcollection for each book
-      try {
-        if (typeof bookDoc.ref?.collection === 'function') {
-          const reviewsSnap = await bookDoc.ref.collection('reviews').get();
-          reviewsSnap.forEach(reviewDoc => {
-            batch.delete(reviewDoc.ref);
-            count++;
-          });
+      const reviewsSnap = reviewSnaps[i];
+      if (reviewsSnap) {
+        const revRefs: FirebaseFirestore.DocumentReference[] = [];
+        reviewsSnap.forEach(reviewDoc => {
+          revRefs.push(reviewDoc.ref);
+        });
+        for (const revRef of revRefs) {
+          batch.delete(revRef);
+          count++;
+          await commitIfFull();
         }
-      } catch {
-        // Non-fatal if reviews subcollection is empty or mocked
-      }
-
-      if (count >= batchSize) {
-        await batch.commit();
-        batch = db.batch();
-        count = 0;
       }
     }
 
-    const dupSnap = await libRef.collection('allowedDuplicates').get();
     for (const dupDoc of dupSnap.docs) {
       batch.delete(dupDoc.ref);
       count++;
-      if (count >= batchSize) {
-        await batch.commit();
-        batch = db.batch();
-        count = 0;
-      }
+      await commitIfFull();
     }
 
-    if (count > 0) {
-      await batch.commit();
-    }
+    batch.delete(libRef);
+    count++;
 
-    await libRef.delete();
+    await batch.commit();
     return {success: true};
   } catch (err: unknown) {
     const errMsg = formatFirestoreAdminError(err);

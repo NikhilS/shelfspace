@@ -106,6 +106,7 @@ function toSlug(name: string): string {
 
 export async function getCachedGeocode(
   name: string,
+  options?: {skipL2Read?: boolean},
 ): Promise<{lat: number; lng: number} | undefined> {
   if (!name || name.trim().length === 0) {
     return undefined;
@@ -118,6 +119,10 @@ export async function getCachedGeocode(
   // 1. Check in-memory L1 cache
   if (cache.has(slug)) {
     return cache.get(slug);
+  }
+
+  if (options?.skipL2Read) {
+    return undefined;
   }
 
   // 2. Check Firestore L2 cache if enabled
@@ -145,32 +150,124 @@ export async function getCachedGeocode(
   return undefined;
 }
 
+export async function warmGeocodeCacheBulk(names: string[]): Promise<void> {
+  if (!names || names.length === 0 || firestoreL2Disabled) {
+    return;
+  }
+
+  const missingSlugs: string[] = [];
+  const seenSlugs = new Set<string>();
+
+  for (const name of names) {
+    if (!name || name.trim().length === 0) {
+      continue;
+    }
+    const slug = toSlug(name);
+    if (!slug || seenSlugs.has(slug) || cache.has(slug)) {
+      continue;
+    }
+    seenSlugs.add(slug);
+    missingSlugs.push(slug);
+  }
+
+  if (missingSlugs.length === 0) {
+    return;
+  }
+
+  try {
+    const db = getAdminDb();
+    const col = db.collection('geolocationCache');
+    const refs = missingSlugs.map(slug => col.doc(slug));
+    const snaps = await db.getAll(...refs);
+
+    let updatedDisk = false;
+    for (let i = 0; i < missingSlugs.length; i++) {
+      const slug = missingSlugs[i];
+      const docSnap = snaps[i];
+      if (docSnap?.exists) {
+        const data = docSnap.data();
+        if (typeof data?.lat === 'number' && typeof data?.lng === 'number') {
+          cache.set(slug, {lat: data.lat, lng: data.lng});
+          updatedDisk = true;
+        }
+      }
+    }
+
+    if (updatedDisk) {
+      persistToDisk();
+    }
+  } catch (err) {
+    if (isPermissionOrUnavailableError(err)) {
+      firestoreL2Disabled = true;
+    }
+  }
+}
+
 export async function cacheGeocode(
   name: string,
   coordinates: {lat: number; lng: number},
 ) {
-  const slug = toSlug(name);
-  if (!slug) {
+  await cacheGeocodesBulk([{name, coordinates}]);
+}
+
+export async function cacheGeocodesBulk(
+  entries: Array<{name: string; coordinates: {lat: number; lng: number}}>,
+): Promise<void> {
+  if (!entries || entries.length === 0) {
     return;
   }
 
-  // 1. Update in-memory L1 cache and persist to disk
-  cache.set(slug, coordinates);
+  const validEntries: Array<{
+    slug: string;
+    name: string;
+    coordinates: {lat: number; lng: number};
+  }> = [];
+  const seenSlugs = new Set<string>();
+
+  for (const entry of entries) {
+    const slug = toSlug(entry.name);
+    if (!slug || seenSlugs.has(slug)) {
+      continue;
+    }
+    seenSlugs.add(slug);
+    cache.set(slug, entry.coordinates);
+    validEntries.push({
+      slug,
+      name: entry.name,
+      coordinates: entry.coordinates,
+    });
+  }
+
+  if (validEntries.length === 0) {
+    return;
+  }
+
   persistToDisk();
 
-  // 2. Persist to Firestore L2 cache if enabled
   if (!firestoreL2Disabled) {
     try {
       const db = getAdminDb();
-      await db.collection('geolocationCache').doc(slug).set(
-        {
-          name,
-          lat: coordinates.lat,
-          lng: coordinates.lng,
-          updatedAt: new Date().toISOString(),
-        },
-        {merge: true},
-      );
+      const col = db.collection('geolocationCache');
+      const nowIso = new Date().toISOString();
+      const BATCH_LIMIT = 400;
+
+      for (let i = 0; i < validEntries.length; i += BATCH_LIMIT) {
+        const chunk = validEntries.slice(i, i + BATCH_LIMIT);
+        const batch = db.batch();
+        for (const item of chunk) {
+          batch.set(
+            col.doc(item.slug),
+            {
+              name: item.name,
+              lat: item.coordinates.lat,
+              lng: item.coordinates.lng,
+              updatedAt: nowIso,
+            },
+            {merge: true},
+          );
+        }
+        await batch.commit();
+      }
     } catch (err) {
       if (isPermissionOrUnavailableError(err)) {
         firestoreL2Disabled = true;
@@ -183,10 +280,18 @@ let hasLoggedMissingApiKey = false;
 
 export async function geocodeLocation(
   name: string,
+  options?: {skipPersist?: boolean; skipL2Read?: boolean},
 ): Promise<{lat: number; lng: number} | undefined> {
-  const cached = await getCachedGeocode(name);
-  if (cached) {
-    return cached;
+  if (options?.skipL2Read) {
+    const slug = toSlug(name);
+    if (slug && cache.has(slug)) {
+      return cache.get(slug);
+    }
+  } else {
+    const cached = await getCachedGeocode(name);
+    if (cached) {
+      return cached;
+    }
   }
 
   const apiKey =
@@ -217,7 +322,9 @@ export async function geocodeLocation(
     };
     if (data.status === 'OK' && data.results?.[0]?.geometry?.location) {
       const coords = data.results[0].geometry.location;
-      await cacheGeocode(name, coords);
+      if (!options?.skipPersist) {
+        await cacheGeocode(name, coords);
+      }
       return coords;
     }
     return undefined;

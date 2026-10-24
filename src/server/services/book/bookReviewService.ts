@@ -58,7 +58,7 @@ export async function addReview(
   libraryId: string,
   bookId: string,
   input: {rating: number; text: string},
-  options?: {skipAccessCheck?: boolean},
+  options?: {skipAccessCheck?: boolean; status?: string},
 ): Promise<{success: true; id: string}> {
   if (!options?.skipAccessCheck) {
     await LibraryService.verifyLibraryAccess(
@@ -85,19 +85,18 @@ export async function addReview(
     createdAt: FieldValue.serverTimestamp(),
   };
 
-  await reviewRef.set(reviewDoc);
-
-  // Denormalize caller's star rating onto the parent book document for O(1) shelf rendering
-  try {
-    if (typeof (bookRef as {update?: unknown}).update === 'function') {
-      await bookRef.update({
-        [`userRatings.${userId}`]: input.rating,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-  } catch {
-    // Non-fatal if parent book ref is a minimal test mock without .update()
+  const bookUpdates: Record<string, unknown> = {
+    [`userRatings.${userId}`]: input.rating,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (options?.status !== undefined) {
+    bookUpdates[`userStatuses.${userId}`] = options.status;
   }
+
+  const batch = db.batch();
+  batch.set(reviewRef, reviewDoc);
+  batch.update(bookRef, bookUpdates);
+  await batch.commit();
 
   return {success: true, id: reviewRef.id};
 }

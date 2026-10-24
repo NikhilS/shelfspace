@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to replace the floating dark offline banner with a subtle inline terracotta-red dot + \"Offline\" indicator in the right side of the top navigation bar next to the user profile avatar across all pages.",
-  "updatedAt":  "2026-10-22T21:00:24.382245043Z",
+  "summary":  "Revised implementation plan removing mock-fallback branches in production code (updating test mocks instead), dropping the reading tracker duplicate lookup query change, and committing waitlist review + allowlist grant in a single db.batch().",
+  "updatedAt":  "2026-10-24T00:19:59.169517026Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

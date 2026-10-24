@@ -191,13 +191,8 @@ describe('ReadingTrackerService', () => {
   });
 
   describe('trackBook', () => {
-    it('updates status and adds review when tracking an existing library book', async () => {
+    it('commits status, rating, and review in a single addReview call when tracking an existing library book with review text', async () => {
       vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue('viewer');
-      vi.mocked(BookService.updateBookStatus).mockResolvedValue({
-        success: true,
-        id: 'book-1',
-        status: 'want_to_read',
-      });
       vi.mocked(BookService.addReview).mockResolvedValue({
         success: true,
         id: 'rev-1',
@@ -219,13 +214,51 @@ describe('ReadingTrackerService', () => {
 
       expect(res.libraryId).toBe('lib-shared');
       expect(res.bookId).toBe('book-1');
+      expect(BookService.updateBookStatus).not.toHaveBeenCalled();
+      expect(BookService.addReview).toHaveBeenCalledWith(
+        'u1',
+        'u1@example.com',
+        'Reader',
+        'lib-shared',
+        'book-1',
+        {
+          rating: 4,
+          text: 'Excited to read',
+        },
+        {skipAccessCheck: true, status: 'want_to_read'},
+      );
+    });
+
+    it('updates status and rating in a single updateBookStatus call when rating is provided without review text', async () => {
+      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue('viewer');
+      vi.mocked(BookService.updateBookStatus).mockResolvedValue({
+        success: true,
+        id: 'book-1',
+        status: 'finished',
+      });
+
+      const res = await ReadingTrackerService.trackBook(
+        'u1',
+        'u1@example.com',
+        'Reader',
+        {
+          source: 'library',
+          libraryId: 'lib-shared',
+          bookId: 'book-1',
+          status: 'finished',
+          rating: 5,
+        },
+      );
+
+      expect(res.status).toBe('finished');
       expect(BookService.updateBookStatus).toHaveBeenCalledWith(
         'u1',
         'lib-shared',
         'book-1',
-        'want_to_read',
+        'finished',
+        {rating: 5},
       );
-      expect(BookService.addReview).toHaveBeenCalled();
+      expect(BookService.addReview).not.toHaveBeenCalled();
     });
 
     it('creates an unowned book in virtual_${userId} when tracking an external book without targetLibraryId', async () => {

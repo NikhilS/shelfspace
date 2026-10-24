@@ -13,6 +13,14 @@ vi.mock('./library');
 vi.mock('./firebaseAdmin', () => {
   return {
     getAdminDb: () => ({
+      getAll: vi.fn(async (...refs: Array<{get: () => Promise<unknown>}>) =>
+        Promise.all(refs.map(r => r.get())),
+      ),
+      batch: () => ({
+        update: vi.fn(),
+        set: vi.fn(),
+        commit: vi.fn().mockResolvedValue(undefined),
+      }),
       collection: () => ({
         doc: () => ({
           collection: () => ({
@@ -26,6 +34,7 @@ vi.mock('./firebaseAdmin', () => {
                 }),
               }),
               update: vi.fn().mockResolvedValue(undefined),
+              set: vi.fn().mockResolvedValue(undefined),
             }),
           }),
         }),

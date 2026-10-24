@@ -4,13 +4,15 @@ import {AllowlistService} from './allowlistService';
 
 const mockDocGet = vi.fn();
 const mockDocSet = vi.fn();
-const mockDoc = vi.fn(() => ({
+const mockDoc = vi.fn((path?: string) => ({
+  id: path,
   get: mockDocGet,
   set: mockDocSet,
 }));
 
 const mockCollectionGet = vi.fn();
-const mockCollectionDoc = vi.fn(() => ({
+const mockCollectionDoc = vi.fn((id?: string) => ({
+  id,
   get: mockDocGet,
   set: mockDocSet,
 }));
@@ -19,13 +21,36 @@ const mockCollection = vi.fn(() => ({
   doc: mockCollectionDoc,
 }));
 
+const mockBatchSet = vi.fn(
+  (
+    ref: {set?: (d: unknown, o?: unknown) => unknown},
+    data: Record<string, unknown>,
+    opts?: {merge?: boolean},
+  ) => {
+    ref?.set?.(data, opts);
+  },
+);
+const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
+const mockGetAll = vi.fn(
+  async (...refs: Array<{get: () => Promise<unknown>}>) =>
+    Promise.all(refs.map(r => r.get())),
+);
+
 const mockFirestore = {
   doc: mockDoc,
   collection: mockCollection,
+  getAll: mockGetAll,
+  batch: () => ({
+    set: mockBatchSet,
+    commit: mockBatchCommit,
+  }),
 };
 
 vi.mock('../services/firebaseAdmin', () => ({
   getAdminDb: () => mockFirestore,
+  FieldValue: {
+    serverTimestamp: () => 'MOCK_SERVER_TIMESTAMP',
+  },
 }));
 
 vi.mock('firebase-admin', () => ({
@@ -38,6 +63,7 @@ vi.mock('./allowlistService', () => ({
   AllowlistService: {
     getPermissions: vi.fn(),
     addUser: vi.fn(),
+    setCache: vi.fn(),
   },
 }));
 
@@ -47,6 +73,9 @@ describe('WaitlistService', () => {
     mockDocGet.mockReset();
     mockDocSet.mockReset();
     mockCollectionGet.mockReset();
+    mockBatchSet.mockClear();
+    mockBatchCommit.mockClear();
+    mockGetAll.mockClear();
   });
 
   describe('getStatus', () => {
@@ -218,9 +247,8 @@ describe('WaitlistService', () => {
   });
 
   describe('review', () => {
-    it('approves applicant and adds them to allowlist', async () => {
-      mockDocSet.mockResolvedValueOnce(undefined);
-      vi.mocked(AllowlistService.addUser).mockResolvedValueOnce();
+    it('approves applicant and writes both allowlist and waitlist entries in a single batch', async () => {
+      mockDocSet.mockResolvedValue(undefined);
 
       const res = await WaitlistService.review({
         email: 'applicant@example.com',
@@ -229,10 +257,23 @@ describe('WaitlistService', () => {
       });
 
       expect(res).toEqual({success: true, status: 'approved'});
-      expect(AllowlistService.addUser).toHaveBeenCalledWith(
+      expect(mockBatchSet).toHaveBeenCalledTimes(2);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+      expect(AllowlistService.setCache).toHaveBeenCalledWith(
         'applicant@example.com',
-        'user',
-        false,
+        {
+          isAppAllowed: true,
+          isAdmin: false,
+          hasAiPlan: false,
+        },
+      );
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'applicant@example.com',
+          role: 'user',
+          hasAiPlan: false,
+        }),
+        {merge: true},
       );
       expect(mockDocSet).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -254,7 +295,9 @@ describe('WaitlistService', () => {
       });
 
       expect(res).toEqual({success: true, status: 'rejected'});
-      expect(AllowlistService.addUser).not.toHaveBeenCalled();
+      expect(mockBatchSet).toHaveBeenCalledTimes(1);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+      expect(AllowlistService.setCache).not.toHaveBeenCalled();
       expect(mockDocSet).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'applicant@example.com',
@@ -263,6 +306,40 @@ describe('WaitlistService', () => {
         }),
         {merge: true},
       );
+    });
+  });
+
+  describe('ensureInvitedEntriesBulk', () => {
+    it('fetches existing waitlist docs in one db.getAll call and writes updates in one db.batch', async () => {
+      mockGetAll.mockResolvedValueOnce([
+        {exists: false},
+        {
+          exists: true,
+          data: () => ({
+            displayName: 'Existing Invitee',
+            status: 'pending',
+            requestedAt: '2026-09-01T00:00:00.000Z',
+          }),
+        },
+      ]);
+
+      const entries = await WaitlistService.ensureInvitedEntriesBulk([
+        {
+          email: 'new-invitee@example.com',
+          invitedByEmail: 'owner@example.com',
+          libraryName: 'Sci-Fi Vault',
+        },
+        {
+          email: 'existing-invitee@example.com',
+          invitedByEmail: 'owner@example.com',
+          libraryName: 'Sci-Fi Vault',
+        },
+      ]);
+
+      expect(entries).toHaveLength(2);
+      expect(mockGetAll).toHaveBeenCalledTimes(1);
+      expect(mockBatchSet).toHaveBeenCalledTimes(2);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
     });
   });
 });

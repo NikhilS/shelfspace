@@ -1,6 +1,7 @@
 import {TRPCError} from '@trpc/server';
-import {getAdminDb} from '../services/firebaseAdmin';
+import {getAdminDb, FieldValue} from '../services/firebaseAdmin';
 import {AllowlistService} from './allowlistService';
+import {SUPERADMIN_EMAIL} from '../../constants/auth';
 import {
   validateAndNormalizeEmail,
   isSafeImageOrHttpUrl,
@@ -152,55 +153,104 @@ export class WaitlistService {
     invitedByEmail?: string;
     libraryName?: string;
   }): Promise<WaitlistEntry> {
-    let normalized: string;
-    try {
-      normalized = validateAndNormalizeEmail(params.email);
-    } catch (err) {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: err instanceof Error ? err.message : 'Invalid email address',
+    const entries = await this.ensureInvitedEntriesBulk([params]);
+    return entries[0];
+  }
+
+  /**
+   * Bulk-ensures multiple invited collaborators have pending waitlist entries
+   * using a single db.getAll() read and a single db.batch() commit.
+   */
+  static async ensureInvitedEntriesBulk(
+    items: Array<{
+      email: string;
+      invitedByEmail?: string;
+      libraryName?: string;
+    }>,
+  ): Promise<WaitlistEntry[]> {
+    if (!items || items.length === 0) {
+      return [];
+    }
+
+    const normalizedItems: Array<{
+      email: string;
+      invitedBy: string | null;
+      invitedLibraryName: string | null;
+    }> = [];
+    const seen = new Set<string>();
+
+    for (const item of items) {
+      let normalized: string;
+      try {
+        normalized = validateAndNormalizeEmail(item.email);
+      } catch (err) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: err instanceof Error ? err.message : 'Invalid email address',
+        });
+      }
+      if (seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      normalizedItems.push({
+        email: normalized,
+        invitedBy: item.invitedByEmail?.toLowerCase().trim() || null,
+        invitedLibraryName: item.libraryName?.trim() || null,
       });
     }
 
-    const db = getAdminDb();
-    const docRef = db
-      .collection('appSettings/waitlist/entries')
-      .doc(normalized);
-
-    const existingSnap = await docRef.get();
-    const now = new Date().toISOString();
-    const invitedBy = params.invitedByEmail?.toLowerCase().trim() || null;
-    const invitedLibraryName = params.libraryName?.trim() || null;
-
-    if (existingSnap && existingSnap.exists) {
-      const existing = (existingSnap.data() || {}) as Partial<WaitlistEntry>;
-      const entry: WaitlistEntry = {
-        email: normalized,
-        displayName: existing.displayName || undefined,
-        photoURL: existing.photoURL || null,
-        status: existing.status === 'approved' ? 'approved' : 'pending',
-        requestedAt: existing.requestedAt || now,
-        reviewedAt: existing.reviewedAt || null,
-        reviewedBy: existing.reviewedBy || null,
-        invitedBy: invitedBy || existing.invitedBy || null,
-        invitedLibraryName:
-          invitedLibraryName || existing.invitedLibraryName || null,
-      };
-      await docRef.set(entry, {merge: true});
-      return entry;
+    if (normalizedItems.length === 0) {
+      return [];
     }
 
-    const entry: WaitlistEntry = {
-      email: normalized,
-      status: 'pending',
-      requestedAt: now,
-      reviewedAt: null,
-      reviewedBy: null,
-      invitedBy,
-      invitedLibraryName,
-    };
-    await docRef.set(entry);
-    return entry;
+    const db = getAdminDb();
+    const entriesCol = db.collection('appSettings/waitlist/entries');
+    const docRefs = normalizedItems.map(item => entriesCol.doc(item.email));
+    const existingSnaps = await db.getAll(...docRefs);
+
+    const now = new Date().toISOString();
+    const batch = db.batch();
+    const results: WaitlistEntry[] = [];
+
+    for (let i = 0; i < normalizedItems.length; i++) {
+      const {email, invitedBy, invitedLibraryName} = normalizedItems[i];
+      const docRef = docRefs[i];
+      const existingSnap = existingSnaps[i];
+
+      if (existingSnap && existingSnap.exists) {
+        const existing = (existingSnap.data() || {}) as Partial<WaitlistEntry>;
+        const entry: WaitlistEntry = {
+          email,
+          displayName: existing.displayName || undefined,
+          photoURL: existing.photoURL || null,
+          status: existing.status === 'approved' ? 'approved' : 'pending',
+          requestedAt: existing.requestedAt || now,
+          reviewedAt: existing.reviewedAt || null,
+          reviewedBy: existing.reviewedBy || null,
+          invitedBy: invitedBy || existing.invitedBy || null,
+          invitedLibraryName:
+            invitedLibraryName || existing.invitedLibraryName || null,
+        };
+        batch.set(docRef, entry, {merge: true});
+        results.push(entry);
+      } else {
+        const entry: WaitlistEntry = {
+          email,
+          status: 'pending',
+          requestedAt: now,
+          reviewedAt: null,
+          reviewedBy: null,
+          invitedBy,
+          invitedLibraryName,
+        };
+        batch.set(docRef, entry);
+        results.push(entry);
+      }
+    }
+
+    await batch.commit();
+    return results;
   }
 
   /**
@@ -244,7 +294,7 @@ export class WaitlistService {
 
   /**
    * Reviews a waitlist entry (approve or reject).
-   * Approving also adds the user to the global access allowlist.
+   * Approving also adds the user to the global access allowlist in a single atomic batch.
    */
   static async review(params: {
     email: string;
@@ -268,15 +318,38 @@ export class WaitlistService {
     const newStatus: 'approved' | 'rejected' =
       params.action === 'approve' ? 'approved' : 'rejected';
 
+    const batch = db.batch();
+    const waitlistRef = db
+      .collection('appSettings/waitlist/entries')
+      .doc(normalized);
+
     if (params.action === 'approve') {
-      await AllowlistService.addUser(
-        normalized,
-        'user',
-        params.hasAiPlan ?? false,
+      const isAdmin = normalized === SUPERADMIN_EMAIL.toLowerCase().trim();
+      const effectiveAiPlan = isAdmin ? true : Boolean(params.hasAiPlan);
+      const allowlistRef = db
+        .collection('appSettings/allowlist/users')
+        .doc(normalized);
+
+      batch.set(
+        allowlistRef,
+        {
+          email: normalized,
+          role: 'user',
+          hasAiPlan: effectiveAiPlan,
+          addedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true},
       );
+
+      AllowlistService.setCache(normalized, {
+        isAppAllowed: true,
+        isAdmin,
+        hasAiPlan: effectiveAiPlan,
+      });
     }
 
-    await db.collection('appSettings/waitlist/entries').doc(normalized).set(
+    batch.set(
+      waitlistRef,
       {
         email: normalized,
         status: newStatus,
@@ -285,6 +358,8 @@ export class WaitlistService {
       },
       {merge: true},
     );
+
+    await batch.commit();
 
     return {success: true, status: newStatus};
   }
