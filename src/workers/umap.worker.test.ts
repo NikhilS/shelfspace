@@ -27,6 +27,7 @@ describe('umap.worker message protocol', () => {
     expect(postMessageMock).toHaveBeenLastCalledWith({
       relaxedCoords: [],
       neighborIndexLists: [],
+      softMemberships: [],
     });
 
     handler({
@@ -44,6 +45,7 @@ describe('umap.worker message protocol', () => {
     const result = postMessageMock.mock.calls[1][0];
     expect(result.relaxedCoords).toHaveLength(3);
     expect(result.neighborIndexLists).toHaveLength(3);
+    expect(result.softMemberships).toHaveLength(3);
   });
 
   it('returns an error when fewer than 2 valid embeddings are provided in full mode', () => {
@@ -94,5 +96,6 @@ describe('umap.worker message protocol', () => {
     expect(payload.labels).toHaveLength(6);
     expect(payload.relaxedCoords).toHaveLength(6);
     expect(payload.neighborIndexLists).toHaveLength(6);
+    expect(payload.softMemberships).toHaveLength(6);
   });
 });

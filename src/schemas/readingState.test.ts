@@ -45,6 +45,20 @@ describe('Reading State Ledger Schemas (src/schemas/readingState.ts)', () => {
         false,
       );
     });
+
+    it('is idempotent when bookId already starts with isbn: or bookid:', () => {
+      expect(
+        computeReadingStateKey({
+          bookId: 'isbn:9780553573398',
+        }),
+      ).toBe('isbn:9780553573398');
+
+      expect(
+        computeReadingStateKey({
+          bookId: 'bookid:book_abc_123',
+        }),
+      ).toBe('bookid:book_abc_123');
+    });
   });
 
   describe('storedUserReadingStateDocSchema & userReadingStateSchema', () => {

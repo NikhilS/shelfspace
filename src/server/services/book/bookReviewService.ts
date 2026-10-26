@@ -3,6 +3,7 @@ import {FieldValue} from 'firebase-admin/firestore';
 import {LibraryService} from '../library';
 import {storedReviewDocSchema} from '../../../schemas/book';
 import {
+  safeIdSchema,
   validateFirestoreReadPayload,
   validateFirestoreWritePayload,
 } from '../../../schemas/common';
@@ -15,6 +16,7 @@ import {normalizeFirestoreTimestamp} from './bookPartitioner';
 import {
   buildReadingStateUpsertPayload,
   getReadingStatesCollection,
+  parseBookOrStateIdentifier,
 } from './readingStateLedger';
 import {fetchExistingBookDataForSnapshot} from './bookWriteService';
 
@@ -95,7 +97,7 @@ export async function listReviews(
   userId: string,
   userEmail: string | undefined,
   libraryId: string,
-  bookId: string,
+  bookIdRaw: string,
   options?: {skipAccessCheck?: boolean},
 ): Promise<{reviews: BookReviewRecord[]}> {
   if (!options?.skipAccessCheck) {
@@ -108,11 +110,28 @@ export async function listReviews(
   }
 
   const db = getAdminDb();
+  const {cleanBookId, isbnFromId} = parseBookOrStateIdentifier(bookIdRaw);
+  let targetBookId = cleanBookId;
+  if (bookIdRaw.startsWith('isbn:') && isbnFromId) {
+    const resolved = await fetchExistingBookDataForSnapshot(
+      db,
+      libraryId,
+      bookIdRaw,
+      userId,
+    );
+    if (
+      typeof resolved?.id === 'string' &&
+      safeIdSchema.safeParse(resolved.id).success
+    ) {
+      targetBookId = resolved.id;
+    }
+  }
+
   const reviewsSnap = await db
     .collection('libraries')
     .doc(libraryId)
     .collection('books')
-    .doc(bookId)
+    .doc(targetBookId)
     .collection('reviews')
     .orderBy('createdAt', 'desc')
     .get();
@@ -136,7 +155,7 @@ export async function addReview(
   userEmail: string | undefined,
   userName: string | undefined,
   libraryId: string,
-  bookId: string,
+  bookIdRaw: string,
   input: {rating: number; text: string},
   options?: {skipAccessCheck?: boolean; status?: string},
 ): Promise<{success: true; id: string}> {
@@ -150,17 +169,24 @@ export async function addReview(
   }
 
   const db = getAdminDb();
+  const {cleanBookId, isbnFromId} = parseBookOrStateIdentifier(bookIdRaw);
+  const bookData = await fetchExistingBookDataForSnapshot(
+    db,
+    libraryId,
+    bookIdRaw,
+    userId,
+  );
+  const resolvedBookId =
+    typeof bookData?.id === 'string' &&
+    safeIdSchema.safeParse(bookData.id).success
+      ? bookData.id
+      : cleanBookId;
+
   const bookRef = db
     .collection('libraries')
     .doc(libraryId)
     .collection('books')
-    .doc(bookId);
-
-  const bookData = await fetchExistingBookDataForSnapshot(
-    db,
-    libraryId,
-    bookId,
-  );
+    .doc(resolvedBookId);
 
   const reviewsCol = bookRef.collection('reviews');
   const reviewRef = reviewsCol.doc(userId) || reviewsCol.doc();
@@ -179,13 +205,16 @@ export async function addReview(
   if (readingStatesCol) {
     const {stateKey, payload} = buildReadingStateUpsertPayload({
       userId,
-      bookId,
+      bookId: resolvedBookId,
       libraryId,
-      isbn: typeof bookData?.isbn === 'string' ? bookData.isbn : undefined,
+      isbn:
+        typeof bookData?.isbn === 'string'
+          ? bookData.isbn
+          : isbnFromId || undefined,
       cleanIsbn:
         typeof bookData?.cleanIsbn === 'string'
           ? bookData.cleanIsbn
-          : undefined,
+          : isbnFromId || undefined,
       status: options?.status as ReadingStatusValue | undefined,
       rating: input.rating,
       reviewText: input.text.trim(),

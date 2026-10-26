@@ -795,5 +795,112 @@ describe('BookService - Unified Write Layer', () => {
       );
       expect(mockCommit).toHaveBeenCalledTimes(1);
     });
+
+    it('handles isbn:<cleanIsbn> bookId from Reading Room cards in updateBookStatus without creating bookid:isbn:... keys', async () => {
+      mockBookGet.mockResolvedValueOnce({
+        exists: false,
+      });
+      mockReadingStateDocGet.mockResolvedValueOnce({
+        exists: true,
+        id: 'isbn:9780553573398',
+        data: () => ({
+          id: 'isbn:9780553573398',
+          userId: 'user-1',
+          keyType: 'isbn',
+          cleanIsbn: '9780553573398',
+          bookId: 'book-farseer-1',
+          libraryId: 'lib-1',
+          status: 'reading',
+          bookSnapshot: {
+            title: "Assassin's Apprentice",
+            author: 'Robin Hobb',
+            isbn: '9780553573398',
+            cleanIsbn: '9780553573398',
+          },
+        }),
+      });
+
+      const res = await BookService.updateBookStatus(
+        'user-1',
+        'lib-1',
+        'isbn:9780553573398',
+        'finished',
+      );
+
+      expect(res.stateKey).toBe('isbn:9780553573398');
+      expect(res.id).toBe('book-farseer-1');
+      expect(mockReadingStateDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'isbn:9780553573398',
+          keyType: 'isbn',
+          cleanIsbn: '9780553573398',
+          bookId: 'book-farseer-1',
+          status: 'finished',
+          bookSnapshot: expect.objectContaining({
+            title: "Assassin's Apprentice",
+            author: 'Robin Hobb',
+          }),
+        }),
+        {merge: true},
+      );
+    });
+
+    it('syncs readingStatus and migrates readingStates key from bookid:<id> to isbn:<cleanIsbn> when updateBook adds an ISBN', async () => {
+      mockBookGet.mockResolvedValueOnce({
+        exists: true,
+        id: 'book-1',
+        data: () => ({
+          title: 'Royal Assassin',
+          author: 'Robin Hobb',
+        }),
+      });
+      mockReadingStateDocGet.mockResolvedValueOnce({
+        exists: true,
+        id: 'bookid:book-1',
+        data: () => ({
+          id: 'bookid:book-1',
+          userId: 'user-1',
+          keyType: 'bookid',
+          bookId: 'book-1',
+          libraryId: 'lib-1',
+          status: 'reading',
+          bookSnapshot: {
+            title: 'Royal Assassin',
+            author: 'Robin Hobb',
+          },
+        }),
+      });
+
+      await BookService.updateBook('user-1', {
+        libraryId: 'lib-1',
+        bookId: 'book-1',
+        updates: {
+          title: 'Royal Assassin',
+          author: 'Robin Hobb',
+          isbn: '978-0-553-57340-4',
+          readingStatus: 'finished',
+        },
+      });
+
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({id: 'isbn:9780553573404'}),
+        expect.objectContaining({
+          id: 'isbn:9780553573404',
+          keyType: 'isbn',
+          cleanIsbn: '9780553573404',
+          bookId: 'book-1',
+          status: 'finished',
+          bookSnapshot: expect.objectContaining({
+            title: 'Royal Assassin',
+            author: 'Robin Hobb',
+            cleanIsbn: '9780553573404',
+          }),
+        }),
+        {merge: true},
+      );
+      expect(mockDelete).toHaveBeenCalledWith(
+        expect.objectContaining({id: 'bookid:book-1'}),
+      );
+    });
   });
 });

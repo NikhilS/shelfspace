@@ -4,13 +4,16 @@ import {ZoomIn, ZoomOut, Maximize2} from 'lucide-react';
 import {ScatterPoint} from '../../hooks/useConstellationData';
 import {
   Point2D,
+  SemanticNeighborIndex,
   computeClusterMST,
   computePaddedConvexHull,
+  computeUnifiedSemanticWeb,
   createSeededRng,
 } from '../../lib/clustering';
 import {
   CLUSTER_COLORS,
   ClusterGeometry,
+  NebulaKernel,
   StippleGrain,
   CameraState,
   ConstellationChartProps,
@@ -24,6 +27,9 @@ export {CLUSTER_COLORS} from './types';
 export function ConstellationChart({
   plotData,
   clusterNames,
+  clusterTheses = {},
+  crossClusterBridges = [],
+  semanticWebEdges: propSemanticWebEdges,
   libraryId: propLibraryId,
 }: ConstellationChartProps) {
   const {id: routeLibraryId} = useParams<{id: string}>();
@@ -98,7 +104,7 @@ export function ConstellationChart({
     return map;
   }, [plotData]);
 
-  // Precompute Cluster Geometry (Centroids, Prim's MST edges, Padded Convex Hulls, Dominant Genres)
+  // Precompute Cluster Geometry (Centroids, Multi-Kernel Nebulae, MST fallback, Dominant Genres)
   const clustersGeometry = useMemo<ClusterGeometry[]>(() => {
     const grouped = new Map<number, number[]>();
     const allWorldPoints: Point2D[] = plotData.map(p => ({x: p.x, y: p.y}));
@@ -140,6 +146,68 @@ export function ConstellationChart({
         y: sumY / indices.length,
       };
 
+      // Build organic multi-kernel nebula density centers so atmospheric glow follows the manifold shape
+      let sqDistSum = 0;
+      for (const pt of clusterPts) {
+        const d = Math.hypot(pt.x - centroid.x, pt.y - centroid.y);
+        sqDistSum += d * d;
+      }
+      const rmsSpread = Math.sqrt(sqDistSum / Math.max(1, clusterPts.length));
+      const baseRadius = Math.max(18, Math.min(48, rmsSpread * 1.65 + 10));
+
+      const nebulaKernels: NebulaKernel[] = [
+        {
+          x: centroid.x,
+          y: centroid.y,
+          radius: baseRadius,
+          weight: 1.0,
+        },
+      ];
+
+      if (clusterPts.length >= 4) {
+        const sectorBuckets: Point2D[][] = [[], [], []];
+        for (const pt of clusterPts) {
+          const dx = pt.x - centroid.x;
+          const dy = pt.y - centroid.y;
+          if (Math.hypot(dx, dy) < 3) {
+            continue;
+          }
+          const angle = Math.atan2(dy, dx) + Math.PI; // [0, 2pi]
+          const bucketIdx = Math.min(
+            2,
+            Math.floor((angle / (Math.PI * 2)) * 3),
+          );
+          sectorBuckets[bucketIdx].push(pt);
+        }
+
+        for (const bucket of sectorBuckets) {
+          if (bucket.length === 0) {
+            continue;
+          }
+          let bx = 0;
+          let by = 0;
+          for (const bp of bucket) {
+            bx += bp.x;
+            by += bp.y;
+          }
+          bx /= bucket.length;
+          by /= bucket.length;
+          let maxBucketD = 10;
+          for (const bp of bucket) {
+            const d = Math.hypot(bp.x - bx, bp.y - by);
+            if (d > maxBucketD) {
+              maxBucketD = d;
+            }
+          }
+          nebulaKernels.push({
+            x: bx,
+            y: by,
+            radius: Math.max(14, Math.min(38, maxBucketD * 1.35 + 8)),
+            weight: Math.min(0.85, 0.45 + bucket.length / clusterPts.length),
+          });
+        }
+      }
+
       const mstEdges = computeClusterMST(allWorldPoints, indices);
       const hullPoints = computePaddedConvexHull(clusterPts, 6.2);
       const dominantGenres = Array.from(genreCounts.entries())
@@ -150,17 +218,47 @@ export function ConstellationChart({
       result.push({
         clusterId: cid,
         name: clusterNames[cid] || `Constellation ${cid + 1}`,
+        thesis: clusterTheses[cid],
         color: CLUSTER_COLORS[cid % CLUSTER_COLORS.length],
         centroid,
         pointIndices: indices,
         mstEdges,
         hullPoints,
+        nebulaKernels,
         dominantGenres,
       });
     }
 
     return result;
-  }, [plotData, clusterNames]);
+  }, [plotData, clusterNames, clusterTheses]);
+
+  // Precompute Unified Semantic Web across all constellations
+  const semanticWebEdges = useMemo(() => {
+    if (propSemanticWebEdges && propSemanticWebEdges.length > 0) {
+      return propSemanticWebEdges;
+    }
+    const allWorldPoints: Point2D[] = plotData.map(p => ({x: p.x, y: p.y}));
+    const clusterIds = plotData.map(p => p.clusterId);
+    const neighborIndexLists: SemanticNeighborIndex[][] = plotData.map(p =>
+      (p.neighbors || [])
+        .map(nb => {
+          const target = starById.get(nb.bookId);
+          if (!target) {
+            return null;
+          }
+          return {
+            index: target.index,
+            similarity: nb.similarity,
+          };
+        })
+        .filter((item): item is SemanticNeighborIndex => item !== null),
+    );
+    return computeUnifiedSemanticWeb(
+      allWorldPoints,
+      clusterIds,
+      neighborIndexLists,
+    );
+  }, [plotData, starById, propSemanticWebEdges]);
 
   const clusterById = useMemo(() => {
     const map = new Map<number, ClusterGeometry>();
@@ -181,17 +279,19 @@ export function ConstellationChart({
       const author = (p.book.author || '').toLowerCase();
       const genre = (p.book.primaryGenre || '').toLowerCase();
       const cname = (clusterNames[p.clusterId] || '').toLowerCase();
+      const cthesis = (clusterTheses[p.clusterId] || '').toLowerCase();
       if (
         title.includes(q) ||
         author.includes(q) ||
         genre.includes(q) ||
-        cname.includes(q)
+        cname.includes(q) ||
+        cthesis.includes(q)
       ) {
         set.add(id);
       }
     }
     return set;
-  }, [plotData, clusterNames, searchQuery]);
+  }, [plotData, clusterNames, clusterTheses, searchQuery]);
 
   const selectedStar = useMemo(() => {
     if (!selectedStarId) {
@@ -421,6 +521,8 @@ export function ConstellationChart({
         cam,
         plotData,
         clustersGeometry,
+        crossClusterBridges,
+        semanticWebEdges,
         paperStipples,
         selectedStarId,
         selectedStar,
@@ -459,6 +561,8 @@ export function ConstellationChart({
     viewportSize,
     plotData,
     clustersGeometry,
+    crossClusterBridges,
+    semanticWebEdges,
     paperStipples,
     selectedStarId,
     selectedStar,
@@ -787,6 +891,7 @@ export function ConstellationChart({
           selectedStar={selectedStar}
           activeCluster={activeCluster}
           clustersGeometry={clustersGeometry}
+          crossClusterBridges={crossClusterBridges}
           plotData={plotData}
           clusterNames={clusterNames}
           starById={starById}

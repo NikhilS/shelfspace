@@ -24,6 +24,8 @@ export function ConstellationMap() {
     progress,
     plotData,
     clusterNames,
+    clusterTheses,
+    crossClusterBridges,
     handleRecluster,
     isReadingMode,
     includeWantToRead,
@@ -118,6 +120,8 @@ export function ConstellationMap() {
           <ConstellationChart
             plotData={plotData}
             clusterNames={clusterNames}
+            clusterTheses={clusterTheses}
+            crossClusterBridges={crossClusterBridges}
             libraryId={libraryId}
           />
         </Suspense>

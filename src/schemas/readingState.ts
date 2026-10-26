@@ -67,6 +67,7 @@ export const clusterCoordinatesSchema = z
     y: z.number(),
     clusterId: z.number().optional(),
     clusterName: z.string().max(200).optional(),
+    clusterThesis: z.string().max(600).optional(),
   })
   .strict();
 
@@ -84,6 +85,15 @@ export const readingStateKeySchema = z
     /^(isbn:[0-9X]{1,64}|bookid:[a-zA-Z0-9_-]{1,128})$/,
     'Reading state key must be isbn:<NORMALIZED_ISBN> or bookid:<BOOK_ID>',
   );
+
+/**
+ * Accepts either a standard Firestore document ID (`safeIdSchema`) or a deterministic
+ * reading state key (`isbn:<NORMALIZED_ISBN>` / `bookid:<BOOK_ID>`).
+ */
+export const safeBookOrStateIdSchema = z.union([
+  safeIdSchema,
+  readingStateKeySchema,
+]);
 
 /**
  * Denormalized book metadata snapshot embedded inside a user's reading state document
@@ -150,21 +160,28 @@ export const userReadingStateSchema = storedUserReadingStateDocSchema
 /**
  * Computes the deterministic single-lookup key for `/users/{userId}/readingStates/{stateKey}`.
  * - If the book has a normalized ISBN (digits and 'X' only), returns `isbn:<NORMALIZED_ISBN>`.
- * - Otherwise, returns `bookid:<BOOK_ID>`.
+ * - Otherwise, returns `bookid:<BOOK_ID>` (idempotently handling `isbn:` or `bookid:` prefixes on `bookId`).
  */
 export function computeReadingStateKey(input: {
   isbn?: string | null;
   cleanIsbn?: string | null;
   bookId: string;
 }): string {
-  const normalizedIsbn = (input.cleanIsbn || input.isbn || '')
+  const rawBookId = (input.bookId || '').trim();
+  const isbnFromBookId = rawBookId.startsWith('isbn:')
+    ? rawBookId.slice('isbn:'.length)
+    : '';
+  const normalizedIsbn = (input.cleanIsbn || input.isbn || isbnFromBookId || '')
     .trim()
     .replace(/[^0-9X]/gi, '')
     .toUpperCase();
   if (normalizedIsbn.length > 0) {
     return `isbn:${normalizedIsbn}`;
   }
-  return `bookid:${input.bookId}`;
+  const cleanBookId = rawBookId.startsWith('bookid:')
+    ? rawBookId.slice('bookid:'.length)
+    : rawBookId;
+  return `bookid:${cleanBookId}`;
 }
 
 export type GeoLocationReference = z.infer<typeof geoLocationReferenceSchema>;

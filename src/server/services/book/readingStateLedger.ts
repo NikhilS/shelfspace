@@ -1,6 +1,7 @@
 import {FieldValue} from 'firebase-admin/firestore';
 import {
   SchemaValidationError,
+  safeIdSchema,
   validateFirestoreReadPayload,
   validateFirestoreWritePayload,
 } from '../../../schemas/common';
@@ -20,6 +21,52 @@ import type {
 } from '../../../types';
 
 export {computeReadingStateKey};
+
+/**
+ * Normalizes a book identifier that may either be a raw Firestore document ID (`abc123`)
+ * or a `readingStates` key (`isbn:9780553573398` / `bookid:abc123`).
+ */
+export function parseBookOrStateIdentifier(rawId: string): {
+  cleanBookId: string;
+  isbnFromId?: string;
+} {
+  const trimmed = (rawId || '').trim();
+  if (trimmed.startsWith('bookid:')) {
+    return {
+      cleanBookId: trimmed.slice('bookid:'.length),
+    };
+  }
+  if (trimmed.startsWith('isbn:')) {
+    const cleanIsbn = normalizeIsbnForDedupe(trimmed.slice('isbn:'.length));
+    return {
+      cleanBookId: cleanIsbn ? `isbn_${cleanIsbn}` : 'unknown_book',
+      ...(cleanIsbn ? {isbnFromId: cleanIsbn} : {}),
+    };
+  }
+  return {
+    cleanBookId: trimmed,
+  };
+}
+
+function resolveSafeBookId(
+  rawBookId: string,
+  bookData?: Record<string, unknown>,
+): string {
+  const dataBookId =
+    typeof bookData?.id === 'string'
+      ? bookData.id.trim()
+      : typeof bookData?.bookId === 'string'
+        ? bookData.bookId.trim()
+        : '';
+  if (dataBookId && safeIdSchema.safeParse(dataBookId).success) {
+    return dataBookId;
+  }
+  const {cleanBookId} = parseBookOrStateIdentifier(rawBookId);
+  if (safeIdSchema.safeParse(cleanBookId).success) {
+    return cleanBookId;
+  }
+  return 'unknown_book';
+}
 
 /**
  * Strongly typed Firestore write payload for `/users/{userId}/readingStates/{stateKey}`.
@@ -86,6 +133,17 @@ export function buildBookSnapshotFromData(
       ? bookData.cleanIsbn.trim()
       : normalizeIsbnForDedupe(isbn) || undefined;
 
+  const rawBookIdCandidate =
+    options?.bookId ||
+    (typeof bookData.id === 'string'
+      ? bookData.id
+      : typeof bookData.bookId === 'string'
+        ? bookData.bookId
+        : undefined);
+  const safeSnapshotBookId = rawBookIdCandidate
+    ? resolveSafeBookId(rawBookIdCandidate, bookData)
+    : undefined;
+
   const candidate: UserReadingStateBookSnapshot = {
     title,
     author,
@@ -141,9 +199,7 @@ export function buildBookSnapshotFromData(
     ...(options?.libraryName || typeof bookData.libraryName === 'string'
       ? {libraryName: options?.libraryName || (bookData.libraryName as string)}
       : {}),
-    ...(options?.bookId || typeof bookData.id === 'string'
-      ? {bookId: options?.bookId || (bookData.id as string)}
-      : {}),
+    ...(safeSnapshotBookId ? {bookId: safeSnapshotBookId} : {}),
     ...(bookData.ownershipStatus === 'owned' ||
     bookData.ownershipStatus === 'unowned'
       ? {ownershipStatus: bookData.ownershipStatus}
@@ -184,9 +240,12 @@ export const readingStateConverter = {
     stateKey: string;
     payload: StoredUserReadingStateWritePayload;
   } {
+    const {isbnFromId} = parseBookOrStateIdentifier(options.bookId);
+    const safeBookId = resolveSafeBookId(options.bookId, options.bookData);
     const normalizedIsbn = normalizeIsbnForDedupe(
       options.cleanIsbn ||
         options.isbn ||
+        isbnFromId ||
         (typeof options.bookData?.cleanIsbn === 'string'
           ? options.bookData.cleanIsbn
           : typeof options.bookData?.isbn === 'string'
@@ -195,7 +254,7 @@ export const readingStateConverter = {
     );
     const stateKey = computeReadingStateKey({
       cleanIsbn: normalizedIsbn,
-      bookId: options.bookId,
+      bookId: safeBookId,
     });
     const keyType: 'isbn' | 'bookid' =
       normalizedIsbn.length > 0 ? 'isbn' : 'bookid';
@@ -206,7 +265,7 @@ export const readingStateConverter = {
       userId: options.userId,
       keyType,
       ...(normalizedIsbn.length > 0 ? {cleanIsbn: normalizedIsbn} : {}),
-      bookId: options.bookId,
+      bookId: safeBookId,
       ...(options.libraryId ? {libraryId: options.libraryId} : {}),
       updatedAt: FieldValue.serverTimestamp(),
     };
@@ -243,7 +302,7 @@ export const readingStateConverter = {
 
     if (options.bookData && Object.keys(options.bookData).length > 0) {
       payload.bookSnapshot = buildBookSnapshotFromData(options.bookData, {
-        bookId: options.bookId,
+        bookId: safeBookId,
         libraryId: options.libraryId,
         libraryName: options.libraryName,
       });

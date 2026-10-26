@@ -4,11 +4,16 @@ import {
   euclideanDistance,
   kmeans,
   computeSilhouetteScore,
+  getOptimalClusterBounds,
   optimalKMeans,
   normalizeAndRelaxPositions,
+  isLegacyIslandLayout,
+  computeSoftClusterMemberships,
+  computeUnifiedSemanticWeb,
   computeClusterMST,
   computePaddedConvexHull,
   computeSemanticNeighbors,
+  computeCrossClusterBridges,
   Point2D,
 } from './clustering';
 
@@ -186,9 +191,46 @@ describe('clustering & constellation geometry engine', () => {
       expect(result.silhouette).toBeGreaterThan(0.8);
       expect(result.labels).toHaveLength(15);
     });
+
+    it('scales getOptimalClusterBounds sub-linearly so 881-book libraries form 10-16 constellations rather than 3 or 100+', () => {
+      expect(getOptimalClusterBounds(0)).toEqual({minK: 0, maxK: 0});
+      expect(getOptimalClusterBounds(25).minK).toBeGreaterThanOrEqual(4);
+      expect(getOptimalClusterBounds(60).minK).toBeGreaterThanOrEqual(5);
+
+      const sterlingBounds = getOptimalClusterBounds(881);
+      expect(sterlingBounds.minK).toBeGreaterThanOrEqual(10);
+      expect(sterlingBounds.maxK).toBeLessThanOrEqual(18);
+      expect(sterlingBounds.maxK).toBeGreaterThan(sterlingBounds.minK);
+    });
+
+    it('discovers 6+ constellations when clustering 36 books across 6 distinct themes with embeddings', () => {
+      const centers = [
+        [-90, -90],
+        [-90, 90],
+        [0, -90],
+        [0, 90],
+        [90, -90],
+        [90, 90],
+      ];
+      const points: number[][] = [];
+      const embeddings: number[][] = [];
+
+      centers.forEach(([cx, cy], cIdx) => {
+        for (let i = 0; i < 6; i++) {
+          points.push([cx + (i - 2.5) * 0.8, cy + ((i % 2) - 0.5) * 0.8]);
+          const emb = new Array<number>(6).fill(0.02);
+          emb[cIdx] = 1;
+          embeddings.push(emb);
+        }
+      });
+
+      const res = optimalKMeans(points, 42, embeddings);
+      expect(res.k).toBe(6);
+      expect(new Set(res.labels).size).toBe(6);
+    });
   });
 
-  describe('normalizeAndRelaxPositions (force-directed layout & collision detection)', () => {
+  describe('normalizeAndRelaxPositions (continuous manifold & overlap-only de-crowding)', () => {
     it('handles empty and degenerate zero-span points', () => {
       expect(normalizeAndRelaxPositions([])).toEqual([]);
 
@@ -210,7 +252,7 @@ describe('clustering & constellation geometry engine', () => {
       }
     });
 
-    it('guarantees non-overlapping cluster centroids and fits output within [-range, range]', () => {
+    it('unstacks degenerate centroids while preserving continuous manifold proximity within [-range, range]', () => {
       // Three clusters initially stacked right on top of each other at (0, 0)
       const rawPoints: Point2D[] = [];
       const clusterIds: number[] = [];
@@ -231,7 +273,7 @@ describe('clustering & constellation geometry engine', () => {
       const relaxed = normalizeAndRelaxPositions(rawPoints, {
         range,
         clusterIds,
-        iterations: 60,
+        iterations: 50,
       });
 
       expect(relaxed).toHaveLength(rawPoints.length);
@@ -240,7 +282,7 @@ describe('clustering & constellation geometry engine', () => {
         expect(Math.abs(pt.y)).toBeLessThanOrEqual(range + 1e-4);
       }
 
-      // Compute centroids of clusters 0, 1, 2 and verify they pushed apart significantly
+      // Compute centroids of clusters 0, 1, 2 and verify they unstacked cleanly
       const getCentroid = (cid: number): Point2D => {
         const pts = relaxed.filter((_, idx) => clusterIds[idx] === cid);
         return {
@@ -253,9 +295,88 @@ describe('clustering & constellation geometry engine', () => {
       const c1 = getCentroid(1);
       const c2 = getCentroid(2);
 
-      expect(Math.hypot(c0.x - c1.x, c0.y - c1.y)).toBeGreaterThan(15);
-      expect(Math.hypot(c1.x - c2.x, c1.y - c2.y)).toBeGreaterThan(15);
-      expect(Math.hypot(c0.x - c2.x, c0.y - c2.y)).toBeGreaterThan(15);
+      expect(Math.hypot(c0.x - c1.x, c0.y - c1.y)).toBeGreaterThan(12);
+      expect(Math.hypot(c1.x - c2.x, c1.y - c2.y)).toBeGreaterThan(12);
+      expect(Math.hypot(c0.x - c2.x, c0.y - c2.y)).toBeGreaterThan(12);
+    });
+
+    it('detects legacy rigid-island moats vs continuous manifold layouts', () => {
+      const islandPts: Point2D[] = [];
+      const continuousPts: Point2D[] = [];
+      const cids: number[] = [];
+
+      for (let i = 0; i < 12; i++) {
+        const cid = i < 6 ? 0 : 1;
+        cids.push(cid);
+        // Island layout: cluster 0 tightly around (-60, 0), cluster 1 tightly around (60, 0)
+        islandPts.push({
+          x: (cid === 0 ? -60 : 60) + (i % 3) * 1.2,
+          y: Math.floor(i / 3) * 1.2,
+        });
+        // Continuous manifold: stars span smoothly from x = -30 to x = +30
+        continuousPts.push({
+          x: -30 + i * 5.5,
+          y: (i % 2) * 3,
+        });
+      }
+
+      expect(isLegacyIslandLayout(islandPts, cids)).toBe(true);
+      expect(isLegacyIslandLayout(continuousPts, cids)).toBe(false);
+    });
+  });
+
+  describe('computeSoftClusterMemberships & computeUnifiedSemanticWeb', () => {
+    it('assigns higher secondaryWeight to transitional boundary books than deep core books', () => {
+      const points: Point2D[] = [
+        {x: -40, y: 0}, // deep in cluster 0
+        {x: -36, y: 2}, // deep in cluster 0
+        {x: -2, y: 0}, // transitional book right on the border between cluster 0 and 1
+        {x: 36, y: -2}, // deep in cluster 1
+        {x: 40, y: 0}, // deep in cluster 1
+      ];
+      const clusterIds = [0, 0, 0, 1, 1];
+      const embeddings = [
+        [1, 0],
+        [0.98, 0.05],
+        [0.72, 0.69], // blended embedding bridging cluster 0 and cluster 1
+        [0.05, 0.98],
+        [0, 1],
+      ];
+
+      const memberships = computeSoftClusterMemberships(
+        points,
+        clusterIds,
+        embeddings,
+      );
+      expect(memberships).toHaveLength(5);
+      // Transitional border book (index 2) has strong secondary affinity to cluster 1
+      expect(memberships[2].secondaryClusterId).toBe(1);
+      expect(memberships[2].secondaryWeight).toBeGreaterThan(0.25);
+      expect(memberships[2].secondaryWeight).toBeGreaterThan(
+        memberships[0].secondaryWeight,
+      );
+    });
+
+    it('builds a unified semantic web with both intra-cluster and cross-cluster filaments', () => {
+      const points: Point2D[] = [
+        {x: -20, y: 0},
+        {x: -10, y: 2},
+        {x: -2, y: 0},
+        {x: 4, y: 1},
+        {x: 14, y: -1},
+        {x: 22, y: 0},
+      ];
+      const clusterIds = [0, 0, 0, 1, 1, 1];
+      const neighborLists = computeSemanticNeighbors(
+        points,
+        points.map(() => undefined),
+        3,
+      );
+
+      const web = computeUnifiedSemanticWeb(points, clusterIds, neighborLists);
+      expect(web.length).toBeGreaterThanOrEqual(5);
+      expect(web.some(e => !e.isCrossCluster)).toBe(true);
+      expect(web.some(e => e.isCrossCluster)).toBe(true);
     });
   });
 
@@ -315,7 +436,7 @@ describe('clustering & constellation geometry engine', () => {
     });
   });
 
-  describe('computeSemanticNeighbors', () => {
+  describe('computeSemanticNeighbors & computeCrossClusterBridges', () => {
     it('blends high-dimensional cosine similarity with 2D spatial proximity and respects topK', () => {
       expect(computeSemanticNeighbors([{x: 0, y: 0}], [undefined])).toEqual([
         [],
@@ -340,6 +461,53 @@ describe('clustering & constellation geometry engine', () => {
       expect(neighbors[0][0].similarity).toBeGreaterThan(
         neighbors[0][1].similarity,
       );
+    });
+
+    it('extracts deduplicated cross-cluster bridges and prioritizes cross-genre pairs', () => {
+      const clusterIds = [0, 0, 1, 1, 2];
+      const neighborIndexLists = [
+        [
+          {index: 1, similarity: 0.92}, // same cluster (ignored)
+          {index: 2, similarity: 0.81}, // cross-cluster 0 -> 1
+        ],
+        [{index: 0, similarity: 0.92}],
+        [
+          {index: 0, similarity: 0.81}, // duplicate of 0 -> 2
+          {index: 4, similarity: 0.79}, // cross-cluster 1 -> 2
+        ],
+        [{index: 2, similarity: 0.88}],
+        [{index: 2, similarity: 0.79}],
+      ];
+
+      const bridges = computeCrossClusterBridges(
+        clusterIds,
+        neighborIndexLists,
+        {
+          genres: [
+            'Science Fiction',
+            'Science Fiction',
+            'Philosophy',
+            'Philosophy',
+            'History',
+          ],
+        },
+      );
+
+      expect(bridges).toHaveLength(2);
+      expect(bridges[0]).toMatchObject({
+        sourceIndex: 0,
+        targetIndex: 2,
+        sourceClusterId: 0,
+        targetClusterId: 1,
+        similarity: 0.81,
+      });
+      expect(bridges[1]).toMatchObject({
+        sourceIndex: 2,
+        targetIndex: 4,
+        sourceClusterId: 1,
+        targetClusterId: 2,
+        similarity: 0.79,
+      });
     });
   });
 });

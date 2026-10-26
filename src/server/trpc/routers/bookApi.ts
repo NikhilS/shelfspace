@@ -9,7 +9,7 @@ import {
   bookListSchema,
   bookMergeDuplicatesSchema,
 } from '../../../schemas/libraryApi';
-import {bookStatusEnum} from '../../../schemas/book';
+import {bookStatusEnum, safeBookOrStateIdSchema} from '../../../schemas/book';
 import {safeIdSchema} from '../../../schemas/common';
 
 export const bookApiRouter = router({
@@ -29,7 +29,7 @@ export const bookApiRouter = router({
     .input(
       z.object({
         libraryId: safeIdSchema,
-        bookId: safeIdSchema,
+        bookId: safeBookOrStateIdSchema,
         status: bookStatusEnum,
         recordReadStatusReview: z.boolean().optional(),
         reviewedAtOverride: z.string().max(100).nullable().optional(),
@@ -53,7 +53,7 @@ export const bookApiRouter = router({
     .input(
       z.object({
         libraryId: safeIdSchema,
-        bookId: safeIdSchema,
+        bookId: safeBookOrStateIdSchema,
         reviewedAt: z.string().max(100).nullable().optional(),
       }),
     )
@@ -93,7 +93,7 @@ export const bookApiRouter = router({
     .input(
       z.object({
         libraryId: safeIdSchema,
-        bookId: safeIdSchema,
+        bookId: safeBookOrStateIdSchema,
       }),
     )
     .query(async ({ctx, input}) => {
@@ -141,7 +141,7 @@ export const bookApiRouter = router({
     .input(
       z.object({
         libraryId: safeIdSchema,
-        bookId: safeIdSchema,
+        bookId: safeBookOrStateIdSchema,
       }),
     )
     .query(async ({ctx, input}) => {
@@ -159,7 +159,7 @@ export const bookApiRouter = router({
       z
         .object({
           libraryId: safeIdSchema,
-          bookId: safeIdSchema,
+          bookId: safeBookOrStateIdSchema,
           rating: z.number().min(1).max(5).optional(),
           text: z.string().min(1).max(5000).optional(),
           reviewText: z.string().min(1).max(5000).optional(),

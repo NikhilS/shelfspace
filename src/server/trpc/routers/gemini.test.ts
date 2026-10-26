@@ -8,6 +8,7 @@ vi.mock('../../services/gemini', () => ({
   extractBooksFromCsv: vi.fn(),
   generateLibraryHeroImage: vi.fn(),
   generateClusterNames: vi.fn(),
+  generateClusterThemes: vi.fn(),
   generateBookEmbeddings: vi.fn(),
   getPickOfTheDay: vi.fn(),
   generateBookInsights: vi.fn(),
@@ -91,13 +92,19 @@ describe('geminiRouter tRPC procedures & security boundaries', () => {
     ).rejects.toThrow(/500KB/);
   });
 
-  it('delegates generateLibraryHeroImage, generateClusterNames, and generateBookEmbeddings', async () => {
+  it('delegates generateLibraryHeroImage, generateClusterNames, generateClusterThemes, and generateBookEmbeddings', async () => {
     const caller = geminiRouter.createCaller(authCtx);
     vi.mocked(geminiService.generateLibraryHeroImage).mockResolvedValue(
       'data:image/png;base64,hero',
     );
     vi.mocked(geminiService.generateClusterNames).mockResolvedValue({
       0: 'Cosmic Dread',
+    });
+    vi.mocked(geminiService.generateClusterThemes).mockResolvedValue({
+      0: {
+        name: 'Cosmic Dread',
+        thesis: 'Shared existential terror before ancient cosmic forces.',
+      },
     });
     vi.mocked(geminiService.generateBookEmbeddings).mockResolvedValue([
       [0.1, 0.2],
@@ -120,6 +127,30 @@ describe('geminiRouter tRPC procedures & security boundaries', () => {
         ],
       }),
     ).toEqual({0: 'Cosmic Dread'});
+
+    expect(
+      await caller.generateClusterThemes({
+        clusters: [
+          {
+            id: 0,
+            totalCount: 350,
+            books: [
+              {
+                title: 'Solaris',
+                author: 'Stanislaw Lem',
+                primaryGenre: 'Science Fiction',
+                synopsis: 'Scientists confront a sentient ocean planet.',
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual({
+      0: {
+        name: 'Cosmic Dread',
+        thesis: 'Shared existential terror before ancient cosmic forces.',
+      },
+    });
 
     expect(
       await caller.generateBookEmbeddings({texts: ['Solaris by Lem']}),

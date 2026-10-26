@@ -1,6 +1,10 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import * as clientMod from './client';
-import {generateClusterNames, generateBookEmbeddings} from './embeddings';
+import {
+  generateClusterNames,
+  generateClusterThemes,
+  generateBookEmbeddings,
+} from './embeddings';
 import {
   classifyBooks,
   extractBookGeoMetadataBatch,
@@ -60,12 +64,46 @@ describe('gemini service unit suite', () => {
     expect(bios).toEqual({});
   });
 
-  it('parses array and object formats in generateClusterNames and handles generateBookEmbeddings progress', async () => {
+  it('parses array and object formats in generateClusterNames/generateClusterThemes and handles generateBookEmbeddings progress', async () => {
     vi.spyOn(
       clientMod.geminiStructuredProvider,
       'generateContent',
     ).mockResolvedValueOnce({
-      text: JSON.stringify([{id: 0, name: '  Cosmic Dread  '}]),
+      text: JSON.stringify([
+        {
+          id: 0,
+          name: '  Cosmic Dread  ',
+          thesis: '  Expeditions into incomprehensible ancient frontiers.  ',
+        },
+      ]),
+    } as never);
+
+    const themes = await generateClusterThemes([
+      {
+        id: 0,
+        totalCount: 12,
+        books: [
+          {
+            title: 'At the Mountains of Madness',
+            author: 'H.P. Lovecraft',
+            primaryGenre: 'Horror',
+            synopsis: 'An Antarctic expedition uncovers ancient ruins.',
+          },
+        ],
+      },
+    ]);
+    expect(themes).toEqual({
+      0: {
+        name: 'Cosmic Dread',
+        thesis: 'Expeditions into incomprehensible ancient frontiers.',
+      },
+    });
+
+    vi.spyOn(
+      clientMod.geminiStructuredProvider,
+      'generateContent',
+    ).mockResolvedValueOnce({
+      text: JSON.stringify([{id: 0, name: '  Cosmic Dread  ', thesis: ''}]),
     } as never);
 
     const names = await generateClusterNames([

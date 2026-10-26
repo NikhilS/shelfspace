@@ -595,52 +595,43 @@ export class BookPartitioner {
     // Per-user reading state is stored in /users/{userId}/readingStates/{stateKey}, never on books/{bookId}
     delete coreUpdates.readingStatus;
 
+    if (
+      coreUpdates.bookDetailsMetadata &&
+      typeof coreUpdates.bookDetailsMetadata === 'object'
+    ) {
+      const explicitMeta = coreUpdates.bookDetailsMetadata as Record<
+        string,
+        unknown
+      >;
+      for (const [metaKey, metaVal] of Object.entries(explicitMeta)) {
+        if (typeof metaVal === 'boolean') {
+          coreUpdates[`bookDetailsMetadata.${metaKey}`] = metaVal;
+        }
+      }
+      delete coreUpdates.bookDetailsMetadata;
+    }
+
     if (Object.keys(heavyUpdates).length > 0) {
-      if (
-        coreUpdates.bookDetailsMetadata &&
-        typeof coreUpdates.bookDetailsMetadata === 'object'
-      ) {
-        const meta = {
-          ...(coreUpdates.bookDetailsMetadata as Record<string, unknown>),
-        };
-        if (heavyUpdates.synopsis !== undefined) {
-          meta.hasSynopsis = Boolean(heavyUpdates.synopsis);
-        }
-        if (heavyUpdates.authorBio !== undefined) {
-          meta.hasAuthorBio = Boolean(heavyUpdates.authorBio);
-        }
-        if (heavyUpdates.embedding !== undefined) {
-          meta.hasEmbedding = Boolean(
-            Array.isArray(heavyUpdates.embedding) &&
-            heavyUpdates.embedding.length > 0,
-          );
-        }
-        if (heavyUpdates.clusterCoordinates !== undefined) {
-          meta.hasClusterCoordinates = Boolean(heavyUpdates.clusterCoordinates);
-        }
-        coreUpdates.bookDetailsMetadata = meta;
-      } else {
-        if (heavyUpdates.synopsis !== undefined) {
-          coreUpdates['bookDetailsMetadata.hasSynopsis'] = Boolean(
-            heavyUpdates.synopsis,
-          );
-        }
-        if (heavyUpdates.authorBio !== undefined) {
-          coreUpdates['bookDetailsMetadata.hasAuthorBio'] = Boolean(
-            heavyUpdates.authorBio,
-          );
-        }
-        if (heavyUpdates.embedding !== undefined) {
-          coreUpdates['bookDetailsMetadata.hasEmbedding'] = Boolean(
-            Array.isArray(heavyUpdates.embedding) &&
-            heavyUpdates.embedding.length > 0,
-          );
-        }
-        if (heavyUpdates.clusterCoordinates !== undefined) {
-          coreUpdates['bookDetailsMetadata.hasClusterCoordinates'] = Boolean(
-            heavyUpdates.clusterCoordinates,
-          );
-        }
+      if (heavyUpdates.synopsis !== undefined) {
+        coreUpdates['bookDetailsMetadata.hasSynopsis'] = Boolean(
+          heavyUpdates.synopsis,
+        );
+      }
+      if (heavyUpdates.authorBio !== undefined) {
+        coreUpdates['bookDetailsMetadata.hasAuthorBio'] = Boolean(
+          heavyUpdates.authorBio,
+        );
+      }
+      if (heavyUpdates.embedding !== undefined) {
+        coreUpdates['bookDetailsMetadata.hasEmbedding'] = Boolean(
+          Array.isArray(heavyUpdates.embedding) &&
+          heavyUpdates.embedding.length > 0,
+        );
+      }
+      if (heavyUpdates.clusterCoordinates !== undefined) {
+        coreUpdates['bookDetailsMetadata.hasClusterCoordinates'] = Boolean(
+          heavyUpdates.clusterCoordinates,
+        );
       }
     }
 

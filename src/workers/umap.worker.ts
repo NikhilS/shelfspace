@@ -4,6 +4,7 @@ import {
   optimalKMeans,
   normalizeAndRelaxPositions,
   computeSemanticNeighbors,
+  computeSoftClusterMemberships,
   Point2D,
 } from '../lib/clustering';
 
@@ -32,6 +33,7 @@ self.onmessage = function (e: MessageEvent<UmapWorkerRequest>) {
         self.postMessage({
           relaxedCoords: [],
           neighborIndexLists: [],
+          softMemberships: [],
         });
         return;
       }
@@ -44,10 +46,16 @@ self.onmessage = function (e: MessageEvent<UmapWorkerRequest>) {
         embeddings || rawCoords.map(() => undefined),
         5,
       );
+      const softMemberships = computeSoftClusterMemberships(
+        relaxedCoords,
+        clusterIds || rawCoords.map(() => 0),
+        embeddings,
+      );
 
       self.postMessage({
         relaxedCoords,
         neighborIndexLists,
+        softMemberships,
       });
       return;
     }
@@ -62,17 +70,21 @@ self.onmessage = function (e: MessageEvent<UmapWorkerRequest>) {
     }
 
     const rng = createSeededRng(seed);
+    const effectiveNeighbors = Math.max(
+      2,
+      Math.min(validEmbeddings.length - 1, Math.min(40, nNeighbors || 15)),
+    );
     const umap = new UMAP({
-      nNeighbors: Math.max(2, Math.min(15, nNeighbors || 10)),
-      minDist: 0.18,
-      spread: 1.15,
+      nNeighbors: effectiveNeighbors,
+      minDist: 0.24,
+      spread: 1.0,
       nComponents: 2,
       nEpochs: 400,
       random: rng,
     });
 
     const reduced = umap.fit(validEmbeddings);
-    const {labels} = optimalKMeans(reduced, seed);
+    const {labels} = optimalKMeans(reduced, seed, validEmbeddings);
 
     const rawPoints: Point2D[] = reduced.map(pt => ({x: pt[0], y: pt[1]}));
     const relaxedCoords = normalizeAndRelaxPositions(rawPoints, {
@@ -83,12 +95,18 @@ self.onmessage = function (e: MessageEvent<UmapWorkerRequest>) {
       validEmbeddings,
       5,
     );
+    const softMemberships = computeSoftClusterMemberships(
+      relaxedCoords,
+      labels,
+      validEmbeddings,
+    );
 
     self.postMessage({
       reduced,
       labels,
       relaxedCoords,
       neighborIndexLists,
+      softMemberships,
     });
   } catch (error) {
     self.postMessage({error: String(error)});

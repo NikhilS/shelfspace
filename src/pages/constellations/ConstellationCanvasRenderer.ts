@@ -1,10 +1,15 @@
 import {ScatterPoint} from '../../hooks/useConstellationData';
-import {Point2D} from '../../lib/clustering';
+import {
+  Point2D,
+  CrossClusterBridge,
+  SemanticWebEdge,
+} from '../../lib/clustering';
 import {
   CLUSTER_COLORS,
   ClusterGeometry,
   StippleGrain,
   hexToRgba,
+  blendHexColors,
 } from './types';
 
 /**
@@ -49,6 +54,8 @@ export interface RenderConstellationParams {
   cam: {x: number; y: number; zoom: number};
   plotData: ScatterPoint[];
   clustersGeometry: ClusterGeometry[];
+  crossClusterBridges?: CrossClusterBridge[];
+  semanticWebEdges?: SemanticWebEdge[];
   paperStipples: StippleGrain[];
   selectedStarId: string | null;
   selectedStar: ScatterPoint | null;
@@ -75,6 +82,8 @@ export function renderConstellationFrame({
   cam,
   plotData,
   clustersGeometry,
+  crossClusterBridges = [],
+  semanticWebEdges = [],
   paperStipples,
   selectedStarId,
   selectedStar,
@@ -194,97 +203,271 @@ export function renderConstellationFrame({
   }
 
   // =======================================================================
-  // LAYER 2: Watercolor-Wash Constellation Territory Hulls
+  // LAYER 2: Overlapping Atmospheric Nebula Glow Fields (Borderless)
   // =======================================================================
   for (const cluster of clustersGeometry) {
-    if (cluster.hullPoints.length < 3) {
-      continue;
-    }
-
     const isClusterActive =
       focusedClusterId === null || focusedClusterId === cluster.clusterId;
-    const hullScreenPts = cluster.hullPoints.map(hp =>
-      worldToScreen(hp.x, hp.y, cam, width, height),
-    );
-    const centroidScreen = worldToScreen(
-      cluster.centroid.x,
-      cluster.centroid.y,
-      cam,
-      width,
-      height,
-    );
 
-    let maxR = 36;
-    for (const hp of hullScreenPts) {
-      const d = Math.hypot(hp.x - centroidScreen.x, hp.y - centroidScreen.y);
-      if (d > maxR) {
-        maxR = d;
-      }
-    }
-
-    traceSmoothClosedHull(ctx, hullScreenPts, 0.26);
-
-    const fillAlpha = isClusterActive
+    const baseFillAlpha = isClusterActive
       ? focusedClusterId === cluster.clusterId
-        ? 0.15
-        : 0.095
+        ? isDark
+          ? 0.19
+          : 0.15
+        : isDark
+          ? 0.12
+          : 0.095
       : 0.025;
-    const strokeAlpha = isClusterActive
-      ? focusedClusterId === cluster.clusterId
-        ? 0.42
-        : 0.22
-      : 0.06;
 
-    const washGrad = ctx.createRadialGradient(
-      centroidScreen.x,
-      centroidScreen.y,
-      maxR * 0.06,
-      centroidScreen.x,
-      centroidScreen.y,
-      maxR * 1.08,
-    );
-    washGrad.addColorStop(0, hexToRgba(cluster.color, fillAlpha * 1.25));
-    washGrad.addColorStop(0.7, hexToRgba(cluster.color, fillAlpha * 0.75));
-    washGrad.addColorStop(1, hexToRgba(cluster.color, 0.015));
+    const kernels =
+      cluster.nebulaKernels && cluster.nebulaKernels.length > 0
+        ? cluster.nebulaKernels
+        : [
+            {
+              x: cluster.centroid.x,
+              y: cluster.centroid.y,
+              radius: 28,
+              weight: 1.0,
+            },
+          ];
 
-    ctx.fillStyle = washGrad;
-    ctx.fill();
+    for (const kernel of kernels) {
+      const kScreen = worldToScreen(kernel.x, kernel.y, cam, width, height);
+      const rScreen = Math.max(42, kernel.radius * worldScale * 1.42);
 
-    ctx.save();
-    ctx.setLineDash([4, 5]);
-    ctx.strokeStyle = hexToRgba(cluster.color, strokeAlpha);
-    ctx.lineWidth = focusedClusterId === cluster.clusterId ? 1.35 : 1;
-    ctx.stroke();
-    ctx.restore();
+      if (
+        kScreen.x + rScreen < 0 ||
+        kScreen.x - rScreen > width ||
+        kScreen.y + rScreen < 0 ||
+        kScreen.y - rScreen > height
+      ) {
+        continue;
+      }
+
+      const kAlpha = baseFillAlpha * kernel.weight;
+      const nebulaGrad = ctx.createRadialGradient(
+        kScreen.x,
+        kScreen.y,
+        rScreen * 0.04,
+        kScreen.x,
+        kScreen.y,
+        rScreen,
+      );
+      nebulaGrad.addColorStop(0, hexToRgba(cluster.color, kAlpha * 1.15));
+      nebulaGrad.addColorStop(0.38, hexToRgba(cluster.color, kAlpha * 0.72));
+      nebulaGrad.addColorStop(0.72, hexToRgba(cluster.color, kAlpha * 0.26));
+      nebulaGrad.addColorStop(1, hexToRgba(cluster.color, 0));
+
+      ctx.fillStyle = nebulaGrad;
+      ctx.beginPath();
+      ctx.arc(kScreen.x, kScreen.y, rScreen, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   // =======================================================================
-  // LAYER 3: Engraved Copperplate MST Constellation Filaments
+  // LAYER 3: Unified Semantic Web with Cross-Cluster Gradient Filaments
   // =======================================================================
-  for (const cluster of clustersGeometry) {
-    const isClusterActive =
-      focusedClusterId === null || focusedClusterId === cluster.clusterId;
-
-    const baseLineAlpha = isClusterActive
-      ? focusedClusterId === cluster.clusterId
-        ? 0.58
-        : 0.36
-      : 0.08;
-
-    ctx.strokeStyle = hexToRgba(cluster.color, baseLineAlpha);
-    ctx.lineWidth = focusedClusterId === cluster.clusterId ? 1.55 : 1.15;
-
-    ctx.beginPath();
-    for (const [uIdx, vIdx] of cluster.mstEdges) {
-      const pu = screenPts[uIdx];
-      const pv = screenPts[vIdx];
+  if (semanticWebEdges.length > 0) {
+    for (const edge of semanticWebEdges) {
+      const pu = screenPts[edge.u];
+      const pv = screenPts[edge.v];
       if (!pu || !pv) {
         continue;
       }
-      ctx.moveTo(pu.x, pu.y);
-      ctx.lineTo(pv.x, pv.y);
+
+      const touchesFocused =
+        focusedClusterId === null ||
+        edge.sourceClusterId === focusedClusterId ||
+        edge.targetClusterId === focusedClusterId;
+
+      const colorU =
+        edge.sourceClusterId >= 0
+          ? CLUSTER_COLORS[edge.sourceClusterId % CLUSTER_COLORS.length]
+          : '#78716C';
+      const colorV =
+        edge.targetClusterId >= 0
+          ? CLUSTER_COLORS[edge.targetClusterId % CLUSTER_COLORS.length]
+          : '#78716C';
+
+      if (!edge.isCrossCluster) {
+        const intraAlpha = touchesFocused
+          ? focusedClusterId === edge.sourceClusterId
+            ? 0.54
+            : 0.32
+          : 0.07;
+
+        ctx.strokeStyle = hexToRgba(colorU, intraAlpha);
+        ctx.lineWidth = focusedClusterId === edge.sourceClusterId ? 1.45 : 1.05;
+        ctx.beginPath();
+        ctx.moveTo(pu.x, pu.y);
+        ctx.lineTo(pv.x, pv.y);
+        ctx.stroke();
+      } else {
+        // Cross-cluster web edge: smooth pigment gradient from constellation U to constellation V
+        const crossAlpha = touchesFocused
+          ? focusedClusterId !== null
+            ? 0.48
+            : 0.28
+          : 0.06;
+
+        const grad = ctx.createLinearGradient(pu.x, pu.y, pv.x, pv.y);
+        grad.addColorStop(0, hexToRgba(colorU, crossAlpha));
+        grad.addColorStop(
+          0.5,
+          hexToRgba(blendHexColors(colorU, colorV, 0.5), crossAlpha * 0.9),
+        );
+        grad.addColorStop(1, hexToRgba(colorV, crossAlpha));
+
+        ctx.strokeStyle = grad;
+        ctx.lineWidth =
+          focusedClusterId !== null && touchesFocused ? 1.35 : 0.95;
+        ctx.beginPath();
+        ctx.moveTo(pu.x, pu.y);
+        ctx.lineTo(pv.x, pv.y);
+        ctx.stroke();
+      }
     }
-    ctx.stroke();
+  } else {
+    // Fallback to per-cluster MST edges if semanticWebEdges was not provided
+    for (const cluster of clustersGeometry) {
+      const isClusterActive =
+        focusedClusterId === null || focusedClusterId === cluster.clusterId;
+
+      const baseLineAlpha = isClusterActive
+        ? focusedClusterId === cluster.clusterId
+          ? 0.58
+          : 0.36
+        : 0.08;
+
+      ctx.strokeStyle = hexToRgba(cluster.color, baseLineAlpha);
+      ctx.lineWidth = focusedClusterId === cluster.clusterId ? 1.55 : 1.15;
+
+      ctx.beginPath();
+      for (const [uIdx, vIdx] of cluster.mstEdges) {
+        const pu = screenPts[uIdx];
+        const pv = screenPts[vIdx];
+        if (!pu || !pv) {
+          continue;
+        }
+        ctx.moveTo(pu.x, pu.y);
+        ctx.lineTo(pv.x, pv.y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // =======================================================================
+  // LAYER 3.5: Cross-Cluster Bridge Filaments (Unexpected Long-Range Links)
+  // =======================================================================
+  if (!selectedStar && crossClusterBridges.length > 0) {
+    ctx.save();
+    for (let bIdx = 0; bIdx < crossClusterBridges.length; bIdx++) {
+      const bridge = crossClusterBridges[bIdx];
+      const pStart = screenPts[bridge.sourceIndex];
+      const pEnd = screenPts[bridge.targetIndex];
+      const ptStart = plotData[bridge.sourceIndex];
+      const ptEnd = plotData[bridge.targetIndex];
+      if (!pStart || !pEnd || !ptStart || !ptEnd) {
+        continue;
+      }
+
+      const idStart = ptStart.id || ptStart.book.id;
+      const idEnd = ptEnd.id || ptEnd.book.id;
+      const isHoveredBridge =
+        hoveredStarId !== null &&
+        (hoveredStarId === idStart || hoveredStarId === idEnd);
+      const isClusterFocusedBridge =
+        focusedClusterId !== null &&
+        (bridge.sourceClusterId === focusedClusterId ||
+          bridge.targetClusterId === focusedClusterId);
+
+      if (
+        focusedClusterId !== null &&
+        !isClusterFocusedBridge &&
+        !isHoveredBridge
+      ) {
+        continue;
+      }
+
+      const dx = pEnd.x - pStart.x;
+      const dy = pEnd.y - pStart.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 8) {
+        continue;
+      }
+
+      const nx = -dy / dist;
+      const ny = dx / dist;
+      const bendSign = bIdx % 2 === 0 ? 1 : -1;
+      const arcOffset = Math.min(44, dist * 0.16) * bendSign;
+      const ctrlX = (pStart.x + pEnd.x) * 0.5 + nx * arcOffset;
+      const ctrlY = (pStart.y + pEnd.y) * 0.5 + ny * arcOffset;
+
+      const bridgeAlpha = isHoveredBridge
+        ? 0.68
+        : isClusterFocusedBridge
+          ? 0.44
+          : 0.2;
+
+      const colorStart =
+        bridge.sourceClusterId >= 0
+          ? CLUSTER_COLORS[bridge.sourceClusterId % CLUSTER_COLORS.length]
+          : '#B45309';
+      const colorEnd =
+        bridge.targetClusterId >= 0
+          ? CLUSTER_COLORS[bridge.targetClusterId % CLUSTER_COLORS.length]
+          : '#9A3412';
+
+      const bridgeGrad = ctx.createLinearGradient(
+        pStart.x,
+        pStart.y,
+        pEnd.x,
+        pEnd.y,
+      );
+      bridgeGrad.addColorStop(0, hexToRgba(colorStart, bridgeAlpha));
+      bridgeGrad.addColorStop(1, hexToRgba(colorEnd, bridgeAlpha));
+
+      ctx.setLineDash([4, 6]);
+      ctx.strokeStyle = bridgeGrad;
+      ctx.lineWidth = isHoveredBridge || isClusterFocusedBridge ? 1.35 : 1.0;
+      ctx.beginPath();
+      ctx.moveTo(pStart.x, pStart.y);
+      ctx.quadraticCurveTo(ctrlX, ctrlY, pEnd.x, pEnd.y);
+      ctx.stroke();
+
+      if ((isHoveredBridge || isClusterFocusedBridge) && dist > 68) {
+        const midX = 0.25 * pStart.x + 0.5 * ctrlX + 0.25 * pEnd.x;
+        const midY = 0.25 * pStart.y + 0.5 * ctrlY + 0.25 * pEnd.y;
+        const pctLabel = `${Math.round(bridge.similarity * 100)}%`;
+
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.font = '600 9.5px "JetBrains Mono", monospace';
+        const textW = ctx.measureText(pctLabel).width;
+        const boxW = textW + 8;
+        const boxH = 14;
+
+        ctx.fillStyle = isDark
+          ? 'rgba(28, 25, 23, 0.92)'
+          : 'rgba(250, 247, 242, 0.94)';
+        ctx.strokeStyle = isDark
+          ? 'rgba(245, 158, 11, 0.48)'
+          : 'rgba(180, 83, 9, 0.38)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(midX - boxW * 0.5, midY - boxH * 0.5, boxW, boxH, 3);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = isDark ? '#FDE68A' : '#9A3412';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(pctLabel, midX, midY + 0.5);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
   }
 
   // =======================================================================
@@ -380,8 +563,11 @@ export function renderConstellationFrame({
   }
 
   // =======================================================================
-  // LAYER 5: Cartographic Star Nodes, Compass Rosettes & Selection Calipers
+  // LAYER 5: Cartographic Star Nodes, Dual-Cluster Transitional Pigments & Calipers
   // =======================================================================
+  const defaultStarBase =
+    plotData.length > 500 ? 2.6 : plotData.length > 200 ? 3.1 : 3.6;
+
   for (let i = 0; i < plotData.length; i++) {
     const pt = plotData[i];
     const sp = screenPts[i];
@@ -395,10 +581,24 @@ export function renderConstellationFrame({
     const isNeighbor = selectedNeighborMap.has(id);
     const isSearchMatch = matchingStarIds ? matchingStarIds.has(id) : false;
 
-    const baseColor =
+    const primaryColor =
       pt.clusterId >= 0
         ? CLUSTER_COLORS[pt.clusterId % CLUSTER_COLORS.length]
         : '#78716C';
+
+    const hasSecondaryAffinity =
+      typeof pt.secondaryClusterId === 'number' &&
+      pt.secondaryClusterId >= 0 &&
+      typeof pt.secondaryWeight === 'number' &&
+      pt.secondaryWeight >= 0.14;
+
+    const secondaryColor = hasSecondaryAffinity
+      ? CLUSTER_COLORS[pt.secondaryClusterId! % CLUSTER_COLORS.length]
+      : primaryColor;
+
+    const baseColor = hasSecondaryAffinity
+      ? blendHexColors(primaryColor, secondaryColor, pt.secondaryWeight!)
+      : primaryColor;
 
     let alpha = 1;
     if (hasSearchFilter && !isSearchMatch && !isSelected) {
@@ -412,7 +612,11 @@ export function renderConstellationFrame({
       pt.clusterId !== focusedClusterId &&
       !isHovered
     ) {
-      alpha = 0.22;
+      // Keep transitional border books that bridge into the focused cluster softly illuminated
+      alpha =
+        hasSecondaryAffinity && pt.secondaryClusterId === focusedClusterId
+          ? 0.68
+          : 0.22;
     }
 
     const coreRadius = isSelected
@@ -421,10 +625,13 @@ export function renderConstellationFrame({
         ? 5.8
         : isNeighbor || isSearchMatch
           ? 4.8
-          : Math.max(3.4, Math.min(5.4, 3.6 * Math.pow(cam.zoom, 0.25)));
+          : Math.max(
+              2.4,
+              Math.min(5.4, defaultStarBase * Math.pow(cam.zoom, 0.25)),
+            );
 
-    // Soft warm pigment wash halo
-    const haloRadius = coreRadius * (isSelected || isHovered ? 3.8 : 2.5);
+    // Soft warm pigment wash halo (dual-tone for transitional border books)
+    const haloRadius = coreRadius * (isSelected || isHovered ? 3.8 : 2.65);
     const glowGrad = ctx.createRadialGradient(
       sp.x,
       sp.y,
@@ -433,9 +640,15 @@ export function renderConstellationFrame({
       sp.y,
       haloRadius,
     );
-    glowGrad.addColorStop(0, hexToRgba(baseColor, 0.36 * alpha));
-    glowGrad.addColorStop(0.55, hexToRgba(baseColor, 0.12 * alpha));
-    glowGrad.addColorStop(1, hexToRgba(baseColor, 0));
+    glowGrad.addColorStop(0, hexToRgba(primaryColor, 0.36 * alpha));
+    glowGrad.addColorStop(
+      0.55,
+      hexToRgba(
+        hasSecondaryAffinity ? secondaryColor : primaryColor,
+        0.14 * alpha,
+      ),
+    );
+    glowGrad.addColorStop(1, hexToRgba(secondaryColor, 0));
     ctx.fillStyle = glowGrad;
     ctx.beginPath();
     ctx.arc(sp.x, sp.y, haloRadius, 0, Math.PI * 2);
@@ -496,7 +709,7 @@ export function renderConstellationFrame({
       ctx.stroke();
     }
 
-    // Warm Paper Collar Ring (separates star cleanly from MST lines)
+    // Warm Paper Collar Ring (separates star cleanly from web filaments)
     ctx.fillStyle = isDark
       ? `rgba(24, 21, 18, ${0.9 * alpha})`
       : `rgba(250, 247, 240, ${0.95 * alpha})`;
@@ -504,7 +717,7 @@ export function renderConstellationFrame({
     ctx.arc(sp.x, sp.y, coreRadius + 1.4, 0, Math.PI * 2);
     ctx.fill();
 
-    // Mineral Pigment Star Core
+    // Mineral Pigment Star Core (blended for transitional border books)
     ctx.fillStyle = hexToRgba(baseColor, Math.min(1, alpha * 1.05));
     ctx.beginPath();
     ctx.arc(sp.x, sp.y, coreRadius, 0, Math.PI * 2);

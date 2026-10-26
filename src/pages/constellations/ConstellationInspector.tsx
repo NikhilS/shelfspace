@@ -1,7 +1,15 @@
 import React from 'react';
 import {Link} from 'react-router-dom';
-import {Sparkles, Compass, ArrowUpRight, X, Layers} from 'lucide-react';
+import {
+  Sparkles,
+  Compass,
+  ArrowUpRight,
+  X,
+  Layers,
+  GitCompareArrows,
+} from 'lucide-react';
 import {ScatterPoint} from '../../hooks/useConstellationData';
+import {CrossClusterBridge} from '../../lib/clustering';
 import {Button} from '@/components/ui/button';
 import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
 import {CLUSTER_COLORS, ClusterGeometry} from './types';
@@ -10,6 +18,7 @@ interface ConstellationInspectorProps {
   selectedStar: ScatterPoint | null;
   activeCluster: ClusterGeometry | null;
   clustersGeometry: ClusterGeometry[];
+  crossClusterBridges?: CrossClusterBridge[];
   plotData: ScatterPoint[];
   clusterNames: Record<number, string>;
   starById: Map<string, {point: ScatterPoint; index: number}>;
@@ -24,6 +33,7 @@ export function ConstellationInspector({
   selectedStar,
   activeCluster,
   clustersGeometry,
+  crossClusterBridges = [],
   plotData,
   clusterNames,
   starById,
@@ -33,6 +43,14 @@ export function ConstellationInspector({
   onFocusCluster,
   onFocusStar,
 }: ConstellationInspectorProps) {
+  const activeClusterBridges = activeCluster
+    ? crossClusterBridges.filter(
+        b =>
+          b.sourceClusterId === activeCluster.clusterId ||
+          b.targetClusterId === activeCluster.clusterId,
+      )
+    : [];
+
   return (
     <aside className="lg:col-span-4 bg-surface border border-outline-variant/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between min-h-[420px] lg:h-[640px] overflow-y-auto custom-scrollbar">
       {selectedStar ? (
@@ -107,27 +125,58 @@ export function ConstellationInspector({
                 )}
               </div>
 
-              {/* Parent Constellation Selector Button */}
+              {/* Parent & Transitional Secondary Constellation Selector Buttons */}
               {selectedStar.clusterId >= 0 && (
-                <button
-                  type="button"
-                  onClick={() => onFocusCluster(selectedStar.clusterId)}
-                  className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/50 transition-colors"
-                >
-                  <span
-                    className="w-2.5 h-2.5 rounded-xs"
-                    style={{
-                      backgroundColor:
-                        CLUSTER_COLORS[
-                          selectedStar.clusterId % CLUSTER_COLORS.length
-                        ],
-                    }}
-                  />
-                  <span>
-                    {clusterNames[selectedStar.clusterId] ||
-                      `Constellation ${selectedStar.clusterId + 1}`}
-                  </span>
-                </button>
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onFocusCluster(selectedStar.clusterId)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/50 transition-colors"
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-xs shrink-0"
+                      style={{
+                        backgroundColor:
+                          CLUSTER_COLORS[
+                            selectedStar.clusterId % CLUSTER_COLORS.length
+                          ],
+                      }}
+                    />
+                    <span className="truncate">
+                      {clusterNames[selectedStar.clusterId] ||
+                        `Constellation ${selectedStar.clusterId + 1}`}
+                    </span>
+                  </button>
+
+                  {typeof selectedStar.secondaryClusterId === 'number' &&
+                    selectedStar.secondaryClusterId >= 0 &&
+                    (selectedStar.secondaryWeight ?? 0) >= 0.16 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onFocusCluster(selectedStar.secondaryClusterId!)
+                        }
+                        title="Transitional theme affinity"
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-medium bg-surface-container/60 hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-outline-variant/40 transition-colors"
+                      >
+                        <span
+                          className="w-2 h-2 rounded-xs shrink-0"
+                          style={{
+                            backgroundColor:
+                              CLUSTER_COLORS[
+                                selectedStar.secondaryClusterId %
+                                  CLUSTER_COLORS.length
+                              ],
+                          }}
+                        />
+                        <span className="truncate">
+                          ↔{' '}
+                          {clusterNames[selectedStar.secondaryClusterId] ||
+                            `Constellation ${selectedStar.secondaryClusterId + 1}`}
+                        </span>
+                      </button>
+                    )}
+                </div>
               )}
             </div>
           </div>
@@ -250,7 +299,76 @@ export function ConstellationInspector({
                 </>
               )}
             </div>
+            {activeCluster.thesis && (
+              <p className="mt-2.5 text-xs text-on-surface-variant leading-relaxed bg-surface-container/60 border border-outline-variant/40 rounded-lg p-2.5">
+                {activeCluster.thesis}
+              </p>
+            )}
           </div>
+
+          {activeClusterBridges.length > 0 && (
+            <div className="border-t border-outline-variant/40 pt-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <GitCompareArrows className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+                  Cross-Constellation Bridges
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {activeClusterBridges.slice(0, 4).map(bridge => {
+                  const isSourceHere =
+                    bridge.sourceClusterId === activeCluster.clusterId;
+                  const ownPt =
+                    plotData[
+                      isSourceHere ? bridge.sourceIndex : bridge.targetIndex
+                    ];
+                  const otherPt =
+                    plotData[
+                      isSourceHere ? bridge.targetIndex : bridge.sourceIndex
+                    ];
+                  if (!ownPt || !otherPt) {
+                    return null;
+                  }
+                  const otherClusterColor =
+                    otherPt.clusterId >= 0
+                      ? CLUSTER_COLORS[
+                          otherPt.clusterId % CLUSTER_COLORS.length
+                        ]
+                      : '#78716C';
+                  const otherClusterName =
+                    clusterNames[otherPt.clusterId] ||
+                    `Constellation ${otherPt.clusterId + 1}`;
+
+                  return (
+                    <button
+                      key={`${bridge.sourceIndex}:${bridge.targetIndex}`}
+                      type="button"
+                      onClick={() => onFocusStar(otherPt)}
+                      className="w-full text-left p-2 rounded-lg bg-surface-container/40 hover:bg-surface-container border border-outline-variant/40 transition-colors flex items-center justify-between gap-2 group"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-on-surface truncate group-hover:text-primary transition-colors">
+                          {ownPt.book.title} → {otherPt.book.title}
+                        </p>
+                        <div className="flex items-center gap-1.5 text-[11px] text-on-surface-variant truncate mt-0.5">
+                          <span
+                            className="w-2 h-2 rounded-xs shrink-0"
+                            style={{backgroundColor: otherClusterColor}}
+                          />
+                          <span className="truncate">
+                            Bridges to {otherClusterName}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="font-mono tabular-nums text-xs font-semibold text-primary shrink-0">
+                        {Math.round(bridge.similarity * 100)}%
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5 border-t border-outline-variant/40 pt-3">
             {activeCluster.pointIndices.map(idx => {
@@ -292,7 +410,7 @@ export function ConstellationInspector({
             <p className="text-xs text-on-surface-variant leading-relaxed">
               Click any point on the chart to lock onto a volume and trace its
               semantic kinship arcs, or select a constellation below to inspect
-              its thematic cluster.
+              its emergent theme.
             </p>
           </div>
 
@@ -302,7 +420,7 @@ export function ConstellationInspector({
                 key={cluster.clusterId}
                 type="button"
                 onClick={() => onFocusCluster(cluster.clusterId)}
-                className="w-full text-left p-3 rounded-xl bg-surface-container/50 hover:bg-surface-container border border-outline-variant/50 transition-colors flex items-center justify-between gap-3 group"
+                className="w-full text-left p-3 rounded-xl bg-surface-container/50 hover:bg-surface-container border border-outline-variant/50 transition-colors flex items-start justify-between gap-3 group"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-0.5">
@@ -314,8 +432,13 @@ export function ConstellationInspector({
                       {cluster.name}
                     </p>
                   </div>
+                  {cluster.thesis && (
+                    <p className="text-xs text-on-surface-variant leading-snug line-clamp-2 pl-4.5 mt-0.5">
+                      {cluster.thesis}
+                    </p>
+                  )}
                   {cluster.dominantGenres.length > 0 && (
-                    <p className="text-xs text-on-surface-variant truncate pl-4.5">
+                    <p className="text-[11px] text-on-surface-variant/80 truncate pl-4.5 mt-1">
                       {cluster.dominantGenres.join(' · ')}
                     </p>
                   )}
@@ -326,6 +449,53 @@ export function ConstellationInspector({
               </button>
             ))}
           </div>
+
+          {crossClusterBridges.length > 0 && (
+            <div className="border-t border-outline-variant/50 pt-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <GitCompareArrows className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+                  Unexpected Cross-Cluster Bridges
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {crossClusterBridges.slice(0, 4).map(bridge => {
+                  const ptA = plotData[bridge.sourceIndex];
+                  const ptB = plotData[bridge.targetIndex];
+                  if (!ptA || !ptB) {
+                    return null;
+                  }
+                  const cnameA =
+                    clusterNames[ptA.clusterId] ||
+                    `Constellation ${ptA.clusterId + 1}`;
+                  const cnameB =
+                    clusterNames[ptB.clusterId] ||
+                    `Constellation ${ptB.clusterId + 1}`;
+
+                  return (
+                    <button
+                      key={`${bridge.sourceIndex}:${bridge.targetIndex}`}
+                      type="button"
+                      onClick={() => onFocusStar(ptA)}
+                      className="w-full text-left p-2 rounded-lg bg-surface-container/40 hover:bg-surface-container border border-outline-variant/40 transition-colors flex items-center justify-between gap-2 group"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-on-surface truncate group-hover:text-primary transition-colors">
+                          {ptA.book.title} ↔ {ptB.book.title}
+                        </p>
+                        <p className="text-[11px] text-on-surface-variant truncate mt-0.5">
+                          {cnameA} · {cnameB}
+                        </p>
+                      </div>
+                      <span className="font-mono tabular-nums text-xs font-semibold text-primary shrink-0">
+                        {Math.round(bridge.similarity * 100)}%
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </aside>

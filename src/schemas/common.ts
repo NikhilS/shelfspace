@@ -256,9 +256,12 @@ export function isFirestoreFieldValueSentinel(value: unknown): boolean {
   return false;
 }
 
+const UNSAFE_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
+
 /**
- * Produces a validation-ready clone with Firestore `FieldValue` sentinels and dot-notation
- * update paths omitted, and `Date` instances normalized to ISO-8601 strings.
+ * Produces a validation-ready clone with Firestore `FieldValue` sentinels omitted,
+ * dot-notation update paths expanded into nested objects for schema validation,
+ * and `Date` instances normalized to ISO-8601 strings.
  */
 export function stripFirestoreSentinels(value: unknown): unknown {
   if (value === undefined || isFirestoreFieldValueSentinel(value)) {
@@ -275,11 +278,47 @@ export function stripFirestoreSentinels(value: unknown): unknown {
   if (value && typeof value === 'object') {
     const clean: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (k.includes('.')) {
+      const stripped = stripFirestoreSentinels(v);
+      if (stripped === undefined) {
         continue;
       }
-      const stripped = stripFirestoreSentinels(v);
-      if (stripped !== undefined) {
+      if (k.includes('.')) {
+        const segments = k.split('.').filter(Boolean);
+        if (
+          segments.length === 0 ||
+          segments.some(seg => UNSAFE_PATH_SEGMENTS.has(seg))
+        ) {
+          continue;
+        }
+        let cursor: Record<string, unknown> = clean;
+        for (let i = 0; i < segments.length - 1; i++) {
+          const seg = segments[i];
+          const existing = cursor[seg];
+          if (
+            !existing ||
+            typeof existing !== 'object' ||
+            Array.isArray(existing)
+          ) {
+            cursor[seg] = {};
+          }
+          cursor = cursor[seg] as Record<string, unknown>;
+        }
+        cursor[segments[segments.length - 1]] = stripped;
+        continue;
+      }
+      if (
+        stripped &&
+        typeof stripped === 'object' &&
+        !Array.isArray(stripped) &&
+        clean[k] &&
+        typeof clean[k] === 'object' &&
+        !Array.isArray(clean[k])
+      ) {
+        clean[k] = {
+          ...(clean[k] as Record<string, unknown>),
+          ...(stripped as Record<string, unknown>),
+        };
+      } else {
         clean[k] = stripped;
       }
     }

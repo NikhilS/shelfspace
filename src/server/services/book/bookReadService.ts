@@ -16,7 +16,10 @@ import {
   computeReadingStateKey,
   fetchUserReadingStateForBook,
   fetchUserReadingStatesMap,
+  getReadingStatesCollection,
+  normalizeReadingStateDoc,
   overlayReadingStateOnBook,
+  parseBookOrStateIdentifier,
 } from './readingStateLedger';
 import {validateFirestoreWritePayload} from '../../../schemas/common';
 import {storedLibraryDocSchema} from '../../../schemas/libraryApi';
@@ -28,40 +31,132 @@ import {storedLibraryDocSchema} from '../../../schemas/libraryApi';
 export async function getBook(
   userId: string,
   libraryId: string,
-  bookId: string,
+  bookIdRaw: string,
 ): Promise<Book> {
   const db = getAdminDb();
-  const bookRef = db
+  const {cleanBookId, isbnFromId} = parseBookOrStateIdentifier(bookIdRaw);
+  const booksCol = db
     .collection('libraries')
     .doc(libraryId)
-    .collection('books')
-    .doc(bookId);
-  const detailRef = db
+    .collection('books');
+  const detailsCol = db
     .collection('libraries')
     .doc(libraryId)
-    .collection('bookDetails')
-    .doc(bookId);
+    .collection('bookDetails');
 
-  let bookSnap: FirebaseFirestore.DocumentSnapshot;
+  let bookSnap: FirebaseFirestore.DocumentSnapshot | undefined;
   let detailSnap: FirebaseFirestore.DocumentSnapshot | undefined;
 
-  if (typeof (db as {getAll?: unknown}).getAll === 'function') {
-    const [bSnap, dSnap] = await db.getAll(bookRef, detailRef);
-    bookSnap = bSnap;
-    detailSnap = dSnap;
-  } else {
-    bookSnap = await bookRef.get();
-    try {
-      detailSnap = await detailRef.get();
-    } catch {
-      detailSnap = undefined;
+  if (!bookIdRaw.startsWith('isbn:')) {
+    const bookRef = booksCol.doc(cleanBookId);
+    const detailRef = detailsCol.doc(cleanBookId);
+
+    if (typeof (db as {getAll?: unknown}).getAll === 'function') {
+      const [bSnap, dSnap] = await db.getAll(bookRef, detailRef);
+      bookSnap = bSnap;
+      detailSnap = dSnap;
+    } else {
+      bookSnap = await bookRef.get();
+      try {
+        detailSnap = await detailRef.get();
+      } catch {
+        detailSnap = undefined;
+      }
     }
   }
 
-  if (!bookSnap.exists) {
+  // If bookIdRaw was `isbn:<cleanIsbn>` (or not found by direct doc ID when ISBN is known),
+  // resolve the matching book document by `cleanIsbn` in the target library.
+  if (
+    (!bookSnap || !bookSnap.exists) &&
+    isbnFromId &&
+    typeof (booksCol as {where?: unknown}).where === 'function'
+  ) {
+    try {
+      const isbnQuerySnap = await booksCol
+        .where('cleanIsbn', '==', isbnFromId)
+        .limit(1)
+        .get();
+      const matchedDoc = isbnQuerySnap?.docs?.[0];
+      if (matchedDoc?.exists) {
+        bookSnap = matchedDoc;
+        try {
+          detailSnap = await detailsCol.doc(matchedDoc.id).get();
+        } catch {
+          detailSnap = undefined;
+        }
+      }
+    } catch {
+      // Non-fatal if query is unconfigured in mocks
+    }
+  }
+
+  if (!bookSnap || !bookSnap.exists) {
+    // Fallback to the caller's readingStates snapshot when navigating from the Personal Reading Room
+    if (userId) {
+      const readingStatesCol = getReadingStatesCollection(db, userId);
+      if (readingStatesCol && typeof readingStatesCol.doc === 'function') {
+        const candidateKey = computeReadingStateKey({
+          cleanIsbn: isbnFromId,
+          bookId: cleanBookId,
+        });
+        try {
+          const stateSnap = await readingStatesCol.doc(candidateKey).get();
+          if (stateSnap?.exists) {
+            const state = normalizeReadingStateDoc(
+              stateSnap.id || candidateKey,
+              (stateSnap.data() || {}) as Record<string, unknown>,
+              userId,
+            );
+            const snap = state.bookSnapshot;
+            if (snap) {
+              const fallbackBook: Book = {
+                id: state.bookId || snap.bookId || cleanBookId,
+                title: snap.title || 'Untitled Book',
+                author: snap.author || 'Unknown Author',
+                ...(snap.isbn || state.cleanIsbn
+                  ? {isbn: snap.isbn || state.cleanIsbn}
+                  : {}),
+                ...(snap.cleanIsbn || state.cleanIsbn
+                  ? {cleanIsbn: snap.cleanIsbn || state.cleanIsbn}
+                  : {}),
+                ...(snap.coverUrl ? {coverUrl: snap.coverUrl} : {}),
+                ...(snap.publishedDate
+                  ? {publishedDate: snap.publishedDate}
+                  : {}),
+                ...(snap.primaryGenre ? {primaryGenre: snap.primaryGenre} : {}),
+                subgenres: Array.isArray(snap.subgenres) ? snap.subgenres : [],
+                isCustomPrimary: false,
+                ...(snap.series ? {series: snap.series} : {}),
+                format: snap.format || 'physical',
+                ...(snap.ownershipStatus
+                  ? {ownershipStatus: snap.ownershipStatus}
+                  : {}),
+                ...(snap.synopsis ? {synopsis: snap.synopsis} : {}),
+                ...(snap.authorBio ? {authorBio: snap.authorBio} : {}),
+                ...(snap.geoMetadata ? {geoMetadata: snap.geoMetadata} : {}),
+                ...(snap.temporalMetadata
+                  ? {temporalMetadata: snap.temporalMetadata}
+                  : {}),
+                ...(snap.clusterCoordinates
+                  ? {clusterCoordinates: snap.clusterCoordinates}
+                  : {}),
+                addedBy: userId,
+                addedAt: state.updatedAt || new Date().toISOString(),
+                ...(state.updatedAt ? {updatedAt: state.updatedAt} : {}),
+              };
+              return overlayReadingStateOnBook(fallbackBook, state);
+            }
+          }
+        } catch {
+          // Proceed to NOT_FOUND below
+        }
+      }
+    }
+
     throw new TRPCError({
       code: 'NOT_FOUND',
-      message: `Book '${bookId}' not found in library '${libraryId}'`,
+      message: `Book '${bookIdRaw}' not found in library '${libraryId}'`,
     });
   }
 

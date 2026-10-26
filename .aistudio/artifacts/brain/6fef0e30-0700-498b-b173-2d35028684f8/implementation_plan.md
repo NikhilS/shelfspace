@@ -1,69 +1,71 @@
-# Diagnosis & Fix Plan: "Read Books" Showing as Untitled / Unknown Author
+# Organic & Continuous Constellation Map Plan
 
-## Root Cause Analysis
+## 1. Context & Root Cause Summary
 
-Inspecting `/users/hiNrcTHzbtNZDQISgDGplgfCO0k1/readingStates` in Firestore revealed **11 documents**:
-- **1 `reading` document (`isbn:9780007335817` — *"Dragon Haven"* by Robin Hobb):** Has a complete `bookSnapshot` object and displays properly.
-- **10 `finished` documents (`bookid:ecbed85b09044594bd1c`, `bookid:199c04af81b94e72b23e`, `bookid:8ff18fc802964940b50d`, `bookid:5fe74feb8c7b45fa8b39`, `bookid:b59c32fc84f047c4a875`, `bookid:cf61f27b3b3b4e71813f`, `bookid:IHB6UZOH98DGDfUfrNbh`, `bookid:7c5134ca248744238b42`, `bookid:04e5283614c34088a7b4`, `bookid:8860d1cd93be470a82a4`):** All 10 reference existing Robin Hobb books in library `7Y8kXlJv96sjul1bXVT9` (*"Sterling Place"* — *Ship of Magic*, *Golden Fool*, *Mad Ship*, *Assassin's Quest*, *Fool's Fate*, *Royal Assassin*, *Assassin's Apprentice*, *Fool's Errand*, *Dragon Keeper*, and *Ship of Destiny*), but were saved **without a `bookSnapshot` field** and **without `cleanIsbn`**:
-  ```json
-  {
-    "libraryId": "7Y8kXlJv96sjul1bXVT9",
-    "id": "bookid:ecbed85b09044594bd1c",
-    "keyType": "bookid",
-    "userId": "hiNrcTHzbtNZDQISgDGplgfCO0k1",
-    "bookId": "ecbed85b09044594bd1c",
-    "finishedAt": "2026-10-26T01:00:05.940Z",
-    "status": "finished"
-  }
-  ```
-
-### Why This Happened (3 Compounding Issues)
-
-1. **`batchUpsert` omits `bookSnapshot` and `isbn` on partial updates (`src/server/services/book/bookWriteService.ts:1037–1061`):**
-   - When books have their `readingStatus` updated via `book.batchUpsert` (`type: 'update'`), `op.coreData` only contains the partial update delta (`{}` because `readingStatus` is partitioned out of `coreUpdates`).
-   - `batchUpsert` then calls `buildReadingStateUpsertPayload` with:
-     ```ts
-     isbn: typeof baseData.isbn === 'string' ? baseData.isbn : undefined,
-     cleanIsbn: typeof baseData.cleanIsbn === 'string' ? baseData.cleanIsbn : undefined,
-     bookData: typeof baseData.title === 'string' ? { ...baseData, ...(op.heavyData || {}) } : undefined,
-     ```
-   - Because `baseData.title` and `baseData.isbn` are `undefined` on a status-only update (and `batchUpsert` never loads the existing book doc), `buildReadingStateUpsertPayload`:
-     1. Omits `bookSnapshot` completely (`bookData` is `undefined`).
-     2. Falls back to `stateKey = bookid:<bookId>` even for books that have an ISBN in `/libraries/{libraryId}/books/{bookId}` (which also causes `listBooks` and `getUnreadLibraryBooks` to miss the reading state when looking up `isbn:<cleanIsbn>`).
-
-2. **`updateBookStatus` and `recordReadSwipeReview` silently drop `bookData` if converter throws (`src/server/services/book/bookWriteService.ts:310–323, 410–423`):**
-   - Both methods wrap `bookDocConverter.fromFirestore(...)` in a bare `catch {}` block. When `bookDocConverter.fromFirestore` threw `SchemaValidationError` prior to the legacy-field converter fix, `bookData` silently became `undefined`, causing `buildReadingStateUpsertPayload` to write a bare `readingStates` doc with no `bookSnapshot` and a `bookid:<bookId>` key.
-
-3. **`getPersonalReadingShelf` has no fallback hydration or self-healing (`src/server/services/readingTracker/readingTrackerService.ts:152–225`):**
-   - `getPersonalReadingShelf` builds every shelf item exclusively from `state.bookSnapshot`:
-     ```ts
-     title: snap?.title || 'Untitled Book',
-     author: snap?.author || 'Unknown Author',
-     ```
-   - When `state.bookSnapshot` is absent on a `readingStates` document, `getPersonalReadingShelf` does not look up the book in `/libraries/{libraryId}/books/{bookId}`, so all 10 books render as `"Untitled Book"` by `"Unknown Author"` with no cover image.
+Currently, the Constellation Map turns a continuous high-dimensional embedding space into isolated islands due to four mechanisms:
+1. **Rigid Macro-Cluster Island Simulation (`normalizeAndRelaxPositions` in `src/lib/clustering.ts`)**: Compacts each cluster's stars inward by `0.62×`, enforces a `maxClusterRadius` cap, and runs a 120-step macro-cluster repulsion + circle-circle collision solver with a mandatory `interClusterGap = 15`. This guarantees empty moats between every cluster.
+2. **Low-Neighbor UMAP (`nNeighbors <= 12` in `useConstellationData.ts` & `umap.worker.ts`)**: Emphasizes small local cliques rather than global thematic continuity across hundreds of books.
+3. **Hard Polygon Hulls & Isolated Skeletons (`ConstellationCanvasRenderer.ts` & `ConstellationChart.tsx`)**: Draws stroked dashed convex hull polygons around each cluster and restricts Minimum Spanning Tree (MST) filaments strictly to same-cluster stars.
+4. **Crisp Single-Cluster Color Assignment**: Every book is colored strictly by a single `clusterId`, hiding transitional books that sit on the frontier between two themes.
 
 ---
 
-## Proposed Fixes
+## 2. Proposed Algorithmic & Visual Architecture
 
-### 1. Hydrate Book Metadata on Partial `batchUpsert` & Harden `updateBookStatus` (`src/server/services/book/bookWriteService.ts`)
-- **In `batchUpsert`:**
-  - Before building batch writes, identify any non-delete operation with `op.readingStatus` where `op.coreData` does not already include `title`.
-  - Fetch the existing `/libraries/{libraryId}/books/{bookId}` (and `/bookDetails/{bookId}`) documents in parallel and merge them with `op.coreData` / `op.heavyData` before calling `buildReadingStateUpsertPayload`.
-  - Ensure `isbn` and `cleanIsbn` from the existing book are passed to `buildReadingStateUpsertPayload` so the canonical `isbn:<cleanIsbn>` key and full `bookSnapshot` are always written.
-- **In `updateBookStatus` & `recordReadSwipeReview`:**
-  - Fetch both `/libraries/{libraryId}/books/{bookId}` and `/libraries/{libraryId}/bookDetails/{bookId}` in parallel so `bookSnapshot` includes synopsis and heavy metadata.
-  - If `StateKey` migrates from a stale `bookid:<bookId>` doc to `isbn:<cleanIsbn>`, clean up the stale `bookid:<bookId>` doc in `/users/{userId}/readingStates`.
+### A. Continuous Manifold Projection & Overlap-Only De-Crowding
+- **Global-Aware UMAP Scaling (`src/hooks/useConstellationData.ts`, `src/workers/umap.worker.ts`)**:
+  - Increase UMAP `nNeighbors` scaling to `Math.min(40, Math.max(6, Math.round(Math.sqrt(N) * 1.35)))` (e.g., `~40` neighbors for an 881-book library) with `minDist: 0.24` and `spread: 1.0` so UMAP preserves continuous global semantic gradients across the collection.
+- **Continuous Manifold Relaxation (`normalizeAndRelaxPositions` in `src/lib/clustering.ts`)**:
+  - Remove macro-cluster circle compaction (`* 0.62`), remove `interClusterGap` centroid repulsion, and remove circle-circle cluster collision resolution.
+  - Normalize the continuous 2D UMAP manifold isotropically into `[-targetRange, targetRange]`.
+  - Run a lightweight, deterministic **cluster-agnostic point de-crowding pass** (`minDistance` overlap resolution combined with a gentle spring anchoring each book to its true UMAP coordinate). Books from neighboring clusters will naturally touch, interleave at thematic frontiers, and flow continuously across the canvas.
+- **Automatic Refresh of Legacy Island Coordinates (`src/hooks/useConstellationData.ts`)**:
+  - Introduce a topology continuity check (`isLegacyIslandLayout`) that detects when persisted `clusterCoordinates` have artificial empty moats between clusters (zero cross-cluster spatial proximity) so existing libraries like Sterling Place automatically upgrade to the continuous manifold layout.
 
-### 2. Hydrate & Self-Heal Missing `bookSnapshot` in `getPersonalReadingShelf` (`src/server/services/readingTracker/readingTrackerService.ts`)
-- In `getPersonalReadingShelf`:
-  - Detect any `readingStates` entry where `!state.bookSnapshot || !state.bookSnapshot.title || state.bookSnapshot.title === 'Untitled Book'` and `state.libraryId` + `state.bookId` are present.
-  - Fetch the referenced `/libraries/{libraryId}/books/{bookId}` and `/bookDetails/{bookId}` documents in parallel.
-  - Use the hydrated `bookSnapshot` immediately when constructing `allTracked` so the Reading Room never renders `"Untitled Book"` for an existing library book.
-  - Self-heal the user's `/users/{userId}/readingStates` document in Firestore (writing the full `bookSnapshot`, and if the book has an ISBN while the state was stored under `bookid:<bookId>`, writing the canonical `isbn:<cleanIsbn>` doc and deleting the stale `bookid:<bookId>` doc).
+### B. Soft Cluster Membership & Blended Transitional Books
+- **Soft Affinity Calculation (`computeSoftClusterMemberships` in `src/lib/clustering.ts`)**:
+  - For each book, compute its affinity to every cluster using a blend of high-dimensional embedding cosine similarity to cluster centroids and 2D manifold proximity.
+  - Output `secondaryClusterId` and `secondaryWeight` $\in [0, 0.5]$ for each book (`0` for deep core books, up to `0.5` for books sitting equally between two themes).
+- **Dual-Cluster Pigment Blending (`src/pages/constellations/types.ts`, `ConstellationCanvasRenderer.ts`, `ConstellationInspector.tsx`)**:
+  - Add `blendHexColors(colorA, colorB, weight)` to blend mineral pigments for transitional books (`secondaryWeight >= 0.18`).
+  - Render transitional stars with a blended core color and a dual-stop radial halo (primary cluster pigment inner glow transitioning into secondary cluster pigment outer wash).
+  - Surface a secondary constellation badge in `ConstellationInspector` when inspecting a transitional border book so users can jump between both themes it connects.
 
-### 3. Repair the 10 Existing `readingStates` Documents & Add Regression Tests
-- Run a one-time backfill for `/users/hiNrcTHzbtNZDQISgDGplgfCO0k1/readingStates` to populate `bookSnapshot` (and canonical `isbn:<cleanIsbn>` keys for the 7 ISBN-bearing books) from `/libraries/7Y8kXlJv96sjul1bXVT9/books/{bookId}` and `/bookDetails/{bookId}`, while preserving the existing `finishedAt`, `status`, and `updatedAt` values.
-- Add unit tests in `src/server/services/book/bookService.test.ts` and `src/server/services/readingTracker/readingTrackerService.test.ts` verifying:
-  - Partial `batchUpsert` updates with `readingStatus` populate `bookSnapshot` and `isbn:<cleanIsbn>` state keys from existing book docs.
-  - `getPersonalReadingShelf` hydrates and self-heals `readingStates` docs that are missing `bookSnapshot`.
+### C. Unified Semantic Web with Cross-Cluster Gradient Filaments
+- **Global + Local Semantic Web (`computeUnifiedSemanticWeb` in `src/lib/clustering.ts`)**:
+  - Replace isolated per-cluster trees with a unified graph generator that combines:
+    1. A **global Minimum Spanning Tree (MST)** across all books weighted by hybrid semantic + 2D manifold distance (pruning only extreme long-distance void jumps), allowing the primary constellation skeleton to flow organically from cluster to cluster.
+    2. **Local semantic kNN mesh edges** connecting proximate high-similarity neighbors (capped per node to prevent visual clutter).
+- **Gradient Edge Rendering (`ConstellationCanvasRenderer.ts`)**:
+  - Render intra-cluster web edges in their constellation's pigment.
+  - Render cross-cluster web edges using `ctx.createLinearGradient` between the two connected stars' pigments so filaments visibly transition in color as they cross thematic boundaries.
+
+### D. Overlapping Nebula Glow Fields Without Polygon Borders
+- **Multi-Kernel Atmospheric Nebulae (`ConstellationCanvasRenderer.ts`, `ConstellationChart.tsx`)**:
+  - Remove the stroked dashed convex hull borders (`traceSmoothClosedHull` stroke) that wall off clusters.
+  - Render soft, overlapping radial nebula washes for each cluster (using cluster centroids plus distributed sub-kernels across the cluster's spatial extent) that fade smoothly to zero opacity at their edges and blend naturally where neighboring constellations overlap.
+
+---
+
+## 3. Files to Modify
+
+- `src/lib/clustering.ts`:
+  - Refactor `normalizeAndRelaxPositions` into a continuous manifold overlap-only de-crowding solver.
+  - Add `computeSoftClusterMemberships` (`secondaryClusterId`, `secondaryWeight`).
+  - Add `computeUnifiedSemanticWeb` (`SemanticWebEdge[]`) and `isLegacyIslandLayout`.
+- `src/lib/clustering.test.ts`:
+  - Update and expand unit tests covering continuous manifold relaxation, soft cluster memberships, and unified semantic web construction.
+- `src/workers/umap.worker.ts`:
+  - Update `nNeighbors` cap (`<= 40`) and return soft cluster memberships from the worker.
+- `src/hooks/useConstellationData.ts`:
+  - Increase `nNeighbors` scaling, attach `secondaryClusterId` / `secondaryWeight` to `ScatterPoint`, and auto-upgrade cached legacy island layouts.
+- `src/pages/constellations/types.ts`:
+  - Add `blendHexColors` helper and `SemanticWebEdge` / soft-membership types.
+- `src/pages/constellations/ConstellationChart.tsx`:
+  - Compute `semanticWebEdges` via `computeUnifiedSemanticWeb` and pass to `renderConstellationFrame`.
+- `src/pages/constellations/ConstellationCanvasRenderer.ts`:
+  - Replace bordered convex hull polygons with overlapping multi-kernel radial nebula glow fields.
+  - Render the unified semantic web with smooth linear gradients across cross-cluster edges.
+  - Render blended dual-cluster pigments and halos on transitional border stars.
+- `src/pages/constellations/ConstellationInspector.tsx`:
+  - Display secondary constellation affinity on transitional border books.

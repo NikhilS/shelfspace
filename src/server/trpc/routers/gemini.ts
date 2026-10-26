@@ -6,6 +6,7 @@ import {
   extractBooksFromCsv,
   generateLibraryHeroImage,
   generateClusterNames,
+  generateClusterThemes,
   generateBookEmbeddings,
   generateLibraryRecommendations,
   generateBookInsights,
@@ -37,6 +38,25 @@ const libraryBookInputSchema = z.object({
   primaryGenre: z.string().max(200).optional(),
   subgenres: z.array(z.string().max(200)).max(50).optional(),
 });
+
+const clusterInputSchema = z
+  .array(
+    z.object({
+      id: z.number(),
+      totalCount: z.number().int().min(0).max(50000).optional(),
+      books: z
+        .array(
+          z.object({
+            title: z.string().max(500),
+            author: z.string().max(500).optional(),
+            primaryGenre: z.string().max(200).optional(),
+            synopsis: z.string().max(2000).optional(),
+          }),
+        )
+        .max(2000),
+    }),
+  )
+  .max(50);
 
 export const geminiRouter = router({
   extractBooksFromImage: aiProtectedProcedure
@@ -80,25 +100,21 @@ export const geminiRouter = router({
   generateClusterNames: aiProtectedProcedure
     .input(
       z.object({
-        clusters: z
-          .array(
-            z.object({
-              id: z.number(),
-              books: z
-                .array(
-                  z.object({
-                    title: z.string().max(500),
-                    author: z.string().max(500).optional(),
-                  }),
-                )
-                .max(2000),
-            }),
-          )
-          .max(50),
+        clusters: clusterInputSchema,
       }),
     )
     .mutation(async ({input}) => {
       return await generateClusterNames(input.clusters);
+    }),
+
+  generateClusterThemes: aiProtectedProcedure
+    .input(
+      z.object({
+        clusters: clusterInputSchema,
+      }),
+    )
+    .mutation(async ({input}) => {
+      return await generateClusterThemes(input.clusters);
     }),
 
   generateBookEmbeddings: aiProtectedProcedure
