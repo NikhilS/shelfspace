@@ -14,6 +14,72 @@ import {
   computeBookDedupeKey,
   computeBookSearchTokens,
 } from '../../../lib/duplicateDetection';
+import {catalogOrchestrator} from '../catalog';
+import {
+  bookDocConverter,
+  bookDetailsDocConverter,
+  normalizeFirestoreTimestamp,
+} from '../book/bookPartitioner';
+import {storedBookDocSchema} from '../../../schemas/book';
+import {
+  storedAllowedDuplicateDocSchema,
+  type StoredAllowedDuplicateDoc,
+} from '../../../schemas/libraryApi';
+import {
+  SchemaValidationError,
+  validateFirestoreReadPayload,
+  validateFirestoreWritePayload,
+} from '../../../schemas/common';
+
+export const allowedDuplicateConverter = {
+  toFirestoreWrite(
+    libraryId: string,
+    docId: string,
+    bookIds: string[],
+  ): {bookIds: string[]; createdAt: unknown} {
+    const payload = {
+      bookIds,
+      createdAt: FieldValue.serverTimestamp(),
+    };
+    validateFirestoreWritePayload(storedAllowedDuplicateDocSchema, payload, {
+      entity: 'StoredAllowedDuplicateDoc',
+      documentPath: `/libraries/${libraryId}/allowedDuplicates/${docId}`,
+      operation: 'create',
+    });
+    return payload;
+  },
+
+  fromFirestore(
+    libraryId: string,
+    docId: string,
+    raw: Record<string, unknown>,
+  ): StoredAllowedDuplicateDoc {
+    const createdAt = normalizeFirestoreTimestamp(raw.createdAt);
+    const candidate: Record<string, unknown> = {
+      ...raw,
+      id: docId,
+    };
+    if (createdAt !== undefined) {
+      candidate.createdAt = createdAt;
+    } else {
+      delete candidate.createdAt;
+    }
+    for (const k of Object.keys(candidate)) {
+      if (candidate[k] === undefined) {
+        delete candidate[k];
+      }
+    }
+    return validateFirestoreReadPayload(
+      storedAllowedDuplicateDocSchema,
+      candidate,
+      {
+        entity: 'StoredAllowedDuplicateDoc',
+        documentPath: `/libraries/${libraryId}/allowedDuplicates/${docId}`,
+        operation: 'read',
+      },
+    );
+  },
+};
 
 /**
  * Generalized metadata reset: purges any supported metadata category from all books
@@ -117,33 +183,41 @@ export async function resetMetadata(
       let totalSanitized = 0;
 
       for (const doc of snapshot.docs) {
-        const raw = doc.data() || {};
-        const hasLeaks =
-          raw.synopsis !== undefined ||
-          raw.authorBio !== undefined ||
-          raw.embedding !== undefined ||
-          raw.clusterCoordinates !== undefined ||
-          raw.description !== undefined;
+        const docId =
+          doc.id || (doc.ref as {id?: string})?.id || 'sanitized_book';
+        const raw = (doc.data() || {}) as Record<string, unknown>;
+        const {book, leakedDetails, hasLeaks} =
+          bookDocConverter.fromFirestoreWithLegacyLeaks(
+            docId,
+            raw,
+            `/libraries/${libraryId}/books/${docId}`,
+          );
 
-        const computedCleanIsbn = normalizeIsbnForDedupe(
-          typeof raw.isbn === 'string' ? raw.isbn : undefined,
-        );
-        const computedDedupeKey = computeBookDedupeKey(
-          typeof raw.title === 'string' ? raw.title : undefined,
-          typeof raw.author === 'string' ? raw.author : undefined,
-        );
+        const rawTitle =
+          typeof raw.title === 'string' && raw.title.trim()
+            ? raw.title
+            : undefined;
+        const rawAuthor =
+          typeof raw.author === 'string' && raw.author.trim()
+            ? raw.author
+            : undefined;
+
+        const computedCleanIsbn = normalizeIsbnForDedupe(book.isbn);
+        const computedDedupeKey = computeBookDedupeKey(rawTitle, rawAuthor);
         const computedSearchTokens = computeBookSearchTokens({
-          title: typeof raw.title === 'string' ? raw.title : undefined,
-          author: typeof raw.author === 'string' ? raw.author : undefined,
-          isbn: typeof raw.isbn === 'string' ? raw.isbn : undefined,
-          series: typeof raw.series === 'string' ? raw.series : undefined,
+          title: rawTitle,
+          author: rawAuthor,
+          isbn: book.isbn,
+          series: book.series ?? undefined,
         });
 
         const needsIndexBackfill =
-          (Boolean(computedCleanIsbn) && raw.cleanIsbn !== computedCleanIsbn) ||
-          (Boolean(computedDedupeKey) && raw.dedupeKey !== computedDedupeKey) ||
-          !Array.isArray(raw.searchTokens) ||
-          raw.searchTokens.length === 0;
+          (Boolean(computedCleanIsbn) &&
+            book.cleanIsbn !== computedCleanIsbn) ||
+          (Boolean(computedDedupeKey) &&
+            book.dedupeKey !== computedDedupeKey) ||
+          !Array.isArray(book.searchTokens) ||
+          book.searchTokens.length === 0;
 
         if (hasLeaks || needsIndexBackfill) {
           const bookUpdates: Record<string, unknown> = {};
@@ -160,40 +234,54 @@ export async function resetMetadata(
 
           if (hasLeaks) {
             const detailPayload: Record<string, unknown> = {};
-            if (raw.synopsis || raw.description) {
-              detailPayload.synopsis = raw.synopsis || raw.description;
+            if (leakedDetails.synopsis || leakedDetails.description) {
+              detailPayload.synopsis =
+                leakedDetails.synopsis || leakedDetails.description;
             }
-            if (raw.authorBio) {
-              detailPayload.authorBio = raw.authorBio;
+            if (leakedDetails.authorBio) {
+              detailPayload.authorBio = leakedDetails.authorBio;
             }
-            if (raw.embedding) {
-              detailPayload.embedding = raw.embedding;
+            if (leakedDetails.embedding) {
+              detailPayload.embedding = leakedDetails.embedding;
             }
-            if (raw.clusterCoordinates) {
-              detailPayload.clusterCoordinates = raw.clusterCoordinates;
+            if (leakedDetails.clusterCoordinates) {
+              detailPayload.clusterCoordinates =
+                leakedDetails.clusterCoordinates;
             }
 
             const detailRef = db
               .collection('libraries')
               .doc(libraryId)
               .collection('bookDetails')
-              .doc(doc.id);
-            if (typeof batch.set === 'function') {
-              batch.set(detailRef, detailPayload, {merge: true});
+              .doc(docId);
+            if (
+              typeof batch.set === 'function' &&
+              Object.keys(detailPayload).length > 0
+            ) {
+              batch.set(
+                detailRef,
+                bookDetailsDocConverter.toFirestoreWrite(
+                  docId,
+                  detailPayload,
+                  'upsert',
+                  `/libraries/${libraryId}/bookDetails/${docId}`,
+                ),
+                {merge: true},
+              );
               count++;
             }
 
             bookUpdates['bookDetailsMetadata.hasSynopsis'] = Boolean(
-              raw.synopsis || raw.description,
+              leakedDetails.synopsis || leakedDetails.description,
             );
             bookUpdates['bookDetailsMetadata.hasAuthorBio'] = Boolean(
-              raw.authorBio,
+              leakedDetails.authorBio,
             );
             bookUpdates['bookDetailsMetadata.hasEmbedding'] = Boolean(
-              raw.embedding,
+              leakedDetails.embedding,
             );
             bookUpdates['bookDetailsMetadata.hasClusterCoordinates'] = Boolean(
-              raw.clusterCoordinates,
+              leakedDetails.clusterCoordinates,
             );
             bookUpdates.synopsis = FieldValue.delete();
             bookUpdates.authorBio = FieldValue.delete();
@@ -202,6 +290,15 @@ export async function resetMetadata(
             bookUpdates.description = FieldValue.delete();
           }
 
+          validateFirestoreWritePayload(
+            storedBookDocSchema.partial(),
+            bookUpdates,
+            {
+              entity: 'StoredBookDoc',
+              documentPath: `/libraries/${libraryId}/books/${docId}`,
+              operation: 'update',
+            },
+          );
           batch.update(doc.ref, bookUpdates);
           count++;
           totalSanitized++;
@@ -223,24 +320,48 @@ export async function resetMetadata(
       throw new Error(`Unsupported metadata reset type: '${metadataType}'`);
     }
 
+    validateFirestoreWritePayload(
+      storedBookDocSchema.partial(),
+      deletePayload,
+      {
+        entity: 'StoredBookDoc',
+        documentPath: `/libraries/${libraryId}/books/*`,
+        operation: 'update',
+      },
+    );
+    if (detailDeletePayload) {
+      bookDetailsDocConverter.toFirestoreWrite(
+        'reset_details',
+        detailDeletePayload,
+        'update',
+        `/libraries/${libraryId}/bookDetails/*`,
+      );
+    }
+
     const batchSize = 400;
     let batch = db.batch();
     let count = 0;
     let totalReset = 0;
 
     for (const doc of snapshot.docs) {
+      const docId = doc.id || (doc.ref as {id?: string})?.id || 'reset_book';
+      bookDocConverter.fromFirestoreWithLegacyLeaks(
+        docId,
+        (doc.data?.() || {}) as Record<string, unknown>,
+        `/libraries/${libraryId}/books/${docId}`,
+      );
       batch.update(doc.ref, deletePayload);
       count++;
       totalReset++;
 
       if (detailDeletePayload && typeof batch.set === 'function') {
-        const docId = doc.id || (doc.ref as {id?: string})?.id;
-        if (docId) {
+        const resolvedId = doc.id || (doc.ref as {id?: string})?.id;
+        if (resolvedId) {
           const detailRef = db
             .collection('libraries')
             .doc(libraryId)
             .collection('bookDetails')
-            .doc(docId);
+            .doc(resolvedId);
           batch.set(detailRef, detailDeletePayload, {merge: true});
           count++;
         }
@@ -259,7 +380,7 @@ export async function resetMetadata(
 
     return {count: totalReset};
   } catch (err: unknown) {
-    if (err instanceof TRPCError) {
+    if (err instanceof TRPCError || err instanceof SchemaValidationError) {
       throw err;
     }
     const errMsg = formatFirestoreAdminError(err);
@@ -267,6 +388,207 @@ export async function resetMetadata(
     throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
       message: `Failed to reset metadata: ${errMsg}`,
+    });
+  }
+}
+
+export interface AuditPlaceholderCoversResult {
+  scannedCount: number;
+  clearedCount: number;
+  clearedBookIds: string[];
+}
+
+export function isAuditableCoverUrl(url?: unknown): url is string {
+  if (typeof url !== 'string' || !url.startsWith('http')) {
+    return false;
+  }
+  return (
+    url.includes('books.google.com') ||
+    url.includes('books.googleusercontent.com') ||
+    url.includes('images.randomhouse.com') ||
+    url.includes('covers.openlibrary.org')
+  );
+}
+
+/**
+ * Scans books in a library whose coverUrl or coverUrlRaw points to Google Books
+ * (or other verifiable CDNs), verifies each unique URL via catalogOrchestrator.verifyCoverUrl,
+ * and clears coverUrl, coverUrlRaw, and enrichmentStatus.coverImage for any book
+ * with a placeholder cover (such as Google Books' 9,103-byte placeholder PNG).
+ */
+export async function auditPlaceholderCovers(
+  userId: string,
+  userEmail: string | undefined,
+  libraryId: string,
+  options?: {skipAccessCheck?: boolean},
+): Promise<AuditPlaceholderCoversResult> {
+  if (!options?.skipAccessCheck) {
+    await LibraryService.verifyLibraryAccess(
+      userId,
+      userEmail,
+      libraryId,
+      'editor',
+    );
+  }
+
+  try {
+    const db = getAdminDb();
+    const booksRef = db
+      .collection('libraries')
+      .doc(libraryId)
+      .collection('books');
+    const snapshot = await booksRef.get();
+
+    if (snapshot.empty) {
+      return {scannedCount: 0, clearedCount: 0, clearedBookIds: []};
+    }
+
+    const candidateBooks: Array<{
+      doc: FirebaseFirestore.QueryDocumentSnapshot;
+      coverUrl?: string;
+      coverUrlRaw?: string;
+    }> = [];
+    const uniqueUrls = new Set<string>();
+
+    for (const doc of snapshot.docs) {
+      const docId = doc.id || (doc.ref as {id?: string})?.id || 'audit_book';
+      const parsedBook = bookDocConverter.fromFirestore(
+        docId,
+        (doc.data() || {}) as Record<string, unknown>,
+        `/libraries/${libraryId}/books/${docId}`,
+      );
+      const coverUrl = parsedBook.coverUrl?.trim() || undefined;
+      const coverUrlRaw = parsedBook.coverUrlRaw?.trim() || undefined;
+
+      const hasAuditableCover =
+        isAuditableCoverUrl(coverUrl) || isAuditableCoverUrl(coverUrlRaw);
+      if (hasAuditableCover) {
+        candidateBooks.push({doc, coverUrl, coverUrlRaw});
+        if (isAuditableCoverUrl(coverUrl)) {
+          uniqueUrls.add(coverUrl);
+        }
+        if (isAuditableCoverUrl(coverUrlRaw)) {
+          uniqueUrls.add(coverUrlRaw);
+        }
+      }
+    }
+
+    if (candidateBooks.length === 0) {
+      return {scannedCount: 0, clearedCount: 0, clearedBookIds: []};
+    }
+
+    // Verify unique URLs with bounded concurrency (5 concurrent requests)
+    const urlList = Array.from(uniqueUrls);
+    const urlValidity = new Map<string, boolean>();
+    const concurrency = 5;
+    let cursor = 0;
+
+    const workers = Array.from(
+      {length: Math.min(concurrency, urlList.length)},
+      async () => {
+        while (cursor < urlList.length) {
+          const index = cursor++;
+          const url = urlList[index];
+          const isValid = await catalogOrchestrator.verifyCoverUrl(url);
+          urlValidity.set(url, isValid);
+        }
+      },
+    );
+    await Promise.all(workers);
+
+    const batchSize = 400;
+    let batch = db.batch();
+    let batchCount = 0;
+    const clearedBookIds: string[] = [];
+    const nowIso = new Date().toISOString();
+
+    for (const item of candidateBooks) {
+      const primaryInvalid =
+        Boolean(item.coverUrl) &&
+        isAuditableCoverUrl(item.coverUrl) &&
+        urlValidity.get(item.coverUrl) === false;
+      const rawInvalid =
+        Boolean(item.coverUrlRaw) &&
+        isAuditableCoverUrl(item.coverUrlRaw) &&
+        urlValidity.get(item.coverUrlRaw) === false;
+
+      const shouldClearAll = primaryInvalid || (!item.coverUrl && rawInvalid);
+
+      if (shouldClearAll) {
+        const docId = item.doc.id || (item.doc.ref as {id?: string})?.id || '';
+        const clearAllPayload = {
+          coverUrl: FieldValue.delete(),
+          coverUrlRaw: FieldValue.delete(),
+          'enrichmentStatus.coverImage': FieldValue.delete(),
+          updatedAt: nowIso,
+        };
+        validateFirestoreWritePayload(
+          storedBookDocSchema.partial(),
+          clearAllPayload,
+          {
+            entity: 'StoredBookDoc',
+            documentPath: `/libraries/${libraryId}/books/${docId || 'audit_book'}`,
+            operation: 'update',
+          },
+        );
+        batch.update(item.doc.ref, clearAllPayload);
+        batchCount++;
+        if (docId) {
+          clearedBookIds.push(docId);
+        }
+
+        if (batchCount >= batchSize) {
+          await batch.commit();
+          batch = db.batch();
+          batchCount = 0;
+        }
+      } else if (rawInvalid) {
+        const docId = item.doc.id || (item.doc.ref as {id?: string})?.id || '';
+        const clearRawPayload = {
+          coverUrlRaw: FieldValue.delete(),
+          updatedAt: nowIso,
+        };
+        validateFirestoreWritePayload(
+          storedBookDocSchema.partial(),
+          clearRawPayload,
+          {
+            entity: 'StoredBookDoc',
+            documentPath: `/libraries/${libraryId}/books/${docId || 'audit_book'}`,
+            operation: 'update',
+          },
+        );
+        batch.update(item.doc.ref, clearRawPayload);
+        batchCount++;
+
+        if (batchCount >= batchSize) {
+          await batch.commit();
+          batch = db.batch();
+          batchCount = 0;
+        }
+      }
+    }
+
+    if (batchCount > 0) {
+      await batch.commit();
+    }
+
+    return {
+      scannedCount: candidateBooks.length,
+      clearedCount: clearedBookIds.length,
+      clearedBookIds,
+    };
+  } catch (err: unknown) {
+    if (err instanceof TRPCError || err instanceof SchemaValidationError) {
+      throw err;
+    }
+    const errMsg = formatFirestoreAdminError(err);
+    console.error(
+      '[LibraryService] Error auditing placeholder covers:',
+      errMsg,
+    );
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: `Failed to audit placeholder covers: ${errMsg}`,
     });
   }
 }
@@ -285,12 +607,20 @@ export async function listAllowedDuplicates(
       .collection('allowedDuplicates')
       .get();
 
-    const groups = snap.docs
-      .map(d => d.data()?.bookIds as string[] | undefined)
-      .filter((g): g is string[] => Array.isArray(g));
+    const groups = snap.docs.map(
+      d =>
+        allowedDuplicateConverter.fromFirestore(
+          libraryId,
+          d.id || 'dup_group',
+          (d.data() || {}) as Record<string, unknown>,
+        ).bookIds,
+    );
 
     return {allowedDuplicateGroups: groups};
-  } catch {
+  } catch (err) {
+    if (err instanceof SchemaValidationError) {
+      throw err;
+    }
     return {allowedDuplicateGroups: []};
   }
 }
@@ -309,10 +639,12 @@ export async function allowDuplicateGroup(
     .collection('allowedDuplicates')
     .doc();
 
-  await ref.set({
+  const payload = allowedDuplicateConverter.toFirestoreWrite(
+    libraryId,
+    ref.id || 'dup_group',
     bookIds,
-    createdAt: FieldValue.serverTimestamp(),
-  });
+  );
+  await ref.set(payload);
 
   return {success: true, id: ref.id};
 }

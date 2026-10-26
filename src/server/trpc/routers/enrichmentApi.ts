@@ -2,11 +2,13 @@ import {TRPCError} from '@trpc/server';
 import {router, libraryProcedure} from '../trpc';
 import {EnrichmentService} from '../../services/enrichmentService';
 import {enrichmentJobCoordinator} from '../../services/enrichmentJobCoordinator';
+import {LibraryService} from '../../services/library';
 import {
   enrichmentTriggerSchema,
   enrichmentStartJobSchema,
   enrichmentCancelJobSchema,
   enrichmentJobStatusSchema,
+  enrichmentAuditCoversSchema,
   normalizeEnrichmentType,
   CanonicalEnrichmentType,
 } from '../../../schemas/libraryApi';
@@ -122,5 +124,16 @@ export const enrichmentApiRouter = router({
     .input(enrichmentJobStatusSchema)
     .query(async ({input}) => {
       return enrichmentJobCoordinator.getJobStatus(input.libraryId);
+    }),
+
+  auditPlaceholderCovers: libraryProcedure('editor')
+    .input(enrichmentAuditCoversSchema)
+    .mutation(async ({ctx, input}) => {
+      return await LibraryService.auditPlaceholderCovers(
+        ctx.user.uid,
+        ctx.user.email,
+        input.libraryId,
+        {skipAccessCheck: true},
+      );
     }),
 });

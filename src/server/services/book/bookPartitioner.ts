@@ -3,8 +3,23 @@ import type {
   BookDetailsMetadata,
   BookDetailsPayload,
   BookTemporalMetadata,
-  UserStatuses,
+  StoredBookDetailsDoc,
+  StoredBookDoc,
 } from '../../../types';
+import {
+  storedBookDetailsDocSchema,
+  storedBookDocSchema,
+} from '../../../schemas/book';
+
+export interface StoredBookWritePayload extends Omit<
+  Partial<StoredBookDoc>,
+  'addedAt' | 'updatedAt' | 'searchTokens'
+> {
+  addedAt?: unknown;
+  updatedAt?: unknown;
+  searchTokens?: string[] | unknown;
+  [key: string]: unknown;
+}
 
 export const HEAVY_FIELDS = new Set([
   'synopsis',
@@ -47,9 +62,6 @@ export const ALLOWED_CORE_BOOK_FIELDS = new Set([
   'series',
   'format',
   'ownershipStatus',
-  'userStatuses',
-  'userRatings',
-  'status',
   'geoMetadata',
   'temporalMetadata',
   'enrichmentStatus',
@@ -61,7 +73,11 @@ export const ALLOWED_CORE_BOOK_FIELDS = new Set([
 ]);
 
 import {FieldValue} from 'firebase-admin/firestore';
-import {hasControlCharacters} from '../../../schemas/common';
+import {
+  hasControlCharacters,
+  validateFirestoreReadPayload,
+  validateFirestoreWritePayload,
+} from '../../../schemas/common';
 import {
   normalizeIsbnForDedupe,
   computeBookDedupeKey,
@@ -78,14 +94,17 @@ export function isUnsafeFieldKey(key: string): boolean {
 }
 
 /**
- * Converts a Firestore Timestamp, Date, or string into an ISO-8601 string.
+ * Converts a Firestore Timestamp, Date, numeric epoch, or string into an ISO-8601 string.
  */
 export function normalizeFirestoreTimestamp(val: unknown): string | undefined {
-  if (!val) {
+  if (val === undefined || val === null || val === '') {
     return undefined;
   }
   if (typeof val === 'string') {
     return val;
+  }
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    return new Date(val).toISOString();
   }
   if (val instanceof Date) {
     return val.toISOString();
@@ -110,14 +129,17 @@ export function sanitizeTemporalMetadata(
     return undefined;
   }
   const copy: BookTemporalMetadata = {...temporal};
-  if (copy.startYear !== undefined && copy.endYear === undefined) {
+  if (
+    typeof copy.startYear === 'number' &&
+    (copy.endYear === undefined || copy.endYear === null)
+  ) {
     copy.endYear = copy.startYear;
   }
   const start = copy.startYear;
   const end = copy.endYear;
   if (
-    (start !== undefined && (start < -10000 || start > 2100)) ||
-    (end !== undefined && (end < -10000 || end > 2100))
+    (typeof start === 'number' && (start < -10000 || start > 2100)) ||
+    (typeof end === 'number' && (end < -10000 || end > 2100))
   ) {
     return undefined;
   }
@@ -126,7 +148,6 @@ export function sanitizeTemporalMetadata(
 
 export interface PartitionUpdateOptions {
   callerUserId?: string;
-  allowFullUserStatuses?: boolean;
   existingBook?: {
     title?: string;
     author?: string;
@@ -136,10 +157,165 @@ export interface PartitionUpdateOptions {
 }
 
 /**
- * Authoritative partitioner that splits a raw book payload into lightweight core catalog
- * fields (`books/{id}`) and heavy prose/vector fields (`bookDetails/{id}`), while
- * computing `bookDetailsMetadata` presence flags and enforcing field-level security.
+ * Typed Firestore converter for `/libraries/{libraryId}/bookDetails/{bookId}`.
  */
+export const bookDetailsDocConverter = {
+  fromFirestore(
+    bookId: string,
+    raw: Record<string, unknown>,
+    documentPath = `bookDetails/${bookId}`,
+  ): StoredBookDetailsDoc {
+    const updatedAt = normalizeFirestoreTimestamp(raw.updatedAt);
+    const candidate: Record<string, unknown> = {
+      ...raw,
+    };
+    if (updatedAt !== undefined) {
+      candidate.updatedAt = updatedAt;
+    } else {
+      delete candidate.updatedAt;
+    }
+    for (const key of Object.keys(candidate)) {
+      if (candidate[key] === undefined) {
+        delete candidate[key];
+      }
+    }
+    return validateFirestoreReadPayload(storedBookDetailsDocSchema, candidate, {
+      entity: 'StoredBookDetailsDoc',
+      documentPath,
+      operation: 'read',
+    });
+  },
+
+  toFirestoreWrite(
+    bookId: string,
+    payload: Record<string, unknown>,
+    operation: 'create' | 'update' | 'upsert' = 'upsert',
+    documentPath = `bookDetails/${bookId}`,
+  ): Record<string, unknown> {
+    validateFirestoreWritePayload(
+      operation === 'create'
+        ? storedBookDetailsDocSchema
+        : storedBookDetailsDocSchema.partial(),
+      payload,
+      {
+        entity: 'StoredBookDetailsDoc',
+        documentPath,
+        operation,
+      },
+    );
+    return payload;
+  },
+};
+
+/**
+ * Deprecated legacy fields on `/libraries/{libraryId}/books/{bookId}` documents that
+ * are completely ignored on read and never propagated to `StoredBookDoc` or client DTOs.
+ */
+const IGNORED_LEGACY_BOOK_FIELDS = new Set([
+  'genres',
+  'genre',
+  'description',
+  'readingStatus',
+  'userRating',
+  'rating',
+  'reviewText',
+  'reviewedAt',
+  'startedAt',
+  'finishedAt',
+  'readStatusReviewedAt',
+]);
+
+/**
+ * Typed Firestore converter for `/libraries/{libraryId}/books/{bookId}`.
+ */
+export const bookDocConverter = {
+  fromFirestore(
+    bookId: string,
+    raw: Record<string, unknown>,
+    documentPath = `books/${bookId}`,
+  ): StoredBookDoc {
+    const addedAt = normalizeFirestoreTimestamp(raw.addedAt);
+    const updatedAt = normalizeFirestoreTimestamp(raw.updatedAt);
+    const candidate: Record<string, unknown> = {
+      ...raw,
+      id: bookId,
+      title:
+        typeof raw.title === 'string' && raw.title.trim().length > 0
+          ? raw.title
+          : 'Untitled Book',
+      author:
+        typeof raw.author === 'string' && raw.author.trim().length > 0
+          ? raw.author
+          : 'Unknown Author',
+    };
+    for (const legacyKey of IGNORED_LEGACY_BOOK_FIELDS) {
+      delete candidate[legacyKey];
+    }
+    if (addedAt !== undefined) {
+      candidate.addedAt = addedAt;
+    } else {
+      delete candidate.addedAt;
+    }
+    if (updatedAt !== undefined) {
+      candidate.updatedAt = updatedAt;
+    } else {
+      delete candidate.updatedAt;
+    }
+    for (const key of Object.keys(candidate)) {
+      if (candidate[key] === undefined) {
+        delete candidate[key];
+      }
+    }
+    return validateFirestoreReadPayload(storedBookDocSchema, candidate, {
+      entity: 'StoredBookDoc',
+      documentPath,
+      operation: 'read',
+    });
+  },
+
+  /**
+   * Used during Shelf Care sanitization (`resetMetadata('sanitize')`) and batch enrichment
+   * to inspect and separate any legacy heavy fields (`synopsis`, `authorBio`, `embedding`,
+   * `clusterCoordinates`, `description`) before validating both partitions against their schemas.
+   */
+  fromFirestoreWithLegacyLeaks(
+    bookId: string,
+    raw: Record<string, unknown>,
+    documentPath = `books/${bookId}`,
+  ): {
+    book: StoredBookDoc;
+    leakedDetails: StoredBookDetailsDoc;
+    hasLeaks: boolean;
+  } {
+    const coreRaw: Record<string, unknown> = {};
+    const heavyRaw: Record<string, unknown> = {};
+    let hasLeaks = false;
+
+    for (const [key, val] of Object.entries(raw)) {
+      if (HEAVY_FIELDS.has(key)) {
+        if (val !== undefined) {
+          hasLeaks = true;
+          heavyRaw[key] = val;
+        }
+      } else {
+        coreRaw[key] = val;
+      }
+    }
+
+    const book = bookDocConverter.fromFirestore(bookId, coreRaw, documentPath);
+    const leakedDetails =
+      Object.keys(heavyRaw).length > 0
+        ? bookDetailsDocConverter.fromFirestore(
+            bookId,
+            heavyRaw,
+            `bookDetails/${bookId}`,
+          )
+        : {};
+
+    return {book, leakedDetails, hasLeaks};
+  },
+};
+
 export class BookPartitioner {
   static partitionCreatePayload(
     input: Record<string, unknown>,
@@ -147,8 +323,8 @@ export class BookPartitioner {
     userId?: string,
     serverTimestamp?: unknown,
   ): {
-    cleanCore: Record<string, unknown>;
-    cleanHeavy: BookDetailsPayload;
+    cleanCore: StoredBookWritePayload;
+    cleanHeavy: StoredBookDetailsDoc;
     bookDetailsMetadata: BookDetailsMetadata;
   } {
     const rawInput: Record<string, unknown> = {};
@@ -230,24 +406,8 @@ export class BookPartitioner {
         Boolean(existingMeta.hasClusterCoordinates),
     };
 
-    // Scope reading status strictly to the authenticated caller's UID
-    delete rawInput.status;
-    delete rawInput.userStatuses;
-    if (userId) {
-      const explicitStatus = input.status as UserStatuses[string] | undefined;
-      const mapStatus =
-        input.userStatuses &&
-        typeof input.userStatuses === 'object' &&
-        !Array.isArray(input.userStatuses)
-          ? (input.userStatuses as Record<string, UserStatuses[string]>)[userId]
-          : undefined;
-      const callerStatus = explicitStatus || mapStatus;
-      if (callerStatus) {
-        rawInput.userStatuses = {
-          [userId]: callerStatus,
-        };
-      }
-    }
+    // Per-user reading state is stored in /users/{userId}/readingStates/{stateKey}, never on books/{bookId}
+    delete rawInput.readingStatus;
 
     const titleStr = (input.title as string) || '';
     const authorStr = (input.author as string) || 'Unknown Author';
@@ -289,7 +449,20 @@ export class BookPartitioner {
 
     const cleanCore = Object.fromEntries(
       Object.entries(coreData).filter(([, v]) => v !== undefined),
-    );
+    ) as StoredBookWritePayload;
+
+    validateFirestoreWritePayload(storedBookDocSchema, cleanCore, {
+      entity: 'StoredBookDoc',
+      documentPath: `books/${bookId}`,
+      operation: 'create',
+    });
+    if (Object.keys(cleanHeavy).length > 0) {
+      validateFirestoreWritePayload(storedBookDetailsDocSchema, cleanHeavy, {
+        entity: 'StoredBookDetailsDoc',
+        documentPath: `bookDetails/${bookId}`,
+        operation: 'create',
+      });
+    }
 
     return {cleanCore, cleanHeavy, bookDetailsMetadata};
   }
@@ -299,10 +472,10 @@ export class BookPartitioner {
     serverTimestamp?: unknown,
     options?: PartitionUpdateOptions,
   ): {
-    coreUpdates: Record<string, unknown>;
-    heavyUpdates: Record<string, unknown>;
+    coreUpdates: StoredBookWritePayload;
+    heavyUpdates: Partial<StoredBookDetailsDoc> & Record<string, unknown>;
   } {
-    const coreUpdates: Record<string, unknown> = {};
+    const coreUpdates: StoredBookWritePayload = {};
     const heavyUpdates: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(updates)) {
@@ -419,29 +592,8 @@ export class BookPartitioner {
       }
     }
 
-    // Enforce caller-scoped reading status writes unless explicitly trusted (e.g. duplicate merge union)
-    if (!options?.allowFullUserStatuses) {
-      const callerUid = options?.callerUserId;
-      const rawStatus = coreUpdates.status as string | undefined;
-      const rawUserStatuses =
-        coreUpdates.userStatuses &&
-        typeof coreUpdates.userStatuses === 'object' &&
-        !Array.isArray(coreUpdates.userStatuses)
-          ? (coreUpdates.userStatuses as Record<string, string>)
-          : undefined;
-
-      delete coreUpdates.status;
-      delete coreUpdates.userStatuses;
-
-      if (callerUid) {
-        const callerStatus =
-          rawStatus ??
-          (rawUserStatuses ? rawUserStatuses[callerUid] : undefined);
-        if (callerStatus) {
-          coreUpdates[`userStatuses.${callerUid}`] = callerStatus;
-        }
-      }
-    }
+    // Per-user reading state is stored in /users/{userId}/readingStates/{stateKey}, never on books/{bookId}
+    delete coreUpdates.readingStatus;
 
     if (Object.keys(heavyUpdates).length > 0) {
       if (
@@ -496,13 +648,28 @@ export class BookPartitioner {
       coreUpdates.updatedAt = serverTimestamp;
     }
 
+    validateFirestoreWritePayload(storedBookDocSchema.partial(), coreUpdates, {
+      entity: 'StoredBookDoc',
+      operation: 'update',
+    });
+    if (Object.keys(heavyUpdates).length > 0) {
+      validateFirestoreWritePayload(
+        storedBookDetailsDocSchema.partial(),
+        heavyUpdates,
+        {
+          entity: 'StoredBookDetailsDoc',
+          operation: 'update',
+        },
+      );
+    }
+
     return {coreUpdates, heavyUpdates};
   }
 
   static mergeBookAndDetails(
     bookId: string,
-    bookData: Partial<Book>,
-    heavyData?: BookDetailsPayload,
+    bookData: Partial<StoredBookDoc> | Partial<Book>,
+    heavyData?: StoredBookDetailsDoc | BookDetailsPayload,
   ): Book {
     const normalizedAddedAt =
       normalizeFirestoreTimestamp(bookData.addedAt) || new Date().toISOString();
@@ -542,7 +709,6 @@ export class BookPartitioner {
         delete merged.temporalMetadata;
       }
     }
-
     return merged;
   }
 }

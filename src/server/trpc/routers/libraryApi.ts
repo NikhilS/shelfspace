@@ -10,7 +10,7 @@ import {
 import {
   safeIdSchema,
   safeEmailSchema,
-  safeUrlSchema,
+  safeImageUrlSchema,
 } from '../../../schemas/common';
 
 export const libraryApiRouter = router({
@@ -44,7 +44,7 @@ export const libraryApiRouter = router({
     .input(
       z.object({
         name: z.string().trim().min(1).max(120),
-        heroImageUrl: safeUrlSchema.nullable().optional(),
+        heroImageUrl: safeImageUrlSchema.nullable().optional(),
       }),
     )
     .mutation(async ({ctx, input}) => {
@@ -61,7 +61,7 @@ export const libraryApiRouter = router({
       z.object({
         libraryId: safeIdSchema,
         name: z.string().trim().min(1).max(120).optional(),
-        heroImageUrl: safeUrlSchema.nullable().optional(),
+        heroImageUrl: safeImageUrlSchema.nullable().optional(),
         access: z
           .record(safeEmailSchema, z.enum(['owner', 'editor', 'viewer']))
           .optional(),

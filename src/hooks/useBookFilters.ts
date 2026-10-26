@@ -183,9 +183,7 @@ export function useBookFilters(books: Book[]) {
   }, [books]);
 
   const filteredIndexedBooks = useMemo(() => {
-    const effectiveQuery = (deferredSearchQuery || localSearchQuery)
-      .trim()
-      .toLowerCase();
+    const effectiveQuery = deferredSearchQuery.trim().toLowerCase();
     const normalizedGenre = filterGenre ? filterGenre.trim().toLowerCase() : '';
     const isOtherGenre = normalizedGenre === 'other';
     const normalizedSubgenre = filterSubgenre
@@ -250,7 +248,6 @@ export function useBookFilters(books: Book[]) {
   }, [
     indexedBooks,
     deferredSearchQuery,
-    localSearchQuery,
     filterGenre,
     filterSubgenre,
     filterAuthor,

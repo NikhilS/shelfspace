@@ -194,7 +194,9 @@ describe('ResetMetadataSection', () => {
     render(<ResetMetadataSection libraryId="lib-123" books={leakedBooks} />);
 
     expect(
-      screen.getByText(/1 book can be optimized for faster loading/i),
+      screen.getByText(
+        /1 book can be optimized for faster search and loading/i,
+      ),
     ).toBeInTheDocument();
 
     const purgeBtn = screen.getByRole('button', {
@@ -212,7 +214,7 @@ describe('ResetMetadataSection', () => {
         metadataType: 'sanitize',
       });
       expect(toast.success).toHaveBeenCalledWith(
-        expect.stringContaining('Sanitized 1 books'),
+        expect.stringContaining('Optimized 1 books'),
       );
     });
   });
@@ -224,6 +226,8 @@ describe('ResetMetadataSection', () => {
         title: 'Clean Book',
         addedAt: {} as unknown as Book['addedAt'],
         addedBy: 'user-1',
+        dedupeKey: 'clean book::author',
+        hasSearchTokens: true,
         bookDetailsMetadata: {hasSynopsis: false},
       } as unknown as Book,
     ];

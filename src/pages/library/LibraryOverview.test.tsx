@@ -28,8 +28,7 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
       libraryId: 'lib-1',
       primaryGenre: 'Science Fiction',
       subgenres: ['Literary Sci-Fi'],
-      status: 'reading',
-      userStatuses: {u1: 'reading'},
+      readingStatus: 'reading',
       addedAt: '2024-01-01',
       coverUrl: 'https://example.com/klara.jpg',
     },
@@ -40,8 +39,7 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
       libraryId: 'lib-1',
       primaryGenre: 'Philosophy',
       subgenres: ['Ancient & Classical'],
-      status: 'completed',
-      userStatuses: {u1: 'completed'},
+      readingStatus: 'completed',
       addedAt: '2024-01-02',
       coverUrl: 'https://example.com/meditations.jpg',
     },
@@ -108,8 +106,7 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
   it('shows Curator Spotlight in Tier 1 when no volumes are in progress', () => {
     const noReadingBooks = mockBooks.map(b => ({
       ...b,
-      status: 'completed' as const,
-      userStatuses: {u1: 'completed' as const},
+      readingStatus: 'completed' as const,
     }));
     render(
       <MemoryRouter>
@@ -132,7 +129,7 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
     expect(screen.getByText('Meditations')).toBeInTheDocument();
   });
 
-  it('renders Explore The Collection (Tier 3) with Timeline, World Map, and Constellation links', () => {
+  it('renders Explore The Collection (Tier 3) with Timeline, World Map, Constellation, and Have You Read It? links', () => {
     render(
       <MemoryRouter>
         <LibraryOverview {...defaultProps} />
@@ -143,6 +140,8 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
     expect(screen.getByText('Historical Timeline')).toBeInTheDocument();
     expect(screen.getByText('Literary World Map')).toBeInTheDocument();
     expect(screen.getByText('Thematic Constellations')).toBeInTheDocument();
+    expect(screen.getByText('Have You Read It?')).toBeInTheDocument();
+    expect(screen.getByText('1 Unread')).toBeInTheDocument();
   });
 
   it('renders the warm empty state with BookshelfBookendsIllustration and single CTA when library has 0 books', () => {

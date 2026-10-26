@@ -24,6 +24,14 @@ const mockBooksQueryGet = vi.fn().mockResolvedValue({
 });
 const mockWhere = vi.fn().mockReturnThis();
 
+const mockReadingStatesQueryGet = vi.fn().mockResolvedValue({
+  docs: [],
+});
+const mockReadingStateDocGet = vi.fn().mockResolvedValue({
+  exists: false,
+});
+const mockReadingStateDocSet = vi.fn().mockResolvedValue(undefined);
+
 const mockBookDoc = {
   id: 'book-1',
   get: mockBookGet,
@@ -31,7 +39,7 @@ const mockBookDoc = {
     if (sub === 'reviews') {
       return {
         get: mockReviewsGet,
-        doc: vi.fn(() => ({id: 'rev-1'})),
+        doc: vi.fn((id?: string) => ({id: id || 'rev-1'})),
       };
     }
     return {doc: vi.fn()};
@@ -49,6 +57,7 @@ const mockDoc: (docId?: string) => Record<string, unknown> = vi.fn(
     return {
       id: effectiveId,
       get: mockBookGet,
+      set: mockReadingStateDocSet,
       collection: vi.fn((sub: string) => {
         if (sub === 'books') {
           const queryObj = {
@@ -72,7 +81,17 @@ const mockDoc: (docId?: string) => Record<string, unknown> = vi.fn(
         if (sub === 'reviews') {
           return {
             get: mockReviewsGet,
-            doc: vi.fn(() => ({id: 'rev-1'})),
+            doc: vi.fn((id?: string) => ({id: id || 'rev-1'})),
+          };
+        }
+        if (sub === 'readingStates') {
+          return {
+            get: mockReadingStatesQueryGet,
+            doc: vi.fn((stateKey?: string) => ({
+              id: stateKey || 'bookid:book-1',
+              get: mockReadingStateDocGet,
+              set: mockReadingStateDocSet,
+            })),
           };
         }
         return {doc: mockDoc};
@@ -119,7 +138,7 @@ describe('BookService - Unified Write Layer', () => {
   });
 
   describe('createBook', () => {
-    it('creates book and partitions heavy details to bookDetails subcollection with deterministic index fields', async () => {
+    it('creates book, partitions heavy details to bookDetails, and writes initial readingStatus to /users/{uid}/readingStates/isbn:<ISBN>', async () => {
       const res = await BookService.createBook('user-1', {
         libraryId: 'lib-1',
         bookId: 'book-1',
@@ -129,13 +148,14 @@ describe('BookService - Unified Write Layer', () => {
         synopsis: 'Desert planet spice story',
         authorBio: 'American sci-fi master',
         embedding: [0.1, 0.2, 0.3],
-        status: 'reading',
+        readingStatus: 'reading',
       });
 
       expect(res.success).toBe(true);
       expect(res.id).toBe('book-1');
+      expect(res.book?.readingStatus).toBe('reading');
 
-      // Verify core book write includes deterministic index fields
+      // Verify core book write includes deterministic index fields and NO embedded user state
       expect(mockSet).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
@@ -145,7 +165,6 @@ describe('BookService - Unified Write Layer', () => {
           cleanIsbn: '9780441172719',
           dedupeKey: 'dune::frank herbert',
           searchTokens: expect.arrayContaining(['dune', 'frank', 'herbert']),
-          userStatuses: {'user-1': 'reading'},
           bookDetailsMetadata: {
             hasSynopsis: true,
             hasAuthorBio: true,
@@ -153,6 +172,21 @@ describe('BookService - Unified Write Layer', () => {
             hasClusterCoordinates: false,
           },
         }),
+      );
+
+      // Verify reading state write to /users/user-1/readingStates/isbn:9780441172719
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({id: 'isbn:9780441172719'}),
+        expect.objectContaining({
+          id: 'isbn:9780441172719',
+          userId: 'user-1',
+          keyType: 'isbn',
+          cleanIsbn: '9780441172719',
+          bookId: 'book-1',
+          libraryId: 'lib-1',
+          status: 'reading',
+        }),
+        {merge: true},
       );
 
       // Verify heavy details write
@@ -300,6 +334,73 @@ describe('BookService - Unified Write Layer', () => {
       expect(res.deleted).toBe(1);
       expect(mockCommit).toHaveBeenCalled();
     });
+
+    it('pre-fetches existing book metadata when a partial update mutates readingStatus so bookSnapshot and isbn:<cleanIsbn> are always populated', async () => {
+      mockBookGet.mockResolvedValueOnce({
+        exists: true,
+        id: 'book-1',
+        data: () => ({
+          title: 'Ship of Magic',
+          author: 'Robin Hobb',
+          isbn: '978-0-553-57563-7',
+          cleanIsbn: '9780553575637',
+          coverUrl: 'https://covers.openlibrary.org/b/isbn/9780553575637-L.jpg',
+          primaryGenre: 'Fantasy',
+          subgenres: ['Epic Fantasy'],
+          series: 'Liveship Traders',
+          format: 'physical',
+          ownershipStatus: 'owned',
+          bookDetailsMetadata: {
+            hasSynopsis: true,
+            hasAuthorBio: false,
+            hasEmbedding: false,
+            hasClusterCoordinates: false,
+          },
+        }),
+      });
+      mockDetailGet.mockResolvedValueOnce({
+        exists: true,
+        id: 'book-1',
+        data: () => ({
+          synopsis: 'First book of the Liveship Traders trilogy.',
+        }),
+      });
+
+      const res = await BookService.batchUpsert('user-1', {
+        libraryId: 'lib-1',
+        operations: [
+          {
+            type: 'update',
+            bookId: 'book-1',
+            data: {readingStatus: 'finished'},
+          },
+        ],
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.updated).toBe(1);
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({id: 'isbn:9780553575637'}),
+        expect.objectContaining({
+          id: 'isbn:9780553575637',
+          userId: 'user-1',
+          keyType: 'isbn',
+          cleanIsbn: '9780553575637',
+          bookId: 'book-1',
+          libraryId: 'lib-1',
+          status: 'finished',
+          bookSnapshot: expect.objectContaining({
+            title: 'Ship of Magic',
+            author: 'Robin Hobb',
+            isbn: '978-0-553-57563-7',
+            cleanIsbn: '9780553575637',
+            series: 'Liveship Traders',
+            synopsis: 'First book of the Liveship Traders trilogy.',
+          }),
+        }),
+        {merge: true},
+      );
+    });
   });
 
   describe('getBook', () => {
@@ -375,7 +476,7 @@ describe('BookService - Unified Write Layer', () => {
             id: 'book-1',
             data: () => ({
               title: 'Has Geo',
-              geoMetadata: {lat: 10, lng: 20},
+              geoMetadata: {locations: [{name: 'Paris', lat: 10, lng: 20}]},
             }),
           },
           {
@@ -436,7 +537,7 @@ describe('BookService - Unified Write Layer', () => {
       expect(res.totalCount).toBe(2);
     });
 
-    it('pushes status and primaryGenre filters down to native Firestore .where() queries', async () => {
+    it('overlays readingStatus from /users/{uid}/readingStates using single-lookup key and filters by status or primaryGenre', async () => {
       mockBooksQueryGet.mockResolvedValueOnce({
         docs: [
           {
@@ -444,9 +545,45 @@ describe('BookService - Unified Write Layer', () => {
             data: () => ({
               title: 'Hyperion',
               author: 'Dan Simmons',
+              isbn: '978-0-553-28368-6',
+              cleanIsbn: '9780553283686',
               primaryGenre: 'Sci-Fi',
-              userStatuses: {'user-1': 'reading'},
               addedAt: 2000,
+            }),
+          },
+          {
+            id: 'book-no-isbn',
+            data: () => ({
+              title: 'Self-Published Pamphlet',
+              author: 'Local Writer',
+              primaryGenre: 'Sci-Fi',
+              addedAt: 1500,
+            }),
+          },
+        ],
+      });
+
+      mockReadingStatesQueryGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'isbn:9780553283686',
+            data: () => ({
+              id: 'isbn:9780553283686',
+              userId: 'user-1',
+              keyType: 'isbn',
+              cleanIsbn: '9780553283686',
+              status: 'reading',
+              rating: 5,
+            }),
+          },
+          {
+            id: 'bookid:book-no-isbn',
+            data: () => ({
+              id: 'bookid:book-no-isbn',
+              userId: 'user-1',
+              keyType: 'bookid',
+              bookId: 'book-no-isbn',
+              status: 'finished',
             }),
           },
         ],
@@ -458,11 +595,8 @@ describe('BookService - Unified Write Layer', () => {
 
       expect(resStatus.books).toHaveLength(1);
       expect(resStatus.books[0].title).toBe('Hyperion');
-      expect(mockWhere).toHaveBeenCalledWith(
-        expect.objectContaining({fields: ['userStatuses', 'user-1']}),
-        '==',
-        'reading',
-      );
+      expect(resStatus.books[0].readingStatus).toBe('reading');
+      expect(resStatus.books[0].userRating).toBe(5);
 
       mockBooksQueryGet.mockResolvedValueOnce({
         docs: [
@@ -489,7 +623,7 @@ describe('BookService - Unified Write Layer', () => {
   });
 
   describe('mergeDuplicates', () => {
-    it('fetches survivor and duplicate books in bulk via db.getAll, unions userStatuses and userRatings, and commits merge in batch', async () => {
+    it('fetches survivor and duplicate books in bulk via db.getAll and commits catalog merge in batch', async () => {
       mockGetAll.mockResolvedValueOnce([
         {
           exists: true,
@@ -497,8 +631,6 @@ describe('BookService - Unified Write Layer', () => {
           data: () => ({
             title: 'Dune',
             author: 'Frank Herbert',
-            userStatuses: {'user-1': 'want_to_read'},
-            userRatings: {'user-1': 4},
           }),
         },
         {
@@ -507,8 +639,6 @@ describe('BookService - Unified Write Layer', () => {
           data: () => ({
             title: 'Dune (Duplicate)',
             author: 'Frank Herbert',
-            userStatuses: {'user-1': 'reading', 'user-2': 'completed'},
-            userRatings: {'user-1': 5, 'user-2': 5},
           }),
         },
       ]);
@@ -532,14 +662,6 @@ describe('BookService - Unified Write Layer', () => {
           title: 'Dune (Definitive Edition)',
           dedupeKey: 'dune::frank herbert',
           searchTokens: expect.arrayContaining(['dune', 'frank', 'herbert']),
-          userStatuses: {
-            'user-1': 'reading',
-            'user-2': 'completed',
-          },
-          userRatings: {
-            'user-1': 4,
-            'user-2': 5,
-          },
         }),
         {merge: true},
       );
@@ -624,7 +746,18 @@ describe('BookService - Unified Write Layer', () => {
   });
 
   describe('addReview', () => {
-    it('commits review document and parent book rating/status atomically in a single batch', async () => {
+    it('commits deterministic review document (keyed by userId) and syncs rating/reviewText to /users/{uid}/readingStates/{stateKey} in a single batch', async () => {
+      mockBookGet.mockResolvedValueOnce({
+        exists: true,
+        id: 'book-1',
+        data: () => ({
+          title: 'Dune',
+          author: 'Frank Herbert',
+          isbn: '978-0-441-17271-9',
+          cleanIsbn: '9780441172719',
+        }),
+      });
+
       const res = await BookService.addReview(
         'user-1',
         'user1@example.com',
@@ -636,21 +769,29 @@ describe('BookService - Unified Write Layer', () => {
       );
 
       expect(res.success).toBe(true);
+      expect(res.id).toBe('user-1');
       expect(mockSet).toHaveBeenCalledWith(
-        expect.anything(),
+        expect.objectContaining({id: 'user-1'}),
         expect.objectContaining({
           userId: 'user-1',
           userName: 'Reader One',
           rating: 5,
           text: 'Masterpiece!',
         }),
+        {merge: true},
       );
-      expect(mockUpdate).toHaveBeenCalledWith(
-        expect.anything(),
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({id: 'isbn:9780441172719'}),
         expect.objectContaining({
-          'userRatings.user-1': 5,
-          'userStatuses.user-1': 'finished',
+          id: 'isbn:9780441172719',
+          userId: 'user-1',
+          keyType: 'isbn',
+          cleanIsbn: '9780441172719',
+          rating: 5,
+          reviewText: 'Masterpiece!',
+          status: 'finished',
         }),
+        {merge: true},
       );
       expect(mockCommit).toHaveBeenCalledTimes(1);
     });

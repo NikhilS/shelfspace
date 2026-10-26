@@ -89,17 +89,20 @@ async function startServer() {
     res.status(200).json({status: 'ok'});
   });
 
-  // Serve the offline PWA Service Worker with no-cache headers so updates activate promptly
+  // Serve the offline PWA Service Worker in production; in development, serve
+  // SELF_DESTROYING_SW so any stale cached Service Worker immediately unregisters and purges CacheStorage.
   app.get('/sw.js', (_req, res) => {
-    const swPath = isProd
-      ? path.join(process.cwd(), 'dist', 'sw.js')
-      : path.join(process.cwd(), 'public', 'sw.js');
     res.set({
       'Content-Type': 'application/javascript; charset=utf-8',
       'Service-Worker-Allowed': '/',
       'Cache-Control':
         'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
     });
+    if (!isProd) {
+      res.status(200).send(SELF_DESTROYING_SW);
+      return;
+    }
+    const swPath = path.join(process.cwd(), 'dist', 'sw.js');
     res.sendFile(swPath);
   });
 
@@ -361,6 +364,7 @@ async function startServer() {
       server: {
         middlewareMode: true,
         hmr: false,
+        watch: null,
         allowedHosts: true,
       },
       appType: 'custom',

@@ -62,18 +62,14 @@ describe('BookPartitioner & Multi-User Privilege Boundaries (SEC-01, SEC-04, SEC
   });
 
   describe('Caller-Scoped Reading Status & Attribution Protection (SEC-01)', () => {
-    it('prevents an Editor from spoofing addedBy/addedAt or setting another user reading status on create', () => {
+    it('prevents an Editor from spoofing addedBy/addedAt or writing readingStatus onto core book documents on create', () => {
       const {cleanCore} = BookPartitioner.partitionCreatePayload(
         {
           title: 'The Left Hand of Darkness',
           author: 'Ursula K. Le Guin',
           addedBy: 'spoofed-owner-uid',
           addedAt: '1999-01-01T00:00:00Z',
-          userStatuses: {
-            editor_uid: 'reading',
-            victim_owner_uid: 'abandoned',
-          },
-          'userStatuses.victim_owner_uid': 'abandoned',
+          readingStatus: 'reading',
           isAdmin: true,
         },
         'book_123',
@@ -83,22 +79,18 @@ describe('BookPartitioner & Multi-User Privilege Boundaries (SEC-01, SEC-04, SEC
 
       expect(cleanCore.addedBy).toBe('editor_uid');
       expect(cleanCore.addedAt).toBe('MOCK_TS');
-      expect(cleanCore.userStatuses).toEqual({editor_uid: 'reading'});
-      expect(cleanCore['userStatuses.victim_owner_uid']).toBeUndefined();
+      expect(cleanCore.readingStatus).toBeUndefined();
       expect(cleanCore.isAdmin).toBeUndefined();
     });
 
-    it('prevents an Editor from overwriting another user reading status or immutable fields on update', () => {
+    it('prevents an Editor from overwriting immutable attribution fields or injecting readingStatus onto core book documents on update', () => {
       const {coreUpdates} = BookPartitioner.partitionUpdatePayload(
         {
           title: 'Updated Title',
           addedBy: 'hijacked_uid',
           addedAt: '2000-01-01',
-          userStatuses: {
-            victim_uid: 'abandoned',
-            editor_uid: 'completed',
-          },
-          'userStatuses.victim_uid': 'abandoned',
+          readingStatus: 'completed',
+          'enrichmentStatus.genre': 'completed',
         },
         'MOCK_TS',
         {callerUserId: 'editor_uid'},
@@ -107,25 +99,8 @@ describe('BookPartitioner & Multi-User Privilege Boundaries (SEC-01, SEC-04, SEC
       expect(coreUpdates.title).toBe('Updated Title');
       expect(coreUpdates.addedBy).toBeUndefined();
       expect(coreUpdates.addedAt).toBeUndefined();
-      expect(coreUpdates.userStatuses).toBeUndefined();
-      expect(coreUpdates['userStatuses.victim_uid']).toBeUndefined();
-      expect(coreUpdates['userStatuses.editor_uid']).toBe('completed');
-    });
-
-    it('drops status updates completely if an Editor only targets another user UID', () => {
-      const {coreUpdates} = BookPartitioner.partitionUpdatePayload(
-        {
-          userStatuses: {
-            victim_uid: 'abandoned',
-          },
-        },
-        'MOCK_TS',
-        {callerUserId: 'editor_uid'},
-      );
-
-      expect(coreUpdates.userStatuses).toBeUndefined();
-      expect(coreUpdates['userStatuses.victim_uid']).toBeUndefined();
-      expect(coreUpdates['userStatuses.editor_uid']).toBeUndefined();
+      expect(coreUpdates.readingStatus).toBeUndefined();
+      expect(coreUpdates['enrichmentStatus.genre']).toBeUndefined();
     });
   });
 

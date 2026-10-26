@@ -1,5 +1,5 @@
 /* global self, caches, fetch, URL, Response */
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const APP_SHELL_CACHE = `bookish-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `bookish-static-${CACHE_VERSION}`;
 const FONT_CACHE = `bookish-fonts-${CACHE_VERSION}`;
@@ -74,14 +74,29 @@ self.addEventListener('activate', event => {
   );
 });
 
+function isBypassedExternalService(url) {
+  const host = url.hostname.toLowerCase();
+  return (
+    host.includes('identitytoolkit.googleapis.com') ||
+    host.includes('securetoken.googleapis.com') ||
+    host.includes('firestore.googleapis.com') ||
+    host.includes('maps.googleapis.com') ||
+    host.includes('maps.gstatic.com') ||
+    host.includes('khms0.googleapis.com') ||
+    host.includes('khms1.googleapis.com')
+  );
+}
+
 function isCoverOrExternalImage(url, request) {
+  if (isBypassedExternalService(url)) {
+    return false;
+  }
   if (request.destination === 'image') {
     return true;
   }
   const host = url.hostname.toLowerCase();
   return (
     host.includes('books.google.com') ||
-    host.includes('googleapis.com') ||
     host.includes('googleusercontent.com') ||
     host.includes('covers.openlibrary.org') ||
     host.includes('openlibrary.org') ||
@@ -106,11 +121,17 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Never intercept API, tRPC, SSE streams, or Vite HMR endpoints
+  if (isBypassedExternalService(url)) {
+    return;
+  }
+
+  // Never intercept API, tRPC, SSE streams, or Vite dev/HMR endpoints
   if (
     url.pathname.startsWith('/trpc') ||
     url.pathname.startsWith('/api/') ||
-    url.pathname.startsWith('/@vite') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/@') ||
     url.pathname.startsWith('/__vite')
   ) {
     return;

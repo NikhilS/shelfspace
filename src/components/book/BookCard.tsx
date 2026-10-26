@@ -1,9 +1,10 @@
-import React, {memo, useState, useEffect} from 'react';
+import React, {memo, useCallback} from 'react';
 import {toTitleCase} from '../../lib/utils';
 import {Book, FirestoreDate} from '../../types';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
-import {MonographCoverFallback} from './MonographCoverFallback';
+import {ArchivalCoverImage} from './ArchivalCoverImage';
+import {preloadRouteChunk} from '../../lib/routePreload';
 
 export interface BookCardProps {
   key?: React.Key;
@@ -29,18 +30,16 @@ function BookCardComponent({
   onSelect,
   onSelectBook,
 }: BookCardProps) {
-  const [coverError, setCoverError] = useState(false);
-
-  useEffect(() => {
-    setCoverError(false);
-  }, [book.coverUrl]);
-
   const pubYear =
     book.publishedDate && book.publishedDate.length >= 4
       ? book.publishedDate.slice(0, 4)
       : null;
 
   const hasSelectHandler = Boolean(onSelect || onSelectBook);
+
+  const handlePrewarm = useCallback(() => {
+    preloadRouteChunk('bookDetails');
+  }, []);
 
   const handleCardClick = () => {
     if (onNavigateBook) {
@@ -53,6 +52,9 @@ function BookCardComponent({
   return (
     <article
       onClick={handleCardClick}
+      onMouseEnter={handlePrewarm}
+      onFocus={handlePrewarm}
+      onTouchStart={handlePrewarm}
       className={`group cursor-pointer flex flex-col h-full bento-card-interactive p-3 sm:p-3.5 ${
         isSelected
           ? 'ring-2 ring-primary border-primary bg-surface-container-low/60'
@@ -61,12 +63,6 @@ function BookCardComponent({
     >
       {/* Framed 2:3 Book Cover Showcase */}
       <div className="relative aspect-[2/3] mb-3.5 bg-surface-container rounded-lg book-cover-shadow overflow-hidden border border-outline-variant/50">
-        {/* Subtle physical book spine highlight */}
-        <div
-          className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-black/15 via-white/20 to-transparent z-10 pointer-events-none"
-          aria-hidden="true"
-        />
-
         {hasSelectHandler && (
           <Button
             type="button"
@@ -104,7 +100,7 @@ function BookCardComponent({
         )}
 
         {book.primaryGenre && (
-          <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none">
+          <div className="absolute top-2.5 right-2.5 z-20 pointer-events-none">
             <Badge
               variant="genre"
               size="sm"
@@ -115,24 +111,16 @@ function BookCardComponent({
           </div>
         )}
 
-        {book.coverUrl && !coverError ? (
-          <img
-            src={book.coverUrl}
-            alt={book.title}
-            onError={() => setCoverError(true)}
-            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-            referrerPolicy="no-referrer"
-            loading="lazy"
-          />
-        ) : (
-          <MonographCoverFallback
-            title={book.title}
-            author={book.author}
-            publishedYear={pubYear}
-            variant="card"
-            className="absolute inset-0"
-          />
-        )}
+        <ArchivalCoverImage
+          src={book.coverUrl}
+          alt={book.title}
+          author={book.author}
+          publishedYear={pubYear}
+          variant="card"
+          className="w-full h-full"
+          imgClassName="group-hover:scale-[1.02] transition-transform duration-300"
+          fallbackClassName="absolute inset-0"
+        />
       </div>
 
       {/* Bento Editorial Metadata & Synopsis Preview */}

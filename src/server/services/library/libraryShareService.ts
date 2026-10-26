@@ -9,7 +9,14 @@ import {TRPCError} from '@trpc/server';
 import type {LibraryRole} from '../../auth/types';
 import {AllowlistService} from '../../auth/allowlistService';
 import {WaitlistService} from '../../auth/waitlistService';
-import {safeIdSchema, validateAndNormalizeEmail} from '../../../schemas/common';
+import {
+  SchemaValidationError,
+  safeIdSchema,
+  validateAndNormalizeEmail,
+  validateFirestoreWritePayload,
+} from '../../../schemas/common';
+import {storedLibraryDocSchema} from '../../../schemas/libraryApi';
+import {libraryDocConverter} from './libraryCrudService';
 
 export interface ResolvedLibraryAccess {
   role: LibraryRole;
@@ -134,21 +141,32 @@ export async function resolveLibraryAccess(
       const libRef = db.collection('libraries').doc(cleanLibraryId);
       const libSnap = await libRef.get();
       if (libSnap?.exists) {
-        virtualData = (libSnap.data() || virtualData) as Record<
-          string,
-          unknown
-        >;
+        virtualData = libraryDocConverter.fromFirestore(
+          cleanLibraryId,
+          (libSnap.data() || virtualData) as Record<string, unknown>,
+          userId,
+        ) as unknown as Record<string, unknown>;
       } else if (typeof libRef?.set === 'function') {
-        await libRef.set(
+        const virtualSetPayload = {
+          ...virtualData,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        validateFirestoreWritePayload(
+          storedLibraryDocSchema,
+          virtualSetPayload,
           {
-            ...virtualData,
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
+            entity: 'StoredLibraryDoc',
+            documentPath: `/libraries/${cleanLibraryId}`,
+            operation: 'upsert',
           },
-          {merge: true},
         );
+        await libRef.set(virtualSetPayload, {merge: true});
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof SchemaValidationError) {
+        throw err;
+      }
       // Non-fatal in unit test mocks that do not stub virtual doc reads
     }
 
@@ -184,9 +202,13 @@ export async function resolveLibraryAccess(
       });
     }
 
-    libData = libSnap.data() || {};
+    libData = libraryDocConverter.fromFirestore(
+      cleanLibraryId,
+      (libSnap.data() || {}) as Record<string, unknown>,
+      userId,
+    ) as unknown as Record<string, unknown>;
   } catch (err: unknown) {
-    if (err instanceof TRPCError) {
+    if (err instanceof TRPCError || err instanceof SchemaValidationError) {
       throw err;
     }
     const errMsg = formatFirestoreAdminError(err);
@@ -291,8 +313,15 @@ export async function getUserRole(
       return {role: null, isOwner: false, canEdit: false};
     }
 
-    libData = (libSnap.data() || {}) as Record<string, unknown>;
-  } catch {
+    libData = libraryDocConverter.fromFirestore(
+      parsedId.data,
+      (libSnap.data() || {}) as Record<string, unknown>,
+      userId,
+    ) as unknown as Record<string, unknown>;
+  } catch (err) {
+    if (err instanceof SchemaValidationError) {
+      throw err;
+    }
     return {role: null, isOwner: false, canEdit: false};
   }
 
@@ -364,8 +393,12 @@ export async function upsertCollaborator(
           message: `Library '${cleanLibraryId}' not found`,
         });
       }
-      const data = (snap.data() || {}) as Record<string, unknown>;
-      libraryName = (data.name as string) || 'Shared Library';
+      const data = libraryDocConverter.fromFirestore(
+        cleanLibraryId,
+        (snap.data() || {}) as Record<string, unknown>,
+        userId,
+      );
+      libraryName = data.name || 'Shared Library';
       const rawAccess =
         (data.access as Record<string, LibraryRole> | undefined) || {};
 
@@ -395,10 +428,20 @@ export async function upsertCollaborator(
         await applyUpdate(
           () => tx.get(libRef),
           nextAccess => {
-            tx.update(libRef, {
+            const updatePayload = {
               access: nextAccess,
               updatedAt: FieldValue.serverTimestamp(),
-            });
+            };
+            validateFirestoreWritePayload(
+              storedLibraryDocSchema.partial(),
+              updatePayload,
+              {
+                entity: 'StoredLibraryDoc',
+                documentPath: `/libraries/${cleanLibraryId}`,
+                operation: 'update',
+              },
+            );
+            tx.update(libRef, updatePayload);
           },
         );
       });
@@ -406,15 +449,25 @@ export async function upsertCollaborator(
       await applyUpdate(
         () => libRef.get(),
         async nextAccess => {
-          await libRef.update({
+          const updatePayload = {
             access: nextAccess,
             updatedAt: FieldValue.serverTimestamp(),
-          });
+          };
+          validateFirestoreWritePayload(
+            storedLibraryDocSchema.partial(),
+            updatePayload,
+            {
+              entity: 'StoredLibraryDoc',
+              documentPath: `/libraries/${cleanLibraryId}`,
+              operation: 'update',
+            },
+          );
+          await libRef.update(updatePayload);
         },
       );
     }
   } catch (err: unknown) {
-    if (err instanceof TRPCError) {
+    if (err instanceof TRPCError || err instanceof SchemaValidationError) {
       throw err;
     }
     const errMsg = formatFirestoreAdminError(err);
@@ -495,7 +548,11 @@ export async function removeCollaborator(
           message: `Library '${cleanLibraryId}' not found`,
         });
       }
-      const data = (snap.data() || {}) as Record<string, unknown>;
+      const data = libraryDocConverter.fromFirestore(
+        cleanLibraryId,
+        (snap.data() || {}) as Record<string, unknown>,
+        userId,
+      );
       const rawAccess =
         (data.access as Record<string, LibraryRole> | undefined) || {};
 
@@ -525,10 +582,20 @@ export async function removeCollaborator(
         await applyRemove(
           () => tx.get(libRef),
           nextAccess => {
-            tx.update(libRef, {
+            const updatePayload = {
               access: nextAccess,
               updatedAt: FieldValue.serverTimestamp(),
-            });
+            };
+            validateFirestoreWritePayload(
+              storedLibraryDocSchema.partial(),
+              updatePayload,
+              {
+                entity: 'StoredLibraryDoc',
+                documentPath: `/libraries/${cleanLibraryId}`,
+                operation: 'update',
+              },
+            );
+            tx.update(libRef, updatePayload);
           },
         );
       });
@@ -536,10 +603,20 @@ export async function removeCollaborator(
       await applyRemove(
         () => libRef.get(),
         async nextAccess => {
-          await libRef.update({
+          const updatePayload = {
             access: nextAccess,
             updatedAt: FieldValue.serverTimestamp(),
-          });
+          };
+          validateFirestoreWritePayload(
+            storedLibraryDocSchema.partial(),
+            updatePayload,
+            {
+              entity: 'StoredLibraryDoc',
+              documentPath: `/libraries/${cleanLibraryId}`,
+              operation: 'update',
+            },
+          );
+          await libRef.update(updatePayload);
         },
       );
     }
@@ -549,7 +626,7 @@ export async function removeCollaborator(
       email: normalizedTarget,
     };
   } catch (err: unknown) {
-    if (err instanceof TRPCError) {
+    if (err instanceof TRPCError || err instanceof SchemaValidationError) {
       throw err;
     }
     const errMsg = formatFirestoreAdminError(err);
@@ -580,9 +657,9 @@ export async function getCollaboratorStatuses(
   }>;
 }> {
   const cleanLibraryId = assertSafeLibraryId(libraryId);
-  let data: Record<string, unknown>;
+  let rawData: Record<string, unknown>;
   if (options?.prefetchedData) {
-    data = options.prefetchedData;
+    rawData = options.prefetchedData;
   } else {
     if (!options?.skipAccessCheck) {
       await verifyLibraryAccess(userId, userEmail, cleanLibraryId, 'viewer');
@@ -595,11 +672,16 @@ export async function getCollaboratorStatuses(
         message: `Library '${cleanLibraryId}' not found`,
       });
     }
-    data = (snap.data() || {}) as Record<string, unknown>;
+    rawData = (snap.data() || {}) as Record<string, unknown>;
   }
 
+  const storedLib = libraryDocConverter.fromFirestore(
+    cleanLibraryId,
+    rawData,
+    userId,
+  );
   const accessMap =
-    (data.access as Record<string, LibraryRole> | undefined) || {};
+    (storedLib.access as Record<string, LibraryRole> | undefined) || {};
   const entries = Object.entries(accessMap);
 
   const nonOwnerEmails = entries

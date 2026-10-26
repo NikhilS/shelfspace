@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from 'react';
+import React, {useMemo, useCallback} from 'react';
 import {motion} from 'motion/react';
 import {Book, Library} from '../../types';
 import {Plus, ArrowRight} from 'lucide-react';
@@ -9,7 +9,8 @@ import {BookshelfBookendsIllustration} from '@/components/ui/empty-state-illustr
 import {GenreBreakdownCard} from '../../components/book/GenreBreakdownCard';
 import {CuratorPickCard} from '../../components/book/CuratorPickCard';
 import {ExplorePerspectivesStrip} from '../../components/book/ExplorePerspectivesStrip';
-import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
+import {ArchivalCoverImage} from '../../components/book/ArchivalCoverImage';
+import {preloadRouteChunk} from '../../lib/routePreload';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {formatShortDate} from '../../lib/date';
 import {User} from 'firebase/auth';
@@ -51,43 +52,51 @@ export function LibraryOverview({
   const navigate = useNavigate();
   const location = useLocation();
   const isOnline = useOnlineStatus();
-  const [failedCovers, setFailedCovers] = useState<Set<string>>(new Set());
+
+  const handlePrewarmBookDetails = useCallback(() => {
+    preloadRouteChunk('bookDetails');
+  }, []);
 
   const readingBooks = useMemo(() => {
     if (!user) {
       return [];
     }
-    return books
-      .filter(b => b.userStatuses?.[user.uid] === 'reading')
-      .slice(0, 2);
+    return books.filter(b => b.readingStatus === 'reading').slice(0, 2);
   }, [books, user]);
 
-  const recentBooks = useMemo(() => {
-    return [...books]
-      .sort(
-        (a, b) =>
-          (getFirestoreTime(b.addedAt) || 0) -
-          (getFirestoreTime(a.addedAt) || 0),
-      )
-      .slice(0, 6);
-  }, [books]);
-
-  const lastCatalogedDate = useMemo(() => {
+  const {recentBooks, lastCatalogedDate, orderedBookIds} = useMemo(() => {
     if (books.length === 0) {
-      return 'Never';
+      return {
+        recentBooks: [] as Book[],
+        lastCatalogedDate: 'Never',
+        orderedBookIds: [] as string[],
+      };
     }
-    const latestTime = Math.max(...books.map(b => getFirestoreTime(b.addedAt)));
-    if (latestTime <= 0) {
-      return 'Unknown';
-    }
-    return formatShortDate(latestTime);
+
+    let latestTime = 0;
+    const withTimestamps = books.map(book => {
+      const addedAtMs = getFirestoreTime(book.addedAt) || 0;
+      if (addedAtMs > latestTime) {
+        latestTime = addedAtMs;
+      }
+      return {book, addedAtMs};
+    });
+
+    withTimestamps.sort((a, b) => b.addedAtMs - a.addedAtMs);
+
+    return {
+      recentBooks: withTimestamps.slice(0, 6).map(entry => entry.book),
+      lastCatalogedDate:
+        latestTime > 0 ? formatShortDate(latestTime) : 'Unknown',
+      orderedBookIds: books.map(b => b.id),
+    };
   }, [books]);
 
   return (
     <motion.div
-      initial={{opacity: 0, y: 10}}
+      initial={{opacity: 0, y: 6}}
       animate={{opacity: 1, y: 0}}
-      transition={{duration: 0.35, ease: 'easeOut'}}
+      transition={{duration: 0.2, ease: 'easeOut'}}
       className="layout-page-content space-y-10"
     >
       {books.length === 0 ? (
@@ -163,6 +172,8 @@ export function LibraryOverview({
                   readingBooks.map(book => (
                     <div
                       key={`reading-${book.id}`}
+                      onMouseEnter={handlePrewarmBookDetails}
+                      onTouchStart={handlePrewarmBookDetails}
                       className="bento-card p-5 sm:p-6 flex flex-col sm:flex-row gap-5 items-center sm:items-start"
                     >
                       <div
@@ -176,27 +187,13 @@ export function LibraryOverview({
                           })
                         }
                       >
-                        {book.coverUrl && !failedCovers.has(book.id) ? (
-                          <img
-                            alt={book.title}
-                            className="relative w-full h-auto object-cover rounded-lg book-cover-shadow border border-outline-variant/50 z-10 aspect-[2/3]"
-                            src={book.coverUrl}
-                            onError={() =>
-                              setFailedCovers(prev =>
-                                new Set(prev).add(book.id),
-                              )
-                            }
-                            referrerPolicy="no-referrer"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <MonographCoverFallback
-                            title={book.title}
-                            author={book.author}
-                            variant="compact"
-                            className="relative w-full aspect-[2/3] rounded-lg z-10"
-                          />
-                        )}
+                        <ArchivalCoverImage
+                          src={book.coverUrl}
+                          alt={book.title}
+                          author={book.author}
+                          variant="compact"
+                          className="relative w-full aspect-[2/3] rounded-lg book-cover-shadow border border-outline-variant/50 z-10"
+                        />
                       </div>
                       <div className="flex-grow min-w-0 w-full text-center sm:text-left break-words">
                         <span className="metadata-eyebrow block">
@@ -212,6 +209,7 @@ export function LibraryOverview({
                           <Button
                             size="sm"
                             className="min-h-[38px] px-4 rounded-lg font-sans text-xs"
+                            onFocus={handlePrewarmBookDetails}
                             onClick={() =>
                               navigate(
                                 `/library/${library.id}/book/${book.id}`,
@@ -274,37 +272,26 @@ export function LibraryOverview({
                 {recentBooks.map(book => (
                   <div
                     key={book.id}
+                    onMouseEnter={handlePrewarmBookDetails}
+                    onFocus={handlePrewarmBookDetails}
+                    onTouchStart={handlePrewarmBookDetails}
                     onClick={() =>
                       navigate(`/library/${library.id}/book/${book.id}`, {
                         state: {
                           from: location.pathname + location.search,
-                          bookList: books.map(b => b.id),
+                          bookList: orderedBookIds,
                         },
                       })
                     }
                     className="group flex flex-col p-3 bento-card-interactive cursor-pointer"
                   >
-                    <div className="relative aspect-[2/3] w-full rounded-lg overflow-hidden bg-surface-container mb-2.5 border border-outline-variant/50 book-cover-shadow group-hover:scale-[1.02] transition-transform">
-                      {book.coverUrl && !failedCovers.has(book.id) ? (
-                        <img
-                          src={book.coverUrl}
-                          alt={book.title}
-                          onError={() =>
-                            setFailedCovers(prev => new Set(prev).add(book.id))
-                          }
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <MonographCoverFallback
-                          title={book.title}
-                          author={book.author}
-                          variant="compact"
-                          className="w-full h-full"
-                        />
-                      )}
-                    </div>
+                    <ArchivalCoverImage
+                      src={book.coverUrl}
+                      alt={book.title}
+                      author={book.author}
+                      variant="compact"
+                      className="relative aspect-[2/3] w-full rounded-lg overflow-hidden bg-surface-container mb-2.5 border border-outline-variant/50 book-cover-shadow group-hover:scale-[1.02] transition-transform"
+                    />
                     <h4 className="card-title-editorial truncate group-hover:text-primary transition-colors">
                       {toTitleCase(book.title)}
                     </h4>
@@ -324,6 +311,8 @@ export function LibraryOverview({
             heading="Explore The Collection"
             subtitle="Explore your books across history, geography, and theme"
             ariaLabel="Explore Collection Visualizers"
+            showReadSwipe={true}
+            currentUserId={user?.uid}
           />
         </div>
       )}

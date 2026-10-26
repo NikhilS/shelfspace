@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {router, protectedProcedure} from '../trpc';
 import {ReadingTrackerService} from '../../services/readingTracker';
-import {safeIdSchema, safeUrlSchema} from '../../../schemas/common';
+import {safeIdSchema, safeImageUrlSchema} from '../../../schemas/common';
 
 export const trackedShelfEnum = z.enum([
   'want_to_read',
@@ -71,7 +71,7 @@ export const readingTrackerRouter = router({
               title: z.string().trim().min(1).max(500),
               author: z.string().trim().max(500).optional(),
               isbn: z.string().trim().max(64).optional(),
-              coverUrl: safeUrlSchema.optional(),
+              coverUrl: safeImageUrlSchema.optional(),
               publishedDate: z.string().trim().max(100).optional(),
               primaryGenre: z.string().trim().max(200).optional(),
               subgenres: z.array(z.string().trim().max(200)).max(50).optional(),

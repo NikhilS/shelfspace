@@ -11,12 +11,15 @@ import {
   createLibrary,
   updateLibrary,
   deleteLibrary,
+  libraryDocConverter,
   LibraryApiRecord,
 } from './libraryCrudService';
 import {
   resetMetadata,
+  auditPlaceholderCovers,
   listAllowedDuplicates,
   allowDuplicateGroup,
+  allowedDuplicateConverter,
   uploadImage,
 } from './librarySpruceService';
 
@@ -26,6 +29,7 @@ export class LibraryService {
   static verifyLibraryAccess = verifyLibraryAccess;
   static getUserLibraries = getUserLibraries;
   static resetMetadata = resetMetadata;
+  static auditPlaceholderCovers = auditPlaceholderCovers;
   static getLibrary = getLibrary;
   static createLibrary = createLibrary;
   static updateLibrary = updateLibrary;
@@ -43,15 +47,18 @@ export {
   verifyLibraryAccess,
   getUserLibraries,
   resetMetadata,
+  auditPlaceholderCovers,
   getLibrary,
   createLibrary,
   updateLibrary,
   deleteLibrary,
+  libraryDocConverter,
   getUserRole,
   upsertCollaborator,
   removeCollaborator,
   getCollaboratorStatuses,
   listAllowedDuplicates,
   allowDuplicateGroup,
+  allowedDuplicateConverter,
   uploadImage,
 };

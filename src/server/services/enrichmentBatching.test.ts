@@ -23,15 +23,18 @@ vi.mock('./firebaseAdmin', () => {
       }),
       collection: () => ({
         doc: () => ({
-          collection: () => ({
+          collection: (colName: string) => ({
             doc: (bookId: string) => ({
               get: vi.fn().mockResolvedValue({
                 exists: true,
-                data: () => ({
-                  title: `Book ${bookId}`,
-                  author: `Author ${bookId}`,
-                  synopsis: '',
-                }),
+                data: () =>
+                  colName === 'bookDetails'
+                    ? {synopsis: ''}
+                    : {
+                        title: `Book ${bookId}`,
+                        author: `Author ${bookId}`,
+                        synopsis: '',
+                      },
               }),
               update: vi.fn().mockResolvedValue(undefined),
               set: vi.fn().mockResolvedValue(undefined),

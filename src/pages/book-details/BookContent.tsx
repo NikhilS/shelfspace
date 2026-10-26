@@ -1,7 +1,6 @@
 import {AnimatePresence} from 'motion/react';
 import React, {useState, useEffect, useMemo} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
-import {useAuth} from '../../stores/authStore';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {toast} from 'sonner';
@@ -52,7 +51,6 @@ export function BookContent({
   canEdit: passedCanEdit,
 }: BookContentProps) {
   const navigate = useNavigate();
-  const {user} = useAuth();
   const {hasAiPlan} = useAppPermissions();
   const isOnline = useOnlineStatus();
 
@@ -231,32 +229,31 @@ export function BookContent({
               />
             )}
             {/* Status Badge */}
-            {book.userStatuses?.[user?.uid || ''] &&
-              book.userStatuses?.[user?.uid || ''] !== 'unset' && (
-                <div className="absolute top-3.5 right-3.5 shadow-xs swiper-no-swiping z-20">
-                  <Badge
-                    variant={
-                      book.userStatuses[user?.uid || ''] === 'want_to_read'
-                        ? 'status-to-read'
-                        : book.userStatuses[user?.uid || ''] === 'reading'
-                          ? 'status-reading'
-                          : book.userStatuses[user?.uid || ''] === 'finished' ||
-                              book.userStatuses[user?.uid || ''] === 'completed'
-                            ? 'status-read'
-                            : 'status-abandoned'
-                    }
-                  >
-                    {book.userStatuses[user?.uid || ''] === 'want_to_read'
-                      ? 'WANT TO READ'
-                      : book.userStatuses[user?.uid || ''] === 'reading'
-                        ? 'READING'
-                        : book.userStatuses[user?.uid || ''] === 'finished' ||
-                            book.userStatuses[user?.uid || ''] === 'completed'
-                          ? 'FINISHED'
-                          : 'ABANDONED'}
-                  </Badge>
-                </div>
-              )}
+            {book.readingStatus && book.readingStatus !== 'unset' && (
+              <div className="absolute top-3.5 right-3.5 shadow-xs swiper-no-swiping z-20">
+                <Badge
+                  variant={
+                    book.readingStatus === 'want_to_read'
+                      ? 'status-to-read'
+                      : book.readingStatus === 'reading'
+                        ? 'status-reading'
+                        : book.readingStatus === 'finished' ||
+                            book.readingStatus === 'completed'
+                          ? 'status-read'
+                          : 'status-abandoned'
+                  }
+                >
+                  {book.readingStatus === 'want_to_read'
+                    ? 'WANT TO READ'
+                    : book.readingStatus === 'reading'
+                      ? 'READING'
+                      : book.readingStatus === 'finished' ||
+                          book.readingStatus === 'completed'
+                        ? 'FINISHED'
+                        : 'ABANDONED'}
+                </Badge>
+              </div>
+            )}
           </div>
 
           {/* Archival Accession Ledger */}

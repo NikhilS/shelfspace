@@ -72,10 +72,7 @@ export function useSelection(
               type: 'update',
               bookId,
               data: {
-                status: validStatus,
-                userStatuses: {
-                  [userId]: validStatus,
-                },
+                readingStatus: validStatus,
               },
             })),
           });

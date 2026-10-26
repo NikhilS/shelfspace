@@ -40,5 +40,6 @@ export async function createSecurityContext({
     isAppAllowed,
     isAdmin,
     hasAiPlan,
+    libraryAccessCache: new Map(),
   };
 }

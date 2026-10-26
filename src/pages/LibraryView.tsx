@@ -24,7 +24,7 @@ import {uploadBase64Image} from '../lib/storage';
 import {trpc, trpcVanilla} from '../lib/trpc';
 import {toast} from 'sonner';
 import {toTitleCase, getFirestoreTime, formatCompactNumber} from '../lib/utils';
-import {motion, AnimatePresence} from 'motion/react';
+import {motion} from 'motion/react';
 import {formatFullDateTime} from '../lib/date';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
@@ -140,12 +140,12 @@ export function LibraryView() {
     }
 
     const scrollKey = `library_scroll_${id}_${filters.viewMode}`;
-    let scrollTimer: NodeJS.Timeout;
+    let restoreRafId: number | null = null;
     const savedScroll = sessionStorage.getItem(scrollKey);
 
     if (savedScroll) {
-      // Small timeout to allow the browser to layout the content after tab/view switch
-      scrollTimer = setTimeout(() => {
+      restoreRafId = window.requestAnimationFrame(() => {
+        restoreRafId = null;
         const top = parseInt(savedScroll, 10);
         if (top > 0) {
           window.scrollTo({
@@ -153,7 +153,7 @@ export function LibraryView() {
             behavior: 'instant' as ScrollBehavior,
           });
         }
-      }, 250);
+      });
     }
 
     let scrollRafId: number | null = null;
@@ -169,18 +169,15 @@ export function LibraryView() {
       });
     };
 
-    const registerTimer = setTimeout(() => {
-      window.addEventListener('scroll', handleScroll, {passive: true});
-    }, 400);
+    window.addEventListener('scroll', handleScroll, {passive: true});
 
     return () => {
-      if (scrollTimer) {
-        clearTimeout(scrollTimer);
+      if (restoreRafId !== null) {
+        window.cancelAnimationFrame(restoreRafId);
       }
       if (scrollRafId !== null) {
         window.cancelAnimationFrame(scrollRafId);
       }
-      clearTimeout(registerTimer);
       window.removeEventListener('scroll', handleScroll);
     };
   }, [id, isLoading, isBooksLoading, filters.currentTab, filters.viewMode]);
@@ -627,17 +624,29 @@ export function LibraryView() {
                   variant="ghost"
                   size="sm"
                   onClick={() => filters.setCurrentTab('overview')}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-md transition-all ${
+                  className={`relative flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-md transition-colors ${
                     filters.currentTab === 'overview'
-                      ? 'bg-surface text-primary font-semibold shadow-2xs border border-outline-variant/50 hover:bg-surface'
+                      ? 'text-primary font-semibold hover:bg-transparent'
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
+                  {filters.currentTab === 'overview' && (
+                    <motion.span
+                      layoutId="library-workspace-tab-pill"
+                      transition={{
+                        type: 'spring',
+                        stiffness: 520,
+                        damping: 38,
+                      }}
+                      className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/50 -z-0"
+                      aria-hidden="true"
+                    />
+                  )}
                   <LayoutDashboard
-                    className="w-3.5 h-3.5 shrink-0"
+                    className="relative z-10 w-3.5 h-3.5 shrink-0"
                     strokeWidth={1.75}
                   />
-                  <span>Overview</span>
+                  <span className="relative z-10">Overview</span>
                 </Button>
 
                 <Button
@@ -645,22 +654,36 @@ export function LibraryView() {
                   variant="ghost"
                   size="sm"
                   onClick={() => filters.setCurrentTab('collection')}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-md transition-all ${
+                  className={`relative flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-md transition-colors ${
                     filters.currentTab === 'collection'
-                      ? 'bg-surface text-primary font-semibold shadow-2xs border border-outline-variant/50 hover:bg-surface'
+                      ? 'text-primary font-semibold hover:bg-transparent'
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                   }`}
                 >
+                  {filters.currentTab === 'collection' && (
+                    <motion.span
+                      layoutId="library-workspace-tab-pill"
+                      transition={{
+                        type: 'spring',
+                        stiffness: 520,
+                        damping: 38,
+                      }}
+                      className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/50 -z-0"
+                      aria-hidden="true"
+                    />
+                  )}
                   <BookOpen
-                    className="w-3.5 h-3.5 shrink-0"
+                    className="relative z-10 w-3.5 h-3.5 shrink-0"
                     strokeWidth={1.75}
                   />
-                  <span className="hidden sm:inline">All Books</span>
-                  <span className="sm:hidden">Books</span>
+                  <span className="relative z-10 hidden sm:inline">
+                    All Books
+                  </span>
+                  <span className="relative z-10 sm:hidden">Books</span>
                   <Badge
                     variant="outline"
                     size="sm"
-                    className="ml-0.5 px-1.5 py-0 font-mono tabular-nums text-[10px] font-semibold bg-surface-container-high/80 text-on-surface border-transparent rounded-sm"
+                    className="relative z-10 ml-0.5 px-1.5 py-0 font-mono tabular-nums text-[10px] font-semibold bg-surface-container-high/80 text-on-surface border-transparent rounded-sm"
                     title={
                       isBooksLoading && books.length === 0
                         ? undefined
@@ -690,6 +713,7 @@ export function LibraryView() {
                       to={`/library/${id}/spruce-up`}
                       onMouseEnter={() => preloadRouteChunk('spruceUp')}
                       onFocus={() => preloadRouteChunk('spruceUp')}
+                      onTouchStart={() => preloadRouteChunk('spruceUp')}
                       className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-8 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface/50 transition-all"
                       title="Shelf Care & Health"
                     >
@@ -717,6 +741,7 @@ export function LibraryView() {
                   onClick={() => isOnline && setIsQuickAddOpen(true)}
                   onMouseEnter={() => isOnline && preloadRouteChunk('addBook')}
                   onFocus={() => isOnline && preloadRouteChunk('addBook')}
+                  onTouchStart={() => isOnline && preloadRouteChunk('addBook')}
                   className="flex items-center gap-1.5 px-3 sm:px-4 h-9 rounded-lg bg-primary text-on-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-sans font-semibold transition-all shadow-xs shrink-0 cursor-pointer"
                   title={!isOnline ? 'Unavailable while offline' : 'Add Books'}
                 >
@@ -729,98 +754,82 @@ export function LibraryView() {
           </div>
 
           <div className="relative flex-grow flex flex-col pt-4 sm:pt-6">
-            <AnimatePresence mode="wait">
-              {filters.currentTab === 'overview' ? (
-                <motion.div
-                  key="overview"
-                  initial={{opacity: 0, x: -10}}
-                  animate={{opacity: 1, x: 0}}
-                  exit={{opacity: 0, x: 10}}
-                  transition={{duration: 0.2}}
-                  className="flex-grow flex flex-col"
-                >
-                  <ErrorBoundary name="Library Overview">
-                    {isBooksLoading && books.length === 0 ? (
-                      <LibraryOverviewSkeleton />
-                    ) : (
-                      <LibraryOverview
-                        books={books}
-                        library={library}
-                        user={user}
-                        pickOfTheDay={picker.pickOfTheDay}
-                        isGeneratingPick={picker.isGeneratingPick}
-                        generateNewPick={picker.generateNewPick}
-                        setCurrentTab={filters.setCurrentTab}
-                        setFilterGenre={filters.setFilterGenre}
-                        setIsFiltersOpen={filters.setIsFiltersOpen}
-                        selectGenreAndGoToCollection={
-                          filters.selectGenreAndGoToCollection
-                        }
-                        pickError={picker.error}
-                        onAddBook={() => isOnline && setIsQuickAddOpen(true)}
-                      />
-                    )}
-                  </ErrorBoundary>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="collection"
-                  initial={{opacity: 0, x: 10}}
-                  animate={{opacity: 1, x: 0}}
-                  exit={{opacity: 0, x: -10}}
-                  transition={{duration: 0.2}}
-                  className="flex-grow flex flex-col"
-                >
-                  <ErrorBoundary name="Library Collection Shelf">
-                    {isBooksLoading && books.length === 0 ? (
-                      <LibraryCollectionSkeleton />
-                    ) : (
-                      <LibraryCollection
-                        libraryId={id!}
-                        books={books}
-                        sortedBooks={filters.sortedBooks}
-                        searchQuery={filters.searchQuery}
-                        setSearchQuery={filters.setSearchQuery}
-                        sortBy={filters.sortBy}
-                        setSortBy={filters.setSortBy}
-                        sortOrder={filters.sortOrder}
-                        setSortOrder={filters.setSortOrder}
-                        viewMode={filters.viewMode}
-                        setViewMode={filters.setViewMode}
-                        isFiltersOpen={filters.isFiltersOpen}
-                        setIsFiltersOpen={filters.setIsFiltersOpen}
-                        filterGenre={filters.filterGenre}
-                        setFilterGenre={filters.setFilterGenre}
-                        filterSubgenre={filters.filterSubgenre}
-                        setFilterSubgenre={filters.setFilterSubgenre}
-                        activeSubgenres={filters.activeSubgenres}
-                        filterAuthor={filters.filterAuthor}
-                        setFilterAuthor={filters.setFilterAuthor}
-                        filterYearMin={filters.filterYearMin}
-                        setFilterYearMin={filters.setFilterYearMin}
-                        filterYearMax={filters.filterYearMax}
-                        setFilterYearMax={filters.setFilterYearMax}
-                        availableGenres={filters.availableGenres}
-                        availableAuthors={filters.availableAuthors}
-                        clearFilters={filters.clearFilters}
-                        canEdit={canEdit && isOnline}
-                        selectedBooks={selection.selectedBooks}
-                        toggleBookSelection={selection.toggleBookSelection}
-                        toggleAllBooks={selection.toggleAllBooks}
-                        handleSort={filters.setSortBy}
-                        user={user}
-                        navigate={navigate}
-                        onEmptyAction={
-                          canEdit && isOnline
-                            ? () => setIsQuickAddOpen(true)
-                            : undefined
-                        }
-                      />
-                    )}
-                  </ErrorBoundary>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {filters.currentTab === 'overview' ? (
+              <div className="flex-grow flex flex-col">
+                <ErrorBoundary name="Library Overview">
+                  {isBooksLoading && books.length === 0 ? (
+                    <LibraryOverviewSkeleton />
+                  ) : (
+                    <LibraryOverview
+                      books={books}
+                      library={library}
+                      user={user}
+                      pickOfTheDay={picker.pickOfTheDay}
+                      isGeneratingPick={picker.isGeneratingPick}
+                      generateNewPick={picker.generateNewPick}
+                      setCurrentTab={filters.setCurrentTab}
+                      setFilterGenre={filters.setFilterGenre}
+                      setIsFiltersOpen={filters.setIsFiltersOpen}
+                      selectGenreAndGoToCollection={
+                        filters.selectGenreAndGoToCollection
+                      }
+                      pickError={picker.error}
+                      onAddBook={() => isOnline && setIsQuickAddOpen(true)}
+                    />
+                  )}
+                </ErrorBoundary>
+              </div>
+            ) : (
+              <div className="flex-grow flex flex-col">
+                <ErrorBoundary name="Library Collection Shelf">
+                  {isBooksLoading && books.length === 0 ? (
+                    <LibraryCollectionSkeleton />
+                  ) : (
+                    <LibraryCollection
+                      libraryId={id!}
+                      books={books}
+                      sortedBooks={filters.sortedBooks}
+                      searchQuery={filters.searchQuery}
+                      setSearchQuery={filters.setSearchQuery}
+                      sortBy={filters.sortBy}
+                      setSortBy={filters.setSortBy}
+                      sortOrder={filters.sortOrder}
+                      setSortOrder={filters.setSortOrder}
+                      viewMode={filters.viewMode}
+                      setViewMode={filters.setViewMode}
+                      isFiltersOpen={filters.isFiltersOpen}
+                      setIsFiltersOpen={filters.setIsFiltersOpen}
+                      filterGenre={filters.filterGenre}
+                      setFilterGenre={filters.setFilterGenre}
+                      filterSubgenre={filters.filterSubgenre}
+                      setFilterSubgenre={filters.setFilterSubgenre}
+                      activeSubgenres={filters.activeSubgenres}
+                      filterAuthor={filters.filterAuthor}
+                      setFilterAuthor={filters.setFilterAuthor}
+                      filterYearMin={filters.filterYearMin}
+                      setFilterYearMin={filters.setFilterYearMin}
+                      filterYearMax={filters.filterYearMax}
+                      setFilterYearMax={filters.setFilterYearMax}
+                      availableGenres={filters.availableGenres}
+                      availableAuthors={filters.availableAuthors}
+                      clearFilters={filters.clearFilters}
+                      canEdit={canEdit && isOnline}
+                      selectedBooks={selection.selectedBooks}
+                      toggleBookSelection={selection.toggleBookSelection}
+                      toggleAllBooks={selection.toggleAllBooks}
+                      handleSort={filters.setSortBy}
+                      user={user}
+                      navigate={navigate}
+                      onEmptyAction={
+                        canEdit && isOnline
+                          ? () => setIsQuickAddOpen(true)
+                          : undefined
+                      }
+                    />
+                  )}
+                </ErrorBoundary>
+              </div>
+            )}
           </div>
 
           {canEdit && (

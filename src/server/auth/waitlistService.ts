@@ -1,12 +1,118 @@
 import {TRPCError} from '@trpc/server';
-import {getAdminDb, FieldValue} from '../services/firebaseAdmin';
-import {AllowlistService} from './allowlistService';
+import {getAdminDb} from '../services/firebaseAdmin';
+import {AllowlistService, allowlistDocConverter} from './allowlistService';
 import {SUPERADMIN_EMAIL} from '../../constants/auth';
 import {
+  SchemaValidationError,
   validateAndNormalizeEmail,
   isSafeImageOrHttpUrl,
+  validateFirestoreReadPayload,
+  validateFirestoreWritePayload,
 } from '../../schemas/common';
-import type {WaitlistEntry, WaitlistStatus} from '../../schemas/waitlist';
+import {
+  storedWaitlistEntryDocSchema,
+  type StoredWaitlistEntryDoc,
+  type WaitlistEntry,
+  type WaitlistStatus,
+} from '../../schemas/waitlist';
+import {normalizeFirestoreTimestamp} from '../services/book/bookPartitioner';
+
+export const waitlistDocConverter = {
+  toFirestoreWrite<T extends object>(
+    email: string,
+    payload: T,
+    operation: 'create' | 'update' | 'upsert' = 'upsert',
+  ): T {
+    validateFirestoreWritePayload(
+      operation === 'update'
+        ? storedWaitlistEntryDocSchema.partial()
+        : storedWaitlistEntryDocSchema,
+      payload,
+      {
+        entity: 'StoredWaitlistEntryDoc',
+        documentPath: `appSettings/waitlist/entries/${email}`,
+        operation,
+      },
+    );
+    return payload;
+  },
+
+  fromFirestore(
+    email: string,
+    raw: Record<string, unknown>,
+  ): StoredWaitlistEntryDoc {
+    const requestedAt =
+      normalizeFirestoreTimestamp(raw.requestedAt) ??
+      (typeof raw.requestedAt === 'string'
+        ? raw.requestedAt
+        : new Date().toISOString());
+    const reviewedAt =
+      raw.reviewedAt === null
+        ? null
+        : normalizeFirestoreTimestamp(raw.reviewedAt);
+
+    const candidate: Record<string, unknown> = {
+      ...raw,
+      email:
+        typeof raw.email === 'string' && raw.email.trim() ? raw.email : email,
+      status:
+        typeof raw.status === 'string' && raw.status.trim()
+          ? raw.status
+          : 'pending',
+      requestedAt,
+    };
+
+    if (typeof raw.displayName === 'string' && raw.displayName.trim()) {
+      candidate.displayName = raw.displayName;
+    } else {
+      delete candidate.displayName;
+    }
+    if (typeof raw.photoURL === 'string' || raw.photoURL === null) {
+      candidate.photoURL = raw.photoURL;
+    } else {
+      delete candidate.photoURL;
+    }
+    if (reviewedAt !== undefined) {
+      candidate.reviewedAt = reviewedAt;
+    } else {
+      delete candidate.reviewedAt;
+    }
+    if (typeof raw.reviewedBy === 'string' || raw.reviewedBy === null) {
+      candidate.reviewedBy = raw.reviewedBy;
+    } else {
+      delete candidate.reviewedBy;
+    }
+    if (typeof raw.invitedBy === 'string' || raw.invitedBy === null) {
+      candidate.invitedBy = raw.invitedBy;
+    } else {
+      delete candidate.invitedBy;
+    }
+    if (
+      typeof raw.invitedLibraryName === 'string' ||
+      raw.invitedLibraryName === null
+    ) {
+      candidate.invitedLibraryName = raw.invitedLibraryName;
+    } else {
+      delete candidate.invitedLibraryName;
+    }
+
+    for (const k of Object.keys(candidate)) {
+      if (candidate[k] === undefined) {
+        delete candidate[k];
+      }
+    }
+
+    return validateFirestoreReadPayload(
+      storedWaitlistEntryDocSchema,
+      candidate,
+      {
+        entity: 'StoredWaitlistEntryDoc',
+        documentPath: `appSettings/waitlist/entries/${email}`,
+        operation: 'read',
+      },
+    );
+  },
+};
 
 export class WaitlistService {
   /**
@@ -44,13 +150,15 @@ export class WaitlistService {
         return {status: 'not_requested'};
       }
 
-      const data = (docSnap.data() || {}) as Partial<WaitlistEntry>;
+      const data = waitlistDocConverter.fromFirestore(
+        normalized,
+        (docSnap.data() || {}) as Record<string, unknown>,
+      );
       const entry: WaitlistEntry = {
         email: normalized,
         displayName: data.displayName || undefined,
         photoURL: data.photoURL || null,
-        status:
-          (data.status as 'pending' | 'approved' | 'rejected') || 'pending',
+        status: data.status,
         requestedAt: data.requestedAt || new Date().toISOString(),
         reviewedAt: data.reviewedAt || null,
         reviewedBy: data.reviewedBy || null,
@@ -65,6 +173,9 @@ export class WaitlistService {
         entry,
       };
     } catch (err) {
+      if (err instanceof SchemaValidationError) {
+        throw err;
+      }
       console.error(
         '[WaitlistService] Error querying waitlist for email:',
         normalized,
@@ -110,7 +221,10 @@ export class WaitlistService {
     let entry: WaitlistEntry;
 
     if (existingSnap && existingSnap.exists) {
-      const existing = (existingSnap.data() || {}) as Partial<WaitlistEntry>;
+      const existing = waitlistDocConverter.fromFirestore(
+        normalized,
+        (existingSnap.data() || {}) as Record<string, unknown>,
+      );
       entry = {
         email: normalized,
         displayName: params.displayName || existing.displayName || undefined,
@@ -127,7 +241,10 @@ export class WaitlistService {
           ? {invitedLibraryName: existing.invitedLibraryName}
           : {}),
       };
-      await docRef.set(entry, {merge: true});
+      await docRef.set(
+        waitlistDocConverter.toFirestoreWrite(normalized, entry, 'upsert'),
+        {merge: true},
+      );
     } else {
       entry = {
         email: normalized,
@@ -138,7 +255,9 @@ export class WaitlistService {
         reviewedAt: null,
         reviewedBy: null,
       };
-      await docRef.set(entry);
+      await docRef.set(
+        waitlistDocConverter.toFirestoreWrite(normalized, entry, 'create'),
+      );
     }
 
     return entry;
@@ -219,7 +338,10 @@ export class WaitlistService {
       const existingSnap = existingSnaps[i];
 
       if (existingSnap && existingSnap.exists) {
-        const existing = (existingSnap.data() || {}) as Partial<WaitlistEntry>;
+        const existing = waitlistDocConverter.fromFirestore(
+          email,
+          (existingSnap.data() || {}) as Record<string, unknown>,
+        );
         const entry: WaitlistEntry = {
           email,
           displayName: existing.displayName || undefined,
@@ -232,7 +354,11 @@ export class WaitlistService {
           invitedLibraryName:
             invitedLibraryName || existing.invitedLibraryName || null,
         };
-        batch.set(docRef, entry, {merge: true});
+        batch.set(
+          docRef,
+          waitlistDocConverter.toFirestoreWrite(email, entry, 'upsert'),
+          {merge: true},
+        );
         results.push(entry);
       } else {
         const entry: WaitlistEntry = {
@@ -244,7 +370,10 @@ export class WaitlistService {
           invitedBy,
           invitedLibraryName,
         };
-        batch.set(docRef, entry);
+        batch.set(
+          docRef,
+          waitlistDocConverter.toFirestoreWrite(email, entry, 'create'),
+        );
         results.push(entry);
       }
     }
@@ -263,13 +392,15 @@ export class WaitlistService {
     const snap = await db.collection('appSettings/waitlist/entries').get();
 
     const entries: WaitlistEntry[] = snap.docs.map(doc => {
-      const data = (doc.data() || {}) as Partial<WaitlistEntry>;
+      const data = waitlistDocConverter.fromFirestore(
+        doc.id,
+        (doc.data() || {}) as Record<string, unknown>,
+      );
       return {
         email: doc.id,
         displayName: data.displayName || undefined,
         photoURL: data.photoURL || null,
-        status:
-          (data.status as 'pending' | 'approved' | 'rejected') || 'pending',
+        status: data.status,
         requestedAt: data.requestedAt || '',
         reviewedAt: data.reviewedAt || null,
         reviewedBy: data.reviewedBy || null,
@@ -314,7 +445,7 @@ export class WaitlistService {
 
     const db = getAdminDb();
     const reviewedAt = new Date().toISOString();
-    const reviewedBy = params.adminEmail.toLowerCase().trim();
+    const reviewedBy = validateAndNormalizeEmail(params.adminEmail);
     const newStatus: 'approved' | 'rejected' =
       params.action === 'approve' ? 'approved' : 'rejected';
 
@@ -332,12 +463,11 @@ export class WaitlistService {
 
       batch.set(
         allowlistRef,
-        {
-          email: normalized,
+        allowlistDocConverter.toFirestoreWrite(normalized, {
           role: 'user',
           hasAiPlan: effectiveAiPlan,
-          addedAt: FieldValue.serverTimestamp(),
-        },
+          isCreate: true,
+        }),
         {merge: true},
       );
 
@@ -350,12 +480,16 @@ export class WaitlistService {
 
     batch.set(
       waitlistRef,
-      {
-        email: normalized,
-        status: newStatus,
-        reviewedAt,
-        reviewedBy,
-      },
+      waitlistDocConverter.toFirestoreWrite(
+        normalized,
+        {
+          email: normalized,
+          status: newStatus,
+          reviewedAt,
+          reviewedBy,
+        },
+        'update',
+      ),
       {merge: true},
     );
 

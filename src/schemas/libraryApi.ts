@@ -7,7 +7,7 @@ import {
   bookMergeDuplicatesSchema,
   bookStatusEnum,
 } from './book';
-import {safeIdSchema} from './common';
+import {safeIdSchema, safeImageUrlSchema, safeUrlSchema} from './common';
 
 export {
   bookCreateSchema,
@@ -16,6 +16,61 @@ export {
   bookBatchUpsertSchema,
   bookMergeDuplicatesSchema,
 };
+
+export const libraryAccessRoleEnum = z.enum(['owner', 'editor', 'viewer']);
+export type LibraryAccessRole = z.infer<typeof libraryAccessRoleEnum>;
+
+/**
+ * Stored Firestore document schema for `/libraries/{libraryId}`.
+ */
+export const storedLibraryDocSchema = z
+  .object({
+    id: safeIdSchema.optional(),
+    name: z.string().max(200),
+    ownerId: safeIdSchema,
+    ownerName: z.string().max(200).optional(),
+    access: z.record(z.string(), libraryAccessRoleEnum).optional(),
+    heroImageUrl: safeImageUrlSchema.nullable().optional(),
+    bookCount: z.number().int().min(0).optional(),
+    isVirtual: z.boolean().optional(),
+    createdAt: z.string().max(100).optional(),
+    updatedAt: z.string().max(100).optional(),
+  })
+  .strict();
+
+export type StoredLibraryDoc = z.infer<typeof storedLibraryDocSchema>;
+
+/**
+ * Stored Firestore document schema for `/libraries/{libraryId}/allowedDuplicates/{groupId}`.
+ */
+export const storedAllowedDuplicateDocSchema = z
+  .object({
+    id: safeIdSchema.optional(),
+    bookIds: z.array(safeIdSchema).min(2).max(100),
+    createdAt: z.string().max(100).optional(),
+  })
+  .strict();
+
+export type StoredAllowedDuplicateDoc = z.infer<
+  typeof storedAllowedDuplicateDocSchema
+>;
+
+/**
+ * Stored Firestore document schema for `/users/{userId}`.
+ */
+export const storedUserProfileDocSchema = z
+  .object({
+    uid: safeIdSchema,
+    email: z.string().max(254).optional(),
+    displayName: z.string().max(120).optional(),
+    photoURL: safeUrlSchema.optional(),
+    createdAt: z.string().max(100).optional(),
+    updatedAt: z.string().max(100).optional(),
+  })
+  .strict();
+
+export type StoredUserProfileDoc = z.infer<typeof storedUserProfileDocSchema>;
+export type UserProfile = StoredUserProfileDoc;
 
 export const libraryScopeSchema = z.enum(['owned', 'shared', 'all']);
 export type LibraryScope = z.infer<typeof libraryScopeSchema>;
@@ -161,6 +216,10 @@ export const enrichmentCancelJobSchema = z.object({
 });
 
 export const enrichmentJobStatusSchema = z.object({
+  libraryId: safeIdSchema,
+});
+
+export const enrichmentAuditCoversSchema = z.object({
   libraryId: safeIdSchema,
 });
 

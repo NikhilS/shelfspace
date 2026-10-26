@@ -98,6 +98,7 @@ export function SpruceUpView() {
   const {
     loading,
     isCheckingDuplicates,
+    isAuditingCovers,
     books,
     duplicates,
     duplicateGroupsWithMeta,
@@ -289,6 +290,7 @@ export function SpruceUpView() {
             <ManualEnrichmentSection
               books={books || []}
               libraryId={libraryId!}
+              isAuditingCovers={isAuditingCovers}
             />
           )}
 

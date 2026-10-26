@@ -6,6 +6,7 @@ export type PreloadableRouteKey =
   | 'worldMap'
   | 'spruceUp'
   | 'timeline'
+  | 'readSwipe'
   | 'admin';
 
 const routeImporters: Record<PreloadableRouteKey, () => Promise<unknown>> = {
@@ -16,6 +17,7 @@ const routeImporters: Record<PreloadableRouteKey, () => Promise<unknown>> = {
   worldMap: () => import('../pages/WorldMap'),
   spruceUp: () => import('../pages/SpruceUpView'),
   timeline: () => import('../pages/TimelineView'),
+  readSwipe: () => import('../pages/ReadSwipeView'),
   admin: () => import('../pages/AdminDashboard'),
 };
 
@@ -46,6 +48,8 @@ export function preloadRouteByPathname(pathname: string): void {
     preloadRouteChunk('spruceUp');
   } else if (pathname.endsWith('/timeline')) {
     preloadRouteChunk('timeline');
+  } else if (pathname.endsWith('/swipe')) {
+    preloadRouteChunk('readSwipe');
   } else if (pathname.startsWith('/library/')) {
     preloadRouteChunk('library');
   }
@@ -61,6 +65,7 @@ export function preloadAllRouteChunks(): void {
     'constellation',
     'worldMap',
     'timeline',
+    'readSwipe',
     'spruceUp',
     'addBook',
   ];

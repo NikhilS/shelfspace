@@ -47,4 +47,18 @@ describe('PermissionService server RBAC unit suite', () => {
       'editor',
     );
   });
+
+  it('evaluates role hierarchy accurately via hasSufficientRole', () => {
+    expect(PermissionService.hasSufficientRole('owner', 'owner')).toBe(true);
+    expect(PermissionService.hasSufficientRole('owner', 'editor')).toBe(true);
+    expect(PermissionService.hasSufficientRole('owner', 'viewer')).toBe(true);
+
+    expect(PermissionService.hasSufficientRole('editor', 'owner')).toBe(false);
+    expect(PermissionService.hasSufficientRole('editor', 'editor')).toBe(true);
+    expect(PermissionService.hasSufficientRole('editor', 'viewer')).toBe(true);
+
+    expect(PermissionService.hasSufficientRole('viewer', 'owner')).toBe(false);
+    expect(PermissionService.hasSufficientRole('viewer', 'editor')).toBe(false);
+    expect(PermissionService.hasSufficientRole('viewer', 'viewer')).toBe(true);
+  });
 });

@@ -1,44 +1,48 @@
 import {z} from 'zod';
-import {safeIdSchema, safeUrlSchema} from './common';
+import {safeIdSchema, safeImageUrlSchema, safeUrlSchema} from './common';
+import {
+  bookStatusEnum,
+  ownershipStatusEnum,
+  geoLocationReferenceSchema,
+  bookGeoMetadataSchema,
+  bookTemporalMetadataSchema,
+  clusterCoordinatesSchema,
+  readingStateKeySchema,
+  userReadingStateBookSnapshotSchema,
+  storedUserReadingStateDocSchema,
+  userReadingStateSchema,
+  computeReadingStateKey,
+  type OwnershipStatus,
+  type GeoLocationReference,
+  type BookGeoMetadata,
+  type BookTemporalMetadata,
+  type ClusterCoordinates,
+  type UserReadingStateBookSnapshot,
+  type StoredUserReadingStateDoc,
+  type UserReadingState,
+} from './readingState';
 
-export const bookStatusEnum = z.enum([
-  'unset',
-  'want_to_read',
-  'reading',
-  'finished',
-  'completed',
-  'abandoned',
-]);
-
-export const ownershipStatusEnum = z.enum(['owned', 'unowned']);
-export type OwnershipStatus = z.infer<typeof ownershipStatusEnum>;
-
-export const geoLocationReferenceSchema = z.object({
-  name: z.string().max(300),
-  adminLevel: z.enum(['city', 'state', 'country', 'region']),
-  rationale: z.string().max(2000),
-  coordinates: z
-    .object({
-      lat: z.number().min(-90).max(90),
-      lng: z.number().min(-180).max(180),
-    })
-    .optional(),
-});
-
-export const bookGeoMetadataSchema = z.object({
-  isNonEarth: z.boolean(),
-  locations: z.array(geoLocationReferenceSchema).max(50),
-  lastSyncedAt: z.string().max(100),
-});
-
-export const bookTemporalMetadataSchema = z.object({
-  isNonHistorical: z.boolean(),
-  startYear: z.number().optional(),
-  endYear: z.number().optional(),
-  eraName: z.string().max(300).optional(),
-  rationale: z.string().max(2000).optional(),
-  lastProcessedAt: z.string().max(100),
-});
+export {
+  bookStatusEnum,
+  ownershipStatusEnum,
+  geoLocationReferenceSchema,
+  bookGeoMetadataSchema,
+  bookTemporalMetadataSchema,
+  clusterCoordinatesSchema,
+  readingStateKeySchema,
+  userReadingStateBookSnapshotSchema,
+  storedUserReadingStateDocSchema,
+  userReadingStateSchema,
+  computeReadingStateKey,
+  type OwnershipStatus,
+  type GeoLocationReference,
+  type BookGeoMetadata,
+  type BookTemporalMetadata,
+  type ClusterCoordinates,
+  type UserReadingStateBookSnapshot,
+  type StoredUserReadingStateDoc,
+  type UserReadingState,
+};
 
 export const enrichmentTypeStatusSchema = z.enum([
   'completed',
@@ -64,20 +68,13 @@ export const bookEnrichmentStatusSchema = z
   })
   .strict();
 
-export const bookDetailsMetadataSchema = z.object({
-  hasSynopsis: z.boolean().optional(),
-  hasAuthorBio: z.boolean().optional(),
-  hasEmbedding: z.boolean().optional(),
-  hasDescription: z.boolean().optional(),
-  hasClusterCoordinates: z.boolean().optional(),
-});
-
-export const clusterCoordinatesSchema = z
+export const bookDetailsMetadataSchema = z
   .object({
-    x: z.number(),
-    y: z.number(),
-    clusterId: z.number().optional(),
-    clusterName: z.string().max(200).optional(),
+    hasSynopsis: z.boolean().optional(),
+    hasAuthorBio: z.boolean().optional(),
+    hasEmbedding: z.boolean().optional(),
+    hasDescription: z.boolean().optional(),
+    hasClusterCoordinates: z.boolean().optional(),
   })
   .strict();
 
@@ -88,27 +85,37 @@ export const bookDetailsPayloadSchema = z
     embedding: z.array(z.number()).max(4096).nullable().optional(),
     clusterCoordinates: clusterCoordinatesSchema.nullable().optional(),
     description: z.string().max(50000).nullable().optional(),
+    updatedAt: z.string().max(100).optional(),
   })
   .strict();
 
-export const bookReviewRecordSchema = z.object({
-  id: safeIdSchema,
-  userId: safeIdSchema,
-  userName: z.string().max(200),
-  rating: z.number().min(1).max(5),
-  text: z.string().max(5000),
-  createdAt: z.string().max(100).optional(),
-});
+export const storedBookDetailsDocSchema = bookDetailsPayloadSchema;
 
-export const coverCandidateSchema = z.object({
-  url: safeUrlSchema.refine(val => val.length > 0, {
-    message: 'Cover candidate URL is required',
-  }),
-  source: z.string().min(1).max(100),
-  resolutionTier: z.enum(['ultra', 'high', 'standard']).optional(),
-  widthHint: z.number().optional(),
-  label: z.string().max(200).optional(),
-});
+export const storedReviewDocSchema = z
+  .object({
+    id: safeIdSchema,
+    userId: safeIdSchema,
+    userName: z.string().max(200),
+    rating: z.number().min(1).max(5),
+    text: z.string().max(5000),
+    createdAt: z.string().max(100).optional(),
+    updatedAt: z.string().max(100).optional(),
+  })
+  .strict();
+
+export const bookReviewRecordSchema = storedReviewDocSchema;
+
+export const coverCandidateSchema = z
+  .object({
+    url: safeUrlSchema.refine(val => val.length > 0, {
+      message: 'Cover candidate URL is required',
+    }),
+    source: z.string().min(1).max(100),
+    resolutionTier: z.enum(['ultra', 'high', 'standard']).optional(),
+    widthHint: z.number().optional(),
+    label: z.string().max(200).optional(),
+  })
+  .strict();
 
 export const bookMutableFieldsSchema = z
   .object({
@@ -129,17 +136,18 @@ export const bookMutableFieldsSchema = z
     series: z.string().trim().max(300).nullable().optional(),
     format: z.enum(['physical', 'digital']).optional(),
     ownershipStatus: ownershipStatusEnum.optional(),
-    userStatuses: z.record(safeIdSchema, bookStatusEnum).optional(),
-    userRatings: z.record(safeIdSchema, z.number().min(1).max(5)).optional(),
-    status: bookStatusEnum.optional(),
+    readingStatus: bookStatusEnum.optional(),
     synopsis: z.string().max(50000).nullable().optional(),
     description: z.string().max(50000).nullable().optional(),
     authorBio: z.string().max(50000).nullable().optional(),
     embedding: z.array(z.number()).max(4096).nullable().optional(),
     embeddings: z.array(z.number()).max(4096).nullable().optional(),
     clusterCoordinates: clusterCoordinatesSchema.nullable().optional(),
-    geoMetadata: z.any().optional(),
-    temporalMetadata: z.any().optional(),
+    geoMetadata: bookGeoMetadataSchema.partial().nullable().optional(),
+    temporalMetadata: bookTemporalMetadataSchema
+      .partial()
+      .nullable()
+      .optional(),
     enrichmentStatus: bookEnrichmentStatusSchema.optional(),
     bookDetailsMetadata: bookDetailsMetadataSchema.optional(),
     cleanIsbn: z.string().trim().max(64).optional(),
@@ -294,23 +302,66 @@ export const bookMergeDuplicatesSchema = z
         format: z.enum(['physical', 'digital']).optional(),
         synopsis: z.string().max(50000).optional(),
         authorBio: z.string().max(50000).optional(),
-        geoMetadata: z.any().optional(),
-        temporalMetadata: z.any().optional(),
+        geoMetadata: bookGeoMetadataSchema.partial().nullable().optional(),
+        temporalMetadata: bookTemporalMetadataSchema
+          .partial()
+          .nullable()
+          .optional(),
       })
       .strict(),
   })
   .strict();
 
+/**
+ * Stored Firestore document schema for `/libraries/{libraryId}/books/{bookId}`.
+ * Contains lightweight catalog metadata and search/dedupe index fields.
+ * Heavy prose/vector fields live in `bookDetails/{bookId}` and per-user reading state
+ * lives in `/users/{userId}/readingStates/{stateKey}`.
+ */
+export const storedBookDocSchema = z
+  .object({
+    id: safeIdSchema,
+    title: z.string().max(500),
+    author: z.string().max(500),
+    isbn: z.string().max(64).optional(),
+    cleanIsbn: z.string().max(64).optional(),
+    dedupeKey: z.string().max(1000).optional(),
+    searchTokens: z.array(z.string().max(100)).max(60).optional(),
+    coverUrl: safeImageUrlSchema.optional(),
+    coverUrlRaw: safeImageUrlSchema.optional(),
+    publishedDate: z.string().max(100).optional(),
+    primaryGenre: z.string().max(200).nullable().optional(),
+    subgenres: z.array(z.string().max(200)).max(50).optional(),
+    isCustomPrimary: z.boolean().optional(),
+    series: z.string().max(300).nullable().optional(),
+    format: z.enum(['physical', 'digital']).optional(),
+    ownershipStatus: ownershipStatusEnum.optional(),
+    geoMetadata: bookGeoMetadataSchema.partial().nullable().optional(),
+    temporalMetadata: bookTemporalMetadataSchema
+      .partial()
+      .nullable()
+      .optional(),
+    enrichmentStatus: bookEnrichmentStatusSchema.optional(),
+    bookDetailsMetadata: bookDetailsMetadataSchema.optional(),
+    coverCandidates: z.array(coverCandidateSchema).max(50).optional(),
+    sources: z.array(z.string().max(100)).max(30).optional(),
+    fieldSources: z.record(safeIdSchema, z.string().max(100)).optional(),
+    skippedProviders: z.array(z.string().max(100)).max(30).optional(),
+    addedBy: z.string().max(128).nullable().optional(),
+    addedAt: z.string().max(100).optional(),
+    updatedAt: z.string().max(100).optional(),
+  })
+  .strict();
+
 export type CoverCandidate = z.infer<typeof coverCandidateSchema>;
 export type BookDetails = z.infer<typeof bookDetailsSchema>;
-export type GeoLocationReference = z.infer<typeof geoLocationReferenceSchema>;
-export type BookGeoMetadata = z.infer<typeof bookGeoMetadataSchema>;
-export type BookTemporalMetadata = z.infer<typeof bookTemporalMetadataSchema>;
 export type EnrichmentTypeStatus = z.infer<typeof enrichmentTypeStatusSchema>;
 export type BookEnrichmentStatus = z.infer<typeof bookEnrichmentStatusSchema>;
 export type BookDetailsMetadata = z.infer<typeof bookDetailsMetadataSchema>;
-export type ClusterCoordinates = z.infer<typeof clusterCoordinatesSchema>;
 export type BookDetailsPayload = z.infer<typeof bookDetailsPayloadSchema>;
+export type StoredBookDetailsDoc = z.infer<typeof storedBookDetailsDocSchema>;
+export type StoredBookDoc = z.infer<typeof storedBookDocSchema>;
+export type StoredReviewDoc = z.infer<typeof storedReviewDocSchema>;
 export type BookReviewRecord = z.infer<typeof bookReviewRecordSchema>;
 
 export type BookCreateInput = z.input<typeof bookCreateSchema>;

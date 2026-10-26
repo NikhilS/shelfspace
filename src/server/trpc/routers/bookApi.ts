@@ -31,6 +31,8 @@ export const bookApiRouter = router({
         libraryId: safeIdSchema,
         bookId: safeIdSchema,
         status: bookStatusEnum,
+        recordReadStatusReview: z.boolean().optional(),
+        reviewedAtOverride: z.string().max(100).nullable().optional(),
       }),
     )
     .mutation(async ({ctx, input}) => {
@@ -39,7 +41,28 @@ export const bookApiRouter = router({
         input.libraryId,
         input.bookId,
         input.status,
-        {skipAccessCheck: true},
+        {
+          skipAccessCheck: true,
+          recordReadStatusReview: input.recordReadStatusReview,
+          reviewedAtOverride: input.reviewedAtOverride,
+        },
+      );
+    }),
+
+  recordReadSwipeReview: libraryProcedure('viewer')
+    .input(
+      z.object({
+        libraryId: safeIdSchema,
+        bookId: safeIdSchema,
+        reviewedAt: z.string().max(100).nullable().optional(),
+      }),
+    )
+    .mutation(async ({ctx, input}) => {
+      return await BookService.recordReadSwipeReview(
+        ctx.user.uid,
+        input.libraryId,
+        input.bookId,
+        input.reviewedAt,
       );
     }),
 

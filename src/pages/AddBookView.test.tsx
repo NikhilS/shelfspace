@@ -369,7 +369,7 @@ describe('AddBookView', () => {
               data: expect.objectContaining({
                 title: 'Piranesi',
                 ownershipStatus: 'unowned',
-                status: 'reading',
+                readingStatus: 'reading',
               }),
             }),
           ],

@@ -7,10 +7,25 @@ import type {
   BookDeleteInput,
   BookBatchUpsertInput,
 } from '../../../schemas/book';
-import type {Book} from '../../../types';
-import {BookPartitioner, HEAVY_FIELDS} from './bookPartitioner';
+import {storedReviewDocSchema} from '../../../schemas/book';
+import {storedLibraryDocSchema} from '../../../schemas/libraryApi';
+import type {Book, ReadingStatusValue} from '../../../types';
+import {
+  BookPartitioner,
+  bookDocConverter,
+  bookDetailsDocConverter,
+  HEAVY_FIELDS,
+} from './bookPartitioner';
+import {reviewDocConverter} from './bookReviewService';
+import {
+  buildReadingStateUpsertPayload,
+  getReadingStatesCollection,
+} from './readingStateLedger';
 import {metadataRegistry} from '../metadata/registry';
-import {safeIdSchema} from '../../../schemas/common';
+import {
+  safeIdSchema,
+  validateFirestoreWritePayload,
+} from '../../../schemas/common';
 
 export {HEAVY_FIELDS};
 
@@ -64,16 +79,56 @@ export async function createBook(
   batch.set(bookRef, cleanCore);
 
   if (Object.keys(cleanHeavy).length > 0) {
-    batch.set(detailRef, {
-      ...cleanHeavy,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    batch.set(
+      detailRef,
+      bookDetailsDocConverter.toFirestoreWrite(
+        bookId,
+        {
+          ...cleanHeavy,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        'create',
+        `/libraries/${libraryId}/bookDetails/${bookId}`,
+      ),
+    );
   }
 
-  batch.update(libraryRef, {
+  const libCreateUpdate = {
     bookCount: FieldValue.increment(1),
     updatedAt: FieldValue.serverTimestamp(),
-  });
+  };
+  validateFirestoreWritePayload(
+    storedLibraryDocSchema.partial(),
+    libCreateUpdate,
+    {
+      entity: 'StoredLibraryDoc',
+      documentPath: `/libraries/${libraryId}`,
+      operation: 'update',
+    },
+  );
+  batch.update(libraryRef, libCreateUpdate);
+
+  if (userId && input.readingStatus && input.readingStatus !== 'unset') {
+    const readingStatesCol = getReadingStatesCollection(db, userId);
+    if (readingStatesCol) {
+      const {stateKey, payload} = buildReadingStateUpsertPayload({
+        userId,
+        bookId,
+        libraryId,
+        isbn: typeof cleanCore.isbn === 'string' ? cleanCore.isbn : undefined,
+        cleanIsbn:
+          typeof cleanCore.cleanIsbn === 'string'
+            ? cleanCore.cleanIsbn
+            : undefined,
+        status: input.readingStatus,
+        bookData: {
+          ...cleanCore,
+          ...cleanHeavy,
+        },
+      });
+      batch.set(readingStatesCol.doc(stateKey), payload, {merge: true});
+    }
+  }
 
   try {
     await batch.commit();
@@ -95,6 +150,7 @@ export async function createBook(
     book: {
       ...(cleanCore as unknown as Book),
       id: bookId,
+      ...(input.readingStatus ? {readingStatus: input.readingStatus} : {}),
       ...(Object.keys(cleanHeavy).length > 0 ? {heavyDetails: cleanHeavy} : {}),
     },
   };
@@ -143,12 +199,16 @@ export async function updateBook(
     try {
       const existingSnap = await bookRef.get();
       if (existingSnap?.exists) {
-        const data = (existingSnap.data() || {}) as Record<string, unknown>;
+        const parsedExisting = bookDocConverter.fromFirestore(
+          bookId,
+          (existingSnap.data() || {}) as Record<string, unknown>,
+          `/libraries/${libraryId}/books/${bookId}`,
+        );
         existingBook = {
-          title: typeof data.title === 'string' ? data.title : undefined,
-          author: typeof data.author === 'string' ? data.author : undefined,
-          isbn: typeof data.isbn === 'string' ? data.isbn : undefined,
-          series: typeof data.series === 'string' ? data.series : undefined,
+          title: parsedExisting.title,
+          author: parsedExisting.author,
+          isbn: parsedExisting.isbn,
+          series: parsedExisting.series ?? undefined,
         };
       }
     } catch {
@@ -168,17 +228,28 @@ export async function updateBook(
   if (Object.keys(heavyUpdates).length > 0) {
     batch.set(
       detailRef,
-      {
-        ...heavyUpdates,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
+      bookDetailsDocConverter.toFirestoreWrite(
+        bookId,
+        {
+          ...heavyUpdates,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        'update',
+        `/libraries/${libraryId}/bookDetails/${bookId}`,
+      ),
       {merge: true},
     );
   }
 
-  batch.update(libraryRef, {
+  const libUpdate = {
     updatedAt: FieldValue.serverTimestamp(),
+  };
+  validateFirestoreWritePayload(storedLibraryDocSchema.partial(), libUpdate, {
+    entity: 'StoredLibraryDoc',
+    documentPath: `/libraries/${libraryId}`,
+    operation: 'update',
   });
+  batch.update(libraryRef, libUpdate);
 
   try {
     await batch.commit();
@@ -197,8 +268,96 @@ export async function updateBook(
   return {success: true, id: bookId};
 }
 
+export async function fetchExistingBookDataForSnapshot(
+  db: FirebaseFirestore.Firestore,
+  libraryId: string,
+  bookId: string,
+): Promise<Record<string, unknown> | undefined> {
+  const bookRef = db
+    .collection('libraries')
+    .doc(libraryId)
+    .collection('books')
+    .doc(bookId);
+
+  if (typeof bookRef?.get !== 'function') {
+    return undefined;
+  }
+
+  let bookData: Record<string, unknown> | undefined;
+  try {
+    const snap = await bookRef.get();
+    if (snap?.exists) {
+      const raw = (snap.data() || {}) as Record<string, unknown>;
+      try {
+        bookData = bookDocConverter.fromFirestore(
+          bookId,
+          raw,
+          `/libraries/${libraryId}/books/${bookId}`,
+        ) as unknown as Record<string, unknown>;
+      } catch (convErr) {
+        console.warn(
+          `[BookWriteService] Converter fallback while building readingState snapshot for /libraries/${libraryId}/books/${bookId}:`,
+          convErr,
+        );
+        bookData = {...raw, id: bookId};
+      }
+    }
+  } catch {
+    // Non-fatal in test mocks where bookRef.get is unconfigured
+    return undefined;
+  }
+
+  if (!bookData) {
+    return undefined;
+  }
+
+  const meta = bookData.bookDetailsMetadata as
+    | {
+        hasSynopsis?: boolean;
+        hasAuthorBio?: boolean;
+        hasClusterCoordinates?: boolean;
+      }
+    | undefined;
+  if (
+    meta &&
+    (meta.hasSynopsis || meta.hasAuthorBio || meta.hasClusterCoordinates)
+  ) {
+    try {
+      const detailRef = db
+        .collection('libraries')
+        .doc(libraryId)
+        .collection('bookDetails')
+        .doc(bookId);
+      if (typeof detailRef?.get === 'function') {
+        const detailSnap = await detailRef.get();
+        if (detailSnap?.exists) {
+          const detailRaw = (detailSnap.data() || {}) as Record<
+            string,
+            unknown
+          >;
+          try {
+            const parsedDetail = bookDetailsDocConverter.fromFirestore(
+              bookId,
+              detailRaw,
+              `/libraries/${libraryId}/bookDetails/${bookId}`,
+            );
+            bookData = {...bookData, ...parsedDetail};
+          } catch {
+            bookData = {...bookData, ...detailRaw};
+          }
+        }
+      }
+    } catch {
+      // Non-fatal if bookDetails cannot be fetched
+    }
+  }
+
+  return bookData;
+}
+
 /**
- * Updates only the caller's personal reading status on a book (accessible to any library viewer).
+ * Updates only the caller's personal reading status in `/users/{userId}/readingStates/{stateKey}`
+ * (accessible to any library viewer without mutating the shared catalog book document).
  */
 export async function updateBookStatus(
   userId: string,
@@ -211,28 +370,63 @@ export async function updateBookStatus(
     | 'finished'
     | 'completed'
     | 'abandoned',
-  options?: {skipAccessCheck?: boolean; rating?: number},
-): Promise<{success: true; id: string; status: string}> {
+  options?: {
+    skipAccessCheck?: boolean;
+    rating?: number;
+    recordReadStatusReview?: boolean;
+    reviewedAtOverride?: string | null;
+  },
+): Promise<{
+  success: true;
+  id: string;
+  status: string;
+  stateKey: string;
+  reviewedAt?: string | null;
+}> {
   const libraryId = assertSafeDocId(libraryIdRaw, 'libraryId');
   const bookId = assertSafeDocId(bookIdRaw, 'bookId');
 
   const db = getAdminDb();
-  const bookRef = db
-    .collection('libraries')
-    .doc(libraryId)
-    .collection('books')
-    .doc(bookId);
+  const bookData = await fetchExistingBookDataForSnapshot(
+    db,
+    libraryId,
+    bookId,
+  );
 
-  const updatePayload: Record<string, unknown> = {
-    [`userStatuses.${userId}`]: status,
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-  if (typeof options?.rating === 'number' && options.rating >= 1) {
-    updatePayload[`userRatings.${userId}`] = options.rating;
-  }
+  const reviewedAtIso = new Date().toISOString();
+  const hasExplicitOverride = options?.reviewedAtOverride !== undefined;
+  const shouldRecordReview =
+    !hasExplicitOverride &&
+    (Boolean(options?.recordReadStatusReview) ||
+      status === 'finished' ||
+      status === 'completed');
+
+  const {stateKey, payload} = buildReadingStateUpsertPayload({
+    userId,
+    bookId,
+    libraryId,
+    isbn: typeof bookData?.isbn === 'string' ? bookData.isbn : undefined,
+    cleanIsbn:
+      typeof bookData?.cleanIsbn === 'string' ? bookData.cleanIsbn : undefined,
+    status,
+    rating: options?.rating,
+    readStatusReviewedAt:
+      hasExplicitOverride && options?.reviewedAtOverride !== null
+        ? options.reviewedAtOverride
+        : shouldRecordReview
+          ? reviewedAtIso
+          : undefined,
+    clearReadStatusReviewedAt:
+      hasExplicitOverride && options?.reviewedAtOverride === null,
+    bookData,
+  });
 
   try {
-    await bookRef.update(updatePayload);
+    const readingStatesCol = getReadingStatesCollection(db, userId);
+    if (!readingStatesCol) {
+      throw new Error('Could not resolve user readingStates collection');
+    }
+    await readingStatesCol.doc(stateKey).set(payload, {merge: true});
   } catch (err: unknown) {
     const errMsg = formatFirestoreAdminError(err);
     console.error(
@@ -245,7 +439,84 @@ export async function updateBookStatus(
     });
   }
 
-  return {success: true, id: bookId, status};
+  return {
+    success: true,
+    id: bookId,
+    status,
+    stateKey,
+    ...(hasExplicitOverride
+      ? {reviewedAt: options?.reviewedAtOverride ?? null}
+      : shouldRecordReview
+        ? {reviewedAt: reviewedAtIso}
+        : {}),
+  };
+}
+
+/**
+ * Records or reverts a caller's review timestamp in `/users/{userId}/readingStates/{stateKey}`
+ * for the "Have You Read It?" swipe deck without changing its reading status.
+ */
+export async function recordReadSwipeReview(
+  userId: string,
+  libraryIdRaw: string,
+  bookIdRaw: string,
+  reviewedAtOverride?: string | null,
+): Promise<{
+  success: true;
+  id: string;
+  stateKey: string;
+  reviewedAt: string | null;
+}> {
+  const libraryId = assertSafeDocId(libraryIdRaw, 'libraryId');
+  const bookId = assertSafeDocId(bookIdRaw, 'bookId');
+
+  const db = getAdminDb();
+  const bookData = await fetchExistingBookDataForSnapshot(
+    db,
+    libraryId,
+    bookId,
+  );
+
+  const resolvedReviewedAt =
+    reviewedAtOverride === null
+      ? null
+      : typeof reviewedAtOverride === 'string' &&
+          reviewedAtOverride.trim().length > 0
+        ? reviewedAtOverride.trim()
+        : new Date().toISOString();
+
+  const {stateKey, payload} = buildReadingStateUpsertPayload({
+    userId,
+    bookId,
+    libraryId,
+    isbn: typeof bookData?.isbn === 'string' ? bookData.isbn : undefined,
+    cleanIsbn:
+      typeof bookData?.cleanIsbn === 'string' ? bookData.cleanIsbn : undefined,
+    readStatusReviewedAt:
+      resolvedReviewedAt !== null ? resolvedReviewedAt : undefined,
+    clearReadStatusReviewedAt: resolvedReviewedAt === null,
+    bookData,
+  });
+
+  try {
+    const readingStatesCol = getReadingStatesCollection(db, userId);
+    if (!readingStatesCol) {
+      throw new Error('Could not resolve user readingStates collection');
+    }
+    await readingStatesCol.doc(stateKey).set(payload, {merge: true});
+  } catch (err: unknown) {
+    const errMsg = formatFirestoreAdminError(err);
+    console.error(
+      `[BookService.recordReadSwipeReview] Error recording review timestamp for book '${bookId}':`,
+      errMsg,
+    );
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: `Failed to record review timestamp: ${errMsg}`,
+    });
+  }
+
+  return {success: true, id: bookId, stateKey, reviewedAt: resolvedReviewedAt};
 }
 
 /**
@@ -296,10 +567,20 @@ export async function deleteBook(
     );
   }
 
-  batch.update(libraryRef, {
+  const libDeleteUpdate = {
     bookCount: FieldValue.increment(-1),
     updatedAt: FieldValue.serverTimestamp(),
-  });
+  };
+  validateFirestoreWritePayload(
+    storedLibraryDocSchema.partial(),
+    libDeleteUpdate,
+    {
+      entity: 'StoredLibraryDoc',
+      documentPath: `/libraries/${libraryId}`,
+      operation: 'update',
+    },
+  );
+  batch.update(libraryRef, libDeleteUpdate);
 
   try {
     await batch.commit();
@@ -343,6 +624,7 @@ export async function batchUpsert(
     bookId: string;
     coreData?: Record<string, unknown>;
     heavyData?: Record<string, unknown>;
+    readingStatus?: ReadingStatusValue;
     merge?: boolean;
   }
 
@@ -556,13 +838,14 @@ export async function batchUpsert(
       ) {
         const isVirtualLib = libraryId.startsWith('virtual_');
         const rawData = (op.data || {}) as Record<string, unknown>;
+        const readingStatus =
+          (typeof rawData.readingStatus === 'string'
+            ? (rawData.readingStatus as ReadingStatusValue)
+            : undefined) ?? (isVirtualLib ? 'want_to_read' : undefined);
         const combinedInput: Record<string, unknown> = {
           ...rawData,
           ownershipStatus:
             rawData.ownershipStatus || (isVirtualLib ? 'unowned' : 'owned'),
-          ...(isVirtualLib && !rawData.status && !rawData.userStatuses
-            ? {status: 'want_to_read'}
-            : {}),
           ...(op.heavyData ? {heavyData: op.heavyData} : {}),
         };
         const {cleanCore, cleanHeavy} = BookPartitioner.partitionCreatePayload(
@@ -579,11 +862,17 @@ export async function batchUpsert(
             Object.keys(cleanHeavy).length > 0
               ? (cleanHeavy as Record<string, unknown>)
               : (op.heavyData as Record<string, unknown> | undefined),
+          ...(readingStatus ? {readingStatus} : {}),
           merge: op.merge,
         });
       } else {
+        const rawData = (op.data || {}) as Record<string, unknown>;
+        const readingStatus =
+          typeof rawData.readingStatus === 'string'
+            ? (rawData.readingStatus as ReadingStatusValue)
+            : undefined;
         const combinedUpdates: Record<string, unknown> = {
-          ...(op.data || {}),
+          ...rawData,
           ...(op.heavyData ? {heavyData: op.heavyData} : {}),
         };
         const {coreUpdates, heavyUpdates} =
@@ -600,6 +889,7 @@ export async function batchUpsert(
             Object.keys(heavyUpdates).length > 0
               ? heavyUpdates
               : (op.heavyData as Record<string, unknown> | undefined),
+          ...(readingStatus ? {readingStatus} : {}),
           merge: op.merge,
         });
       }
@@ -612,6 +902,7 @@ export async function batchUpsert(
         : db.collection('libraries').doc(libraryId).collection('books').doc()
             .id;
       const action = b.action || b.operation || (b.id ? 'upsert' : 'create');
+      const readingStatus = b.readingStatus;
 
       if (action === 'delete') {
         ops.push({type: 'delete', bookId});
@@ -633,6 +924,7 @@ export async function batchUpsert(
           coreData: coreUpdates,
           heavyData:
             Object.keys(heavyUpdates).length > 0 ? heavyUpdates : undefined,
+          ...(readingStatus ? {readingStatus} : {}),
         });
       } else {
         const {cleanCore, cleanHeavy} = BookPartitioner.partitionCreatePayload(
@@ -650,6 +942,7 @@ export async function batchUpsert(
             Object.keys(cleanHeavy).length > 0
               ? (cleanHeavy as Record<string, unknown>)
               : undefined,
+          ...(readingStatus ? {readingStatus} : {}),
           merge: action === 'upsert',
         });
       }
@@ -685,6 +978,32 @@ export async function batchUpsert(
           }
         } catch {
           // Non-fatal if reviews subcollection is empty or mocked
+        }
+      }),
+    );
+  }
+
+  // Pre-fetch existing book documents for partial update ops that mutate readingStatus
+  // so bookSnapshot and canonical isbn:<cleanIsbn> stateKey are never omitted.
+  const statusUpdateOpsNeedingBookData = userId
+    ? ops.filter(
+        op =>
+          op.readingStatus &&
+          op.type !== 'delete' &&
+          typeof op.coreData?.title !== 'string',
+      )
+    : [];
+  const existingBookDataByBookId = new Map<string, Record<string, unknown>>();
+  if (statusUpdateOpsNeedingBookData.length > 0) {
+    await Promise.all(
+      statusUpdateOpsNeedingBookData.map(async op => {
+        const existingData = await fetchExistingBookDataForSnapshot(
+          db,
+          libraryId,
+          op.bookId,
+        );
+        if (existingData) {
+          existingBookDataByBookId.set(op.bookId, existingData);
         }
       }),
     );
@@ -763,27 +1082,15 @@ export async function batchUpsert(
           typeof cleanUpdates.bookDetailsMetadata === 'object'
             ? {...(cleanUpdates.bookDetailsMetadata as Record<string, unknown>)}
             : {};
-        const nestedStatuses: Record<string, unknown> =
-          cleanUpdates.userStatuses &&
-          typeof cleanUpdates.userStatuses === 'object'
-            ? {...(cleanUpdates.userStatuses as Record<string, unknown>)}
-            : {};
         for (const k of Object.keys(cleanUpdates)) {
           if (k.startsWith('bookDetailsMetadata.')) {
             const subKey = k.slice('bookDetailsMetadata.'.length);
             nestedMeta[subKey] = cleanUpdates[k];
             delete cleanUpdates[k];
-          } else if (k.startsWith('userStatuses.')) {
-            const subKey = k.slice('userStatuses.'.length);
-            nestedStatuses[subKey] = cleanUpdates[k];
-            delete cleanUpdates[k];
           }
         }
         if (Object.keys(nestedMeta).length > 0) {
           cleanUpdates.bookDetailsMetadata = nestedMeta;
-        }
-        if (Object.keys(nestedStatuses).length > 0) {
-          cleanUpdates.userStatuses = nestedStatuses;
         }
         currentBatch.set(bookRef, cleanUpdates, {merge: true});
       } else {
@@ -808,6 +1115,40 @@ export async function batchUpsert(
       }
     }
 
+    if (userId && op.readingStatus && op.type !== 'delete') {
+      const readingStatesCol = getReadingStatesCollection(db, userId);
+      if (readingStatesCol) {
+        const existingData = existingBookDataByBookId.get(op.bookId) || {};
+        const baseData: Record<string, unknown> = {
+          ...existingData,
+          ...(op.coreData || {}),
+        };
+        const mergedBookData: Record<string, unknown> = {
+          ...baseData,
+          ...(op.heavyData || {}),
+        };
+        const {stateKey, payload} = buildReadingStateUpsertPayload({
+          userId,
+          bookId: op.bookId,
+          libraryId,
+          isbn: typeof baseData.isbn === 'string' ? baseData.isbn : undefined,
+          cleanIsbn:
+            typeof baseData.cleanIsbn === 'string'
+              ? baseData.cleanIsbn
+              : undefined,
+          status: op.readingStatus,
+          bookData:
+            typeof mergedBookData.title === 'string'
+              ? mergedBookData
+              : undefined,
+        });
+        currentBatch.set(readingStatesCol.doc(stateKey), payload, {
+          merge: true,
+        });
+        currentBatchOps++;
+      }
+    }
+
     if (currentBatchOps >= BATCH_LIMIT) {
       await currentBatch.commit();
       currentBatch = db.batch();
@@ -823,6 +1164,15 @@ export async function batchUpsert(
     if (netCountDelta !== 0) {
       libUpdatePayload.bookCount = FieldValue.increment(netCountDelta);
     }
+    validateFirestoreWritePayload(
+      storedLibraryDocSchema.partial(),
+      libUpdatePayload,
+      {
+        entity: 'StoredLibraryDoc',
+        documentPath: `/libraries/${libraryId}`,
+        operation: 'update',
+      },
+    );
     currentBatch.update(libraryRef, libUpdatePayload);
     currentBatchOps++;
   }
@@ -840,21 +1190,11 @@ export async function batchUpsert(
   };
 }
 
-const STATUS_RANK: Record<string, number> = {
-  completed: 5,
-  finished: 5,
-  reading: 4,
-  abandoned: 3,
-  want_to_read: 2,
-  unset: 1,
-};
-
 /**
  * Atomically merges a duplicate book group into a single survivor book:
- * 1. Unions `userStatuses` across all members (preserving highest-progress status per user).
- * 2. Migrates any `reviews` subcollection documents from duplicate books onto the survivor.
- * 3. Updates `books/{survivorBookId}` and `bookDetails/{survivorBookId}` with the user-selected `mergedFields`.
- * 4. Deletes all `duplicateBookIds` (plus their `bookDetails` and `reviews`) and decrements `bookCount`.
+ * 1. Migrates any `reviews` subcollection documents from duplicate books onto the survivor.
+ * 2. Updates `books/{survivorBookId}` and `bookDetails/{survivorBookId}` with the user-selected `mergedFields`.
+ * 3. Deletes all `duplicateBookIds` (plus their `bookDetails` and `reviews`) and decrements `bookCount`.
  */
 export async function mergeDuplicates(
   _userId: string,
@@ -902,92 +1242,25 @@ export async function mergeDuplicates(
     });
   }
 
-  const survivorData = (survivorSnap.data() || {}) as Record<string, unknown>;
-  const survivorRatings =
-    survivorData.userRatings &&
-    typeof survivorData.userRatings === 'object' &&
-    !Array.isArray(survivorData.userRatings)
-      ? (survivorData.userRatings as Record<string, number>)
-      : {};
-
-  // Union userStatuses (highest progress wins) and userRatings (survivor takes precedence, else highest rating)
-  const mergedUserStatuses: Record<string, string> = {};
-  const mergedUserRatings: Record<string, number> = {};
-  for (const snap of bookDocs) {
-    if (!snap?.exists) {
-      continue;
-    }
-    const data = (snap.data() || {}) as Record<string, unknown>;
-    const statuses =
-      data.userStatuses && typeof data.userStatuses === 'object'
-        ? (data.userStatuses as Record<string, string>)
-        : {};
-    for (const [uidKey, st] of Object.entries(statuses)) {
-      if (!st) {
-        continue;
-      }
-      const existingSt = mergedUserStatuses[uidKey];
-      const existingRank = existingSt ? STATUS_RANK[existingSt] || 0 : 0;
-      const nextRank = STATUS_RANK[st] || 0;
-      if (nextRank >= existingRank) {
-        mergedUserStatuses[uidKey] = st;
-      }
-    }
-
-    const ratings =
-      data.userRatings &&
-      typeof data.userRatings === 'object' &&
-      !Array.isArray(data.userRatings)
-        ? (data.userRatings as Record<string, number>)
-        : {};
-    for (const [uidKey, ratingVal] of Object.entries(ratings)) {
-      if (typeof ratingVal !== 'number' || ratingVal < 1) {
-        continue;
-      }
-      if (
-        typeof survivorRatings[uidKey] === 'number' &&
-        survivorRatings[uidKey] >= 1
-      ) {
-        mergedUserRatings[uidKey] = survivorRatings[uidKey];
-      } else {
-        const prev = mergedUserRatings[uidKey] ?? 0;
-        if (ratingVal > prev) {
-          mergedUserRatings[uidKey] = ratingVal;
-        }
-      }
-    }
-  }
+  const survivorData = bookDocConverter.fromFirestore(
+    survivorBookId,
+    (survivorSnap.data() || {}) as Record<string, unknown>,
+    `/libraries/${libraryId}/books/${survivorBookId}`,
+  );
 
   const combinedUpdates: Record<string, unknown> = {
     ...mergedFields,
   };
-  if (Object.keys(mergedUserStatuses).length > 0) {
-    combinedUpdates.userStatuses = mergedUserStatuses;
-  }
-  if (Object.keys(mergedUserRatings).length > 0) {
-    combinedUpdates.userRatings = mergedUserRatings;
-  }
 
   const {coreUpdates, heavyUpdates} = BookPartitioner.partitionUpdatePayload(
     combinedUpdates,
     FieldValue.serverTimestamp(),
     {
-      allowFullUserStatuses: true,
       existingBook: {
-        title:
-          typeof survivorData.title === 'string'
-            ? survivorData.title
-            : undefined,
-        author:
-          typeof survivorData.author === 'string'
-            ? survivorData.author
-            : undefined,
-        isbn:
-          typeof survivorData.isbn === 'string' ? survivorData.isbn : undefined,
-        series:
-          typeof survivorData.series === 'string'
-            ? survivorData.series
-            : undefined,
+        title: survivorData.title,
+        author: survivorData.author,
+        isbn: survivorData.isbn,
+        series: survivorData.series ?? undefined,
       },
     },
   );
@@ -1081,7 +1354,20 @@ export async function mergeDuplicates(
           const targetReviewRef = survivorBookRef
             .collection('reviews')
             .doc(reviewDoc.id);
-          batch.set(targetReviewRef, reviewDoc.data(), {merge: true});
+          const validatedReview = reviewDocConverter.fromFirestore(
+            reviewDoc.id,
+            reviewDoc.data() || {},
+          );
+          validateFirestoreWritePayload(
+            storedReviewDocSchema,
+            validatedReview,
+            {
+              entity: 'StoredReviewDoc',
+              documentPath: `/libraries/${libraryId}/books/${survivorBookId}/reviews/${reviewDoc.id}`,
+              operation: 'upsert',
+            },
+          );
+          batch.set(targetReviewRef, validatedReview, {merge: true});
           batch.delete(reviewDoc.ref);
           batchOps += 2;
           await commitBatchIfNeeded();
@@ -1095,10 +1381,20 @@ export async function mergeDuplicates(
       await commitBatchIfNeeded();
     }
 
-    batch.update(libraryRef, {
+    const libMergeUpdate = {
       bookCount: FieldValue.increment(-deletedCount),
       updatedAt: FieldValue.serverTimestamp(),
-    });
+    };
+    validateFirestoreWritePayload(
+      storedLibraryDocSchema.partial(),
+      libMergeUpdate,
+      {
+        entity: 'StoredLibraryDoc',
+        documentPath: `/libraries/${libraryId}`,
+        operation: 'update',
+      },
+    );
+    batch.update(libraryRef, libMergeUpdate);
     batchOps++;
 
     await commitBatchIfNeeded(true);

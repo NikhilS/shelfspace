@@ -1,6 +1,67 @@
 import fs from 'fs';
 import path from 'path';
 import {getAdminDb} from './firebaseAdmin';
+import {
+  SchemaValidationError,
+  validateFirestoreReadPayload,
+  validateFirestoreWritePayload,
+} from '../../schemas/common';
+import {
+  diskGeolocationCacheSchema,
+  storedGeolocationCacheDocSchema,
+  type StoredGeolocationCacheDoc,
+} from '../../schemas/geolocation';
+import {normalizeFirestoreTimestamp} from './book/bookPartitioner';
+
+export const geolocationCacheConverter = {
+  toFirestoreWrite(
+    slug: string,
+    input: {name: string; lat: number; lng: number; updatedAt: string},
+  ): StoredGeolocationCacheDoc {
+    const payload: StoredGeolocationCacheDoc = {
+      name: input.name,
+      lat: input.lat,
+      lng: input.lng,
+      updatedAt: input.updatedAt,
+    };
+    validateFirestoreWritePayload(storedGeolocationCacheDocSchema, payload, {
+      entity: 'StoredGeolocationCacheDoc',
+      documentPath: `geolocationCache/${slug}`,
+      operation: 'upsert',
+    });
+    return payload;
+  },
+
+  fromFirestore(
+    slug: string,
+    raw: Record<string, unknown>,
+  ): StoredGeolocationCacheDoc {
+    const updatedAt = normalizeFirestoreTimestamp(raw.updatedAt);
+    const candidate: Record<string, unknown> = {
+      ...raw,
+      id: slug,
+    };
+    if (updatedAt !== undefined) {
+      candidate.updatedAt = updatedAt;
+    } else {
+      delete candidate.updatedAt;
+    }
+    for (const k of Object.keys(candidate)) {
+      if (candidate[k] === undefined) {
+        delete candidate[k];
+      }
+    }
+    return validateFirestoreReadPayload(
+      storedGeolocationCacheDocSchema,
+      candidate,
+      {
+        entity: 'StoredGeolocationCacheDoc',
+        documentPath: `geolocationCache/${slug}`,
+        operation: 'read',
+      },
+    );
+  },
+};
 
 const cache = new Map<string, {lat: number; lng: number}>();
 
@@ -40,17 +101,18 @@ const CACHE_FILE = path.join(process.cwd(), '.cache', 'geocache.json');
 try {
   if (fs.existsSync(CACHE_FILE)) {
     const raw = fs.readFileSync(CACHE_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') {
-      for (const [k, v] of Object.entries(parsed)) {
-        if (
-          v &&
-          typeof (v as {lat: number; lng: number}).lat === 'number' &&
-          typeof (v as {lat: number; lng: number}).lng === 'number'
-        ) {
-          cache.set(k, v as {lat: number; lng: number});
-        }
-      }
+    const parsed = JSON.parse(raw) as unknown;
+    const validatedCache = validateFirestoreReadPayload(
+      diskGeolocationCacheSchema,
+      parsed,
+      {
+        entity: 'DiskGeolocationCache',
+        documentPath: '.cache/geocache.json',
+        operation: 'read',
+      },
+    );
+    for (const [k, v] of Object.entries(validatedCache)) {
+      cache.set(k, v);
     }
   }
 } catch {
@@ -67,6 +129,11 @@ function persistToDisk() {
     for (const [k, v] of cache.entries()) {
       obj[k] = v;
     }
+    validateFirestoreWritePayload(diskGeolocationCacheSchema, obj, {
+      entity: 'DiskGeolocationCache',
+      documentPath: '.cache/geocache.json',
+      operation: 'upsert',
+    });
     fs.writeFileSync(CACHE_FILE, JSON.stringify(obj), 'utf-8');
   } catch {
     // Non-fatal disk write error
@@ -131,15 +198,19 @@ export async function getCachedGeocode(
       const db = getAdminDb();
       const docSnap = await db.collection('geolocationCache').doc(slug).get();
       if (docSnap.exists) {
-        const data = docSnap.data();
-        if (typeof data?.lat === 'number' && typeof data?.lng === 'number') {
-          const coords = {lat: data.lat, lng: data.lng};
-          cache.set(slug, coords);
-          persistToDisk();
-          return coords;
-        }
+        const parsed = geolocationCacheConverter.fromFirestore(
+          slug,
+          (docSnap.data() || {}) as Record<string, unknown>,
+        );
+        const coords = {lat: parsed.lat, lng: parsed.lng};
+        cache.set(slug, coords);
+        persistToDisk();
+        return coords;
       }
     } catch (err) {
+      if (err instanceof SchemaValidationError) {
+        throw err;
+      }
       if (isPermissionOrUnavailableError(err)) {
         // Quietly trip circuit breaker; rely on in-memory and disk caching
         firestoreL2Disabled = true;
@@ -185,11 +256,12 @@ export async function warmGeocodeCacheBulk(names: string[]): Promise<void> {
       const slug = missingSlugs[i];
       const docSnap = snaps[i];
       if (docSnap?.exists) {
-        const data = docSnap.data();
-        if (typeof data?.lat === 'number' && typeof data?.lng === 'number') {
-          cache.set(slug, {lat: data.lat, lng: data.lng});
-          updatedDisk = true;
-        }
+        const parsed = geolocationCacheConverter.fromFirestore(
+          slug,
+          (docSnap.data() || {}) as Record<string, unknown>,
+        );
+        cache.set(slug, {lat: parsed.lat, lng: parsed.lng});
+        updatedDisk = true;
       }
     }
 
@@ -197,6 +269,9 @@ export async function warmGeocodeCacheBulk(names: string[]): Promise<void> {
       persistToDisk();
     }
   } catch (err) {
+    if (err instanceof SchemaValidationError) {
+      throw err;
+    }
     if (isPermissionOrUnavailableError(err)) {
       firestoreL2Disabled = true;
     }
@@ -257,18 +332,21 @@ export async function cacheGeocodesBulk(
         for (const item of chunk) {
           batch.set(
             col.doc(item.slug),
-            {
+            geolocationCacheConverter.toFirestoreWrite(item.slug, {
               name: item.name,
               lat: item.coordinates.lat,
               lng: item.coordinates.lng,
               updatedAt: nowIso,
-            },
+            }),
             {merge: true},
           );
         }
         await batch.commit();
       }
     } catch (err) {
+      if (err instanceof SchemaValidationError) {
+        throw err;
+      }
       if (isPermissionOrUnavailableError(err)) {
         firestoreL2Disabled = true;
       }

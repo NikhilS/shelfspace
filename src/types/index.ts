@@ -9,10 +9,34 @@ import type {
   BookDetailsMetadata,
   ClusterCoordinates,
   BookDetailsPayload,
+  StoredBookDetailsDoc,
+  StoredBookDoc,
+  StoredReviewDoc,
   BookReviewRecord,
+  UserReadingState,
+  StoredUserReadingStateDoc,
+  UserReadingStateBookSnapshot,
 } from '../schemas/book';
+import type {
+  StoredLibraryDoc,
+  StoredAllowedDuplicateDoc,
+  StoredUserProfileDoc,
+  UserProfile,
+} from '../schemas/libraryApi';
+import type {
+  StoredAllowlistUserDoc,
+  StoredWaitlistEntryDoc,
+} from '../schemas/waitlist';
+import type {
+  GeolocationCoordinates,
+  StoredGeolocationCacheDoc,
+  DiskGeolocationCache,
+} from '../schemas/geolocation';
+import {computeReadingStateKey} from '../schemas/book';
 
 export * from './metadata';
+
+export {computeReadingStateKey};
 
 export type {
   BookDetails,
@@ -25,7 +49,22 @@ export type {
   BookDetailsMetadata,
   ClusterCoordinates,
   BookDetailsPayload,
+  StoredBookDetailsDoc,
+  StoredBookDoc,
+  StoredReviewDoc,
   BookReviewRecord,
+  UserReadingState,
+  StoredUserReadingStateDoc,
+  UserReadingStateBookSnapshot,
+  StoredLibraryDoc,
+  StoredAllowedDuplicateDoc,
+  StoredUserProfileDoc,
+  UserProfile,
+  StoredAllowlistUserDoc,
+  StoredWaitlistEntryDoc,
+  GeolocationCoordinates,
+  StoredGeolocationCacheDoc,
+  DiskGeolocationCache,
 };
 
 export interface Timestamp {
@@ -59,17 +98,9 @@ export interface Library {
   canEdit?: boolean;
 }
 
-export interface UserStatuses {
-  [userId: string]: ReadingStatusValue;
-}
-
-export interface UserRatings {
-  [userId: string]: number;
-}
-
 export interface Book extends Omit<
   BookDetails,
-  'synopsis' | 'authorBio' | 'isbn' | 'coverUrl' | 'publishedDate' | 'status'
+  'synopsis' | 'authorBio' | 'isbn' | 'coverUrl' | 'publishedDate'
 > {
   id: string;
   libraryId?: string;
@@ -77,16 +108,16 @@ export interface Book extends Omit<
   isVirtual?: boolean;
   readingStatus?: ReadingStatusValue;
   userRating?: number;
+  readStatusReviewedAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
   isbn?: string;
   coverUrl?: string;
   publishedDate?: string;
-  status?: ReadingStatusValue;
   ownershipStatus?: OwnershipStatus;
   addedBy?: string | null;
   addedAt: FirestoreDate;
   updatedAt?: FirestoreDate;
-  userStatuses?: UserStatuses;
-  userRatings?: UserRatings;
   geoMetadata?: BookGeoMetadata;
   temporalMetadata?: BookTemporalMetadata;
   enrichmentStatus?: BookEnrichmentStatus;

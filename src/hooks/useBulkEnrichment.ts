@@ -581,10 +581,11 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
           void connectSseStream(libraryId, snap.jobId);
         }
       } else if (enrichmentClient?.trigger?.mutate) {
+        const triggerBatchIds = bookIds.slice(0, 100);
         const response = await enrichmentClient.trigger.mutate({
           libraryId,
           enrichmentType: canonicalType,
-          bookIds,
+          bookIds: triggerBatchIds,
           overwrite,
           customGenres,
         });

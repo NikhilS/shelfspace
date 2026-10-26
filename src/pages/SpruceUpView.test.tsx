@@ -80,6 +80,15 @@ vi.mock('../lib/trpc', () => ({
       delete: {mutate: vi.fn()},
       batchUpsert: {mutate: vi.fn()},
     },
+    enrichment: {
+      auditPlaceholderCovers: {
+        mutate: vi.fn().mockResolvedValue({
+          scannedCount: 1,
+          clearedCount: 1,
+          clearedBookIds: ['1'],
+        }),
+      },
+    },
   },
 }));
 
@@ -117,5 +126,45 @@ describe('SpruceUpView', () => {
     expect(
       await screen.findByText('Optimize Library Storage'),
     ).toBeInTheDocument();
+  });
+
+  it('auto-scans Google Books cover URLs when opening Shelf Care and invalidates book list when placeholders are cleared', async () => {
+    const {trpc, trpcVanilla} = await import('../lib/trpc');
+    vi.mocked(trpc.book.list.useQuery).mockReturnValue({
+      data: {
+        books: [
+          {
+            id: '1',
+            title: 'Placeholder Cover Book',
+            author: 'Frank Herbert',
+            isbn: '123',
+            coverUrl:
+              'https://books.google.com/books/content?id=QRlkvgEACAAJ&printsec=frontcover&img=1&zoom=3&source=gbs_api',
+            enrichmentStatus: {coverImage: 'completed'},
+            addedAt: '2025-01-01T00:00:00Z',
+            addedBy: 'u1',
+          },
+        ],
+      },
+      isLoading: false,
+    } as unknown as ReturnType<typeof trpc.book.list.useQuery>);
+
+    const queryClient = new QueryClient({
+      defaultOptions: {queries: {retry: false}},
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/library/123/spruce-up']}>
+          <Routes>
+            <Route path="/library/:id/spruce-up" element={<SpruceUpView />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Shelf Care')).toBeInTheDocument();
+    expect(
+      trpcVanilla.enrichment.auditPlaceholderCovers.mutate,
+    ).toHaveBeenCalledWith({libraryId: '123'});
   });
 });

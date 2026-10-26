@@ -171,13 +171,13 @@ describe('librarySpruceService — Image Upload & Magic-Byte Validation (SEC-02)
     ).toBe(true);
   });
 
-  it('backfills cleanIsbn, dedupeKey, and searchTokens during resetMetadata sanitize', async () => {
+  it('backfills cleanIsbn, dedupeKey, and searchTokens and partitions heavy fields during resetMetadata sanitize', async () => {
     mockBooksSnapshotGet.mockResolvedValueOnce({
       empty: false,
       docs: [
         {
-          id: 'legacy-book-1',
-          ref: {id: 'legacy-book-1'},
+          id: 'book-1',
+          ref: {id: 'book-1'},
           data: () => ({
             title: 'The Left Hand of Darkness',
             author: 'Ursula K. Le Guin',
@@ -220,6 +220,74 @@ describe('librarySpruceService — Image Upload & Magic-Byte Validation (SEC-02)
         synopsis: 'A winter planet story',
       }),
       {merge: true},
+    );
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('detects 9,103-byte Google Books placeholder covers and clears coverUrl, coverUrlRaw, and enrichmentStatus.coverImage', async () => {
+    const {auditPlaceholderCovers} = await import('./librarySpruceService');
+    const {catalogOrchestrator} = await import('../catalog');
+
+    const placeholderUrl =
+      'https://books.google.com/books/content?id=QRlkvgEACAAJ&printsec=frontcover&img=1&zoom=3&source=gbs_api';
+    const validGoogleUrl =
+      'https://books.google.com/books/content?id=VALID123&printsec=frontcover&img=1&zoom=3&source=gbs_api';
+
+    vi.spyOn(catalogOrchestrator, 'verifyCoverUrl').mockImplementation(
+      async (url: string) => url !== placeholderUrl,
+    );
+
+    const placeholderDocRef = {id: 'book-placeholder'};
+    const validDocRef = {id: 'book-valid'};
+
+    mockBooksSnapshotGet.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'book-placeholder',
+          ref: placeholderDocRef,
+          data: () => ({
+            title: 'Empty Cover Book',
+            author: 'Author A',
+            coverUrl: placeholderUrl,
+            coverUrlRaw: placeholderUrl,
+            enrichmentStatus: {coverImage: 'completed'},
+          }),
+        },
+        {
+          id: 'book-valid',
+          ref: validDocRef,
+          data: () => ({
+            title: 'Valid Cover Book',
+            author: 'Author B',
+            coverUrl: validGoogleUrl,
+            enrichmentStatus: {coverImage: 'completed'},
+          }),
+        },
+      ],
+    });
+
+    const result = await auditPlaceholderCovers(
+      'u1',
+      'u1@example.com',
+      'lib1',
+      {skipAccessCheck: true},
+    );
+
+    expect(result).toEqual({
+      scannedCount: 2,
+      clearedCount: 1,
+      clearedBookIds: ['book-placeholder'],
+    });
+
+    expect(mockBatchUpdate).toHaveBeenCalledTimes(1);
+    expect(mockBatchUpdate).toHaveBeenCalledWith(
+      placeholderDocRef,
+      expect.objectContaining({
+        coverUrl: 'MOCK_DELETE_FIELD',
+        coverUrlRaw: 'MOCK_DELETE_FIELD',
+        'enrichmentStatus.coverImage': 'MOCK_DELETE_FIELD',
+      }),
     );
     expect(mockBatchCommit).toHaveBeenCalledTimes(1);
   });

@@ -3,6 +3,7 @@ import {Link} from 'react-router-dom';
 import {Compass, ArrowRight} from 'lucide-react';
 import {Badge} from '@/components/ui/badge';
 import {preloadRouteChunk} from '../../lib/routePreload';
+import {partitionUnreadSwipeBooks} from '../../pages/read-swipe/readSwipeMath';
 import type {Book} from '../../types';
 
 interface ExplorePerspectivesStripProps {
@@ -11,6 +12,8 @@ interface ExplorePerspectivesStripProps {
   heading?: string;
   subtitle?: string;
   ariaLabel?: string;
+  showReadSwipe?: boolean;
+  currentUserId?: string | null;
 }
 
 export function ExplorePerspectivesStrip({
@@ -19,6 +22,7 @@ export function ExplorePerspectivesStrip({
   heading = 'Explore The Collection',
   subtitle = 'Explore your books across history, geography, and theme',
   ariaLabel = 'Explore Collection Visualizers',
+  showReadSwipe,
 }: ExplorePerspectivesStripProps) {
   const temporalBooksCount = useMemo(() => {
     return books.filter(
@@ -52,6 +56,20 @@ export function ExplorePerspectivesStrip({
     ? basePath.slice(0, -1)
     : basePath;
 
+  const isReadSwipeVisible =
+    showReadSwipe ?? normalizedBase.startsWith('/library/');
+
+  const swipePoolStats = useMemo(() => {
+    if (!isReadSwipeVisible) {
+      return {readyCount: 0, recentlyCheckedCount: 0};
+    }
+    const {readyBooks, recentlyCheckedBooks} = partitionUnreadSwipeBooks(books);
+    return {
+      readyCount: readyBooks.length,
+      recentlyCheckedCount: recentlyCheckedBooks.length,
+    };
+  }, [books, isReadSwipeVisible]);
+
   return (
     <section aria-label={ariaLabel}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-3.5">
@@ -63,7 +81,7 @@ export function ExplorePerspectivesStrip({
             size="sm"
             className="hidden sm:inline-flex font-label-caps-sm text-label-caps-sm tracking-wider uppercase text-on-surface-variant/70 bg-surface-container-high/60 border-outline-variant/20"
           >
-            3 Perspectives
+            {isReadSwipeVisible ? '4 Perspectives' : '3 Perspectives'}
           </Badge>
         </div>
         <p className="hidden md:block font-sans text-xs text-on-surface-variant">
@@ -71,12 +89,19 @@ export function ExplorePerspectivesStrip({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+      <div
+        className={
+          isReadSwipeVisible
+            ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5'
+            : 'grid grid-cols-1 md:grid-cols-3 gap-3.5'
+        }
+      >
         {/* Option 1: Timeline */}
         <Link
           to={`${normalizedBase}/timeline`}
           onMouseEnter={() => preloadRouteChunk('timeline')}
           onFocus={() => preloadRouteChunk('timeline')}
+          onTouchStart={() => preloadRouteChunk('timeline')}
           className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
         >
           {/* Visual Watermark: Monoline Ink + Terracotta Chronological Axis */}
@@ -186,6 +211,7 @@ export function ExplorePerspectivesStrip({
           to={`${normalizedBase}/map`}
           onMouseEnter={() => preloadRouteChunk('worldMap')}
           onFocus={() => preloadRouteChunk('worldMap')}
+          onTouchStart={() => preloadRouteChunk('worldMap')}
           className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
         >
           {/* Visual Watermark: Monoline Ink + Terracotta Cartographic Globe */}
@@ -278,6 +304,7 @@ export function ExplorePerspectivesStrip({
           to={`${normalizedBase}/constellation`}
           onMouseEnter={() => preloadRouteChunk('constellation')}
           onFocus={() => preloadRouteChunk('constellation')}
+          onTouchStart={() => preloadRouteChunk('constellation')}
           className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
         >
           {/* Visual Watermark: Monoline Ink + Terracotta Stellar Cluster */}
@@ -361,6 +388,115 @@ export function ExplorePerspectivesStrip({
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
           </div>
         </Link>
+
+        {/* Option 4: Have You Read It? (Swipe Deck) */}
+        {isReadSwipeVisible && (
+          <Link
+            to={`${normalizedBase}/swipe`}
+            onMouseEnter={() => preloadRouteChunk('readSwipe')}
+            onFocus={() => preloadRouteChunk('readSwipe')}
+            onTouchStart={() => preloadRouteChunk('readSwipe')}
+            className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
+          >
+            {/* Visual Watermark: Monoline Ink + Terracotta Tilted Monograph Cards & Stamp */}
+            <svg
+              className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/22 pointer-events-none group-hover:text-on-surface/35 transition-colors"
+              viewBox="0 0 144 80"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              {/* Back card in stack */}
+              <rect
+                x="76"
+                y="24"
+                width="32"
+                height="44"
+                rx="3.5"
+                transform="rotate(-7 92 46)"
+                className="fill-surface stroke-current"
+                opacity="0.65"
+              />
+              {/* Top card swiping right */}
+              <g transform="rotate(8 106 44)">
+                <rect
+                  x="90"
+                  y="20"
+                  width="32"
+                  height="44"
+                  rx="3.5"
+                  className="fill-primary/15 stroke-primary"
+                  strokeWidth="1.6"
+                />
+                <line
+                  x1="96"
+                  y1="30"
+                  x2="114"
+                  y2="30"
+                  className="stroke-primary/60"
+                  strokeWidth="1.3"
+                />
+                <line
+                  x1="96"
+                  y1="35"
+                  x2="108"
+                  y2="35"
+                  className="stroke-primary/45"
+                  strokeWidth="1.2"
+                />
+                {/* Checkmark stamp */}
+                <circle
+                  cx="106"
+                  cy="49"
+                  r="7"
+                  className="fill-primary/25 stroke-primary"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M102.8 49.2L105.1 51.5L109.5 46.8"
+                  className="stroke-primary"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+              {/* Motion arc */}
+              <path
+                d="M52 54C62 46 72 44 84 45"
+                strokeDasharray="2.5 2.5"
+                opacity="0.65"
+              />
+            </svg>
+
+            <div className="relative z-10">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <h3 className="font-serif text-base font-semibold text-on-surface group-hover:text-primary transition-colors truncate">
+                  Have You Read It?
+                </h3>
+                <Badge
+                  variant="outline"
+                  size="sm"
+                  className="font-medium text-on-surface-variant bg-surface-container border-outline-variant/40 flex-shrink-0 whitespace-nowrap tabular-nums"
+                >
+                  {swipePoolStats.readyCount > 0
+                    ? `${swipePoolStats.readyCount} Unread`
+                    : swipePoolStats.recentlyCheckedCount > 0
+                      ? 'Checked Recently'
+                      : 'All Sorted'}
+                </Badge>
+              </div>
+              <p className="font-sans text-xs text-on-surface-variant line-clamp-1 leading-snug">
+                Swipe through unread books at random
+              </p>
+            </div>
+
+            <div className="relative z-10 mt-3 pt-2.5 border-t border-outline-variant/15 flex items-center justify-between text-xs font-sans font-medium text-primary">
+              <span className="group-hover:underline">Start Swiping</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+        )}
       </div>
     </section>
   );

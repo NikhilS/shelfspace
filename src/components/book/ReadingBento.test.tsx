@@ -144,14 +144,14 @@ describe('ReadingBento', () => {
     );
 
     expect(
-      screen.getByText('From Your Shelves · Unread Pick'),
+      screen.getByText('From Your Libraries · Shared Family Library'),
     ).toBeInTheDocument();
     expect(screen.getByText('The Dispossessed')).toBeInTheDocument();
     expect(
       screen.getByText(/Ursula K\. Le Guin · Shared Family Library/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('An ambiguous utopia across twin worlds.'),
+      screen.getByText(/An ambiguous utopia across twin worlds\./),
     ).toBeInTheDocument();
   });
 
@@ -166,8 +166,6 @@ describe('ReadingBento', () => {
       </MemoryRouter>,
     );
 
-    expect(
-      screen.queryByText('From Your Shelves · Unread Pick'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/From Your Libraries/)).not.toBeInTheDocument();
   });
 });

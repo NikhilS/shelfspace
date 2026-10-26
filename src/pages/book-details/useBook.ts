@@ -115,9 +115,31 @@ export function useBook(
     }
     const cachedData = utils.book?.list?.getData?.({libraryId});
     const cachedBooks = extractBookList(cachedData);
-    return cachedBooks?.find(b => b.id === bookId) as
+    const fromLibraryList = cachedBooks?.find(b => b.id === bookId) as
       FullBookRecord | undefined;
-  }, [libraryId, bookId, utils.book]);
+    if (fromLibraryList) {
+      return fromLibraryList;
+    }
+    const readingTrackerUtils = (
+      utils as {
+        readingTracker?: {
+          getShelf?: {getData?: () => unknown};
+        };
+      }
+    ).readingTracker;
+    const shelfData = readingTrackerUtils?.getShelf?.getData?.();
+    const shelfBooks = extractBookList(shelfData);
+    return shelfBooks?.find(b => b.id === bookId) as FullBookRecord | undefined;
+  }, [libraryId, bookId, utils]);
+
+  const hasFullCachedDetail = Boolean(
+    libraryId &&
+    bookId &&
+    utils.book?.get?.getData?.({
+      libraryId,
+      bookId,
+    }),
+  );
 
   const trpcBookQuery = trpc.book.get.useQuery(
     {libraryId: libraryId || '', bookId: bookId || ''},
@@ -127,6 +149,7 @@ export function useBook(
         resolveCachedBook() as unknown as ReturnType<
           typeof utils.book.get.getData
         >,
+      initialDataUpdatedAt: hasFullCachedDetail ? undefined : 0,
       staleTime: 1000 * 60 * 5,
     },
   );
@@ -266,23 +289,16 @@ export function useBook(
       if (!libraryId || !bookId || !user) {
         return;
       }
-      const updates = {[`userStatuses.${user.uid}`]: status};
       await instrumentMutation(
         'update',
-        `libraries/${libraryId}/books/${bookId}`,
-        updates,
+        `users/${user.uid}/readingStates`,
+        {libraryId, bookId, status},
         () =>
-          trpcVanilla.book.updateStatus
-            ? trpcVanilla.book.updateStatus.mutate({
-                libraryId,
-                bookId,
-                status,
-              })
-            : trpcVanilla.book.update.mutate({
-                libraryId,
-                bookId,
-                updates,
-              }),
+          trpcVanilla.book.updateStatus.mutate({
+            libraryId,
+            bookId,
+            status,
+          }),
       );
     },
     onMutate: async newStatus => {
@@ -292,14 +308,7 @@ export function useBook(
       const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
       const prevList = utils.book?.list?.getData?.({libraryId});
 
-      const nextUserStatuses = {
-        ...((prevBook as FullBookRecord | undefined)?.userStatuses ||
-          book?.userStatuses ||
-          {}),
-        [user.uid]: newStatus,
-      };
-
-      applyOptimisticBookPatch({userStatuses: nextUserStatuses});
+      applyOptimisticBookPatch({readingStatus: newStatus});
 
       return {prevBook, prevList};
     },

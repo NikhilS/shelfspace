@@ -22,22 +22,37 @@ console.info(
 );
 
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
+  if (import.meta.env.DEV) {
     void navigator.serviceWorker
-      .register('/sw.js', {scope: '/'})
-      .then(() => {
-        const schedule =
-          'requestIdleCallback' in window
-            ? window.requestIdleCallback
-            : (cb: () => void) => setTimeout(cb, 1500);
-        schedule(() => {
-          preloadAllRouteChunks();
+      .getRegistrations()
+      .then(registrations =>
+        Promise.all(registrations.map(reg => reg.unregister())),
+      )
+      .catch(() => {});
+    if ('caches' in window) {
+      void caches
+        .keys()
+        .then(keys => Promise.all(keys.map(key => caches.delete(key))))
+        .catch(() => {});
+    }
+  } else {
+    window.addEventListener('load', () => {
+      void navigator.serviceWorker
+        .register('/sw.js', {scope: '/'})
+        .then(() => {
+          const schedule =
+            'requestIdleCallback' in window
+              ? window.requestIdleCallback
+              : (cb: () => void) => setTimeout(cb, 1500);
+          schedule(() => {
+            preloadAllRouteChunks();
+          });
+        })
+        .catch(err => {
+          console.warn('[boot] Service Worker registration skipped:', err);
         });
-      })
-      .catch(err => {
-        console.warn('[boot] Service Worker registration skipped:', err);
-      });
-  });
+    });
+  }
 }
 
 const rootElement = document.getElementById('root');

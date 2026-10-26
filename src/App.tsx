@@ -78,6 +78,9 @@ const AdminDashboard = lazyWithRetry(() =>
 const TimelineView = lazyWithRetry(() =>
   import('./pages/TimelineView').then(m => ({default: m.TimelineView})),
 );
+const ReadSwipeView = lazyWithRetry(() =>
+  import('./pages/ReadSwipeView').then(m => ({default: m.ReadSwipeView})),
+);
 
 function LoadingScreen() {
   return (
@@ -224,6 +227,15 @@ function AnimatedRoutes() {
             element={
               <RequireLibraryPermission requires="viewer">
                 <TimelineView />
+              </RequireLibraryPermission>
+            }
+          />
+
+          <Route
+            path="/library/:id/swipe"
+            element={
+              <RequireLibraryPermission requires="viewer">
+                <ReadSwipeView />
               </RequireLibraryPermission>
             }
           />

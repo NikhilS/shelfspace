@@ -1,19 +1,32 @@
 import {getAdminDb} from '../firebaseAdmin';
-import {FieldPath} from 'firebase-admin/firestore';
 import {TRPCError} from '@trpc/server';
 import {LibraryService} from '../library';
 import type {
   Book,
   BookDetailsPayload,
   BookDetailsMetadata,
+  StoredBookDetailsDoc,
 } from '../../../types';
-import {BookPartitioner} from './bookPartitioner';
+import {
+  BookPartitioner,
+  bookDocConverter,
+  bookDetailsDocConverter,
+} from './bookPartitioner';
+import {
+  computeReadingStateKey,
+  fetchUserReadingStateForBook,
+  fetchUserReadingStatesMap,
+  overlayReadingStateOnBook,
+} from './readingStateLedger';
+import {validateFirestoreWritePayload} from '../../../schemas/common';
+import {storedLibraryDocSchema} from '../../../schemas/libraryApi';
 
 /**
- * Retrieves a single book by ID, optionally merging partitioned heavy metadata.
+ * Retrieves a single book by ID, optionally merging partitioned heavy metadata
+ * and overlaying the caller's personal reading state from `/users/{userId}/readingStates/{stateKey}`.
  */
 export async function getBook(
-  _userId: string,
+  userId: string,
   libraryId: string,
   bookId: string,
 ): Promise<Book> {
@@ -52,13 +65,28 @@ export async function getBook(
     });
   }
 
-  const bookData = (bookSnap.data() || {}) as Partial<Book>;
-  const heavyData: BookDetailsPayload =
+  const rawBookData = (bookSnap.data() || {}) as Record<string, unknown>;
+  const bookData = bookDocConverter.fromFirestore(
+    bookSnap.id,
+    rawBookData,
+    `/libraries/${libraryId}/books/${bookSnap.id}`,
+  );
+  const heavyData: StoredBookDetailsDoc =
     detailSnap && detailSnap.exists
-      ? ((detailSnap.data() || {}) as BookDetailsPayload)
+      ? bookDetailsDocConverter.fromFirestore(
+          bookSnap.id,
+          (detailSnap.data() || {}) as Record<string, unknown>,
+          `/libraries/${libraryId}/bookDetails/${bookSnap.id}`,
+        )
       : {};
 
-  return BookPartitioner.mergeBookAndDetails(bookSnap.id, bookData, heavyData);
+  const merged = BookPartitioner.mergeBookAndDetails(
+    bookSnap.id,
+    bookData,
+    heavyData,
+  );
+  const state = await fetchUserReadingStateForBook(db, userId, merged);
+  return overlayReadingStateOnBook(merged, state);
 }
 
 /**
@@ -80,7 +108,7 @@ export interface ListBooksOptions {
  * and self-healing parent library bookCount reconciliation when out of sync.
  */
 export async function listBooks(
-  _userId: string,
+  userId: string,
   libraryId: string,
   options?: ListBooksOptions,
 ): Promise<{books: Book[]; nextCursor?: string; totalCount?: number}> {
@@ -92,18 +120,12 @@ export async function listBooks(
   let query: FirebaseFirestore.Query = booksCollection;
 
   let appliedNativeWhereFilter = false;
-  if (typeof (query as {where?: unknown}).where === 'function') {
-    if (options?.filters?.status && _userId) {
-      query = query.where(
-        new FieldPath('userStatuses', _userId),
-        '==',
-        options.filters.status,
-      );
-      appliedNativeWhereFilter = true;
-    } else if (options?.filters?.primaryGenre) {
-      query = query.where('primaryGenre', '==', options.filters.primaryGenre);
-      appliedNativeWhereFilter = true;
-    }
+  if (
+    typeof (query as {where?: unknown}).where === 'function' &&
+    options?.filters?.primaryGenre
+  ) {
+    query = query.where('primaryGenre', '==', options.filters.primaryGenre);
+    appliedNativeWhereFilter = true;
   }
 
   if (!appliedNativeWhereFilter) {
@@ -127,14 +149,14 @@ export async function listBooks(
 
   const limitCount = options?.limit ?? 1000;
   const hasMissingFilter = Boolean(options?.filters?.missingMetadata);
+  const hasStatusFilter = Boolean(options?.filters?.status);
   const hasAnyFilter = Boolean(
-    hasMissingFilter ||
-    options?.filters?.primaryGenre ||
-    options?.filters?.status,
+    hasMissingFilter || options?.filters?.primaryGenre || hasStatusFilter,
   );
-  const fetchLimit = hasMissingFilter
-    ? Math.min(2000, limitCount * 3)
-    : limitCount + 1;
+  const fetchLimit =
+    hasMissingFilter || hasStatusFilter
+      ? Math.min(2000, limitCount * 3)
+      : limitCount + 1;
   if (!appliedNativeWhereFilter) {
     query = query.limit(fetchLimit);
   }
@@ -158,29 +180,24 @@ export async function listBooks(
           .catch(() => undefined)
       : Promise.resolve(undefined);
 
-  const [snapshot, aggregatedCount] = await Promise.all([
+  const [snapshot, aggregatedCount, readingStatesMap] = await Promise.all([
     query.get(),
     countAggregatePromise,
+    fetchUserReadingStatesMap(db, userId),
   ]);
 
   let rawDocs = snapshot.docs || [];
 
-  // If a native .where() filter returned 0 docs, check targeted legacy status or case-insensitive primaryGenre
-  if (appliedNativeWhereFilter && rawDocs.length === 0) {
+  // If a native .where() filter on primaryGenre returned 0 docs, fall back for case-insensitive matching
+  if (
+    appliedNativeWhereFilter &&
+    rawDocs.length === 0 &&
+    options?.filters?.primaryGenre
+  ) {
     try {
-      if (options?.filters?.status) {
-        const legacyStatusSnap = await booksCollection
-          .where('status', '==', options.filters.status)
-          .limit(fetchLimit)
-          .get();
-        if (legacyStatusSnap?.docs && legacyStatusSnap.docs.length > 0) {
-          rawDocs = legacyStatusSnap.docs;
-        }
-      } else if (options?.filters?.primaryGenre) {
-        const fallbackSnap = await booksCollection.limit(fetchLimit).get();
-        if (fallbackSnap?.docs && fallbackSnap.docs.length > 0) {
-          rawDocs = fallbackSnap.docs;
-        }
+      const fallbackSnap = await booksCollection.limit(fetchLimit).get();
+      if (fallbackSnap?.docs && fallbackSnap.docs.length > 0) {
+        rawDocs = fallbackSnap.docs;
       }
     } catch {
       // Keep empty result if fallback fails
@@ -209,8 +226,19 @@ export async function listBooks(
   }
 
   let books: Book[] = rawDocs.map(doc => {
-    const data = (doc.data() || {}) as Partial<Book>;
-    return BookPartitioner.mergeBookAndDetails(doc.id, data);
+    const raw = (doc.data() || {}) as Record<string, unknown>;
+    const data = bookDocConverter.fromFirestore(
+      doc.id,
+      raw,
+      `/libraries/${libraryId}/books/${doc.id}`,
+    );
+    const merged = BookPartitioner.mergeBookAndDetails(doc.id, data);
+    const stateKey = computeReadingStateKey({
+      isbn: merged.isbn,
+      cleanIsbn: merged.cleanIsbn,
+      bookId: merged.id,
+    });
+    return overlayReadingStateOnBook(merged, readingStatesMap.get(stateKey));
   });
 
   if (appliedNativeWhereFilter) {
@@ -234,11 +262,7 @@ export async function listBooks(
 
   if (options?.filters?.status) {
     const targetStatus = options.filters.status;
-    books = books.filter(
-      b =>
-        b.status === targetStatus ||
-        (_userId && b.userStatuses?.[_userId] === targetStatus),
-    );
+    books = books.filter(b => b.readingStatus === targetStatus);
   }
 
   if (options?.filters?.missingMetadata) {
@@ -321,9 +345,17 @@ export async function listBooks(
         update?: (data: Record<string, unknown>) => Promise<unknown>;
       };
       if (typeof libRef?.update === 'function') {
-        void Promise.resolve(
-          libRef.update({bookCount: authoritativeTotalCount}),
-        ).catch(() => {});
+        const healPayload = {bookCount: authoritativeTotalCount};
+        validateFirestoreWritePayload(
+          storedLibraryDocSchema.partial(),
+          healPayload,
+          {
+            entity: 'StoredLibraryDoc',
+            documentPath: `/libraries/${libraryId}`,
+            operation: 'update',
+          },
+        );
+        void Promise.resolve(libRef.update(healPayload)).catch(() => {});
       }
     } catch {
       // Non-fatal background reconciliation
@@ -377,7 +409,11 @@ export async function getBookDetailsChunk(
   const details: Record<string, BookDetailsPayload> = {};
   snaps.forEach(snap => {
     if (snap.exists) {
-      details[snap.id] = (snap.data() || {}) as BookDetailsPayload;
+      details[snap.id] = bookDetailsDocConverter.fromFirestore(
+        snap.id,
+        (snap.data() || {}) as Record<string, unknown>,
+        `/libraries/${libraryId}/bookDetails/${snap.id}`,
+      );
     }
   });
 

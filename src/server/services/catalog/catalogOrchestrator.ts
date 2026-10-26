@@ -33,6 +33,8 @@ const BATCH_DEFAULT_MAX_WAIT_MS = 4500;
 const INTERACTIVE_PROVIDER_TIMEOUT_MS = 3200;
 const BATCH_PROVIDER_TIMEOUT_MS = 5500;
 
+export const GOOGLE_BOOKS_PLACEHOLDER_BYTE_LENGTH = 9103;
+
 const COVER_TIER_SCORE: Record<'ultra' | 'high' | 'standard', number> = {
   ultra: 300,
   high: 200,
@@ -126,8 +128,8 @@ export class CatalogOrchestrator {
   }
 
   /**
-   * Verifies cover URLs from CDNs that may return 404 or 1x1 blank pixel images
-   * (e.g., Penguin Random House ISBN CDN or Open Library without default=false).
+   * Verifies cover URLs from CDNs that may return 404, 1x1 blank pixel images,
+   * or Google Books' 9,103-byte grey "image not available" placeholder PNG.
    */
   async verifyCoverUrl(url: string, signal?: AbortSignal): Promise<boolean> {
     if (!url || !url.startsWith('http')) {
@@ -138,7 +140,11 @@ export class CatalogOrchestrator {
       return cached.value;
     }
 
+    const isGoogleBooksCover =
+      url.includes('books.google.com') ||
+      url.includes('books.googleusercontent.com');
     const needsVerification =
+      isGoogleBooksCover ||
       url.includes('images.randomhouse.com') ||
       url.includes('covers.openlibrary.org');
 
@@ -149,6 +155,11 @@ export class CatalogOrchestrator {
       });
       return true;
     }
+
+    const isPlaceholderSize = (bytes: number): boolean =>
+      Number.isFinite(bytes) &&
+      bytes > 0 &&
+      (bytes < 800 || bytes === GOOGLE_BOOKS_PLACEHOLDER_BYTE_LENGTH);
 
     try {
       const response = await fetchWithProviderTimeout(
@@ -166,18 +177,56 @@ export class CatalogOrchestrator {
         });
         return false;
       }
-      const contentLength = response.headers?.get?.('content-length');
-      if (
-        contentLength &&
-        Number(contentLength) > 0 &&
-        Number(contentLength) < 800
-      ) {
-        // Reject tiny 1x1 transparent GIFs or placeholder icons
-        this.coverValidityCache.set(url, {
-          value: false,
-          expiresAt: Date.now() + this.coverValidityTtlMs,
-        });
-        return false;
+      const contentLengthHeader =
+        response.headers?.get?.('content-length') ||
+        response.headers?.get?.('x-goog-stored-content-length');
+      if (contentLengthHeader) {
+        const byteLength = Number(contentLengthHeader);
+        if (isPlaceholderSize(byteLength)) {
+          // Reject tiny 1x1 transparent GIFs or Google Books 9,103-byte placeholder PNGs
+          this.coverValidityCache.set(url, {
+            value: false,
+            expiresAt: Date.now() + this.coverValidityTtlMs,
+          });
+          return false;
+        }
+      } else if (isGoogleBooksCover) {
+        // Fallback when HEAD omits content-length (e.g. chunked transfer encoding)
+        const getResponse = await fetchWithProviderTimeout(
+          url,
+          {
+            method: 'GET',
+            signal,
+          },
+          2200,
+        );
+        if (!getResponse.ok) {
+          this.coverValidityCache.set(url, {
+            value: false,
+            expiresAt: Date.now() + this.coverValidityTtlMs,
+          });
+          return false;
+        }
+        const getLengthHeader =
+          getResponse.headers?.get?.('content-length') ||
+          getResponse.headers?.get?.('x-goog-stored-content-length');
+        if (getLengthHeader && isPlaceholderSize(Number(getLengthHeader))) {
+          this.coverValidityCache.set(url, {
+            value: false,
+            expiresAt: Date.now() + this.coverValidityTtlMs,
+          });
+          return false;
+        }
+        if (!getLengthHeader && typeof getResponse.arrayBuffer === 'function') {
+          const buf = await getResponse.arrayBuffer();
+          if (isPlaceholderSize(buf.byteLength)) {
+            this.coverValidityCache.set(url, {
+              value: false,
+              expiresAt: Date.now() + this.coverValidityTtlMs,
+            });
+            return false;
+          }
+        }
       }
       this.coverValidityCache.set(url, {
         value: true,

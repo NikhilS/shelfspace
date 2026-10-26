@@ -49,7 +49,7 @@ describe('BackToLibrary component', () => {
     const handleClick = vi.fn();
     render(<BackToLibrary onClick={handleClick} />);
 
-    const button = screen.getByRole('button', {name: /back to library/i});
+    const button = screen.getByRole('button', {name: /back to reading room/i});
     expect(button).toBeInTheDocument();
     fireEvent.click(button);
     expect(handleClick).toHaveBeenCalledTimes(1);

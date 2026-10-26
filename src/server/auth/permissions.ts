@@ -2,7 +2,25 @@ import {TRPCError} from '@trpc/server';
 import {LibraryService} from '../services/library';
 import type {AuthUser, LibraryRole} from './types';
 
+const ROLE_HIERARCHY: Record<LibraryRole, number> = {
+  owner: 3,
+  editor: 2,
+  viewer: 1,
+};
+
 export class PermissionService {
+  /**
+   * Returns true if `callerRole` meets or exceeds `requiredRole` in the library role hierarchy.
+   */
+  static hasSufficientRole(
+    callerRole: LibraryRole,
+    requiredRole: LibraryRole,
+  ): boolean {
+    return (
+      (ROLE_HIERARCHY[callerRole] ?? 0) >= (ROLE_HIERARCHY[requiredRole] ?? 0)
+    );
+  }
+
   /**
    * Asserts caller has required permission for a library.
    * Throws TRPCError(UNAUTHORIZED) if user is not logged in.

@@ -1,10 +1,17 @@
-import {describe, it, expect} from 'vitest';
+import {describe, it, expect, vi} from 'vitest';
+import {FieldValue} from 'firebase-admin/firestore';
 import {
   safeIdSchema,
   safeUrlSchema,
   safeEmailSchema,
   validateAndNormalizeEmail,
   hasUnsafeObjectKeys,
+  validateIncomingApiData,
+  validateFirestoreReadPayload,
+  validateFirestoreWritePayload,
+  SchemaValidationError,
+  isFirestoreFieldValueSentinel,
+  stripFirestoreSentinels,
 } from './common';
 import {
   bookCreateSchema,
@@ -12,6 +19,8 @@ import {
   bookDeleteSchema,
   bookBatchUpsertSchema,
   bookMergeDuplicatesSchema,
+  storedBookDocSchema,
+  storedUserReadingStateDocSchema,
 } from './book';
 import {joinWaitlistInputSchema} from './waitlist';
 import {libraryUploadImageSchema} from './libraryApi';
@@ -121,7 +130,7 @@ describe('Security Schemas & Input Hardening (SEC-01, SEC-03, SEC-06, SEC-11)', 
         libraryId: 'lib_1',
         bookId: 'book_1',
         updates: {
-          'userStatuses.victim_uid': 'abandoned',
+          'enrichmentStatus.genre': 'completed',
         },
       });
       expect(dotNotationAttack.success).toBe(false);
@@ -137,15 +146,15 @@ describe('Security Schemas & Input Hardening (SEC-01, SEC-03, SEC-06, SEC-11)', 
     });
 
     it('detects unsafe object keys via hasUnsafeObjectKeys', () => {
-      expect(hasUnsafeObjectKeys({'userStatuses.other': 'reading'})).toBe(true);
+      expect(hasUnsafeObjectKeys({'nested.field': 'value'})).toBe(true);
       expect(hasUnsafeObjectKeys({'a/b': 1})).toBe(true);
       expect(hasUnsafeObjectKeys({title: 'Safe Title'})).toBe(false);
     });
   });
 
   describe('Batch Size Caps & Payload Limits (SEC-06)', () => {
-    it('rejects bookBatchUpsertSchema with more than 500 operations', () => {
-      const operations = Array.from({length: 501}, (_, i) => ({
+    it('rejects bookBatchUpsertSchema with more than 5000 operations', () => {
+      const operations = Array.from({length: 5001}, (_, i) => ({
         type: 'delete' as const,
         bookId: `book_${i}`,
       }));
@@ -179,6 +188,169 @@ describe('Security Schemas & Input Hardening (SEC-01, SEC-03, SEC-06, SEC-11)', 
           base64Data: 'data:image/png;base64,iVBORw0KGgo=',
         }).success,
       ).toBe(false);
+    });
+  });
+
+  describe('Pre-Persistence Schema Validation & Development Error Logging', () => {
+    it('validates valid incoming API data and returns typed result', () => {
+      const data = validateIncomingApiData(
+        bookCreateSchema,
+        {
+          libraryId: 'lib_1',
+          title: 'The Left Hand of Darkness',
+          author: 'Ursula K. Le Guin',
+        },
+        {
+          entity: 'BookCreateInput',
+          documentPath: '/libraries/lib_1/books',
+          operation: 'create',
+        },
+      );
+      expect(data.title).toBe('The Left Hand of Darkness');
+      expect(data.libraryId).toBe('lib_1');
+    });
+
+    it('logs structured development debug errors and throws SchemaValidationError on invalid API data', () => {
+      const logger = vi.fn();
+      expect(() =>
+        validateIncomingApiData(
+          bookCreateSchema,
+          {
+            libraryId: '../traversal',
+            title: '',
+            coverUrl: 'javascript:alert(1)',
+          },
+          {
+            entity: 'BookCreateInput',
+            documentPath: '/libraries/../traversal/books',
+            operation: 'create',
+            logger,
+          },
+        ),
+      ).toThrowError(SchemaValidationError);
+
+      expect(logger).toHaveBeenCalledTimes(1);
+      const [loggedMsg, loggedDetails] = logger.mock.calls[0] as [
+        string,
+        {entity: string; issues: Array<{path: string; message: string}>},
+      ];
+      expect(loggedMsg).toContain(
+        '[SchemaValidation] BookCreateInput (create) at /libraries/../traversal/books failed validation',
+      );
+      expect(loggedDetails.entity).toBe('BookCreateInput');
+      expect(loggedDetails.issues.map(i => i.path)).toEqual(
+        expect.arrayContaining(['libraryId', 'title', 'coverUrl']),
+      );
+    });
+
+    it('strips Firestore FieldValue sentinels during pre-persistence validation while preserving them on the payload', () => {
+      const sentinel = FieldValue.serverTimestamp();
+      expect(isFirestoreFieldValueSentinel(sentinel)).toBe(true);
+
+      const writePayload = {
+        id: 'isbn:9780140449136',
+        userId: 'user_123',
+        keyType: 'isbn' as const,
+        cleanIsbn: '9780140449136',
+        bookId: 'book_1',
+        status: 'reading' as const,
+        updatedAt: sentinel,
+      };
+
+      const stripped = stripFirestoreSentinels(writePayload) as Record<
+        string,
+        unknown
+      >;
+      expect(stripped.updatedAt).toBeUndefined();
+
+      const logger = vi.fn();
+      const result = validateFirestoreWritePayload(
+        storedUserReadingStateDocSchema,
+        writePayload,
+        {
+          entity: 'StoredUserReadingStateDoc',
+          documentPath: '/users/user_123/readingStates/isbn:9780140449136',
+          operation: 'upsert',
+          logger,
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.issues).toEqual([]);
+      expect(result.data.updatedAt).toBe(sentinel);
+      expect(logger).not.toHaveBeenCalled();
+    });
+
+    it('throws SchemaValidationError by default (strict: true) and returns issues when strict: false on invalid Firestore write payloads', () => {
+      const logger = vi.fn();
+      const badWritePayload = {
+        id: 'book_1',
+        title: 'Dune',
+        author: 'Frank Herbert',
+        coverUrl: 'javascript:alert(1)',
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      expect(() =>
+        validateFirestoreWritePayload(storedBookDocSchema, badWritePayload, {
+          entity: 'StoredBookDoc',
+          documentPath: 'books/book_1',
+          operation: 'create',
+          logger,
+        }),
+      ).toThrowError(SchemaValidationError);
+
+      const result = validateFirestoreWritePayload(
+        storedBookDocSchema,
+        badWritePayload,
+        {
+          entity: 'StoredBookDoc',
+          documentPath: 'books/book_1',
+          operation: 'create',
+          strict: false,
+          logger,
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.issues.length).toBeGreaterThan(0);
+      expect(result.issues[0]?.path).toBe('coverUrl');
+      expect(logger).toHaveBeenCalledTimes(2);
+    });
+
+    it('strictly validates Firestore read payloads via validateFirestoreReadPayload and throws on schema mismatch', () => {
+      const validRead = validateFirestoreReadPayload(
+        storedBookDocSchema,
+        {
+          id: 'book_1',
+          title: 'Dune',
+          author: 'Frank Herbert',
+        },
+        {
+          entity: 'StoredBookDoc',
+          documentPath: 'libraries/lib_1/books/book_1',
+        },
+      );
+      expect(validRead.title).toBe('Dune');
+
+      const logger = vi.fn();
+      expect(() =>
+        validateFirestoreReadPayload(
+          storedBookDocSchema,
+          {
+            id: 'book_1',
+            title: 'Dune',
+            author: 'Frank Herbert',
+            unknownLegacyField: 'not_allowed',
+          },
+          {
+            entity: 'StoredBookDoc',
+            documentPath: 'libraries/lib_1/books/book_1',
+            logger,
+          },
+        ),
+      ).toThrowError(SchemaValidationError);
+      expect(logger).toHaveBeenCalledTimes(1);
     });
   });
 });

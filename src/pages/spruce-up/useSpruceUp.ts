@@ -55,6 +55,8 @@ export function useSpruceUp(libraryId: string | undefined) {
   }, [allowedQuery.data]);
 
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+  const [isAuditingCovers, setIsAuditingCovers] = useState(false);
+  const auditedLibrariesRef = useRef<Set<string>>(new Set());
   const [rawDuplicateGroups, setRawDuplicateGroups] = useState<
     DuplicateGroupMetadata[]
   >([]);
@@ -64,6 +66,109 @@ export function useSpruceUp(libraryId: string | undefined) {
   const workerRef = useRef<Worker | null>(null);
   const latestBooksRef = useRef<Book[]>(books);
   latestBooksRef.current = books;
+
+  useEffect(() => {
+    if (!libraryId || booksLoading || !books || books.length === 0) {
+      return;
+    }
+    if (auditedLibrariesRef.current.has(libraryId)) {
+      return;
+    }
+
+    const hasAuditableCovers = books.some(book => {
+      const urls = [book.coverUrl, book.coverUrlRaw];
+      return urls.some(
+        u =>
+          typeof u === 'string' &&
+          (u.includes('books.google.com') ||
+            u.includes('books.googleusercontent.com') ||
+            u.includes('images.randomhouse.com') ||
+            u.includes('covers.openlibrary.org')),
+      );
+    });
+
+    auditedLibrariesRef.current.add(libraryId);
+    if (!hasAuditableCovers) {
+      return;
+    }
+
+    const enrichmentClient = (
+      trpcVanilla as unknown as {
+        enrichment?: {
+          auditPlaceholderCovers?: {
+            mutate: (input: {libraryId: string}) => Promise<{
+              scannedCount: number;
+              clearedCount: number;
+              clearedBookIds: string[];
+            }>;
+          };
+        };
+      }
+    ).enrichment;
+
+    if (!enrichmentClient?.auditPlaceholderCovers?.mutate) {
+      return;
+    }
+
+    let cancelled = false;
+    setIsAuditingCovers(true);
+
+    void enrichmentClient.auditPlaceholderCovers
+      .mutate({libraryId})
+      .then(result => {
+        if (cancelled || !result || result.clearedCount <= 0) {
+          return;
+        }
+        const clearedSet = new Set(result.clearedBookIds);
+        if (typeof utilsRef.current.book?.list?.setData === 'function') {
+          utilsRef.current.book.list.setData({libraryId}, old => {
+            if (!old) {
+              return old;
+            }
+            const clearBookCover = (b: Book): Book => {
+              if (!clearedSet.has(b.id)) {
+                return b;
+              }
+              const nextStatus = {...(b.enrichmentStatus || {})};
+              delete nextStatus.coverImage;
+              return {
+                ...b,
+                coverUrl: undefined,
+                coverUrlRaw: undefined,
+                enrichmentStatus: nextStatus,
+              };
+            };
+            if (Array.isArray(old)) {
+              return (old as Book[]).map(
+                clearBookCover,
+              ) as unknown as typeof old;
+            }
+            return {
+              ...old,
+              books: (old.books || []).map(clearBookCover),
+            };
+          });
+        }
+        void utilsRef.current.book?.list?.invalidate?.({libraryId});
+        toast.info(
+          result.clearedCount === 1
+            ? 'Cleared 1 placeholder book cover so it can be backfilled.'
+            : `Cleared ${result.clearedCount} placeholder book covers so they can be backfilled.`,
+        );
+      })
+      .catch(err => {
+        console.warn('Placeholder cover audit failed:', err);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsAuditingCovers(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [libraryId, booksLoading, books]);
 
   const booksFingerprint = useMemo(() => {
     if (!books || books.length === 0) {
@@ -281,6 +386,7 @@ export function useSpruceUp(libraryId: string | undefined) {
   return {
     loading,
     isCheckingDuplicates,
+    isAuditingCovers,
     books,
     duplicates,
     duplicateGroupsWithMeta,

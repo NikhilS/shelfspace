@@ -4,6 +4,18 @@ import {LibraryService} from './library';
 import {MetadataRegistry} from './metadata';
 import {MetadataKey, CoreBookData, BookGenreData} from '../../types/metadata';
 import {computeBookSearchTokens} from '../../lib/duplicateDetection';
+import {
+  bookDocConverter,
+  bookDetailsDocConverter,
+} from './book/bookPartitioner';
+import {
+  storedBookDocSchema,
+  storedBookDetailsDocSchema,
+} from '../../schemas/book';
+import {
+  SchemaValidationError,
+  validateFirestoreWritePayload,
+} from '../../schemas/common';
 
 export type PerBookJobStage =
   | 'queued'
@@ -223,6 +235,12 @@ export class EnrichmentService {
         }
 
         const rawDoc = (snap.data?.() || {}) as Record<string, unknown>;
+        const {book: parsedBook, leakedDetails} =
+          bookDocConverter.fromFirestoreWithLegacyLeaks(
+            bookId,
+            rawDoc,
+            `/libraries/${libraryId}/books/${bookId}`,
+          );
         const title =
           typeof rawDoc.title === 'string' ? rawDoc.title.trim() : '';
         if (!title) {
@@ -234,37 +252,27 @@ export class EnrichmentService {
         }
 
         const synopsis =
-          typeof rawDoc.synopsis === 'string' && rawDoc.synopsis.trim()
-            ? rawDoc.synopsis.trim()
-            : typeof rawDoc.description === 'string' &&
-                rawDoc.description.trim()
-              ? rawDoc.description.trim()
+          typeof leakedDetails.synopsis === 'string' &&
+          leakedDetails.synopsis.trim()
+            ? leakedDetails.synopsis.trim()
+            : typeof leakedDetails.description === 'string' &&
+                leakedDetails.description.trim()
+              ? leakedDetails.description.trim()
               : undefined;
 
         const validIndex = validBooks.length;
         validBooks.push({
-          rawDoc,
+          rawDoc: parsedBook as unknown as Record<string, unknown>,
           bookData: {
-            ...rawDoc,
+            ...parsedBook,
             id: bookId,
             title,
-            author:
-              typeof rawDoc.author === 'string' && rawDoc.author.trim()
-                ? rawDoc.author.trim()
-                : 'Unknown Author',
-            isbn: typeof rawDoc.isbn === 'string' ? rawDoc.isbn : undefined,
-            primaryGenre:
-              typeof rawDoc.primaryGenre === 'string'
-                ? rawDoc.primaryGenre
-                : undefined,
-            subgenres: Array.isArray(rawDoc.subgenres)
-              ? (rawDoc.subgenres as string[])
-              : undefined,
+            author: parsedBook.author,
+            isbn: parsedBook.isbn,
+            primaryGenre: parsedBook.primaryGenre ?? undefined,
+            subgenres: parsedBook.subgenres,
             synopsis,
-            description:
-              typeof rawDoc.description === 'string'
-                ? rawDoc.description
-                : undefined,
+            description: leakedDetails.description ?? undefined,
           },
         });
 
@@ -283,10 +291,12 @@ export class EnrichmentService {
           for (let i = 0; i < missingSynopsisIndices.length; i++) {
             const detailSnap = detailSnaps[i];
             if (detailSnap?.exists) {
-              const detailData = (detailSnap.data?.() || {}) as Record<
-                string,
-                unknown
-              >;
+              const detailBookId = missingSynopsisIndices[i].bookId;
+              const detailData = bookDetailsDocConverter.fromFirestore(
+                detailBookId,
+                (detailSnap.data?.() || {}) as Record<string, unknown>,
+                `/libraries/${libraryId}/bookDetails/${detailBookId}`,
+              );
               const detailSyn =
                 typeof detailData.synopsis === 'string' &&
                 detailData.synopsis.trim()
@@ -303,7 +313,10 @@ export class EnrichmentService {
               }
             }
           }
-        } catch {
+        } catch (err) {
+          if (err instanceof SchemaValidationError) {
+            throw err;
+          }
           // Non-fatal if bookDetails docs do not exist
         }
       }
@@ -352,6 +365,8 @@ export class EnrichmentService {
         type: 'update' | 'set_merge';
         ref: FirebaseFirestore.DocumentReference;
         data: Record<string, unknown>;
+        targetEntity: 'StoredBookDoc' | 'StoredBookDetailsDoc';
+        documentPath: string;
       }
 
       const pendingWrites: PendingWriteOperation[] = [];
@@ -365,6 +380,8 @@ export class EnrichmentService {
         const bookId = bookData.id;
         const bookRef = booksCollection.doc(bookId);
         const detailRef = detailsCollection.doc(bookId);
+        const bookDocPath = `/libraries/${libraryId}/books/${bookId}`;
+        const detailDocPath = `/libraries/${libraryId}/bookDetails/${bookId}`;
         const value = extractedMap ? extractedMap[bookId] : undefined;
 
         const existingStatus =
@@ -395,6 +412,8 @@ export class EnrichmentService {
             pendingWrites.push({
               type: 'update',
               ref: bookRef,
+              targetEntity: 'StoredBookDoc',
+              documentPath: bookDocPath,
               data: {
                 enrichmentStatus: {
                   ...existingStatus,
@@ -418,6 +437,8 @@ export class EnrichmentService {
           pendingWrites.push({
             type: 'update',
             ref: bookRef,
+            targetEntity: 'StoredBookDoc',
+            documentPath: bookDocPath,
             data: {
               geoMetadata: value,
               enrichmentStatus: {
@@ -436,6 +457,8 @@ export class EnrichmentService {
           pendingWrites.push({
             type: 'update',
             ref: bookRef,
+            targetEntity: 'StoredBookDoc',
+            documentPath: bookDocPath,
             data: {
               temporalMetadata: value,
               enrichmentStatus: {
@@ -451,6 +474,8 @@ export class EnrichmentService {
           pendingWrites.push({
             type: 'update',
             ref: bookRef,
+            targetEntity: 'StoredBookDoc',
+            documentPath: bookDocPath,
             data: {
               primaryGenre: genreVal.primaryGenre,
               subgenres: genreVal.subgenres || [],
@@ -472,6 +497,8 @@ export class EnrichmentService {
           pendingWrites.push({
             type: 'update',
             ref: bookRef,
+            targetEntity: 'StoredBookDoc',
+            documentPath: bookDocPath,
             data: {
               coverUrl: value,
               enrichmentStatus: {
@@ -492,6 +519,8 @@ export class EnrichmentService {
           pendingWrites.push({
             type: 'update',
             ref: bookRef,
+            targetEntity: 'StoredBookDoc',
+            documentPath: bookDocPath,
             data: {
               series: value,
               ...(updatedSearchTokens.length > 0
@@ -510,6 +539,8 @@ export class EnrichmentService {
             {
               type: 'update',
               ref: bookRef,
+              targetEntity: 'StoredBookDoc',
+              documentPath: bookDocPath,
               data: {
                 bookDetailsMetadata: {
                   ...existingDetailsMeta,
@@ -524,6 +555,8 @@ export class EnrichmentService {
             {
               type: 'set_merge',
               ref: detailRef,
+              targetEntity: 'StoredBookDetailsDoc',
+              documentPath: detailDocPath,
               data: {
                 synopsis: value,
                 updatedAt: nowIso,
@@ -543,6 +576,8 @@ export class EnrichmentService {
             {
               type: 'update',
               ref: bookRef,
+              targetEntity: 'StoredBookDoc',
+              documentPath: bookDocPath,
               data: {
                 bookDetailsMetadata: {
                   ...existingDetailsMeta,
@@ -557,6 +592,8 @@ export class EnrichmentService {
             {
               type: 'set_merge',
               ref: detailRef,
+              targetEntity: 'StoredBookDetailsDoc',
+              documentPath: detailDocPath,
               data: {
                 authorBio: value,
                 updatedAt: nowIso,
@@ -576,6 +613,8 @@ export class EnrichmentService {
             {
               type: 'update',
               ref: bookRef,
+              targetEntity: 'StoredBookDoc',
+              documentPath: bookDocPath,
               data: {
                 bookDetailsMetadata: {
                   ...existingDetailsMeta,
@@ -590,6 +629,8 @@ export class EnrichmentService {
             {
               type: 'set_merge',
               ref: detailRef,
+              targetEntity: 'StoredBookDetailsDoc',
+              documentPath: detailDocPath,
               data: {
                 embedding: value,
                 updatedAt: nowIso,
@@ -620,6 +661,17 @@ export class EnrichmentService {
           const chunk = pendingWrites.slice(i, i + MAX_BATCH_OPS);
           const writeBatch = db.batch();
           for (const op of chunk) {
+            validateFirestoreWritePayload(
+              op.targetEntity === 'StoredBookDoc'
+                ? storedBookDocSchema.partial()
+                : storedBookDetailsDocSchema.partial(),
+              op.data,
+              {
+                entity: op.targetEntity,
+                documentPath: op.documentPath,
+                operation: op.type === 'update' ? 'update' : 'upsert',
+              },
+            );
             if (op.type === 'update') {
               writeBatch.update(op.ref, op.data);
             } else {
@@ -643,7 +695,7 @@ export class EnrichmentService {
         results,
       };
     } catch (err: unknown) {
-      if (err instanceof TRPCError) {
+      if (err instanceof TRPCError || err instanceof SchemaValidationError) {
         throw err;
       }
       const errMsg =

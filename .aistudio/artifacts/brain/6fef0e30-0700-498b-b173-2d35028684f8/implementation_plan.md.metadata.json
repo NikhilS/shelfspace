@@ -1,6 +1,6 @@
 {
-  "summary":  "Updated implementation plan detailing responsive mobile/tablet vertical stacking (grid-cols-1 on smaller screens reflowing to 6 + 6 columns on desktop) alongside internal CuratorPickCard responsive behavior.",
-  "updatedAt":  "2026-10-24T17:50:43.987171930Z",
+  "summary":  "Root-cause diagnosis and implementation plan for fixing \"Untitled Book / Unknown Author\" entries in the Reading Room (\"Read Books\" shelf) caused by missing `bookSnapshot` and `cleanIsbn` fields on `readingStates` documents written via `batchUpsert` and `updateBookStatus`.",
+  "updatedAt":  "2026-10-26T01:59:08.394764065Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

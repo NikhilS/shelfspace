@@ -140,4 +140,7 @@ Every pull request or feature addition must satisfy three verification pillars b
    - Stochastic algorithms (K-Means++, silhouette optimal-$K$, force-directed layout relaxation, UMAP worker pipelines) must be tested with fixed PRNG seeds and assert strict geometric invariants (e.g., non-overlapping cluster bounding circles, $[-range, range]$ coordinate bounds, and $[-1, 1]$ silhouette bounds).
 3. **Asynchronous Resilience & Cancellation:**
    - Outbound provider orchestrators, rate-limit governors, and batch enrichment utilities must test both happy paths and degraded/cancelled paths (`AbortSignal` propagation, 429 quota backoff, interactive slot reservation, and ring-buffer bounding).
+4. **100% Read/Write Schema & Test Fixture Compliance (`src/schemas/schemaCompliance.ts` & `src/lib/schema.test.ts`):**
+   - Every Firestore or disk read and write in `src/server/**` must route through a typed `*Converter` (`fromFirestore` / `toFirestoreWrite`) and shared strict validators (`validateFirestoreReadPayload`, `validateFirestoreWritePayload`, `validateIncomingApiData`).
+   - Unit and integration tests mocking Firestore snapshots (`doc.data()`) must return payloads that satisfy the corresponding `stored*DocSchema` (using the typed fixture builders in `src/schemas/schemaCompliance.ts`), and both `src/lib/schema.test.ts` and `src/schemas/schemaCompliance.test.ts` must pass with zero unvalidated collections or snapshot casts.
 

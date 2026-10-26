@@ -122,10 +122,7 @@ export function LibraryShelf({
           <BookTitleCell
             title={book.title}
             coverUrl={book.coverUrl}
-            userStatus={
-              book.readingStatus ||
-              (user ? book.userStatuses?.[user.uid] : undefined)
-            }
+            userStatus={book.readingStatus}
             isSelected={selectedBooks.has(book.id)}
             showCheckbox={Boolean(canEdit && user)}
             onToggleSelect={e => toggleBookSelection(e, book.id)}

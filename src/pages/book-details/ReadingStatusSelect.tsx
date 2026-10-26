@@ -39,7 +39,7 @@ export const ReadingStatusSelect = memo(
     const {user} = useAuth();
     const isOnline = useOnlineStatus();
 
-    const rawStatus = book.userStatuses?.[user?.uid || ''] || 'unset';
+    const rawStatus = book.readingStatus || 'unset';
     const currentStatus = rawStatus === 'completed' ? 'finished' : rawStatus;
 
     return (
@@ -63,10 +63,7 @@ export const ReadingStatusSelect = memo(
 
             // Optimistic update
             updateBookOptimistically({
-              userStatuses: {
-                ...(book.userStatuses || {}),
-                [user.uid]: newStatus,
-              },
+              readingStatus: newStatus,
             });
 
             try {

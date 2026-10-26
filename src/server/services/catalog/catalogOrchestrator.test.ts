@@ -292,5 +292,114 @@ describe('ProviderQuotaScheduler & CatalogOrchestrator', () => {
       expect(res.candidates[0].source).toBe('Apple Books');
       expect(locProvider.resolveCovers).not.toHaveBeenCalled();
     });
+
+    it('rejects Google Books 9,103-byte placeholder PNG covers via HEAD headers or GET byteLength fallback', async () => {
+      const orchestrator = new CatalogOrchestrator([]);
+      const placeholderUrl1 =
+        'https://books.google.com/books/content?id=QRlkvgEACAAJ&printsec=frontcover&img=1&zoom=3&source=gbs_api';
+      const placeholderUrl2 =
+        'https://books.google.com/books/content?id=CHUNKED123&printsec=frontcover&img=1&zoom=1&source=gbs_api';
+      const validUrl =
+        'https://books.google.com/books/content?id=VALID999&printsec=frontcover&img=1&zoom=3&source=gbs_api';
+
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async (input, init) => {
+          const url = String(input);
+          if (url === placeholderUrl1) {
+            return new Response(null, {
+              status: 200,
+              headers: {'content-length': '9103', 'content-type': 'image/png'},
+            });
+          }
+          if (url === placeholderUrl2) {
+            if (init?.method === 'HEAD') {
+              // Simulate missing content-length on HEAD
+              return new Response(null, {
+                status: 200,
+                headers: {'content-type': 'image/png'},
+              });
+            }
+            // Simulate 9103-byte body on GET fallback
+            return new Response(new Uint8Array(9103), {
+              status: 200,
+              headers: {'content-type': 'image/png'},
+            });
+          }
+          return new Response(null, {
+            status: 200,
+            headers: {'content-length': '48512', 'content-type': 'image/jpeg'},
+          });
+        });
+
+      expect(await orchestrator.verifyCoverUrl(placeholderUrl1)).toBe(false);
+      expect(await orchestrator.verifyCoverUrl(placeholderUrl2)).toBe(false);
+      expect(await orchestrator.verifyCoverUrl(validUrl)).toBe(true);
+      expect(fetchSpy).toHaveBeenCalled();
+    });
+
+    it('falls back to secondary provider cover during stitching when Google Books cover is a 9,103-byte placeholder', async () => {
+      const placeholderUrl =
+        'https://books.google.com/books/content?id=QRlkvgEACAAJ&printsec=frontcover&img=1&zoom=3&source=gbs_api';
+      const validOpenLibraryUrl =
+        'https://covers.openlibrary.org/b/isbn/9780143127741-L.jpg?default=false';
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+        const url = String(input);
+        if (url === placeholderUrl) {
+          return new Response(null, {
+            status: 200,
+            headers: {'content-length': '9103', 'content-type': 'image/png'},
+          });
+        }
+        return new Response(null, {
+          status: 200,
+          headers: {'content-length': '36200', 'content-type': 'image/jpeg'},
+        });
+      });
+
+      const googleProvider = createMockProvider({
+        id: 'google-books',
+        name: 'Google Books',
+        authorityWeight: 85,
+        searchByIsbn: vi.fn().mockResolvedValue({
+          providerId: 'google-books',
+          providerName: 'Google Books',
+          title: 'Placeholder Cover Book',
+          author: 'Jane Doe',
+          isbn: '9780143127741',
+          coverUrl: placeholderUrl,
+          coverResolutionTier: 'high',
+        } satisfies ProviderBookHit),
+      });
+
+      const openLibraryProvider = createMockProvider({
+        id: 'open-library',
+        name: 'Open Library',
+        authorityWeight: 75,
+        searchByIsbn: vi.fn().mockResolvedValue({
+          providerId: 'open-library',
+          providerName: 'Open Library',
+          title: 'Placeholder Cover Book',
+          author: 'Jane Doe',
+          isbn: '9780143127741',
+          coverUrl: validOpenLibraryUrl,
+          coverResolutionTier: 'high',
+        } satisfies ProviderBookHit),
+      });
+
+      const orchestrator = new CatalogOrchestrator([
+        googleProvider,
+        openLibraryProvider,
+      ]);
+
+      const merged = await orchestrator.searchByIsbn('9780143127741', {
+        priority: 'BATCH',
+        verifyCovers: true,
+      });
+
+      expect(merged?.coverUrl).toBe(validOpenLibraryUrl);
+      expect(merged?.fieldSources?.coverImage).toBe('Open Library');
+    });
   });
 });

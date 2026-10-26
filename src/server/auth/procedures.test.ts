@@ -116,4 +116,32 @@ describe('tRPC Security Procedures', () => {
       'viewer',
     );
   });
+
+  it('reuses request-scoped libraryAccessCache when hasSufficientRole succeeds', async () => {
+    const libraryAccessCache = new Map();
+    const caller = createCaller({
+      user: {uid: 'u1', email: 'user@example.com'},
+      isAppAllowed: true,
+      isAdmin: false,
+      libraryAccessCache,
+    });
+
+    vi.mocked(PermissionService.verifyLibraryAccess).mockResolvedValueOnce({
+      role: 'owner',
+      userId: 'u1',
+    });
+    vi.mocked(PermissionService.hasSufficientRole).mockReturnValue(true);
+
+    expect(await caller.libOwner({libraryId: 'lib_cached'})).toBe(
+      'lib_owner_lib_cached',
+    );
+    expect(await caller.libViewer({libraryId: 'lib_cached'})).toBe(
+      'lib_viewer_lib_cached',
+    );
+    expect(PermissionService.verifyLibraryAccess).toHaveBeenCalledTimes(1);
+    expect(PermissionService.hasSufficientRole).toHaveBeenCalledWith(
+      'owner',
+      'viewer',
+    );
+  });
 });

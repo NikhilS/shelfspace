@@ -70,6 +70,7 @@ export default defineConfig(({mode}) => {
     },
     server: {
       hmr: false,
+      watch: null,
       allowedHosts: true,
     },
     build: {

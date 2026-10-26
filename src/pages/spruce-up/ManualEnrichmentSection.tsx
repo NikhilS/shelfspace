@@ -36,6 +36,7 @@ import {
 interface ManualEnrichmentSectionProps {
   books: Book[];
   libraryId: string;
+  isAuditingCovers?: boolean;
 }
 
 const ALL_METADATA_KEYS = [
@@ -243,6 +244,7 @@ function renderBookLiveTelemetryBadge(state?: BookJobTelemetry) {
 export function ManualEnrichmentSection({
   books,
   libraryId,
+  isAuditingCovers = false,
 }: ManualEnrichmentSectionProps) {
   const {hasAiPlan} = useAppPermissions();
   const [filterMissing, setFilterMissing] = useState<MetadataKey | 'all'>(
@@ -446,9 +448,20 @@ export function ManualEnrichmentSection({
       <div className="p-6 border-b border-outline-variant/30 bg-surface-container-low">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h3 className="font-serif text-xl font-semibold text-on-surface">
-              Complete Book Details
-            </h3>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h3 className="font-serif text-xl font-semibold text-on-surface">
+                Complete Book Details
+              </h3>
+              {isAuditingCovers && (
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-mono bg-primary/10 text-primary"
+                  data-testid="auditing-placeholder-covers-badge"
+                >
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Checking covers...
+                </span>
+              )}
+            </div>
             <p className="text-sm text-on-surface-variant font-sans mt-0.5">
               See which books are missing covers, summaries, or settings, and
               fill them in with one click.

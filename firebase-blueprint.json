@@ -51,14 +51,6 @@
         "series": { "type": "string" },
         "format": { "type": "string", "enum": ["physical", "digital"] },
         "ownershipStatus": { "type": "string", "enum": ["owned", "unowned"] },
-        "userStatuses": { 
-          "type": "object",
-          "additionalProperties": { "type": "string", "enum": ["unset", "want_to_read", "reading", "finished", "abandoned"] }
-        },
-        "userRatings": {
-          "type": "object",
-          "additionalProperties": { "type": "number" }
-        },
         "geoMetadata": {
           "type": "object",
           "properties": {
@@ -91,6 +83,59 @@
         "addedBy": { "type": "string" }
       },
       "required": ["title", "addedAt", "addedBy"]
+    },
+    "UserReadingState": {
+      "title": "UserReadingState",
+      "description": "Per-user per-book reading state stored in the user's private reading ledger, keyed deterministically by isbn:<NORMALIZED_ISBN> or bookid:<BOOK_ID>.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "keyType": { "type": "string", "enum": ["isbn", "bookid"] },
+        "cleanIsbn": { "type": "string" },
+        "bookId": { "type": "string" },
+        "libraryId": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["unset", "want_to_read", "reading", "finished", "abandoned"]
+        },
+        "rating": { "type": "number" },
+        "reviewText": { "type": "string" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "finishedAt": { "type": "string", "format": "date-time" },
+        "readStatusReviewedAt": { "type": "string", "format": "date-time" },
+        "bookSnapshot": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string" },
+            "author": { "type": "string" },
+            "isbn": { "type": "string" },
+            "cleanIsbn": { "type": "string" },
+            "coverUrl": { "type": "string" },
+            "primaryGenre": { "type": "string" },
+            "subgenres": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "publishedDate": { "type": "string" },
+            "synopsis": { "type": "string" },
+            "authorBio": { "type": "string" },
+            "series": { "type": "string" },
+            "format": { "type": "string", "enum": ["physical", "digital", "audiobook"] },
+            "ownershipStatus": { "type": "string", "enum": ["owned", "unowned"] },
+            "libraryId": { "type": "string" },
+            "libraryName": { "type": "string" },
+            "bookId": { "type": "string" },
+            "geoMetadata": { "type": "object" },
+            "temporalMetadata": { "type": "object" },
+            "clusterCoordinates": { "type": "object" }
+          },
+          "required": ["title", "author"]
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "keyType", "status", "updatedAt"]
     },
     "BookDetails": {
       "title": "BookDetails",
@@ -206,6 +251,10 @@
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
       "description": "User profiles."
+    },
+    "/users/{userId}/readingStates/{stateKey}": {
+      "schema": { "$ref": "#/entities/UserReadingState" },
+      "description": "Per-user reading ledger keyed by isbn:<NORMALIZED_ISBN> or bookid:<BOOK_ID>."
     },
     "/libraries/{libraryId}": {
       "schema": { "$ref": "#/entities/Library" },

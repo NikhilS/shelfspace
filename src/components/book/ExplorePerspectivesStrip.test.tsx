@@ -57,5 +57,77 @@ describe('ExplorePerspectivesStrip', () => {
     expect(timelineLink).toHaveAttribute('href', '/reading/timeline');
     expect(mapLink).toHaveAttribute('href', '/reading/map');
     expect(constellationLink).toHaveAttribute('href', '/reading/constellation');
+    expect(screen.queryByText('Have You Read It?')).not.toBeInTheDocument();
+    expect(screen.getByText('3 Perspectives')).toBeInTheDocument();
+  });
+
+  it('renders Have You Read It? as the 4th card on library pages with ready-now unread count', () => {
+    const recentIso = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const libraryBooks: Book[] = [
+      ...sampleBooks,
+      {
+        id: 'b-recent',
+        title: 'Checked Two Hours Ago',
+        author: 'Author',
+        addedAt: '2026-01-02',
+        readStatusReviewedAt: recentIso,
+      },
+      {
+        id: 'b3',
+        title: 'Meditations',
+        author: 'Marcus Aurelius',
+        addedAt: '2026-01-03',
+        readingStatus: 'finished',
+      },
+      {
+        id: 'b4',
+        title: 'Abandoned Novel',
+        author: 'Someone',
+        addedAt: '2026-01-04',
+        readingStatus: 'abandoned',
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <ExplorePerspectivesStrip
+          books={libraryBooks}
+          basePath="/library/lib-42"
+          currentUserId="u-1"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('4 Perspectives')).toBeInTheDocument();
+    expect(screen.getByText('Have You Read It?')).toBeInTheDocument();
+    expect(screen.getByText('2 Unread')).toBeInTheDocument();
+
+    const swipeLink = screen.getByText('Have You Read It?').closest('a');
+    expect(swipeLink).toHaveAttribute('href', '/library/lib-42/swipe');
+  });
+
+  it('displays Checked Recently badge when all unread books were checked within the last 2 days', () => {
+    const recentIso = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    const recentlyCheckedBooks: Book[] = [
+      {
+        id: 'b1',
+        title: 'Dune',
+        author: 'Frank Herbert',
+        addedAt: '2026-01-01',
+        readStatusReviewedAt: recentIso,
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <ExplorePerspectivesStrip
+          books={recentlyCheckedBooks}
+          basePath="/library/lib-42"
+          currentUserId="u-1"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Checked Recently')).toBeInTheDocument();
   });
 });

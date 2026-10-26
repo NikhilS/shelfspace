@@ -162,7 +162,7 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
             authorBio: book.authorBio ? book.authorBio.slice(0, 50000) : '',
             format: book.format === 'digital' ? 'digital' : 'physical',
             ownershipStatus,
-            ...(targetStatus !== 'unset' ? {status: targetStatus} : {}),
+            ...(targetStatus !== 'unset' ? {readingStatus: targetStatus} : {}),
             ...(book.fieldSources && Object.keys(book.fieldSources).length > 0
               ? {fieldSources: book.fieldSources}
               : {}),

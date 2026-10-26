@@ -5,7 +5,7 @@ import {MetadataRegistry} from '../../services/metadata';
 import {MetadataKey, CoreBookData} from '../../../types/metadata';
 import {catalogOrchestrator, wikipediaProvider} from '../../services/catalog';
 import {serverTelemetryBuffer} from '../../services/telemetry/serverTelemetryBuffer';
-import {safeIdSchema, safeUrlSchema} from '../../../schemas/common';
+import {safeIdSchema, safeImageUrlSchema} from '../../../schemas/common';
 
 const PURE_AI_METADATA_KEYS = new Set<MetadataKey>([
   MetadataKey.GEO,
@@ -25,7 +25,7 @@ const coreBookSchema = z
     synopsis: z.string().max(50000).optional(),
     description: z.string().max(50000).optional(),
     publishedDate: z.string().max(100).optional(),
-    coverUrl: safeUrlSchema.optional(),
+    coverUrl: safeImageUrlSchema.optional(),
     series: z.string().max(300).optional(),
   })
   .strict();

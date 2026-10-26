@@ -3,7 +3,6 @@ import {useNavigate} from 'react-router-dom';
 import {Plus, ArrowRight, Play} from 'lucide-react';
 import {toast} from 'sonner';
 import {toTitleCase} from '../../lib/utils';
-import {useAuth} from '../../stores/authStore';
 import {
   useReadingShelf,
   type ShelfFilterTab,
@@ -87,14 +86,8 @@ export interface ReadingBentoProps {
 function normalizeBookToTrackedItem(
   item: Book | TrackedBookItem,
   fallbackLibraryId: string | undefined,
-  userId: string | undefined,
 ): TrackedBookItem | null {
-  if ('readingStatus' in item && item.readingStatus) {
-    return item;
-  }
-
-  const rawStatus =
-    (userId ? item.userStatuses?.[userId] : undefined) ?? item.status;
+  const rawStatus = item.readingStatus;
   let readingStatus: TrackedShelfStatus | 'unset' = 'unset';
   if (rawStatus === 'completed' || rawStatus === 'finished') {
     readingStatus = 'finished';
@@ -111,7 +104,9 @@ function normalizeBookToTrackedItem(
   }
 
   const resolvedLibId = item.libraryId || fallbackLibraryId || 'unknown';
-  const isVirtual = resolvedLibId.startsWith('virtual_');
+  const isVirtual =
+    ('isVirtual' in item && Boolean(item.isVirtual)) ||
+    resolvedLibId.startsWith('virtual_');
 
   return {
     ...item,
@@ -123,10 +118,9 @@ function normalizeBookToTrackedItem(
     ownershipStatus:
       item.ownershipStatus === 'unowned' || isVirtual ? 'unowned' : 'owned',
     readingStatus,
-    userRating:
-      userId && typeof item.userRatings?.[userId] === 'number'
-        ? item.userRatings[userId]
-        : undefined,
+    ...(typeof item.userRating === 'number'
+      ? {userRating: item.userRating}
+      : {}),
   };
 }
 
@@ -149,7 +143,6 @@ export function ReadingBento({
   showWantToReadStrip = true,
   showExplorePerspectives = true,
 }: ReadingBentoProps) {
-  const {user} = useAuth();
   const navigate = useNavigate();
   const isOnline = useOnlineStatus();
   const [failedCovers, setFailedCovers] = useState<Set<string>>(new Set());
@@ -176,7 +169,7 @@ export function ReadingBento({
     const normalized: TrackedBookItem[] = [];
 
     for (const item of sourceList) {
-      const tracked = normalizeBookToTrackedItem(item, libraryId, user?.uid);
+      const tracked = normalizeBookToTrackedItem(item, libraryId);
       if (!tracked) {
         continue;
       }
@@ -187,7 +180,7 @@ export function ReadingBento({
     }
 
     return normalized;
-  }, [externalBooks, fetchedItems, libraryId, isLibraryScoped, user?.uid]);
+  }, [externalBooks, fetchedItems, libraryId, isLibraryScoped]);
 
   // Partition into active reading, finished, want_to_read, and consolidated 'Read + Currently Reading'
   const readingBooks = useMemo(
@@ -252,11 +245,7 @@ export function ReadingBento({
         continue;
       }
 
-      const rawStatus =
-        ('readingStatus' in item && item.readingStatus
-          ? item.readingStatus
-          : ((user?.uid ? item.userStatuses?.[user.uid] : undefined) ??
-            item.status)) || 'unset';
+      const rawStatus = item.readingStatus || 'unset';
 
       if (
         rawStatus === 'reading' ||
@@ -307,7 +296,6 @@ export function ReadingBento({
     fetchedUnreadLibraryBooks,
     externalBooks,
     fetchedItems,
-    user?.uid,
   ]);
 
   const [selectedUnreadBookKey, setSelectedUnreadBookKey] = useState<

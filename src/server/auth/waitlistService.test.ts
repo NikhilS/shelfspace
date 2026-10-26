@@ -59,13 +59,17 @@ vi.mock('firebase-admin', () => ({
   },
 }));
 
-vi.mock('./allowlistService', () => ({
-  AllowlistService: {
-    getPermissions: vi.fn(),
-    addUser: vi.fn(),
-    setCache: vi.fn(),
-  },
-}));
+vi.mock('./allowlistService', async importOriginal => {
+  const actual = await importOriginal<typeof import('./allowlistService')>();
+  return {
+    ...actual,
+    AllowlistService: {
+      getPermissions: vi.fn(),
+      addUser: vi.fn(),
+      setCache: vi.fn(),
+    },
+  };
+});
 
 describe('WaitlistService', () => {
   beforeEach(() => {

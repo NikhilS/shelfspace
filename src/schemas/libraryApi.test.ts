@@ -113,4 +113,33 @@ describe('Library API Zod Validation Schemas', () => {
       expect(parsed.bookIds).toEqual(['b1', 'b2']);
     });
   });
+
+  describe('storedLibraryDocSchema & storedUserProfileDocSchema', () => {
+    it('validates stored library documents and user profile documents', async () => {
+      const {storedLibraryDocSchema, storedUserProfileDocSchema} =
+        await import('./libraryApi');
+
+      const libRes = storedLibraryDocSchema.safeParse({
+        id: 'lib_1',
+        name: 'Home Study',
+        ownerId: 'user_1',
+        ownerName: 'Ada Lovelace',
+        access: {'ada@example.com': 'owner', 'charles@example.com': 'editor'},
+        heroImageUrl: null,
+        bookCount: 42,
+        isVirtual: false,
+        createdAt: '2026-10-25T00:00:00.000Z',
+      });
+      expect(libRes.success).toBe(true);
+
+      const userRes = storedUserProfileDocSchema.safeParse({
+        uid: 'user_1',
+        email: 'ada@example.com',
+        displayName: 'Ada Lovelace',
+        photoURL: 'https://example.com/ada.png',
+        createdAt: '2026-10-25T00:00:00.000Z',
+      });
+      expect(userRes.success).toBe(true);
+    });
+  });
 });

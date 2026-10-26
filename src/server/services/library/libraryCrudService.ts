@@ -2,7 +2,15 @@ import {getAdminDb, formatFirestoreAdminError} from '../firebaseAdmin';
 import {FieldValue, FieldPath} from 'firebase-admin/firestore';
 import {SUPERADMIN_EMAIL} from '../../../constants/auth';
 import {TRPCError} from '@trpc/server';
-import {LibraryScope} from '../../../schemas/libraryApi';
+import {
+  validateFirestoreReadPayload,
+  validateFirestoreWritePayload,
+} from '../../../schemas/common';
+import {
+  LibraryScope,
+  storedLibraryDocSchema,
+  type StoredLibraryDoc,
+} from '../../../schemas/libraryApi';
 import {AllowlistService} from '../../auth/allowlistService';
 import {WaitlistService} from '../../auth/waitlistService';
 import type {Library} from '../../../types';
@@ -23,6 +31,87 @@ export interface LibraryApiRecord {
   createdAt?: string;
   updatedAt?: string;
 }
+
+const IGNORED_LEGACY_LIBRARY_FIELDS = new Set(['sharedWith']);
+
+export const libraryDocConverter = {
+  fromFirestore(
+    docId: string,
+    raw: Record<string, unknown>,
+    fallbackOwnerId = 'unknown_owner',
+  ): StoredLibraryDoc {
+    const isVirtual = Boolean(raw.isVirtual || docId.startsWith('virtual_'));
+    const createdAt = normalizeFirestoreTimestamp(raw.createdAt);
+    const updatedAt = normalizeFirestoreTimestamp(raw.updatedAt);
+    const resolvedOwnerId =
+      typeof raw.ownerId === 'string' && raw.ownerId.trim().length > 0
+        ? raw.ownerId
+        : fallbackOwnerId || 'unknown_owner';
+
+    const candidate: Record<string, unknown> = {
+      ...raw,
+      id: docId,
+      name:
+        typeof raw.name === 'string' && raw.name.trim().length > 0
+          ? raw.name
+          : isVirtual
+            ? 'Personal Reading Shelf'
+            : 'Untitled Library',
+      ownerId: resolvedOwnerId,
+      access:
+        raw.access && typeof raw.access === 'object'
+          ? (raw.access as Record<string, 'owner' | 'editor' | 'viewer'>)
+          : {},
+    };
+
+    for (const legacyKey of IGNORED_LEGACY_LIBRARY_FIELDS) {
+      delete candidate[legacyKey];
+    }
+
+    if (typeof raw.ownerName === 'string' && raw.ownerName) {
+      candidate.ownerName = raw.ownerName;
+    } else {
+      delete candidate.ownerName;
+    }
+    if (typeof raw.heroImageUrl === 'string' || raw.heroImageUrl === null) {
+      candidate.heroImageUrl = raw.heroImageUrl;
+    } else {
+      delete candidate.heroImageUrl;
+    }
+    if (typeof raw.bookCount === 'number') {
+      candidate.bookCount = raw.bookCount;
+    } else {
+      delete candidate.bookCount;
+    }
+    if (raw.isVirtual !== undefined) {
+      candidate.isVirtual = Boolean(raw.isVirtual);
+    } else {
+      delete candidate.isVirtual;
+    }
+    if (createdAt !== undefined) {
+      candidate.createdAt = createdAt;
+    } else {
+      delete candidate.createdAt;
+    }
+    if (updatedAt !== undefined) {
+      candidate.updatedAt = updatedAt;
+    } else {
+      delete candidate.updatedAt;
+    }
+
+    for (const key of Object.keys(candidate)) {
+      if (candidate[key] === undefined) {
+        delete candidate[key];
+      }
+    }
+
+    return validateFirestoreReadPayload(storedLibraryDocSchema, candidate, {
+      entity: 'StoredLibraryDoc',
+      documentPath: `/libraries/${docId}`,
+      operation: 'read',
+    });
+  },
+};
 
 /**
  * Lists all libraries accessible to the caller based on requested scopes.
@@ -95,13 +184,18 @@ export async function getUserLibraries(
         }
         seenIds.add(docSnap.id);
 
-        const data = docSnap.data();
-        if (data.isVirtual === true || docSnap.id.startsWith('virtual_')) {
+        const rawData = (docSnap.data() || {}) as Record<string, unknown>;
+        if (rawData.isVirtual === true || docSnap.id.startsWith('virtual_')) {
           return;
         }
-        const ownerId = data.ownerId;
+        const storedLib = libraryDocConverter.fromFirestore(
+          docSnap.id,
+          rawData,
+          userId,
+        );
+        const ownerId = storedLib.ownerId;
         const accessMap: Record<string, 'owner' | 'editor' | 'viewer'> =
-          data.access || {};
+          storedLib.access || {};
 
         let callerRole: 'owner' | 'editor' | 'viewer' | 'admin' | null = null;
         let ownershipType: 'owned' | 'shared' | 'global_admin' = 'owned';
@@ -126,17 +220,16 @@ export async function getUserLibraries(
         if (callerRole) {
           result.push({
             id: docSnap.id,
-            name: data.name || 'Untitled Library',
+            name: storedLib.name || 'Untitled Library',
             ownerId: ownerId || userId,
-            ownerName: data.ownerName || undefined,
+            ownerName: storedLib.ownerName || undefined,
             callerRole,
             ownershipType,
             access: accessMap,
-            heroImageUrl: data.heroImageUrl || undefined,
-            bookCount:
-              typeof data.bookCount === 'number' ? data.bookCount : undefined,
-            createdAt: normalizeFirestoreTimestamp(data.createdAt),
-            updatedAt: normalizeFirestoreTimestamp(data.updatedAt),
+            heroImageUrl: storedLib.heroImageUrl || undefined,
+            bookCount: storedLib.bookCount,
+            createdAt: storedLib.createdAt,
+            updatedAt: storedLib.updatedAt,
           });
         }
       });
@@ -206,10 +299,10 @@ export async function getLibrary(
     }
   }
 
-  const ownerId = (data.ownerId as string | undefined) || userId;
+  const storedLib = libraryDocConverter.fromFirestore(libraryId, data, userId);
+  const ownerId = storedLib.ownerId || userId;
   const accessMap: Record<string, 'owner' | 'editor' | 'viewer'> =
-    (data.access as
-      Record<string, 'owner' | 'editor' | 'viewer'> | undefined) || {};
+    storedLib.access || {};
 
   const callerRole: 'owner' | 'editor' | 'viewer' | null =
     options?.callerRole ??
@@ -217,27 +310,22 @@ export async function getLibrary(
       ? 'owner'
       : evaluateRoleFromLibraryData(userId, userEmail, data));
 
-  const createdAtStr = normalizeFirestoreTimestamp(data.createdAt);
-  const updatedAtStr = normalizeFirestoreTimestamp(data.updatedAt);
-
   return {
     ...(data as unknown as Library),
     id: libraryId,
-    name:
-      (data.name as string) ||
-      (libraryId.startsWith('virtual_')
-        ? 'Personal Reading Shelf'
-        : 'Untitled Library'),
+    name: storedLib.name,
     ownerId,
-    ownerName: (data.ownerName as string) || '',
+    ownerName: storedLib.ownerName || '',
     access: accessMap,
-    isVirtual: Boolean(data.isVirtual || libraryId.startsWith('virtual_')),
+    isVirtual: Boolean(storedLib.isVirtual || libraryId.startsWith('virtual_')),
     callerRole,
     isOwner: callerRole === 'owner',
     canEdit: callerRole === 'owner' || callerRole === 'editor',
     createdAt:
-      createdAtStr || (data.createdAt as string) || new Date().toISOString(),
-    updatedAt: updatedAtStr || (data.updatedAt as string | undefined),
+      storedLib.createdAt ||
+      (data.createdAt as string) ||
+      new Date().toISOString(),
+    updatedAt: storedLib.updatedAt || (data.updatedAt as string | undefined),
   };
 }
 
@@ -276,11 +364,17 @@ export async function createLibrary(
     const db = getAdminDb();
     const libRef = db.collection('libraries').doc();
     const createdId = libRef.id;
-    await libRef.set({
+    const firestorePayload = {
       ...payload,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
+    };
+    validateFirestoreWritePayload(storedLibraryDocSchema, firestorePayload, {
+      entity: 'StoredLibraryDoc',
+      documentPath: `/libraries/${createdId}`,
+      operation: 'create',
     });
+    await libRef.set(firestorePayload);
 
     return {
       id: createdId,
@@ -387,6 +481,15 @@ export async function updateLibrary(
   try {
     const db = getAdminDb();
     const libRef = db.collection('libraries').doc(libraryId);
+    validateFirestoreWritePayload(
+      storedLibraryDocSchema.partial(),
+      updatePayload,
+      {
+        entity: 'StoredLibraryDoc',
+        documentPath: `/libraries/${libraryId}`,
+        operation: 'update',
+      },
+    );
     await libRef.update(updatePayload);
     return {success: true};
   } catch (err: unknown) {

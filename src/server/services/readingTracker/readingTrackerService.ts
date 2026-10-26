@@ -1,8 +1,13 @@
 import {getAdminDb} from '../firebaseAdmin';
-import {FieldPath} from 'firebase-admin/firestore';
 import {LibraryService} from '../library';
 import {getVirtualLibraryId} from '../library/libraryShareService';
-import {BookService, BookPartitioner} from '../book';
+import {
+  BookService,
+  BookPartitioner,
+  bookDocConverter,
+  computeReadingStateKey,
+  fetchUserReadingStatesMap,
+} from '../book';
 import {catalogOrchestrator} from '../catalog';
 import {
   normalizeIsbnForDedupe,
@@ -10,14 +15,6 @@ import {
   extractPrimarySearchToken,
 } from '../../../lib/duplicateDetection';
 import type {Book, BookDetails} from '../../../types';
-
-const TRACKED_STATUS_VALUES = [
-  'want_to_read',
-  'reading',
-  'finished',
-  'completed',
-  'abandoned',
-] as const;
 
 export type TrackedShelfStatus =
   'want_to_read' | 'reading' | 'finished' | 'abandoned';
@@ -108,8 +105,8 @@ function normalizeIsbnKey(val?: string): string {
 }
 
 /**
- * Retrieves all books tracked by the user across owned libraries, shared libraries,
- * and the user's personal virtual shelf (`virtual_${userId}`).
+ * Retrieves all books tracked by the user directly from `/users/{userId}/readingStates`,
+ * annotated with library metadata from accessible owned/shared libraries and the personal virtual shelf.
  */
 export async function getPersonalReadingShelf(
   userId: string,
@@ -121,12 +118,15 @@ export async function getPersonalReadingShelf(
   const db = getAdminDb();
   const virtualLibraryId = getVirtualLibraryId(userId);
 
-  const {libraries} = await LibraryService.getUserLibraries(
-    userId,
-    userEmail,
-    ['owned', 'shared'],
-    false,
-  );
+  const [{libraries}, readingStatesMap] = await Promise.all([
+    LibraryService.getUserLibraries(
+      userId,
+      userEmail,
+      ['owned', 'shared'],
+      false,
+    ),
+    fetchUserReadingStatesMap(db, userId),
+  ]);
 
   const libraryMetaMap = new Map<
     string,
@@ -147,70 +147,81 @@ export async function getPersonalReadingShelf(
     isVirtual: true,
   });
 
-  const libraryEntries = Array.from(libraryMetaMap.values());
-
-  const snapshots = await Promise.all(
-    libraryEntries.map(async libMeta => {
-      try {
-        const booksRef = db
-          .collection('libraries')
-          .doc(libMeta.id)
-          .collection('books');
-        if (
-          !libMeta.isVirtual &&
-          typeof (booksRef as {where?: unknown}).where === 'function'
-        ) {
-          const snap = await booksRef
-            .where(new FieldPath('userStatuses', userId), 'in', [
-              ...TRACKED_STATUS_VALUES,
-            ])
-            .get();
-          return {libMeta, docs: snap.docs || []};
-        }
-        const snap = await booksRef.get();
-        return {libMeta, docs: snap.docs || []};
-      } catch {
-        return {libMeta, docs: []};
-      }
-    }),
-  );
-
   const allTracked: TrackedBookItem[] = [];
 
-  for (const {libMeta, docs} of snapshots) {
-    for (const docSnap of docs) {
-      const rawData = (docSnap.data() || {}) as Partial<Book>;
-      const merged = BookPartitioner.mergeBookAndDetails(docSnap.id, rawData);
-
-      const userStatusRaw =
-        merged.userStatuses?.[userId] ??
-        (libMeta.isVirtual ? merged.status || 'want_to_read' : undefined);
-      const readingStatus = normalizeStatus(userStatusRaw);
-
-      if (readingStatus === 'unset') {
-        continue;
-      }
-
-      const ownershipStatus: 'owned' | 'unowned' =
-        libMeta.isVirtual || merged.ownershipStatus === 'unowned'
-          ? 'unowned'
-          : 'owned';
-
-      const userRating =
-        merged.userRatings && typeof merged.userRatings[userId] === 'number'
-          ? merged.userRatings[userId]
-          : undefined;
-
-      allTracked.push({
-        ...merged,
-        libraryId: libMeta.id,
-        libraryName: libMeta.name,
-        isVirtual: libMeta.isVirtual || ownershipStatus === 'unowned',
-        ownershipStatus,
-        readingStatus,
-        ...(userRating !== undefined ? {userRating} : {}),
-      });
+  for (const [stateKey, state] of readingStatesMap.entries()) {
+    const readingStatus = normalizeStatus(state.status);
+    if (readingStatus === 'unset') {
+      continue;
     }
+
+    const snap = state.bookSnapshot;
+    const resolvedLibraryId =
+      state.libraryId || snap?.libraryId || virtualLibraryId;
+    const libMeta = libraryMetaMap.get(resolvedLibraryId) || {
+      id: resolvedLibraryId,
+      name:
+        snap?.libraryName ||
+        (resolvedLibraryId.startsWith('virtual_')
+          ? 'Personal Reading Shelf'
+          : 'Library'),
+      isVirtual: resolvedLibraryId.startsWith('virtual_'),
+    };
+    const resolvedBookId =
+      state.bookId ||
+      snap?.bookId ||
+      (stateKey.startsWith('bookid:')
+        ? stateKey.slice('bookid:'.length)
+        : stateKey);
+
+    const ownershipStatus: 'owned' | 'unowned' =
+      libMeta.isVirtual || snap?.ownershipStatus === 'unowned'
+        ? 'unowned'
+        : 'owned';
+
+    const addedAt = state.updatedAt || new Date().toISOString();
+
+    allTracked.push({
+      id: resolvedBookId,
+      title: snap?.title || 'Untitled Book',
+      author: snap?.author || 'Unknown Author',
+      ...(snap?.isbn || state.cleanIsbn
+        ? {isbn: snap?.isbn || state.cleanIsbn}
+        : {}),
+      ...(snap?.cleanIsbn || state.cleanIsbn
+        ? {cleanIsbn: snap?.cleanIsbn || state.cleanIsbn}
+        : {}),
+      ...(snap?.coverUrl ? {coverUrl: snap.coverUrl} : {}),
+      ...(snap?.publishedDate ? {publishedDate: snap.publishedDate} : {}),
+      ...(snap?.primaryGenre ? {primaryGenre: snap.primaryGenre} : {}),
+      subgenres: Array.isArray(snap?.subgenres) ? snap.subgenres : [],
+      isCustomPrimary: false,
+      ...(snap?.series ? {series: snap.series} : {}),
+      format: snap?.format || 'physical',
+      ...(snap?.synopsis ? {synopsis: snap.synopsis} : {}),
+      ...(snap?.authorBio ? {authorBio: snap.authorBio} : {}),
+      ...(snap?.geoMetadata ? {geoMetadata: snap.geoMetadata} : {}),
+      ...(snap?.temporalMetadata
+        ? {temporalMetadata: snap.temporalMetadata}
+        : {}),
+      ...(snap?.clusterCoordinates
+        ? {clusterCoordinates: snap.clusterCoordinates}
+        : {}),
+      addedBy: userId,
+      addedAt,
+      ...(state.updatedAt ? {updatedAt: state.updatedAt} : {}),
+      libraryId: libMeta.id,
+      libraryName: libMeta.name,
+      isVirtual: libMeta.isVirtual || ownershipStatus === 'unowned',
+      ownershipStatus,
+      readingStatus,
+      ...(typeof state.rating === 'number' ? {userRating: state.rating} : {}),
+      ...(state.readStatusReviewedAt !== undefined
+        ? {readStatusReviewedAt: state.readStatusReviewedAt}
+        : {}),
+      ...(state.startedAt !== undefined ? {startedAt: state.startedAt} : {}),
+      ...(state.finishedAt !== undefined ? {finishedAt: state.finishedAt} : {}),
+    });
   }
 
   // Sort by most recently updated or added
@@ -246,15 +257,15 @@ export async function getPersonalReadingShelf(
 
 /**
  * Retrieves unread books ('unset' or 'want_to_read') across all non-virtual libraries
- * accessible to the user (owned and shared), excluding any book that the user has
- * marked as 'reading', 'finished'/'completed', or 'abandoned' in any library or virtual shelf.
+ * accessible to the user (owned and shared), using the strict single-lookup reading state key:
+ * - If a book has an ISBN, looks up `isbn:<NORMALIZED_ISBN>` in `/users/{userId}/readingStates`.
+ * - If a book has no ISBN, looks up `bookid:<BOOK_ID>` in `/users/{userId}/readingStates`.
  */
 export async function getUnreadLibraryBooks(
   userId: string,
   userEmail: string | undefined,
 ): Promise<UnreadLibraryBookItem[]> {
   const db = getAdminDb();
-  const virtualLibraryId = getVirtualLibraryId(userId);
 
   const {libraries} = await LibraryService.getUserLibraries(
     userId,
@@ -271,7 +282,7 @@ export async function getUnreadLibraryBooks(
     return [];
   }
 
-  const [librarySnaps, virtualSnap] = await Promise.all([
+  const [librarySnaps, readingStatesMap] = await Promise.all([
     Promise.all(
       nonVirtualLibraries.map(async lib => {
         try {
@@ -294,123 +305,51 @@ export async function getUnreadLibraryBooks(
         }
       }),
     ),
-    (async () => {
-      try {
-        const vRef = db
-          .collection('libraries')
-          .doc(virtualLibraryId)
-          .collection('books');
-        if (typeof (vRef as {where?: unknown}).where === 'function') {
-          const snap = await vRef
-            .where(new FieldPath('userStatuses', userId), 'in', [
-              'reading',
-              'finished',
-              'completed',
-              'abandoned',
-            ])
-            .get();
-          return snap.docs || [];
-        }
-        const snap = await vRef.get();
-        return snap.docs || [];
-      } catch {
-        return [];
-      }
-    })(),
+    fetchUserReadingStatesMap(db, userId),
   ]);
-
-  const excludedDedupeKeys = new Set<string>();
-  const excludedIsbns = new Set<string>();
-
-  const recordExcludedBook = (rawData: Partial<Book>) => {
-    const cleanIsbn =
-      rawData.cleanIsbn || normalizeIsbnForDedupe(rawData.isbn || '');
-    if (cleanIsbn) {
-      excludedIsbns.add(cleanIsbn);
-    }
-    const dedupeKey =
-      rawData.dedupeKey ||
-      computeBookDedupeKey(rawData.title || '', rawData.author);
-    if (dedupeKey && dedupeKey !== '::') {
-      excludedDedupeKeys.add(dedupeKey);
-    }
-  };
-
-  for (const docSnap of virtualSnap) {
-    const rawData = (docSnap.data() || {}) as Partial<Book>;
-    const status = normalizeStatus(
-      rawData.userStatuses?.[userId] ?? rawData.status,
-    );
-    if (
-      status === 'reading' ||
-      status === 'finished' ||
-      status === 'abandoned'
-    ) {
-      recordExcludedBook(rawData);
-    }
-  }
-
-  for (const {docs} of librarySnaps) {
-    for (const docSnap of docs) {
-      const rawData = (docSnap.data() || {}) as Partial<Book>;
-      if (rawData.ownershipStatus === 'unowned') {
-        continue;
-      }
-      const status = normalizeStatus(rawData.userStatuses?.[userId]);
-      if (
-        status === 'reading' ||
-        status === 'finished' ||
-        status === 'abandoned'
-      ) {
-        recordExcludedBook(rawData);
-      }
-    }
-  }
 
   const unreadItems: UnreadLibraryBookItem[] = [];
   const seenKeys = new Set<string>();
 
   for (const {libId, libName, docs} of librarySnaps) {
     for (const docSnap of docs) {
-      const rawData = (docSnap.data() || {}) as Partial<Book>;
+      const rawData = bookDocConverter.fromFirestore(
+        docSnap.id,
+        (docSnap.data() || {}) as Record<string, unknown>,
+      );
       if (rawData.ownershipStatus === 'unowned') {
         continue;
       }
       const merged = BookPartitioner.mergeBookAndDetails(docSnap.id, rawData);
-      const status = normalizeStatus(merged.userStatuses?.[userId]);
+      const stateKey = computeReadingStateKey({
+        isbn: merged.isbn,
+        cleanIsbn: merged.cleanIsbn,
+        bookId: merged.id,
+      });
+
+      const state = readingStatesMap.get(stateKey);
+      const status = normalizeStatus(state?.status);
 
       if (status !== 'unset' && status !== 'want_to_read') {
         continue;
       }
 
-      const cleanIsbn =
-        merged.cleanIsbn || normalizeIsbnForDedupe(merged.isbn || '');
-      const dedupeKey =
-        merged.dedupeKey ||
-        computeBookDedupeKey(merged.title || '', merged.author);
-
-      if (
-        (cleanIsbn && excludedIsbns.has(cleanIsbn)) ||
-        (dedupeKey && dedupeKey !== '::' && excludedDedupeKeys.has(dedupeKey))
-      ) {
+      if (seenKeys.has(stateKey)) {
         continue;
       }
-
-      const uniqueIdentity =
-        cleanIsbn ||
-        (dedupeKey && dedupeKey !== '::'
-          ? dedupeKey
-          : `${libId}::${docSnap.id}`);
-      if (seenKeys.has(uniqueIdentity)) {
-        continue;
-      }
-      seenKeys.add(uniqueIdentity);
+      seenKeys.add(stateKey);
 
       unreadItems.push({
         ...merged,
         libraryId: libId,
         libraryName: libName,
         readingStatus: status,
+        ...(typeof state?.rating === 'number'
+          ? {userRating: state.rating}
+          : {}),
+        ...(state?.readStatusReviewedAt !== undefined
+          ? {readStatusReviewedAt: state.readStatusReviewedAt}
+          : {}),
       });
     }
   }
@@ -512,80 +451,105 @@ export async function searchUnifiedCatalog(
       },
     ];
 
-    const snaps = await Promise.all(
-      libEntries.map(async libMeta => {
-        try {
-          const booksRef = db
-            .collection('libraries')
-            .doc(libMeta.id)
-            .collection('books');
+    const [snaps, readingStatesMap] = await Promise.all([
+      Promise.all(
+        libEntries.map(async libMeta => {
+          try {
+            const booksRef = db
+              .collection('libraries')
+              .doc(libMeta.id)
+              .collection('books');
 
-          let ranIndexedTokenQuery = false;
+            let ranIndexedTokenQuery = false;
 
-          if (typeof (booksRef as {where?: unknown}).where === 'function') {
-            if (isLikelyIsbn) {
-              const isbnSnap = await booksRef
-                .where('cleanIsbn', '==', queryIsbn)
-                .limit(25)
-                .get();
-              const matchedIsbnDocs = (isbnSnap?.docs || []).filter(docSnap =>
-                matchesSearchCriteria((docSnap.data() || {}) as Partial<Book>),
-              );
-              if (matchedIsbnDocs.length > 0) {
-                return {libMeta, docs: matchedIsbnDocs};
-              }
-              if (libMeta.bookCount === 0) {
-                return {libMeta, docs: []};
-              }
-            } else if (primarySearchToken) {
-              ranIndexedTokenQuery = true;
-              const tokenSnap = await booksRef
-                .where('searchTokens', 'array-contains', primarySearchToken)
-                .limit(100)
-                .get();
-              const matchedTokenDocs = (tokenSnap?.docs || []).filter(docSnap =>
-                matchesSearchCriteria((docSnap.data() || {}) as Partial<Book>),
-              );
-              if (matchedTokenDocs.length > 0) {
-                return {libMeta, docs: matchedTokenDocs};
-              }
-              // If library is explicitly empty, skip fallback scan
-              if (libMeta.bookCount === 0) {
-                return {libMeta, docs: []};
+            if (typeof (booksRef as {where?: unknown}).where === 'function') {
+              if (isLikelyIsbn) {
+                const isbnSnap = await booksRef
+                  .where('cleanIsbn', '==', queryIsbn)
+                  .limit(25)
+                  .get();
+                const matchedIsbnDocs = (isbnSnap?.docs || []).filter(docSnap =>
+                  matchesSearchCriteria(
+                    bookDocConverter.fromFirestore(
+                      docSnap.id,
+                      (docSnap.data() || {}) as Record<string, unknown>,
+                    ),
+                  ),
+                );
+                if (matchedIsbnDocs.length > 0) {
+                  return {libMeta, docs: matchedIsbnDocs};
+                }
+                if (libMeta.bookCount === 0) {
+                  return {libMeta, docs: []};
+                }
+              } else if (primarySearchToken) {
+                ranIndexedTokenQuery = true;
+                const tokenSnap = await booksRef
+                  .where('searchTokens', 'array-contains', primarySearchToken)
+                  .limit(100)
+                  .get();
+                const matchedTokenDocs = (tokenSnap?.docs || []).filter(
+                  docSnap =>
+                    matchesSearchCriteria(
+                      bookDocConverter.fromFirestore(
+                        docSnap.id,
+                        (docSnap.data() || {}) as Record<string, unknown>,
+                      ),
+                    ),
+                );
+                if (matchedTokenDocs.length > 0) {
+                  return {libMeta, docs: matchedTokenDocs};
+                }
+                // If library is explicitly empty, skip fallback scan
+                if (libMeta.bookCount === 0) {
+                  return {libMeta, docs: []};
+                }
               }
             }
+
+            // Fallback scan for legacy libraries containing un-backfilled books
+            const snap = await booksRef.get();
+            const fallbackDocs = (snap.docs || []).filter(docSnap => {
+              const data = bookDocConverter.fromFirestore(
+                docSnap.id,
+                (docSnap.data() || {}) as Record<string, unknown>,
+              );
+              if (
+                ranIndexedTokenQuery &&
+                Array.isArray(data.searchTokens) &&
+                data.searchTokens.length > 0
+              ) {
+                return false;
+              }
+              return matchesSearchCriteria(data);
+            });
+            return {libMeta, docs: fallbackDocs};
+          } catch {
+            return {libMeta, docs: []};
           }
-
-          // Fallback scan for legacy libraries containing un-backfilled books
-          const snap = await booksRef.get();
-          const fallbackDocs = (snap.docs || []).filter(docSnap => {
-            const data = (docSnap.data() || {}) as Partial<Book>;
-            if (
-              ranIndexedTokenQuery &&
-              Array.isArray(data.searchTokens) &&
-              data.searchTokens.length > 0
-            ) {
-              return false;
-            }
-            return matchesSearchCriteria(data);
-          });
-          return {libMeta, docs: fallbackDocs};
-        } catch {
-          return {libMeta, docs: []};
-        }
-      }),
-    );
+        }),
+      ),
+      fetchUserReadingStatesMap(db, userId),
+    ]);
 
     const matches: UnifiedLibrarySearchMatch[] = [];
+    const seenStateKeys = new Set<string>();
     for (const {libMeta, docs} of snaps) {
       for (const docSnap of docs) {
-        const data = (docSnap.data() || {}) as Partial<Book>;
+        const raw = (docSnap.data() || {}) as Record<string, unknown>;
+        const data = bookDocConverter.fromFirestore(docSnap.id, raw);
         const title = data.title || 'Untitled Book';
         const author = data.author || 'Unknown Author';
 
+        const stateKey = computeReadingStateKey({
+          isbn: data.isbn,
+          cleanIsbn: data.cleanIsbn,
+          bookId: docSnap.id,
+        });
+        seenStateKeys.add(stateKey);
+        const state = readingStatesMap.get(stateKey);
         const rawStatus =
-          data.userStatuses?.[userId] ??
-          (libMeta.isVirtual ? data.status || 'want_to_read' : 'unset');
+          state?.status ?? (libMeta.isVirtual ? 'want_to_read' : 'unset');
         const readingStatus = normalizeStatus(rawStatus);
         const ownershipStatus: 'owned' | 'unowned' =
           libMeta.isVirtual || data.ownershipStatus === 'unowned'
@@ -605,11 +569,53 @@ export async function searchUnifiedCatalog(
           coverUrl: data.coverUrl,
           publishedDate: data.publishedDate,
           primaryGenre: data.primaryGenre || undefined,
-          synopsis: data.synopsis,
+          synopsis:
+            typeof raw.synopsis === 'string' && raw.synopsis.length > 0
+              ? raw.synopsis
+              : undefined,
           readingStatus,
-          userRating: data.userRatings?.[userId],
+          userRating: state?.rating,
         });
       }
+    }
+
+    for (const [stateKey, state] of readingStatesMap.entries()) {
+      if (seenStateKeys.has(stateKey) || !state.bookSnapshot) {
+        continue;
+      }
+      if (!matchesSearchCriteria(state.bookSnapshot as Partial<Book>)) {
+        continue;
+      }
+      const snap = state.bookSnapshot;
+      const resolvedLibraryId =
+        state.libraryId || snap.libraryId || virtualLibraryId;
+      const isVirtual =
+        resolvedLibraryId.startsWith('virtual_') ||
+        snap.ownershipStatus === 'unowned';
+      matches.push({
+        bookId:
+          state.bookId ||
+          snap.bookId ||
+          (stateKey.startsWith('bookid:')
+            ? stateKey.slice('bookid:'.length)
+            : stateKey),
+        libraryId: resolvedLibraryId,
+        libraryName:
+          snap.libraryName ||
+          (isVirtual ? 'Personal Reading Shelf' : 'Library'),
+        isVirtual,
+        ownershipStatus: isVirtual ? 'unowned' : 'owned',
+        title: snap.title || 'Untitled Book',
+        author: snap.author || 'Unknown Author',
+        ...(snap.series ? {series: snap.series} : {}),
+        isbn: snap.isbn || state.cleanIsbn,
+        coverUrl: snap.coverUrl,
+        publishedDate: snap.publishedDate,
+        primaryGenre: snap.primaryGenre,
+        synopsis: snap.synopsis,
+        readingStatus: normalizeStatus(state.status),
+        userRating: state.rating,
+      });
     }
 
     return matches.slice(0, 25);
@@ -847,7 +853,10 @@ export async function trackBook(
           const legacySnaps = await Promise.all(legacyQueries);
           for (const snap of legacySnaps) {
             for (const docSnap of snap?.docs || []) {
-              const d = (docSnap.data() || {}) as Partial<Book>;
+              const d = bookDocConverter.fromFirestore(
+                docSnap.id,
+                (docSnap.data() || {}) as Record<string, unknown>,
+              );
               const docIsbn = normalizeIsbnKey(d.isbn);
               if (targetIsbn && docIsbn && targetIsbn === docIsbn) {
                 existingBookId = docSnap.id;
@@ -868,7 +877,10 @@ export async function trackBook(
     } else {
       const existingSnap = await booksRef.get();
       for (const docSnap of existingSnap.docs || []) {
-        const d = (docSnap.data() || {}) as Partial<Book>;
+        const d = bookDocConverter.fromFirestore(
+          docSnap.id,
+          (docSnap.data() || {}) as Record<string, unknown>,
+        );
         const docIsbn = normalizeIsbnKey(d.isbn);
         if (targetIsbn && docIsbn && targetIsbn === docIsbn) {
           existingBookId = docSnap.id;
@@ -926,10 +938,7 @@ export async function trackBook(
       series: bookData.series,
       format: bookData.format || 'physical',
       ownershipStatus,
-      status: input.status,
-      ...(hasValidRating && input.rating !== undefined
-        ? {userRatings: {[userId]: input.rating}}
-        : {}),
+      readingStatus: input.status,
     });
     resolvedBookId = created.id;
 
@@ -944,7 +953,15 @@ export async function trackBook(
           rating: input.rating,
           text: trimmedReviewText,
         },
-        {skipAccessCheck: true},
+        {skipAccessCheck: true, status: input.status},
+      );
+    } else if (hasValidRating && input.rating !== undefined) {
+      await BookService.updateBookStatus(
+        userId,
+        destinationLibraryId,
+        resolvedBookId,
+        input.status,
+        {rating: input.rating, skipAccessCheck: true},
       );
     }
   }

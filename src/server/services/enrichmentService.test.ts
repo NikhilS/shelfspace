@@ -7,6 +7,7 @@ vi.mock('./library');
 vi.mock('./metadata');
 
 const mockBookGet = vi.fn();
+const mockBookDetailsGet = vi.fn().mockResolvedValue({exists: false});
 const mockBookUpdate = vi.fn();
 const mockBookDetailsSet = vi.fn();
 const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
@@ -17,9 +18,9 @@ const mockGetAll = vi.fn(
 
 const mockCollection = vi.fn(() => ({
   doc: vi.fn(() => ({
-    collection: vi.fn(() => ({
+    collection: vi.fn((colName: string) => ({
       doc: vi.fn(() => ({
-        get: mockBookGet,
+        get: colName === 'bookDetails' ? mockBookDetailsGet : mockBookGet,
         update: mockBookUpdate,
         set: mockBookDetailsSet,
       })),
