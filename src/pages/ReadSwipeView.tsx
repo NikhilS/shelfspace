@@ -607,9 +607,8 @@ export function ReadSwipeView() {
       if (!libraryId) {
         return;
       }
-      try {
-        setMutationError(null);
-        await instrumentMutation(
+      const executeStatusUpdate = () =>
+        instrumentMutation(
           'update',
           `libraries/${libraryId}/books/${bookId}`,
           {status: statusToSave},
@@ -623,11 +622,29 @@ export function ReadSwipeView() {
                 : {recordReadStatusReview: true}),
             }),
         );
+
+      try {
+        setMutationError(null);
+        try {
+          await executeStatusUpdate();
+        } catch (firstErr) {
+          const msg =
+            firstErr instanceof Error ? firstErr.message : String(firstErr);
+          if (
+            msg.includes('warming up') ||
+            msg.includes('SERVICE_UNAVAILABLE')
+          ) {
+            await new Promise(resolve => setTimeout(resolve, 2500));
+            await executeStatusUpdate();
+          } else {
+            throw firstErr;
+          }
+        }
         void (
           utils as {readingTracker?: {getShelf?: {invalidate?: () => unknown}}}
         ).readingTracker?.getShelf?.invalidate?.();
       } catch (err) {
-        console.error('Failed to update reading status during swipe:', err);
+        console.warn('Failed to update reading status during swipe:', err);
         applyOptimisticBookPatch(bookId, {
           nextStatus: fallbackStatus,
           reviewedAtIso: fallbackReviewedAt,
@@ -653,8 +670,8 @@ export function ReadSwipeView() {
       ) {
         return;
       }
-      try {
-        await instrumentMutation(
+      const executeSkipReview = () =>
+        instrumentMutation(
           'update',
           `libraries/${libraryId}/books/${bookId}`,
           {action: 'recordReadSwipeReview'},
@@ -667,8 +684,25 @@ export function ReadSwipeView() {
                 : {}),
             }),
         );
+
+      try {
+        try {
+          await executeSkipReview();
+        } catch (firstErr) {
+          const msg =
+            firstErr instanceof Error ? firstErr.message : String(firstErr);
+          if (
+            msg.includes('warming up') ||
+            msg.includes('SERVICE_UNAVAILABLE')
+          ) {
+            await new Promise(resolve => setTimeout(resolve, 2500));
+            await executeSkipReview();
+          } else {
+            throw firstErr;
+          }
+        }
       } catch (err) {
-        console.error('Failed to record swipe review timestamp:', err);
+        console.warn('Failed to record swipe review timestamp:', err);
         applyOptimisticBookPatch(bookId, {
           reviewedAtIso: fallbackReviewedAt,
         });

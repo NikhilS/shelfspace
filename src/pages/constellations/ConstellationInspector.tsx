@@ -15,6 +15,8 @@ import {MonographCoverFallback} from '../../components/book/MonographCoverFallba
 import {CLUSTER_COLORS, ClusterGeometry} from './types';
 
 interface ConstellationInspectorProps {
+  isOpen: boolean;
+  onCloseDrawer: () => void;
   selectedStar: ScatterPoint | null;
   activeCluster: ClusterGeometry | null;
   clustersGeometry: ClusterGeometry[];
@@ -30,6 +32,8 @@ interface ConstellationInspectorProps {
 }
 
 export function ConstellationInspector({
+  isOpen,
+  onCloseDrawer,
   selectedStar,
   activeCluster,
   clustersGeometry,
@@ -43,6 +47,10 @@ export function ConstellationInspector({
   onFocusCluster,
   onFocusStar,
 }: ConstellationInspectorProps) {
+  if (!isOpen) {
+    return null;
+  }
+
   const activeClusterBridges = activeCluster
     ? crossClusterBridges.filter(
         b =>
@@ -52,7 +60,10 @@ export function ConstellationInspector({
     : [];
 
   return (
-    <aside className="lg:col-span-4 bg-surface border border-outline-variant/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between min-h-[420px] lg:h-[640px] overflow-y-auto custom-scrollbar">
+    <aside
+      aria-label="Curatorial Constellation Inspector"
+      className="w-full bg-surface border border-outline-variant/80 rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-xs lg:shadow-lg lg:absolute lg:top-3 lg:right-3 lg:bottom-3 lg:z-30 lg:w-[396px] lg:rounded-xl lg:overflow-y-auto custom-scrollbar"
+    >
       {selectedStar ? (
         /* ===============================================================
            STATE A: Selected Book Star & Semantic Nearest Neighbors
@@ -65,14 +76,23 @@ export function ConstellationInspector({
                 Locked Star Inspector
               </span>
             </div>
-            <button
-              type="button"
-              onClick={onClearStar}
-              className="text-xs text-on-surface-variant hover:text-on-surface inline-flex items-center gap-1 whitespace-nowrap shrink-0"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Clear</span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={onClearStar}
+                className="text-xs text-on-surface-variant hover:text-on-surface inline-flex items-center gap-1 whitespace-nowrap min-h-[36px] px-1.5"
+              >
+                <span>All Stars</span>
+              </button>
+              <button
+                type="button"
+                onClick={onCloseDrawer}
+                aria-label="Close inspector drawer"
+                className="p-1.5 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Book Header & Artwork */}
@@ -198,7 +218,7 @@ export function ConstellationInspector({
               </span>
             </div>
 
-            <div className="flex flex-col gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-1.5">
               {selectedStar.neighbors.map(nb => {
                 const nbStarEntry = starById.get(nb.bookId);
                 const isCrossCluster = nb.clusterId !== selectedStar.clusterId;
@@ -274,14 +294,23 @@ export function ConstellationInspector({
                 Constellation Territory
               </span>
             </div>
-            <button
-              type="button"
-              onClick={onResetView}
-              className="text-xs text-on-surface-variant hover:text-on-surface inline-flex items-center gap-1 whitespace-nowrap shrink-0"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>All</span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={onResetView}
+                className="text-xs text-on-surface-variant hover:text-on-surface inline-flex items-center gap-1 whitespace-nowrap"
+              >
+                <span>All</span>
+              </button>
+              <button
+                type="button"
+                onClick={onCloseDrawer}
+                aria-label="Close inspector drawer"
+                className="p-1 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <div>
@@ -370,7 +399,7 @@ export function ConstellationInspector({
             </div>
           )}
 
-          <div className="flex flex-col gap-1.5 border-t border-outline-variant/40 pt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-1.5 border-t border-outline-variant/40 pt-3">
             {activeCluster.pointIndices.map(idx => {
               const pt = plotData[idx];
               return (
@@ -401,20 +430,30 @@ export function ConstellationInspector({
            =============================================================== */
         <div className="flex flex-col gap-4">
           <div className="border-b border-outline-variant/50 pb-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Layers className="w-4 h-4 text-primary" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
-                Celestial Atlas Index
-              </h2>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-2 min-w-0">
+                <Layers className="w-4 h-4 text-primary shrink-0" />
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant truncate">
+                  Celestial Atlas Index
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={onCloseDrawer}
+                aria-label="Close inspector drawer"
+                className="p-1 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
             <p className="text-xs text-on-surface-variant leading-relaxed">
-              Click any point on the chart to lock onto a volume and trace its
-              semantic kinship arcs, or select a constellation below to inspect
-              its emergent theme.
+              Click any star or constellation title on the map to trace its
+              kindred books, or select a constellation below to explore its
+              emergent theme.
             </p>
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
             {clustersGeometry.map(cluster => (
               <button
                 key={cluster.clusterId}

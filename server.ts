@@ -1,6 +1,5 @@
 import express from 'express';
 import compression from 'compression';
-import {createServer as createViteServer} from 'vite';
 import path from 'path';
 import fs from 'fs';
 
@@ -13,13 +12,6 @@ if (
   delete (globalThis as Record<string, unknown>).__dirname;
 }
 
-import * as trpcExpress from '@trpc/server/adapters/express';
-import {appRouter} from './src/server/trpc/routers/_app';
-import {createContext} from './src/server/trpc/trpc';
-import {getAdminApp, firebaseConfig} from './src/server/services/firebaseAdmin';
-import {TokenVerifier, AllowlistService} from './src/server/auth';
-import {LibraryService} from './src/server/services/library';
-import {enrichmentJobCoordinator} from './src/server/services/enrichmentJobCoordinator';
 import {
   createRateLimiter,
   redactUrlForLog,
@@ -29,17 +21,77 @@ import {
 } from './src/server/middleware/securityGateway';
 import {safeIdSchema} from './src/schemas/common';
 
-// Initialize Firebase Admin
-try {
-  getAdminApp();
-  console.log(
-    `[server] Firebase Admin initialized (project=${firebaseConfig?.projectId || 'default'}, db=${firebaseConfig?.firestoreDatabaseId || '(default)'})`,
-  );
-} catch (err) {
-  console.error(
-    '[server] Failed to initialize Firebase Admin in server.ts:',
-    err,
-  );
+interface LoadedBackendModules {
+  trpcMiddleware: express.RequestHandler;
+  TokenVerifier: typeof import('./src/server/auth').TokenVerifier;
+  AllowlistService: typeof import('./src/server/auth').AllowlistService;
+  LibraryService: typeof import('./src/server/services/library').LibraryService;
+  enrichmentJobCoordinator: typeof import('./src/server/services/enrichmentJobCoordinator').enrichmentJobCoordinator;
+}
+
+let backendModulesPromise: Promise<LoadedBackendModules> | null = null;
+
+function getBackendModules(): Promise<LoadedBackendModules> {
+  if (!backendModulesPromise) {
+    backendModulesPromise = (async () => {
+      const [
+        trpcExpress,
+        {appRouter},
+        {createContext},
+        {getAdminApp, firebaseConfig},
+        {TokenVerifier, AllowlistService},
+        {LibraryService},
+        {enrichmentJobCoordinator},
+      ] = await Promise.all([
+        import('@trpc/server/adapters/express'),
+        import('./src/server/trpc/routers/_app'),
+        import('./src/server/trpc/trpc'),
+        import('./src/server/services/firebaseAdmin'),
+        import('./src/server/auth'),
+        import('./src/server/services/library'),
+        import('./src/server/services/enrichmentJobCoordinator'),
+      ]);
+
+      try {
+        getAdminApp();
+        console.log(
+          `[server] Firebase Admin initialized (project=${firebaseConfig?.projectId || 'default'}, db=${firebaseConfig?.firestoreDatabaseId || '(default)'})`,
+        );
+      } catch (err) {
+        console.error(
+          '[server] Failed to initialize Firebase Admin in server.ts:',
+          err,
+        );
+      }
+
+      const trpcMiddleware = trpcExpress.createExpressMiddleware({
+        router: appRouter,
+        createContext,
+        onError({error, path: procPath, type, ctx}) {
+          const userLabel =
+            ctx?.user?.email || ctx?.user?.uid || 'unauthenticated';
+          const singleLineMsg = (error.message || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+          console.error(
+            `[tRPC Error] ${type} ${procPath || '<unknown>'} -> ${error.code} (user=${userLabel}): ${singleLineMsg}`,
+          );
+          if (error.code === 'INTERNAL_SERVER_ERROR' && error.stack) {
+            console.error(error.stack);
+          }
+        },
+      });
+
+      return {
+        trpcMiddleware,
+        TokenVerifier,
+        AllowlistService,
+        LibraryService,
+        enrichmentJobCoordinator,
+      };
+    })();
+  }
+  return backendModulesPromise;
 }
 
 const SELF_DESTROYING_SW = `
@@ -238,28 +290,24 @@ async function startServer() {
   });
 
   // Mount tRPC adapter with rate limiting and structured error logging
-  app.use(
-    '/trpc',
-    trpcRateLimiter,
-    trpcExpress.createExpressMiddleware({
-      router: appRouter,
-      createContext,
-      onError({error, path: procPath, type, ctx}) {
-        const userLabel =
-          ctx?.user?.email || ctx?.user?.uid || 'unauthenticated';
-        const singleLineMsg = (error.message || '').replace(/\s+/g, ' ').trim();
-        console.error(
-          `[tRPC Error] ${type} ${procPath || '<unknown>'} -> ${error.code} (user=${userLabel}): ${singleLineMsg}`,
-        );
-        if (error.code === 'INTERNAL_SERVER_ERROR' && error.stack) {
-          console.error(error.stack);
-        }
-      },
-    }),
-  );
+  app.use('/trpc', trpcRateLimiter, async (req, res, next) => {
+    try {
+      const {trpcMiddleware} = await getBackendModules();
+      trpcMiddleware(req, res, next);
+    } catch (err) {
+      next(err);
+    }
+  });
 
   // Server-Sent Events (SSE) live stream for background bulk enrichment jobs
   app.get('/api/enrichment/stream', sseRateLimiter, async (req, res) => {
+    const {
+      TokenVerifier,
+      AllowlistService,
+      LibraryService,
+      enrichmentJobCoordinator,
+    } = await getBackendModules();
+
     const rawLibraryId =
       typeof req.query.libraryId === 'string' ? req.query.libraryId.trim() : '';
     const queryToken =
@@ -360,16 +408,19 @@ async function startServer() {
 
   // Vite middleware for development (non-blocking startup so port 3000 binds immediately)
   if (!isProd) {
-    const vitePromise = createViteServer({
-      server: {
-        middlewareMode: true,
-        hmr: false,
-        watch: null,
-        allowedHosts: true,
-      },
-      appType: 'custom',
-      root: process.cwd(),
-    });
+    const vitePromise = import('vite').then(
+      ({createServer: createViteServer}) =>
+        createViteServer({
+          server: {
+            middlewareMode: true,
+            hmr: false,
+            watch: null,
+            allowedHosts: true,
+          },
+          appType: 'custom',
+          root: process.cwd(),
+        }),
+    );
 
     app.use(async (req, res, next) => {
       try {
@@ -526,6 +577,10 @@ async function startServer() {
   };
 
   listenWithRetry();
+  // Begin warming backend router & Firebase Admin immediately after binding port 3000
+  void getBackendModules().catch(err => {
+    console.error('[server] Error pre-warming backend modules:', err);
+  });
 }
 
 startServer().catch(err => {

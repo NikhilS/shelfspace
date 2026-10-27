@@ -93,6 +93,7 @@ function parseTrpcProcedureInfo(urlStr: string): {
 }
 
 const RETRY_DELAYS_MS = [500, 1100, 2000];
+const WARMUP_RETRY_DELAYS_MS = [600, 1200, 2000, 3000, 4000, 5000, 6000];
 
 const customFetch = async (
   url: URL | RequestInfo,
@@ -127,12 +128,24 @@ const customFetch = async (
   };
 
   let lastError: unknown;
-  const maxRetries =
+  let sawGatewayWarmup = false;
+  const maxNetworkRetries =
     typeof navigator !== 'undefined' && navigator.onLine === false
       ? 0
       : RETRY_DELAYS_MS.length;
+  const maxWarmupRetries =
+    typeof navigator !== 'undefined' && navigator.onLine === false
+      ? 0
+      : WARMUP_RETRY_DELAYS_MS.length;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; ; attempt++) {
+    const activeMaxRetries = sawGatewayWarmup
+      ? maxWarmupRetries
+      : maxNetworkRetries;
+    if (attempt > activeMaxRetries) {
+      break;
+    }
+
     if (attempt > 0) {
       if (
         reqOptions.signal?.aborted ||
@@ -140,9 +153,12 @@ const customFetch = async (
       ) {
         break;
       }
-      await new Promise(resolve =>
-        setTimeout(resolve, RETRY_DELAYS_MS[attempt - 1]),
-      );
+      const delaySchedule = sawGatewayWarmup
+        ? WARMUP_RETRY_DELAYS_MS
+        : RETRY_DELAYS_MS;
+      const delayMs =
+        delaySchedule[Math.min(attempt - 1, delaySchedule.length - 1)] ?? 2000;
+      await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 
     try {
@@ -153,10 +169,11 @@ const customFetch = async (
       // (returning HTTP 200 text/html starting with "<!doctype html>").
       // Never pass raw HTML to @trpc/client JSON parser; retry until server responds with JSON.
       if (isHtmlOrGatewayFallback(response)) {
+        sawGatewayWarmup = true;
         console.warn(
-          `[tRPC HTML/Gateway Fallback] ${procedures} returned status=${response.status} content-type=${response.headers?.get?.('content-type')} (attempt ${attempt + 1}/${maxRetries + 1}, ${durationMs}ms)`,
+          `[tRPC HTML/Gateway Fallback] ${procedures} returned status=${response.status} content-type=${response.headers?.get?.('content-type')} (attempt ${attempt + 1}/${maxWarmupRetries + 1}, ${durationMs}ms)`,
         );
-        if (attempt < maxRetries && !reqOptions.signal?.aborted) {
+        if (attempt < maxWarmupRetries && !reqOptions.signal?.aborted) {
           continue;
         }
         return buildSynthesizedJsonErrorResponse(urlStr);
@@ -224,7 +241,7 @@ const customFetch = async (
       ) {
         throw err;
       }
-      if (attempt === maxRetries) {
+      if (attempt >= activeMaxRetries) {
         const durationMs = Date.now() - start;
         console.warn(
           `[tRPC Network Retry Failed] ${procedures} failed after ${durationMs}ms:`,

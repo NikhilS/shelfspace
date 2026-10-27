@@ -4,6 +4,7 @@ import {render, screen, fireEvent} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import {ConstellationMap} from './ConstellationMap';
 import {ConstellationChart} from './constellations/ConstellationChart';
+import {computeSemanticLod} from './constellations/types';
 import {
   kmeans,
   optimalKMeans,
@@ -42,6 +43,11 @@ vi.mock('../lib/trpc', () => ({
         }),
       },
       generateClusterNames: {
+        useMutation: () => ({
+          mutateAsync: vi.fn().mockResolvedValue({}),
+        }),
+      },
+      generateClusterThemes: {
         useMutation: () => ({
           mutateAsync: vi.fn().mockResolvedValue({}),
         }),
@@ -127,7 +133,26 @@ describe('ConstellationMap & Celestial Math Engine', () => {
     );
   });
 
-  it('renders ConstellationChart inspector, filters clusters, and locks onto stars and neighbors', () => {
+  it('computes progressive 3-tier semantic zoom LOD weights smoothly across zoom levels', () => {
+    const tier1 = computeSemanticLod(1.0);
+    expect(tier1.tier).toBe(1);
+    expect(tier1.tierLabel).toBe('Atlas Overview');
+    expect(tier1.bannerOpacity).toBe(1);
+    expect(tier1.coverOpacity).toBe(0);
+
+    const tier2 = computeSemanticLod(1.9);
+    expect(tier2.tier).toBe(2);
+    expect(tier2.tierLabel).toBe('Neighborhood');
+    expect(tier2.titleOpacity).toBeGreaterThan(0.8);
+
+    const tier3 = computeSemanticLod(3.4);
+    expect(tier3.tier).toBe(3);
+    expect(tier3.tierLabel).toBe('Book Covers');
+    expect(tier3.coverOpacity).toBe(1);
+    expect(tier3.bannerOpacity).toBe(0);
+  });
+
+  it('renders ConstellationChart inspector, clickable territory banners, slide-over drawer controls, and locks onto stars and neighbors', () => {
     const sampleData: ScatterPoint[] = [
       {
         id: 'b1',
@@ -207,24 +232,40 @@ describe('ConstellationMap & Celestial Math Engine', () => {
       </MemoryRouter>,
     );
 
-    // Default Atlas Index lists constellations
+    // Default Atlas Index lists constellations and displays LOD tier in HUD
     expect(screen.getByText('Celestial Atlas Index')).toBeTruthy();
+    expect(screen.getByText('Atlas Overview')).toBeTruthy();
     expect(screen.getAllByText('Galactic Empires').length).toBeGreaterThan(0);
 
-    // Click constellation in Atlas Index to inspect its book roster
+    // Click constellation in Atlas Index or canvas banner to inspect its book roster
     fireEvent.click(screen.getAllByText('Galactic Empires')[0]);
     expect(screen.getByText('Constellation Territory')).toBeTruthy();
-    expect(screen.getByText('Dune')).toBeTruthy();
+    expect(screen.getAllByText('Dune').length).toBeGreaterThan(0);
 
     // Click a book in the constellation roster to lock onto its star
-    fireEvent.click(screen.getByText('Dune'));
+    fireEvent.click(screen.getAllByText('Dune')[0]);
     expect(screen.getByText('Locked Star Inspector')).toBeTruthy();
     expect(screen.getByText('Nearest Semantic Neighbors')).toBeTruthy();
-    expect(screen.getByText('94%')).toBeTruthy();
+    expect(screen.getAllByText('94%').length).toBeGreaterThan(0);
     expect(screen.getByText('Open Book Record')).toBeTruthy();
 
     // Click the neighbor in the inspector to hop to Hyperion
-    fireEvent.click(screen.getByText('Hyperion'));
+    fireEvent.click(screen.getAllByText('Hyperion')[0]);
     expect(screen.getByText('Dan Simmons')).toBeTruthy();
+
+    // Toggle slide-over drawer closed and reopen via toolbar toggle
+    fireEvent.click(screen.getByLabelText('Close inspector drawer'));
+    expect(screen.queryByText('Locked Star Inspector')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Toggle Atlas Inspector Drawer'));
+    expect(screen.getByText('Locked Star Inspector')).toBeTruthy();
+
+    // Verify the Inspector renders outside the map canvas overlay container so smaller screens have an unobstructed map
+    const inspector = screen.getByLabelText(
+      'Curatorial Constellation Inspector',
+    );
+    const semanticOverlay = screen.getByLabelText(
+      'Constellation Map Semantic Overlay',
+    );
+    expect(semanticOverlay.parentElement?.contains(inspector)).toBe(false);
   });
 });

@@ -151,9 +151,23 @@ self.addEventListener('fetch', event => {
             networkResponse.headers.get('content-type') || ''
           ).toLowerCase();
           if (networkResponse.ok && contentType.includes('text/html')) {
+            const htmlPreview = await networkResponse
+              .clone()
+              .text()
+              .catch(() => '');
+            if (htmlPreview.includes('id="root"')) {
+              const shellCache = await caches.open(APP_SHELL_CACHE);
+              await shellCache.put('/', networkResponse.clone());
+              await shellCache.put('/index.html', networkResponse.clone());
+              return networkResponse;
+            }
             const shellCache = await caches.open(APP_SHELL_CACHE);
-            await shellCache.put('/', networkResponse.clone());
-            await shellCache.put('/index.html', networkResponse.clone());
+            const cachedRoot =
+              (await shellCache.match('/')) ||
+              (await shellCache.match('/index.html'));
+            if (cachedRoot) {
+              return cachedRoot;
+            }
           }
           return networkResponse;
         } catch {

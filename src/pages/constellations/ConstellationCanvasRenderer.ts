@@ -7,6 +7,7 @@ import {
 import {
   CLUSTER_COLORS,
   ClusterGeometry,
+  SemanticLodWeights,
   StippleGrain,
   hexToRgba,
   blendHexColors,
@@ -52,6 +53,8 @@ export interface RenderConstellationParams {
   dpr: number;
   isDark: boolean;
   cam: {x: number; y: number; zoom: number};
+  lod?: SemanticLodWeights;
+  skipCanvasLabels?: boolean;
   plotData: ScatterPoint[];
   clustersGeometry: ClusterGeometry[];
   crossClusterBridges?: CrossClusterBridge[];
@@ -73,6 +76,223 @@ export interface RenderConstellationParams {
   getBaseScale: (width: number, height: number) => number;
 }
 
+const OFFSCREEN_WORLD_SPAN = 165;
+const OFFSCREEN_SIZE_PX = 1650;
+
+interface StaticWorldLayerCache {
+  canvas: HTMLCanvasElement;
+  plotDataRef: ScatterPoint[];
+  clustersRef: ClusterGeometry[];
+  edgesRef: SemanticWebEdge[];
+  isDark: boolean;
+  focusedClusterId: number | null;
+}
+
+let staticWorldCache: StaticWorldLayerCache | null = null;
+
+function worldToOffscreen(wx: number, wy: number): Point2D {
+  const half = OFFSCREEN_SIZE_PX * 0.5;
+  const scale = half / OFFSCREEN_WORLD_SPAN;
+  return {
+    x: half + wx * scale,
+    y: half + wy * scale,
+  };
+}
+
+function getOrBuildStaticWorldLayer(
+  plotData: ScatterPoint[],
+  clustersGeometry: ClusterGeometry[],
+  semanticWebEdges: SemanticWebEdge[],
+  isDark: boolean,
+  focusedClusterId: number | null,
+): HTMLCanvasElement | null {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  if (
+    staticWorldCache &&
+    staticWorldCache.plotDataRef === plotData &&
+    staticWorldCache.clustersRef === clustersGeometry &&
+    staticWorldCache.edgesRef === semanticWebEdges &&
+    staticWorldCache.isDark === isDark &&
+    staticWorldCache.focusedClusterId === focusedClusterId
+  ) {
+    return staticWorldCache.canvas;
+  }
+
+  const offCanvas =
+    staticWorldCache?.canvas ?? document.createElement('canvas');
+  offCanvas.width = OFFSCREEN_SIZE_PX;
+  offCanvas.height = OFFSCREEN_SIZE_PX;
+
+  let offCtx: CanvasRenderingContext2D | null = null;
+  try {
+    offCtx = offCanvas.getContext('2d');
+  } catch {
+    return null;
+  }
+  if (!offCtx) {
+    return null;
+  }
+
+  offCtx.clearRect(0, 0, OFFSCREEN_SIZE_PX, OFFSCREEN_SIZE_PX);
+  const offScale = (OFFSCREEN_SIZE_PX * 0.5) / OFFSCREEN_WORLD_SPAN;
+
+  // 1. Pre-render Multi-Kernel Nebula Glow Fields into offscreen world bitmap
+  for (const cluster of clustersGeometry) {
+    const isClusterActive =
+      focusedClusterId === null || focusedClusterId === cluster.clusterId;
+
+    const baseFillAlpha = isClusterActive
+      ? focusedClusterId === cluster.clusterId
+        ? isDark
+          ? 0.21
+          : 0.165
+        : isDark
+          ? 0.135
+          : 0.105
+      : 0.03;
+
+    const kernels =
+      cluster.nebulaKernels && cluster.nebulaKernels.length > 0
+        ? cluster.nebulaKernels
+        : [
+            {
+              x: cluster.centroid.x,
+              y: cluster.centroid.y,
+              radius: 28,
+              weight: 1.0,
+            },
+          ];
+
+    for (const kernel of kernels) {
+      const kPos = worldToOffscreen(kernel.x, kernel.y);
+      const rPx = Math.max(44, kernel.radius * offScale * 1.42);
+      const kAlpha = baseFillAlpha * kernel.weight;
+
+      const nebulaGrad = offCtx.createRadialGradient(
+        kPos.x,
+        kPos.y,
+        rPx * 0.04,
+        kPos.x,
+        kPos.y,
+        rPx,
+      );
+      nebulaGrad.addColorStop(0, hexToRgba(cluster.color, kAlpha * 1.18));
+      nebulaGrad.addColorStop(0.38, hexToRgba(cluster.color, kAlpha * 0.74));
+      nebulaGrad.addColorStop(0.72, hexToRgba(cluster.color, kAlpha * 0.28));
+      nebulaGrad.addColorStop(1, hexToRgba(cluster.color, 0));
+
+      offCtx.fillStyle = nebulaGrad;
+      offCtx.beginPath();
+      offCtx.arc(kPos.x, kPos.y, rPx, 0, Math.PI * 2);
+      offCtx.fill();
+    }
+  }
+
+  // 2. Pre-render Unified Semantic Web Filaments into offscreen world bitmap
+  const offPts = plotData.map(p => worldToOffscreen(p.x, p.y));
+  if (semanticWebEdges.length > 0) {
+    for (const edge of semanticWebEdges) {
+      const pu = offPts[edge.u];
+      const pv = offPts[edge.v];
+      if (!pu || !pv) {
+        continue;
+      }
+
+      const touchesFocused =
+        focusedClusterId === null ||
+        edge.sourceClusterId === focusedClusterId ||
+        edge.targetClusterId === focusedClusterId;
+
+      const colorU =
+        edge.sourceClusterId >= 0
+          ? CLUSTER_COLORS[edge.sourceClusterId % CLUSTER_COLORS.length]
+          : '#78716C';
+      const colorV =
+        edge.targetClusterId >= 0
+          ? CLUSTER_COLORS[edge.targetClusterId % CLUSTER_COLORS.length]
+          : '#78716C';
+
+      if (!edge.isCrossCluster) {
+        const intraAlpha = touchesFocused
+          ? focusedClusterId === edge.sourceClusterId
+            ? 0.56
+            : 0.34
+          : 0.075;
+
+        offCtx.strokeStyle = hexToRgba(colorU, intraAlpha);
+        offCtx.lineWidth =
+          focusedClusterId === edge.sourceClusterId ? 2.1 : 1.5;
+        offCtx.beginPath();
+        offCtx.moveTo(pu.x, pu.y);
+        offCtx.lineTo(pv.x, pv.y);
+        offCtx.stroke();
+      } else {
+        const crossAlpha = touchesFocused
+          ? focusedClusterId !== null
+            ? 0.5
+            : 0.3
+          : 0.065;
+
+        const grad = offCtx.createLinearGradient(pu.x, pu.y, pv.x, pv.y);
+        grad.addColorStop(0, hexToRgba(colorU, crossAlpha));
+        grad.addColorStop(
+          0.5,
+          hexToRgba(blendHexColors(colorU, colorV, 0.5), crossAlpha * 0.9),
+        );
+        grad.addColorStop(1, hexToRgba(colorV, crossAlpha));
+
+        offCtx.strokeStyle = grad;
+        offCtx.lineWidth =
+          focusedClusterId !== null && touchesFocused ? 1.95 : 1.35;
+        offCtx.beginPath();
+        offCtx.moveTo(pu.x, pu.y);
+        offCtx.lineTo(pv.x, pv.y);
+        offCtx.stroke();
+      }
+    }
+  } else {
+    for (const cluster of clustersGeometry) {
+      const isClusterActive =
+        focusedClusterId === null || focusedClusterId === cluster.clusterId;
+
+      const baseLineAlpha = isClusterActive
+        ? focusedClusterId === cluster.clusterId
+          ? 0.58
+          : 0.36
+        : 0.08;
+
+      offCtx.strokeStyle = hexToRgba(cluster.color, baseLineAlpha);
+      offCtx.lineWidth = focusedClusterId === cluster.clusterId ? 2.2 : 1.6;
+
+      offCtx.beginPath();
+      for (const [uIdx, vIdx] of cluster.mstEdges) {
+        const pu = offPts[uIdx];
+        const pv = offPts[vIdx];
+        if (!pu || !pv) {
+          continue;
+        }
+        offCtx.moveTo(pu.x, pu.y);
+        offCtx.lineTo(pv.x, pv.y);
+      }
+      offCtx.stroke();
+    }
+  }
+
+  staticWorldCache = {
+    canvas: offCanvas,
+    plotDataRef: plotData,
+    clustersRef: clustersGeometry,
+    edgesRef: semanticWebEdges,
+    isDark,
+    focusedClusterId,
+  };
+
+  return offCanvas;
+}
+
 export function renderConstellationFrame({
   ctx,
   width,
@@ -80,6 +300,8 @@ export function renderConstellationFrame({
   dpr,
   isDark,
   cam,
+  lod,
+  skipCanvasLabels = false,
   plotData,
   clustersGeometry,
   crossClusterBridges = [],
@@ -203,157 +425,190 @@ export function renderConstellationFrame({
   }
 
   // =======================================================================
-  // LAYER 2: Overlapping Atmospheric Nebula Glow Fields (Borderless)
+  // LAYER 2 & 3: Offscreen-Cached Nebula Glow Fields & Semantic Web Filaments
   // =======================================================================
-  for (const cluster of clustersGeometry) {
-    const isClusterActive =
-      focusedClusterId === null || focusedClusterId === cluster.clusterId;
+  const cachedWorldCanvas = getOrBuildStaticWorldLayer(
+    plotData,
+    clustersGeometry,
+    semanticWebEdges,
+    isDark,
+    focusedClusterId,
+  );
 
-    const baseFillAlpha = isClusterActive
-      ? focusedClusterId === cluster.clusterId
-        ? isDark
-          ? 0.19
-          : 0.15
-        : isDark
-          ? 0.12
-          : 0.095
-      : 0.025;
-
-    const kernels =
-      cluster.nebulaKernels && cluster.nebulaKernels.length > 0
-        ? cluster.nebulaKernels
-        : [
-            {
-              x: cluster.centroid.x,
-              y: cluster.centroid.y,
-              radius: 28,
-              weight: 1.0,
-            },
-          ];
-
-    for (const kernel of kernels) {
-      const kScreen = worldToScreen(kernel.x, kernel.y, cam, width, height);
-      const rScreen = Math.max(42, kernel.radius * worldScale * 1.42);
-
-      if (
-        kScreen.x + rScreen < 0 ||
-        kScreen.x - rScreen > width ||
-        kScreen.y + rScreen < 0 ||
-        kScreen.y - rScreen > height
-      ) {
-        continue;
-      }
-
-      const kAlpha = baseFillAlpha * kernel.weight;
-      const nebulaGrad = ctx.createRadialGradient(
-        kScreen.x,
-        kScreen.y,
-        rScreen * 0.04,
-        kScreen.x,
-        kScreen.y,
-        rScreen,
-      );
-      nebulaGrad.addColorStop(0, hexToRgba(cluster.color, kAlpha * 1.15));
-      nebulaGrad.addColorStop(0.38, hexToRgba(cluster.color, kAlpha * 0.72));
-      nebulaGrad.addColorStop(0.72, hexToRgba(cluster.color, kAlpha * 0.26));
-      nebulaGrad.addColorStop(1, hexToRgba(cluster.color, 0));
-
-      ctx.fillStyle = nebulaGrad;
-      ctx.beginPath();
-      ctx.arc(kScreen.x, kScreen.y, rScreen, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // =======================================================================
-  // LAYER 3: Unified Semantic Web with Cross-Cluster Gradient Filaments
-  // =======================================================================
-  if (semanticWebEdges.length > 0) {
-    for (const edge of semanticWebEdges) {
-      const pu = screenPts[edge.u];
-      const pv = screenPts[edge.v];
-      if (!pu || !pv) {
-        continue;
-      }
-
-      const touchesFocused =
-        focusedClusterId === null ||
-        edge.sourceClusterId === focusedClusterId ||
-        edge.targetClusterId === focusedClusterId;
-
-      const colorU =
-        edge.sourceClusterId >= 0
-          ? CLUSTER_COLORS[edge.sourceClusterId % CLUSTER_COLORS.length]
-          : '#78716C';
-      const colorV =
-        edge.targetClusterId >= 0
-          ? CLUSTER_COLORS[edge.targetClusterId % CLUSTER_COLORS.length]
-          : '#78716C';
-
-      if (!edge.isCrossCluster) {
-        const intraAlpha = touchesFocused
-          ? focusedClusterId === edge.sourceClusterId
-            ? 0.54
-            : 0.32
-          : 0.07;
-
-        ctx.strokeStyle = hexToRgba(colorU, intraAlpha);
-        ctx.lineWidth = focusedClusterId === edge.sourceClusterId ? 1.45 : 1.05;
-        ctx.beginPath();
-        ctx.moveTo(pu.x, pu.y);
-        ctx.lineTo(pv.x, pv.y);
-        ctx.stroke();
-      } else {
-        // Cross-cluster web edge: smooth pigment gradient from constellation U to constellation V
-        const crossAlpha = touchesFocused
-          ? focusedClusterId !== null
-            ? 0.48
-            : 0.28
-          : 0.06;
-
-        const grad = ctx.createLinearGradient(pu.x, pu.y, pv.x, pv.y);
-        grad.addColorStop(0, hexToRgba(colorU, crossAlpha));
-        grad.addColorStop(
-          0.5,
-          hexToRgba(blendHexColors(colorU, colorV, 0.5), crossAlpha * 0.9),
-        );
-        grad.addColorStop(1, hexToRgba(colorV, crossAlpha));
-
-        ctx.strokeStyle = grad;
-        ctx.lineWidth =
-          focusedClusterId !== null && touchesFocused ? 1.35 : 0.95;
-        ctx.beginPath();
-        ctx.moveTo(pu.x, pu.y);
-        ctx.lineTo(pv.x, pv.y);
-        ctx.stroke();
-      }
-    }
+  if (cachedWorldCanvas && typeof ctx.drawImage === 'function') {
+    const topLeft = worldToScreen(
+      -OFFSCREEN_WORLD_SPAN,
+      -OFFSCREEN_WORLD_SPAN,
+      cam,
+      width,
+      height,
+    );
+    const bottomRight = worldToScreen(
+      OFFSCREEN_WORLD_SPAN,
+      OFFSCREEN_WORLD_SPAN,
+      cam,
+      width,
+      height,
+    );
+    ctx.save();
+    ctx.globalAlpha = lod ? lod.nebulaAlphaMultiplier : 1;
+    ctx.drawImage(
+      cachedWorldCanvas,
+      topLeft.x,
+      topLeft.y,
+      bottomRight.x - topLeft.x,
+      bottomRight.y - topLeft.y,
+    );
+    ctx.restore();
   } else {
-    // Fallback to per-cluster MST edges if semanticWebEdges was not provided
+    // Fallback direct rendering when offscreen 2D canvas is unavailable
     for (const cluster of clustersGeometry) {
       const isClusterActive =
         focusedClusterId === null || focusedClusterId === cluster.clusterId;
 
-      const baseLineAlpha = isClusterActive
+      const baseFillAlpha = isClusterActive
         ? focusedClusterId === cluster.clusterId
-          ? 0.58
-          : 0.36
-        : 0.08;
+          ? isDark
+            ? 0.19
+            : 0.15
+          : isDark
+            ? 0.12
+            : 0.095
+        : 0.025;
 
-      ctx.strokeStyle = hexToRgba(cluster.color, baseLineAlpha);
-      ctx.lineWidth = focusedClusterId === cluster.clusterId ? 1.55 : 1.15;
+      const kernels =
+        cluster.nebulaKernels && cluster.nebulaKernels.length > 0
+          ? cluster.nebulaKernels
+          : [
+              {
+                x: cluster.centroid.x,
+                y: cluster.centroid.y,
+                radius: 28,
+                weight: 1.0,
+              },
+            ];
 
-      ctx.beginPath();
-      for (const [uIdx, vIdx] of cluster.mstEdges) {
-        const pu = screenPts[uIdx];
-        const pv = screenPts[vIdx];
+      for (const kernel of kernels) {
+        const kScreen = worldToScreen(kernel.x, kernel.y, cam, width, height);
+        const rScreen = Math.max(42, kernel.radius * worldScale * 1.42);
+
+        if (
+          kScreen.x + rScreen < 0 ||
+          kScreen.x - rScreen > width ||
+          kScreen.y + rScreen < 0 ||
+          kScreen.y - rScreen > height
+        ) {
+          continue;
+        }
+
+        const kAlpha = baseFillAlpha * kernel.weight;
+        const nebulaGrad = ctx.createRadialGradient(
+          kScreen.x,
+          kScreen.y,
+          rScreen * 0.04,
+          kScreen.x,
+          kScreen.y,
+          rScreen,
+        );
+        nebulaGrad.addColorStop(0, hexToRgba(cluster.color, kAlpha * 1.15));
+        nebulaGrad.addColorStop(0.38, hexToRgba(cluster.color, kAlpha * 0.72));
+        nebulaGrad.addColorStop(0.72, hexToRgba(cluster.color, kAlpha * 0.26));
+        nebulaGrad.addColorStop(1, hexToRgba(cluster.color, 0));
+
+        ctx.fillStyle = nebulaGrad;
+        ctx.beginPath();
+        ctx.arc(kScreen.x, kScreen.y, rScreen, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Fallback Layer 3: Unified Semantic Web with Cross-Cluster Gradient Filaments
+    if (semanticWebEdges.length > 0) {
+      for (const edge of semanticWebEdges) {
+        const pu = screenPts[edge.u];
+        const pv = screenPts[edge.v];
         if (!pu || !pv) {
           continue;
         }
-        ctx.moveTo(pu.x, pu.y);
-        ctx.lineTo(pv.x, pv.y);
+
+        const touchesFocused =
+          focusedClusterId === null ||
+          edge.sourceClusterId === focusedClusterId ||
+          edge.targetClusterId === focusedClusterId;
+
+        const colorU =
+          edge.sourceClusterId >= 0
+            ? CLUSTER_COLORS[edge.sourceClusterId % CLUSTER_COLORS.length]
+            : '#78716C';
+        const colorV =
+          edge.targetClusterId >= 0
+            ? CLUSTER_COLORS[edge.targetClusterId % CLUSTER_COLORS.length]
+            : '#78716C';
+
+        if (!edge.isCrossCluster) {
+          const intraAlpha = touchesFocused
+            ? focusedClusterId === edge.sourceClusterId
+              ? 0.54
+              : 0.32
+            : 0.07;
+
+          ctx.strokeStyle = hexToRgba(colorU, intraAlpha);
+          ctx.lineWidth =
+            focusedClusterId === edge.sourceClusterId ? 1.45 : 1.05;
+          ctx.beginPath();
+          ctx.moveTo(pu.x, pu.y);
+          ctx.lineTo(pv.x, pv.y);
+          ctx.stroke();
+        } else {
+          const crossAlpha = touchesFocused
+            ? focusedClusterId !== null
+              ? 0.48
+              : 0.28
+            : 0.06;
+
+          const grad = ctx.createLinearGradient(pu.x, pu.y, pv.x, pv.y);
+          grad.addColorStop(0, hexToRgba(colorU, crossAlpha));
+          grad.addColorStop(
+            0.5,
+            hexToRgba(blendHexColors(colorU, colorV, 0.5), crossAlpha * 0.9),
+          );
+          grad.addColorStop(1, hexToRgba(colorV, crossAlpha));
+
+          ctx.strokeStyle = grad;
+          ctx.lineWidth =
+            focusedClusterId !== null && touchesFocused ? 1.35 : 0.95;
+          ctx.beginPath();
+          ctx.moveTo(pu.x, pu.y);
+          ctx.lineTo(pv.x, pv.y);
+          ctx.stroke();
+        }
       }
-      ctx.stroke();
+    } else {
+      for (const cluster of clustersGeometry) {
+        const isClusterActive =
+          focusedClusterId === null || focusedClusterId === cluster.clusterId;
+
+        const baseLineAlpha = isClusterActive
+          ? focusedClusterId === cluster.clusterId
+            ? 0.58
+            : 0.36
+          : 0.08;
+
+        ctx.strokeStyle = hexToRgba(cluster.color, baseLineAlpha);
+        ctx.lineWidth = focusedClusterId === cluster.clusterId ? 1.55 : 1.15;
+
+        ctx.beginPath();
+        for (const [uIdx, vIdx] of cluster.mstEdges) {
+          const pu = screenPts[uIdx];
+          const pv = screenPts[vIdx];
+          if (!pu || !pv) {
+            continue;
+          }
+          ctx.moveTo(pu.x, pu.y);
+          ctx.lineTo(pv.x, pv.y);
+        }
+        ctx.stroke();
+      }
     }
   }
 
@@ -563,10 +818,20 @@ export function renderConstellationFrame({
   }
 
   // =======================================================================
-  // LAYER 5: Cartographic Star Nodes, Dual-Cluster Transitional Pigments & Calipers
+  // LAYER 5: Cartographic Star Nodes, Alpha Hub Hierarchy & Calipers
   // =======================================================================
+  const anchorStarSet = new Set<number>();
+  for (const cluster of clustersGeometry) {
+    if (cluster.anchorIndices) {
+      for (const aIdx of cluster.anchorIndices) {
+        anchorStarSet.add(aIdx);
+      }
+    }
+  }
+
   const defaultStarBase =
     plotData.length > 500 ? 2.6 : plotData.length > 200 ? 3.1 : 3.6;
+  const starScaleMult = lod ? lod.starScaleMultiplier : 1;
 
   for (let i = 0; i < plotData.length; i++) {
     const pt = plotData[i];
@@ -580,6 +845,7 @@ export function renderConstellationFrame({
     const isHovered = id === hoveredStarId;
     const isNeighbor = selectedNeighborMap.has(id);
     const isSearchMatch = matchingStarIds ? matchingStarIds.has(id) : false;
+    const isAlphaHub = anchorStarSet.has(i);
 
     const primaryColor =
       pt.clusterId >= 0
@@ -612,26 +878,33 @@ export function renderConstellationFrame({
       pt.clusterId !== focusedClusterId &&
       !isHovered
     ) {
-      // Keep transitional border books that bridge into the focused cluster softly illuminated
       alpha =
         hasSecondaryAffinity && pt.secondaryClusterId === focusedClusterId
           ? 0.68
           : 0.22;
     }
 
-    const coreRadius = isSelected
-      ? 6.5
+    const rawRadius = isSelected
+      ? 6.6
       : isHovered
         ? 5.8
         : isNeighbor || isSearchMatch
-          ? 4.8
+          ? 4.9
           : Math.max(
               2.4,
-              Math.min(5.4, defaultStarBase * Math.pow(cam.zoom, 0.25)),
+              Math.min(
+                5.6,
+                (defaultStarBase + (isAlphaHub ? 0.95 : 0)) *
+                  Math.pow(cam.zoom, 0.25),
+              ),
             );
 
+    const coreRadius =
+      isSelected || isHovered ? rawRadius : rawRadius * starScaleMult;
+
     // Soft warm pigment wash halo (dual-tone for transitional border books)
-    const haloRadius = coreRadius * (isSelected || isHovered ? 3.8 : 2.65);
+    const haloRadius =
+      coreRadius * (isSelected || isHovered ? 3.8 : isAlphaHub ? 3.05 : 2.65);
     const glowGrad = ctx.createRadialGradient(
       sp.x,
       sp.y,
@@ -640,7 +913,10 @@ export function renderConstellationFrame({
       sp.y,
       haloRadius,
     );
-    glowGrad.addColorStop(0, hexToRgba(primaryColor, 0.36 * alpha));
+    glowGrad.addColorStop(
+      0,
+      hexToRgba(primaryColor, (isAlphaHub ? 0.42 : 0.36) * alpha),
+    );
     glowGrad.addColorStop(
       0.55,
       hexToRgba(
@@ -653,6 +929,31 @@ export function renderConstellationFrame({
     ctx.beginPath();
     ctx.arc(sp.x, sp.y, haloRadius, 0, Math.PI * 2);
     ctx.fill();
+
+    // Subtle Alpha Hub Star orbital ring & 4-point starlight ticks at Overview/Neighborhood zoom
+    if (
+      isAlphaHub &&
+      !isSelected &&
+      !isHovered &&
+      alpha > 0.45 &&
+      starScaleMult > 0.7
+    ) {
+      ctx.strokeStyle = hexToRgba(baseColor, 0.35 * alpha);
+      ctx.lineWidth = 0.95;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, coreRadius + 2.8, 0, Math.PI * 2);
+      ctx.stroke();
+
+      const tickLen = coreRadius + 5.2;
+      ctx.strokeStyle = hexToRgba(baseColor, 0.42 * alpha);
+      ctx.lineWidth = 0.85;
+      ctx.beginPath();
+      ctx.moveTo(sp.x - tickLen, sp.y);
+      ctx.lineTo(sp.x + tickLen, sp.y);
+      ctx.moveTo(sp.x, sp.y - tickLen);
+      ctx.lineTo(sp.x, sp.y + tickLen);
+      ctx.stroke();
+    }
 
     // Search match ring
     if (isSearchMatch && !isSelected) {
@@ -735,191 +1036,194 @@ export function renderConstellationFrame({
   }
 
   // =======================================================================
-  // LAYER 6: Semantic Zoom Typography (Subtle Cluster Names -> Deep-Zoom Book Titles)
+  // LAYER 6: Semantic Zoom Typography (Skipped when DOM Overlay is active)
   // =======================================================================
-  const placedBoxes: Array<{
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-  }> = [];
+  if (!skipCanvasLabels) {
+    const placedBoxes: Array<{
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+    }> = [];
 
-  const overlapsPlaced = (x1: number, y1: number, x2: number, y2: number) => {
-    for (const b of placedBoxes) {
-      if (x1 < b.x2 && x2 > b.x1 && y1 < b.y2 && y2 > b.y1) {
-        return true;
+    const overlapsPlaced = (x1: number, y1: number, x2: number, y2: number) => {
+      for (const b of placedBoxes) {
+        if (x1 < b.x2 && x2 > b.x1 && y1 < b.y2 && y2 > b.y1) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (cam.zoom >= 0.95 && cam.zoom < 2.6) {
+      const fadeIn = Math.min(1, (cam.zoom - 0.92) / 0.22);
+      const fadeOut =
+        cam.zoom > 2.15 ? Math.max(0, 1 - (cam.zoom - 2.15) / 0.45) : 1;
+      const zoomEnvelope = fadeIn * fadeOut;
+
+      ctx.save();
+      ctx.font = '600 11.5px "Plus Jakarta Sans", "Manrope", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      for (const cluster of clustersGeometry) {
+        const cScreen = worldToScreen(
+          cluster.centroid.x,
+          cluster.centroid.y,
+          cam,
+          width,
+          height,
+        );
+        if (
+          cScreen.x < 30 ||
+          cScreen.x > width - 30 ||
+          cScreen.y < 24 ||
+          cScreen.y > height - 24
+        ) {
+          continue;
+        }
+
+        const isClusterActive =
+          focusedClusterId === null || focusedClusterId === cluster.clusterId;
+        const alpha =
+          (isClusterActive ? 0.78 : 0.32) * Math.max(0.28, zoomEnvelope);
+
+        const spacedTitle = cluster.name.toUpperCase().split('').join('\u200A');
+        const textW = ctx.measureText(spacedTitle).width;
+        const bx1 = cScreen.x - textW * 0.5 - 6;
+        const by1 = cScreen.y - 10;
+        const bx2 = cScreen.x + textW * 0.5 + 6;
+        const by2 = cScreen.y + 10;
+
+        if (overlapsPlaced(bx1, by1, bx2, by2)) {
+          continue;
+        }
+        placedBoxes.push({x1: bx1, y1: by1, x2: bx2, y2: by2});
+
+        ctx.strokeStyle = isDark
+          ? `rgba(24, 21, 18, ${Math.min(0.88, alpha * 1.35)})`
+          : `rgba(248, 244, 235, ${Math.min(0.94, alpha * 1.4)})`;
+        ctx.lineWidth = 3.8;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(spacedTitle, cScreen.x, cScreen.y);
+
+        const labelColor = blendHexColors(
+          cluster.color,
+          isDark ? '#F5F0E6' : '#29231E',
+          isDark ? 0.38 : 0.35,
+        );
+        ctx.fillStyle = hexToRgba(labelColor, Math.min(0.9, alpha * 1.15));
+        ctx.fillText(spacedTitle, cScreen.x, cScreen.y);
+      }
+      ctx.restore();
+    }
+
+    const labelCandidates: number[] = [];
+    for (let i = 0; i < plotData.length; i++) {
+      const id = plotData[i].id || plotData[i].book.id;
+      const isPriority =
+        id === selectedStarId ||
+        id === hoveredStarId ||
+        (selectedStarId !== null && selectedNeighborMap.has(id)) ||
+        (matchingStarIds ? matchingStarIds.has(id) : false);
+      if (isPriority || cam.zoom >= 2.55) {
+        labelCandidates.push(i);
       }
     }
-    return false;
-  };
 
-  // 6A. Subtle, Unboxed Cartographic Constellation Names on Initial Zoom (1.05 <= zoom < 2.6)
-  if (cam.zoom >= 1.05 && cam.zoom < 2.6) {
-    const fadeIn = Math.min(1, (cam.zoom - 1.05) / 0.3);
-    const fadeOut =
-      cam.zoom > 2.15 ? Math.max(0, 1 - (cam.zoom - 2.15) / 0.45) : 1;
-    const zoomEnvelope = fadeIn * fadeOut;
+    labelCandidates.sort((a, b) => {
+      const idA = plotData[a].id || plotData[a].book.id;
+      const idB = plotData[b].id || plotData[b].book.id;
+      const score = (id: string) =>
+        id === selectedStarId
+          ? 100
+          : id === hoveredStarId
+            ? 90
+            : selectedNeighborMap.has(id)
+              ? 80
+              : matchingStarIds?.has(id)
+                ? 70
+                : 10;
+      return score(idB) - score(idA);
+    });
 
     ctx.save();
-    ctx.font = '400 11.5px "Plus Jakarta Sans", "Manrope", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.font = '600 11px "Manrope", sans-serif';
+    for (const idx of labelCandidates) {
+      const pt = plotData[idx];
+      const sp = screenPts[idx];
+      if (sp.x < 10 || sp.x > width - 10 || sp.y < 10 || sp.y > height - 10) {
+        continue;
+      }
 
-    for (const cluster of clustersGeometry) {
-      const cScreen = worldToScreen(
-        cluster.centroid.x,
-        cluster.centroid.y,
-        cam,
-        width,
-        height,
-      );
+      const id = pt.id || pt.book.id;
+      const isSelected = id === selectedStarId;
+      const isHovered = id === hoveredStarId;
+      const isNeighbor = selectedNeighborMap.has(id);
+      const isSearchMatch = matchingStarIds ? matchingStarIds.has(id) : false;
+
+      const rawTitle = pt.book.title || 'Untitled';
+      const truncated =
+        rawTitle.length > 28 ? `${rawTitle.slice(0, 26)}…` : rawTitle;
+      const textW = ctx.measureText(truncated).width;
+      const lx1 = sp.x + 10;
+      const ly1 = sp.y - 9.5;
+      const lx2 = lx1 + textW + 12;
+      const ly2 = ly1 + 19;
+
       if (
-        cScreen.x < 30 ||
-        cScreen.x > width - 30 ||
-        cScreen.y < 24 ||
-        cScreen.y > height - 24
+        !isSelected &&
+        !isHovered &&
+        overlapsPlaced(lx1 - 6, ly1 - 4, lx2 + 6, ly2 + 4)
       ) {
         continue;
       }
+      placedBoxes.push({
+        x1: lx1 - 6,
+        y1: ly1 - 4,
+        x2: lx2 + 6,
+        y2: ly2 + 4,
+      });
 
-      const isClusterActive =
-        focusedClusterId === null || focusedClusterId === cluster.clusterId;
-      const alpha =
-        (isClusterActive ? 0.56 : 0.22) * Math.max(0.2, zoomEnvelope);
+      ctx.fillStyle = isDark
+        ? isSelected || isHovered
+          ? 'rgba(28, 25, 23, 0.96)'
+          : 'rgba(24, 21, 18, 0.88)'
+        : isSelected || isHovered
+          ? 'rgba(255, 255, 255, 0.96)'
+          : 'rgba(250, 247, 242, 0.92)';
 
-      // Spaced uppercase cartographic lettering
-      const spacedTitle = cluster.name.toUpperCase().split('').join('\u200A');
-      const textW = ctx.measureText(spacedTitle).width;
-      const bx1 = cScreen.x - textW * 0.5 - 6;
-      const by1 = cScreen.y - 10;
-      const bx2 = cScreen.x + textW * 0.5 + 6;
-      const by2 = cScreen.y + 10;
+      ctx.strokeStyle = isSelected
+        ? isDark
+          ? 'rgba(245, 158, 11, 0.75)'
+          : 'rgba(154, 52, 18, 0.65)'
+        : isNeighbor
+          ? isDark
+            ? 'rgba(217, 119, 6, 0.55)'
+            : 'rgba(133, 77, 14, 0.45)'
+          : isSearchMatch
+            ? 'rgba(180, 83, 9, 0.55)'
+            : isDark
+              ? 'rgba(214, 206, 190, 0.2)'
+              : 'rgba(120, 108, 92, 0.28)';
 
-      if (overlapsPlaced(bx1, by1, bx2, by2)) {
-        continue;
-      }
-      placedBoxes.push({x1: bx1, y1: by1, x2: bx2, y2: by2});
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(lx1, ly1, textW + 12, 19, 4);
+      ctx.fill();
+      ctx.stroke();
 
-      // Soft parchment/vellum halo stroke behind glyphs so text is legible without any box
-      ctx.strokeStyle = isDark
-        ? `rgba(24, 21, 18, ${Math.min(0.85, alpha * 1.45)})`
-        : `rgba(248, 244, 235, ${Math.min(0.92, alpha * 1.55)})`;
-      ctx.lineWidth = 3.5;
-      ctx.lineJoin = 'round';
-      ctx.strokeText(spacedTitle, cScreen.x, cScreen.y);
-
-      ctx.fillStyle = hexToRgba(cluster.color, Math.min(0.82, alpha * 1.2));
-      ctx.fillText(spacedTitle, cScreen.x, cScreen.y);
+      ctx.fillStyle = isDark
+        ? '#F5F2EB'
+        : isSelected || isHovered
+          ? '#1C1917'
+          : '#292524';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(truncated, lx1 + 6, sp.y + 0.5);
     }
     ctx.restore();
   }
-
-  // 6B. Individual Book Titles — Only for Selected/Hovered/Searched Stars, or Deep Zoom (zoom >= 2.55)
-  const labelCandidates: number[] = [];
-  for (let i = 0; i < plotData.length; i++) {
-    const id = plotData[i].id || plotData[i].book.id;
-    const isPriority =
-      id === selectedStarId ||
-      id === hoveredStarId ||
-      (selectedStarId !== null && selectedNeighborMap.has(id)) ||
-      (matchingStarIds ? matchingStarIds.has(id) : false);
-    if (isPriority || cam.zoom >= 2.55) {
-      labelCandidates.push(i);
-    }
-  }
-
-  labelCandidates.sort((a, b) => {
-    const idA = plotData[a].id || plotData[a].book.id;
-    const idB = plotData[b].id || plotData[b].book.id;
-    const score = (id: string) =>
-      id === selectedStarId
-        ? 100
-        : id === hoveredStarId
-          ? 90
-          : selectedNeighborMap.has(id)
-            ? 80
-            : matchingStarIds?.has(id)
-              ? 70
-              : 10;
-    return score(idB) - score(idA);
-  });
-
-  ctx.save();
-  ctx.font = '600 11px "Manrope", sans-serif';
-  for (const idx of labelCandidates) {
-    const pt = plotData[idx];
-    const sp = screenPts[idx];
-    if (sp.x < 10 || sp.x > width - 10 || sp.y < 10 || sp.y > height - 10) {
-      continue;
-    }
-
-    const id = pt.id || pt.book.id;
-    const isSelected = id === selectedStarId;
-    const isHovered = id === hoveredStarId;
-    const isNeighbor = selectedNeighborMap.has(id);
-    const isSearchMatch = matchingStarIds ? matchingStarIds.has(id) : false;
-
-    const rawTitle = pt.book.title || 'Untitled';
-    const truncated =
-      rawTitle.length > 28 ? `${rawTitle.slice(0, 26)}…` : rawTitle;
-    const textW = ctx.measureText(truncated).width;
-    const lx1 = sp.x + 10;
-    const ly1 = sp.y - 9.5;
-    const lx2 = lx1 + textW + 12;
-    const ly2 = ly1 + 19;
-
-    if (
-      !isSelected &&
-      !isHovered &&
-      overlapsPlaced(lx1 - 6, ly1 - 4, lx2 + 6, ly2 + 4)
-    ) {
-      continue;
-    }
-    placedBoxes.push({
-      x1: lx1 - 6,
-      y1: ly1 - 4,
-      x2: lx2 + 6,
-      y2: ly2 + 4,
-    });
-
-    ctx.fillStyle = isDark
-      ? isSelected || isHovered
-        ? 'rgba(28, 25, 23, 0.96)'
-        : 'rgba(24, 21, 18, 0.88)'
-      : isSelected || isHovered
-        ? 'rgba(255, 255, 255, 0.96)'
-        : 'rgba(250, 247, 242, 0.92)';
-
-    ctx.strokeStyle = isSelected
-      ? isDark
-        ? 'rgba(245, 158, 11, 0.75)'
-        : 'rgba(154, 52, 18, 0.65)'
-      : isNeighbor
-        ? isDark
-          ? 'rgba(217, 119, 6, 0.55)'
-          : 'rgba(133, 77, 14, 0.45)'
-        : isSearchMatch
-          ? 'rgba(180, 83, 9, 0.55)'
-          : isDark
-            ? 'rgba(214, 206, 190, 0.2)'
-            : 'rgba(120, 108, 92, 0.28)';
-
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(lx1, ly1, textW + 12, 19, 4);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = isDark
-      ? '#F5F2EB'
-      : isSelected || isHovered
-        ? '#1C1917'
-        : '#292524';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(truncated, lx1 + 6, sp.y + 0.5);
-  }
-  ctx.restore();
 
   ctx.restore();
 }

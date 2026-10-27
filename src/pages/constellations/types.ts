@@ -48,6 +48,7 @@ export interface ClusterGeometry {
   hullPoints: Point2D[];
   nebulaKernels?: NebulaKernel[];
   dominantGenres: string[];
+  anchorIndices?: number[];
 }
 
 export interface StippleGrain {
@@ -64,6 +65,18 @@ export interface CameraState {
   targetX: number;
   targetY: number;
   targetZoom: number;
+  vx: number;
+  vy: number;
+}
+
+export interface SemanticLodWeights {
+  tier: 1 | 2 | 3;
+  tierLabel: 'Atlas Overview' | 'Neighborhood' | 'Book Covers';
+  bannerOpacity: number;
+  titleOpacity: number;
+  coverOpacity: number;
+  nebulaAlphaMultiplier: number;
+  starScaleMultiplier: number;
 }
 
 export interface ConstellationChartProps {
@@ -75,6 +88,50 @@ export interface ConstellationChartProps {
   libraryId?: string;
 }
 
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.max(
+    0,
+    Math.min(1, (x - edge0) / Math.max(1e-6, edge1 - edge0)),
+  );
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Computes progressive 3-tier semantic zoom weights across [0.55x - 6.0x]:
+ * - Tier 1 (0.55x - 1.45x): Celestial Atlas Overview (constellation territory banners + nebula glows)
+ * - Tier 2 (1.45x - 2.65x): Constellation Neighborhood (anchor book titles + bridge filaments)
+ * - Tier 3 (2.65x - 6.0x): Reading Room Cover Detail (tactile miniature book covers)
+ */
+export function computeSemanticLod(zoom: number): SemanticLodWeights {
+  const tier: 1 | 2 | 3 = zoom < 1.45 ? 1 : zoom < 2.65 ? 2 : 3;
+  const tierLabel =
+    tier === 1 ? 'Atlas Overview' : tier === 2 ? 'Neighborhood' : 'Book Covers';
+
+  // Constellation banners visible in Tier 1 & early Tier 2, fading out by 2.15x
+  const bannerOpacity = 1 - smoothstep(1.35, 2.15, zoom);
+
+  // Neighborhood book title callouts peak in Tier 2, crossfading to covers in Tier 3
+  const titleFadeIn = smoothstep(1.2, 1.55, zoom);
+  const titleFadeOut = 1 - smoothstep(2.45, 2.95, zoom);
+  const titleOpacity = titleFadeIn * titleFadeOut;
+
+  // Miniature book cover plates emerge smoothly as zoom enters Tier 3 (>= 2.45x)
+  const coverOpacity = smoothstep(2.45, 2.95, zoom);
+
+  const nebulaAlphaMultiplier = 1 - 0.35 * smoothstep(2.0, 3.8, zoom);
+  const starScaleMultiplier = 1 - 0.45 * coverOpacity;
+
+  return {
+    tier,
+    tierLabel,
+    bannerOpacity,
+    titleOpacity,
+    coverOpacity,
+    nebulaAlphaMultiplier,
+    starScaleMultiplier,
+  };
+}
+
 export function hexToRgba(hex: string, alpha: number): string {
   const clean = hex.replace('#', '');
   if (clean.length !== 6) {
@@ -84,6 +141,17 @@ export function hexToRgba(hex: string, alpha: number): string {
   const g = parseInt(clean.slice(2, 4), 16);
   const b = parseInt(clean.slice(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+export function hexToRgb01(hex: string): [number, number, number] {
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) {
+    return [0.47, 0.42, 0.36];
+  }
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  return [r, g, b];
 }
 
 /**
