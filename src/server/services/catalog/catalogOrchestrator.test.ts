@@ -401,5 +401,65 @@ describe('ProviderQuotaScheduler & CatalogOrchestrator', () => {
       expect(merged?.coverUrl).toBe(validOpenLibraryUrl);
       expect(merged?.fieldSources?.coverImage).toBe('Open Library');
     });
+
+    it('returns a normalized array in searchByQuery and fetchCoverCandidates even when upstream providers return null or malformed items', async () => {
+      const nullReturningProvider = createMockProvider({
+        id: 'apple-books',
+        name: 'Apple Books',
+        searchByQuery: vi
+          .fn()
+          .mockResolvedValue(null as unknown as ProviderBookHit[]),
+        resolveCovers: vi.fn().mockResolvedValue(null),
+      });
+
+      const partialReturningProvider = createMockProvider({
+        id: 'google-books',
+        name: 'Google Books',
+        searchByQuery: vi.fn().mockResolvedValue([
+          null as unknown as ProviderBookHit,
+          {
+            providerId: 'google-books',
+            providerName: 'Google Books',
+          } as unknown as ProviderBookHit,
+          {
+            providerId: 'google-books',
+            providerName: 'Google Books',
+            title: 'Born a Crime',
+            author: 'Trevor Noah',
+            isbn: '9780399588174',
+            coverUrl: 'https://example.com/born-a-crime.jpg',
+          } satisfies ProviderBookHit,
+        ]),
+      });
+
+      const orchestrator = new CatalogOrchestrator([
+        nullReturningProvider,
+        partialReturningProvider,
+      ]);
+
+      const queryRes = await orchestrator.searchByQuery('Born a Crime', {
+        priority: 'INTERACTIVE',
+        verifyCovers: false,
+      });
+
+      expect(Array.isArray(queryRes.books)).toBe(true);
+      expect(queryRes.books).toHaveLength(1);
+      expect(queryRes.books[0].title).toBe('Born a Crime');
+
+      const emptyOrchestrator = new CatalogOrchestrator([
+        nullReturningProvider,
+      ]);
+      const emptyRes = await emptyOrchestrator.searchByQuery(
+        {rawQuery: 'Unknown Nonexistent Book'},
+        {priority: 'BATCH', verifyCovers: false},
+      );
+      expect(emptyRes.books).toEqual([]);
+
+      const coverRes = await emptyOrchestrator.fetchCoverCandidates(
+        {title: 'Unknown Nonexistent Book'},
+        {priority: 'INTERACTIVE', verifyCovers: false},
+      );
+      expect(coverRes.candidates).toEqual([]);
+    });
   });
 });

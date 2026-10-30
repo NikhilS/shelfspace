@@ -131,8 +131,12 @@ export function TrackBookDialog({
       const res = await trpcVanilla.readingTracker.searchUnified.query({
         query: trimmed,
       });
-      setLibraryMatches(res.libraryMatches || []);
-      setExternalMatches(res.externalMatches || []);
+      setLibraryMatches(
+        Array.isArray(res?.libraryMatches) ? res.libraryMatches : [],
+      );
+      setExternalMatches(
+        Array.isArray(res?.externalMatches) ? res.externalMatches : [],
+      );
       setHasSearched(true);
     } catch (err) {
       console.error('Unified book search failed:', err);

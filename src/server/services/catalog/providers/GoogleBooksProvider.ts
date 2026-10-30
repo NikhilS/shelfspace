@@ -236,7 +236,7 @@ export class GoogleBooksProvider implements ICatalogSourceProvider {
     }
 
     // If strict intitle: yielded fewer than 3 matches and we only searched by title, do a general query
-    if (hits.length < 3 && (query.title || query.rawQuery) && !query.author) {
+    if (hits.length < 3 && query.title && !query.author) {
       const raw = query.rawQuery || query.title || '';
       const fallbackRes = await fetchWithProviderTimeout(
         this.buildUrl(`${encodeURIComponent(raw)}&maxResults=${limit}`),

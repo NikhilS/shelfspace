@@ -134,6 +134,16 @@ describe('metadataRouter tRPC procedures', () => {
     expect(await caller.searchByTitle({query: 'Dune', limit: 5})).toHaveLength(
       1,
     );
+    expect(catalogOrchestrator.searchByQuery).toHaveBeenLastCalledWith(
+      {
+        rawQuery: 'Dune',
+        limit: 5,
+      },
+      {
+        priority: 'INTERACTIVE',
+        verifyCovers: false,
+      },
+    );
 
     vi.mocked(catalogOrchestrator.fetchCoverCandidates).mockResolvedValue([
       {

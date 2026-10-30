@@ -102,12 +102,29 @@ export class CatalogOrchestrator {
     this.coverValidityCache.clear();
   }
 
+  private normalizeProviderHits(list: unknown): ProviderBookHit[] {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+    return list.filter(
+      (item): item is ProviderBookHit =>
+        Boolean(item) &&
+        typeof item === 'object' &&
+        typeof (item as ProviderBookHit).title === 'string' &&
+        (item as ProviderBookHit).title.trim().length > 0,
+    );
+  }
+
   private getCachedSearch(key: string): OrchestratorSearchResult | null {
     const entry = this.searchCache.get(key);
     if (!entry) {
       return null;
     }
-    if (Date.now() > entry.expiresAt) {
+    if (
+      Date.now() > entry.expiresAt ||
+      !entry.value ||
+      !Array.isArray(entry.value.books)
+    ) {
       this.searchCache.delete(key);
       return null;
     }
@@ -122,7 +139,15 @@ export class CatalogOrchestrator {
       }
     }
     this.searchCache.set(key, {
-      value,
+      value: {
+        books: Array.isArray(value?.books) ? value.books : [],
+        skippedProviders: Array.isArray(value?.skippedProviders)
+          ? value.skippedProviders
+          : [],
+        respondedProviders: Array.isArray(value?.respondedProviders)
+          ? value.respondedProviders
+          : [],
+      },
       expiresAt: Date.now() + this.searchCacheTtlMs,
     });
   }
@@ -422,13 +447,23 @@ export class CatalogOrchestrator {
   }
 
   async searchByQuery(
-    query: CatalogQuery,
+    query: CatalogQuery | string,
     options: OrchestratorExecutionOptions = {},
   ): Promise<OrchestratorSearchResult> {
-    const cleanTitle = query.title ? normalizeTitle(query.title) : '';
-    const cleanAuthor = query.author ? normalizeName(query.author) : '';
-    const cleanRaw = query.rawQuery ? normalizeText(query.rawQuery) : '';
-    const cleanIsbn = query.isbn ? normalizeIsbn(query.isbn) : '';
+    const normalizedQuery: CatalogQuery =
+      typeof query === 'string' ? {rawQuery: query} : query || {};
+    const cleanTitle = normalizedQuery.title
+      ? normalizeTitle(normalizedQuery.title)
+      : '';
+    const cleanAuthor = normalizedQuery.author
+      ? normalizeName(normalizedQuery.author)
+      : '';
+    const cleanRaw = normalizedQuery.rawQuery
+      ? normalizeText(normalizedQuery.rawQuery)
+      : '';
+    const cleanIsbn = normalizedQuery.isbn
+      ? normalizeIsbn(normalizedQuery.isbn)
+      : '';
 
     if (cleanIsbn && !cleanTitle && !cleanRaw) {
       const book = await this.searchByIsbn(cleanIsbn, options);
@@ -439,7 +474,7 @@ export class CatalogOrchestrator {
       };
     }
 
-    const cacheKey = `q:${cleanTitle.toLowerCase()}|${cleanAuthor.toLowerCase()}|${cleanRaw.toLowerCase()}|${query.limit ?? 12}`;
+    const cacheKey = `q:${cleanTitle.toLowerCase()}|${cleanAuthor.toLowerCase()}|${cleanRaw.toLowerCase()}|${normalizedQuery.limit ?? 12}`;
     const cached = this.getCachedSearch(cacheKey);
     if (cached && cached.books.length > 0) {
       return cached;
@@ -470,16 +505,14 @@ export class CatalogOrchestrator {
           this.runProviderTask(
             p,
             options,
-            signal => p.searchByQuery(query, signal),
+            signal => p.searchByQuery(normalizedQuery, signal),
             skippedProviders,
             respondedProviders,
           ),
         ),
       );
       for (const list of wave1Lists) {
-        if (list) {
-          hits.push(...list);
-        }
+        hits.push(...this.normalizeProviderHits(list));
       }
 
       const hasRichHit = hits.some(
@@ -492,16 +525,14 @@ export class CatalogOrchestrator {
             this.runProviderTask(
               p,
               options,
-              signal => p.searchByQuery(query, signal),
+              signal => p.searchByQuery(normalizedQuery, signal),
               skippedProviders,
               respondedProviders,
             ),
           ),
         );
         for (const list of wave2Lists) {
-          if (list) {
-            hits.push(...list);
-          }
+          hits.push(...this.normalizeProviderHits(list));
         }
       }
     } else {
@@ -510,16 +541,14 @@ export class CatalogOrchestrator {
           this.runProviderTask(
             p,
             options,
-            signal => p.searchByQuery(query, signal),
+            signal => p.searchByQuery(normalizedQuery, signal),
             skippedProviders,
             respondedProviders,
           ),
         ),
       );
       for (const list of resultLists) {
-        if (list) {
-          hits.push(...list);
-        }
+        hits.push(...this.normalizeProviderHits(list));
       }
     }
 
@@ -536,7 +565,10 @@ export class CatalogOrchestrator {
       signal: options.signal,
     });
 
-    const limited = stitched.slice(0, query.limit ?? 15);
+    const limited = (Array.isArray(stitched) ? stitched : []).slice(
+      0,
+      normalizedQuery.limit ?? 15,
+    );
     const response: OrchestratorSearchResult = {
       books: limited,
       skippedProviders,
@@ -575,7 +607,8 @@ export class CatalogOrchestrator {
         },
         async signal => {
           if (p.resolveCovers) {
-            return p.resolveCovers(query, signal);
+            const resolved = await p.resolveCovers(query, signal);
+            return Array.isArray(resolved) ? resolved : [];
           }
           if (query.isbn && p.capabilities.isbnSearch) {
             const hit = await p.searchByIsbn(query.isbn, signal);
@@ -586,12 +619,15 @@ export class CatalogOrchestrator {
                   source: p.name,
                   resolutionTier: hit.coverResolutionTier ?? 'high',
                 } satisfies CoverCandidate,
-                ...(hit.additionalCovers ?? []),
+                ...(Array.isArray(hit.additionalCovers)
+                  ? hit.additionalCovers
+                  : []),
               ];
             }
           }
           if (p.capabilities.titleSearch && (query.title || query.rawQuery)) {
-            const hits = await p.searchByQuery({...query, limit: 3}, signal);
+            const rawHits = await p.searchByQuery({...query, limit: 3}, signal);
+            const hits = this.normalizeProviderHits(rawHits);
             const out: CoverCandidate[] = [];
             for (const h of hits) {
               if (h.coverUrl) {
@@ -617,10 +653,13 @@ export class CatalogOrchestrator {
     ): Promise<CoverCandidate[]> => {
       const unique: CoverCandidate[] = [];
       for (const list of lists) {
-        if (!list) {
+        if (!Array.isArray(list)) {
           continue;
         }
         for (const candidate of list) {
+          if (!candidate || typeof candidate.url !== 'string') {
+            continue;
+          }
           const normalizedUrl = candidate.url.trim();
           if (!normalizedUrl || seenUrls.has(normalizedUrl)) {
             continue;
@@ -758,16 +797,17 @@ export class CatalogOrchestrator {
   }
 
   private async stitchBookHits(
-    hits: ProviderBookHit[],
+    hits: Array<ProviderBookHit | null | undefined> | null | undefined,
     options: {
       fallbackIsbn?: string;
       verifyCovers?: boolean;
       signal?: AbortSignal;
     } = {},
   ): Promise<BookDetails[]> {
+    const safeHits = this.normalizeProviderHits(hits);
     const groups = new Map<string, ProviderBookHit[]>();
 
-    for (const hit of hits) {
+    for (const hit of safeHits) {
       if (!hit.title || hit.title === 'Unknown Title') {
         continue;
       }

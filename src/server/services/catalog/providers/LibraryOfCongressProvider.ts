@@ -118,8 +118,13 @@ export class LibraryOfCongressProvider implements ICatalogSourceProvider {
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {
-    const qStr = [query.title, query.author, query.rawQuery]
-      .filter(Boolean)
+    const qStr = Array.from(
+      new Set(
+        [query.title, query.author, query.rawQuery]
+          .map(s => s?.trim())
+          .filter((s): s is string => Boolean(s)),
+      ),
+    )
       .join(' ')
       .trim();
     if (!qStr) {

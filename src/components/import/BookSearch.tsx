@@ -46,6 +46,7 @@ export interface BookSearchProps {
     bookId: string;
     title: string;
   }) => Promise<void>;
+  onOpenAdvanced?: () => void;
   autoFocus?: boolean;
 }
 
@@ -56,9 +57,11 @@ export function BookSearch({
   mode = 'library',
   targetStatus = mode === 'reading' ? 'want_to_read' : 'unset',
   onTrackExisting,
+  onOpenAdvanced,
   autoFocus = false,
 }: BookSearchProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [lastSearchedQuery, setLastSearchedQuery] = useState('');
   const [searchResults, setSearchResults] = useState<
     UnifiedExternalSearchMatch[]
   >([]);
@@ -77,7 +80,8 @@ export function BookSearch({
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) {
+    const cleanQuery = searchQuery.trim();
+    if (!cleanQuery) {
       return;
     }
 
@@ -89,9 +93,8 @@ export function BookSearch({
 
     setIsSearching(true);
     setHasSearched(false);
+    setLastSearchedQuery(cleanQuery);
     try {
-      const cleanQuery = searchQuery.trim();
-
       if (
         mode === 'reading' &&
         typeof trpcVanilla.readingTracker?.searchUnified?.query === 'function'
@@ -102,8 +105,12 @@ export function BookSearch({
         if (abortController.signal.aborted) {
           return;
         }
-        setLibraryMatches(res.libraryMatches || []);
-        setSearchResults(res.externalMatches || []);
+        setLibraryMatches(
+          Array.isArray(res?.libraryMatches) ? res.libraryMatches : [],
+        );
+        setSearchResults(
+          Array.isArray(res?.externalMatches) ? res.externalMatches : [],
+        );
       } else {
         const isIsbn = /^\d{10,13}$/.test(cleanQuery.replace(/[- ]/g, ''));
         let books: BookDetails[] = [];
@@ -112,15 +119,16 @@ export function BookSearch({
             isbn: cleanQuery.replace(/[- ]/g, ''),
             priority: 'INTERACTIVE',
           });
-          if (book) {
+          if (book && book.title) {
             books = [book];
           }
         }
         if (books.length === 0) {
-          books = await trpcVanilla.metadata.searchByTitle.mutate({
+          const byTitle = await trpcVanilla.metadata.searchByTitle.mutate({
             query: cleanQuery,
             limit: 15,
           });
+          books = Array.isArray(byTitle) ? byTitle : [];
         }
         if (abortController.signal.aborted) {
           return;
@@ -141,6 +149,14 @@ export function BookSearch({
         setHasSearched(true);
       }
     }
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setLastSearchedQuery('');
+    setHasSearched(false);
+    setLibraryMatches([]);
+    setSearchResults([]);
   };
 
   const handleTrackLibraryMatch = async (match: {
@@ -243,15 +259,41 @@ export function BookSearch({
             ))}
           </div>
         ) : hasSearched && totalMatches === 0 ? (
-          <div className="text-center py-12 px-4 bg-surface-container-low rounded-xl border border-outline-variant/40">
+          <div
+            className="text-center py-10 px-4 bg-surface-container-low rounded-xl border border-outline-variant/40"
+            data-testid="book-search-empty-state"
+          >
             <MagnifyingBookmarkIllustration className="mx-auto mb-2.5" />
             <p className="font-serif text-base font-semibold text-on-surface">
-              No Books Found for That Search
+              {lastSearchedQuery
+                ? `No Books Found for "${lastSearchedQuery}"`
+                : 'No Books Found for That Search'}
             </p>
             <p className="font-sans text-xs text-on-surface-variant mt-1 max-w-sm mx-auto">
-              Double-check the spelling, try searching by ISBN, or switch to
-              Manual Entry.
+              Double-check the spelling, try searching by ISBN, or add the book
+              manually.
             </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleClearSearch}
+              >
+                Clear Search
+              </Button>
+              {onOpenAdvanced && (
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={onOpenAdvanced}
+                  data-testid="book-search-empty-manual-btn"
+                >
+                  Enter Book Manually
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
           <>

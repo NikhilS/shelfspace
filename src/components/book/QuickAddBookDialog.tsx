@@ -249,6 +249,7 @@ export function QuickAddBookDialog({
               mode={resolvedMode}
               targetStatus={targetStatus}
               onTrackExisting={handleTrackExisting}
+              onOpenAdvanced={handleOpenAdvanced}
               autoFocus
             />
           )}

@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to (1) make CurrentlyReadingCard swipeable using the shared 3-slot GPU-composited BookSwipeDeck with pointer/touch drag and a compact 1/N chevron stepper, (2) unify CurrentlyReadingCard across both the Reading Room Dashboard and LibraryOverview, and (3) eliminate the 5-minute client cache lag when updating reading status via a centralized optimistic cache patcher and cross-query invalidation helper.",
-  "updatedAt":  "2026-10-30T00:13:51.737620074Z",
+  "summary":  "Implementation plan to harden CatalogOrchestrator against null/non-iterable upstream provider responses, ensure ReadingTrackerService.searchUnifiedCatalog always returns normalized arrays, and improve empty-result UI states in BookSearch, QuickAddBookDialog, and TrackBookDialog.",
+  "updatedAt":  "2026-10-30T02:09:39.378604750Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

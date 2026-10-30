@@ -95,8 +95,10 @@ describe('readingTrackerRouter', () => {
 
   it('trackBook delegates to ReadingTrackerService.trackBook for external unowned books', async () => {
     vi.mocked(ReadingTrackerService.trackBook).mockResolvedValue({
+      success: true,
       libraryId: 'virtual_user-1',
       bookId: 'vbook-1',
+      isVirtual: true,
       status: 'want_to_read',
       ownershipStatus: 'unowned',
     });

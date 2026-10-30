@@ -7,7 +7,10 @@ import {
   useReadingShelf,
   type ShelfFilterTab,
 } from '../../pages/dashboard/useReadingShelf';
-import {CurrentlyReadingCard} from '../../pages/dashboard/CurrentlyReadingCard';
+import {
+  CurrentlyReadingCard,
+  normalizeToTrackedBookItem,
+} from './CurrentlyReadingCard';
 import {ReadStackCanvasCard} from '../../pages/dashboard/ReadStackCanvasCard';
 import {GenreBreakdownCard} from './GenreBreakdownCard';
 import {CuratorPickCard, type CuratorPickItem} from './CuratorPickCard';
@@ -83,47 +86,6 @@ export interface ReadingBentoProps {
   showExplorePerspectives?: boolean;
 }
 
-function normalizeBookToTrackedItem(
-  item: Book | TrackedBookItem,
-  fallbackLibraryId: string | undefined,
-): TrackedBookItem | null {
-  const rawStatus = item.readingStatus;
-  let readingStatus: TrackedShelfStatus | 'unset' = 'unset';
-  if (rawStatus === 'completed' || rawStatus === 'finished') {
-    readingStatus = 'finished';
-  } else if (
-    rawStatus === 'reading' ||
-    rawStatus === 'want_to_read' ||
-    rawStatus === 'abandoned'
-  ) {
-    readingStatus = rawStatus;
-  }
-
-  if (readingStatus === 'unset') {
-    return null;
-  }
-
-  const resolvedLibId = item.libraryId || fallbackLibraryId || 'unknown';
-  const isVirtual =
-    ('isVirtual' in item && Boolean(item.isVirtual)) ||
-    resolvedLibId.startsWith('virtual_');
-
-  return {
-    ...item,
-    libraryId: resolvedLibId,
-    libraryName:
-      ('libraryName' in item && item.libraryName) ||
-      (isVirtual ? 'Personal Reading Shelf' : 'Library'),
-    isVirtual,
-    ownershipStatus:
-      item.ownershipStatus === 'unowned' || isVirtual ? 'unowned' : 'owned',
-    readingStatus,
-    ...(typeof item.userRating === 'number'
-      ? {userRating: item.userRating}
-      : {}),
-  };
-}
-
 export function ReadingBento({
   mode,
   libraryId,
@@ -169,7 +131,10 @@ export function ReadingBento({
     const normalized: TrackedBookItem[] = [];
 
     for (const item of sourceList) {
-      const tracked = normalizeBookToTrackedItem(item, libraryId);
+      const tracked = normalizeToTrackedBookItem(
+        item,
+        libraryId ? {id: libraryId} : undefined,
+      );
       if (!tracked) {
         continue;
       }
@@ -713,6 +678,7 @@ export function ReadingBento({
           <div className="md:col-span-7">
             <CurrentlyReadingCard
               readingBooks={readingBooks}
+              showLibraryProvenance={!isLibraryScoped}
               onStatusChange={handleStatusChange}
               onTrackBook={() => handleTrackBookTrigger('reading')}
               onOpenReadingLists={tab => handleOpenShelfTrigger(tab)}

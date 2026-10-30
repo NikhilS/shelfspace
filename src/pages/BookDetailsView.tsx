@@ -1,7 +1,10 @@
 import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {useParams, useNavigate, useLocation} from 'react-router-dom';
 import {BookContent} from './book-details/BookContent';
-import {BookSwipeDeck, BookSwipeDeckHandle} from './book-details/BookSwipeDeck';
+import {
+  BookSwipeDeck,
+  type BookSwipeDeckHandle,
+} from '../components/book/BookSwipeDeck';
 import {useLibraryPermissions} from '../hooks/useLibraryPermissions';
 import {useAuth} from '../stores/authStore';
 import {PrefetchAdjacentBooks} from '../components/book/PrefetchAdjacentBooks';

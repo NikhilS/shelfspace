@@ -317,22 +317,26 @@ describe('ReadingTrackerService', () => {
         ]),
       );
 
-      vi.mocked(catalogOrchestrator.searchByQuery).mockResolvedValue([
-        {
-          title: 'Dune',
-          author: 'Frank Herbert',
-          isbn: '9780441172719',
-          coverUrl: '',
-          publishedDate: '1965',
-        },
-        {
-          title: 'Dune Messiah',
-          author: 'Frank Herbert',
-          isbn: '9780593098233',
-          coverUrl: '',
-          publishedDate: '1969',
-        },
-      ]);
+      vi.mocked(catalogOrchestrator.searchByQuery).mockResolvedValue({
+        books: [
+          {
+            title: 'Dune',
+            author: 'Frank Herbert',
+            isbn: '9780441172719',
+            coverUrl: '',
+            publishedDate: '1965',
+          },
+          {
+            title: 'Dune Messiah',
+            author: 'Frank Herbert',
+            isbn: '9780593098233',
+            coverUrl: '',
+            publishedDate: '1969',
+          },
+        ],
+        skippedProviders: [],
+        respondedProviders: ['google-books'],
+      });
 
       const result = await ReadingTrackerService.searchUnifiedCatalog(
         'u1',
@@ -344,6 +348,10 @@ describe('ReadingTrackerService', () => {
         'searchTokens',
         'array-contains',
         'dune',
+      );
+      expect(catalogOrchestrator.searchByQuery).toHaveBeenCalledWith(
+        {rawQuery: 'Dune', limit: 15},
+        {priority: 'INTERACTIVE', verifyCovers: false},
       );
       expect(result.libraryMatches).toHaveLength(1);
       expect(result.libraryMatches[0].title).toBe('Dune');
@@ -411,7 +419,11 @@ describe('ReadingTrackerService', () => {
         .mockResolvedValueOnce({docs: []});
 
       vi.mocked(fetchUserReadingStatesMap).mockResolvedValueOnce(new Map());
-      vi.mocked(catalogOrchestrator.searchByQuery).mockResolvedValue([]);
+      vi.mocked(catalogOrchestrator.searchByQuery).mockResolvedValue({
+        books: [],
+        skippedProviders: [],
+        respondedProviders: [],
+      });
 
       const result = await ReadingTrackerService.searchUnifiedCatalog(
         'u1',
@@ -423,11 +435,54 @@ describe('ReadingTrackerService', () => {
       expect(result.libraryMatches[0].bookId).toBe('book-legacy-dune');
       expect(result.libraryMatches[0].series).toBe('Dune Chronicles');
     });
+
+    it('merges searchByIsbn and searchByQuery results for ISBN queries', async () => {
+      const {fetchUserReadingStatesMap} = await import('../book');
+      vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
+        libraries: [],
+      });
+      mockCollectionGet.mockResolvedValue({docs: []});
+      vi.mocked(fetchUserReadingStatesMap).mockResolvedValueOnce(new Map());
+
+      vi.mocked(catalogOrchestrator.searchByIsbn).mockResolvedValueOnce({
+        title: 'Born a Crime',
+        author: 'Trevor Noah',
+        isbn: '9780399588174',
+        coverUrl: 'https://example.com/born-a-crime.jpg',
+        publishedDate: '2016-11-15',
+      });
+      vi.mocked(catalogOrchestrator.searchByQuery).mockResolvedValueOnce({
+        books: [
+          {
+            title: 'Born a Crime',
+            author: 'Trevor Noah',
+            isbn: '9780399588174',
+            coverUrl: 'https://example.com/born-a-crime.jpg',
+            publishedDate: '2016-11-15',
+          },
+        ],
+        skippedProviders: [],
+        respondedProviders: ['apple-books'],
+      });
+
+      const result = await ReadingTrackerService.searchUnifiedCatalog(
+        'u1',
+        'u1@example.com',
+        '978-0399588174',
+      );
+
+      expect(catalogOrchestrator.searchByIsbn).toHaveBeenCalledWith(
+        '9780399588174',
+        {priority: 'INTERACTIVE', verifyCovers: false},
+      );
+      expect(result.externalMatches).toHaveLength(1);
+      expect(result.externalMatches[0].title).toBe('Born a Crime');
+    });
   });
 
   describe('trackBook', () => {
     it('commits status, rating, and review in a single addReview call when tracking an existing library book with review text', async () => {
-      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue('viewer');
+      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue(true);
       vi.mocked(BookService.addReview).mockResolvedValue({
         success: true,
         id: 'u1',
@@ -465,7 +520,7 @@ describe('ReadingTrackerService', () => {
     });
 
     it('updates status and rating in a single updateBookStatus call when rating is provided without review text', async () => {
-      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue('viewer');
+      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue(true);
       vi.mocked(BookService.updateBookStatus).mockResolvedValue({
         success: true,
         id: 'book-1',
@@ -498,7 +553,7 @@ describe('ReadingTrackerService', () => {
     });
 
     it('queries cleanIsbn and dedupeKey indexes and creates an unowned book in virtual_${userId} when no match exists', async () => {
-      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue('owner');
+      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue(true);
       mockCollectionGet.mockResolvedValue({docs: []});
       vi.mocked(BookService.createBook).mockResolvedValue({
         success: true,
@@ -545,7 +600,7 @@ describe('ReadingTrackerService', () => {
     });
 
     it('reuses existing book in destination library when cleanIsbn index query matches', async () => {
-      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue('editor');
+      vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue(true);
       mockCollectionGet
         .mockResolvedValueOnce({
           docs: [{id: 'existing-book-42', data: () => ({title: 'Piranesi'})}],

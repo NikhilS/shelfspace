@@ -388,7 +388,13 @@ export async function searchUnifiedCatalog(
     /^[0-9X]+$/.test(queryIsbn);
   const primarySearchToken = extractPrimarySearchToken(query);
 
-  const matchesSearchCriteria = (data: Partial<Book>): boolean => {
+  const matchesSearchCriteria = (data: {
+    title?: string;
+    author?: string;
+    series?: string | null;
+    isbn?: string;
+    cleanIsbn?: string;
+  }): boolean => {
     const title = data.title || 'Untitled Book';
     const author = data.author || 'Unknown Author';
     const series = data.series || '';
@@ -507,8 +513,11 @@ export async function searchUnifiedCatalog(
               }
             }
 
-            // Fallback scan for legacy libraries containing un-backfilled books
-            const snap = await booksRef.get();
+            // Bounded fallback scan for legacy libraries containing un-backfilled books
+            const snap =
+              typeof (booksRef as {limit?: unknown}).limit === 'function'
+                ? await booksRef.limit(200).get()
+                : await booksRef.get();
             const fallbackDocs = (snap.docs || []).filter(docSnap => {
               const data = bookDocConverter.fromFirestore(
                 docSnap.id,
@@ -583,7 +592,7 @@ export async function searchUnifiedCatalog(
       if (seenStateKeys.has(stateKey) || !state.bookSnapshot) {
         continue;
       }
-      if (!matchesSearchCriteria(state.bookSnapshot as Partial<Book>)) {
+      if (!matchesSearchCriteria(state.bookSnapshot)) {
         continue;
       }
       const snap = state.bookSnapshot;
@@ -623,16 +632,34 @@ export async function searchUnifiedCatalog(
 
   const externalPromise = (async (): Promise<BookDetails[]> => {
     try {
+      const searchOptions = {
+        priority: 'INTERACTIVE' as const,
+        verifyCovers: false,
+      };
       if (isLikelyIsbn) {
-        const byIsbn = await catalogOrchestrator.searchByIsbn(queryIsbn);
+        const byIsbn = await catalogOrchestrator.searchByIsbn(
+          queryIsbn,
+          searchOptions,
+        );
         if (byIsbn) {
-          const byQuery = await catalogOrchestrator
-            .searchByQuery(query)
-            .catch(() => []);
-          return [byIsbn, ...byQuery];
+          const byQueryRes = await catalogOrchestrator
+            .searchByQuery({rawQuery: query, limit: 15}, searchOptions)
+            .catch(() => ({
+              books: [] as BookDetails[],
+              skippedProviders: [],
+              respondedProviders: [],
+            }));
+          const extraBooks = Array.isArray(byQueryRes?.books)
+            ? byQueryRes.books
+            : [];
+          return [byIsbn, ...extraBooks];
         }
       }
-      return await catalogOrchestrator.searchByQuery(query);
+      const res = await catalogOrchestrator.searchByQuery(
+        {rawQuery: query, limit: 15},
+        searchOptions,
+      );
+      return Array.isArray(res?.books) ? res.books : [];
     } catch {
       return [];
     }
@@ -645,8 +672,9 @@ export async function searchUnifiedCatalog(
 
   const seenExternalKeys = new Set<string>();
   const externalMatches: UnifiedExternalSearchMatch[] = [];
+  const safeExternal = Array.isArray(rawExternal) ? rawExternal : [];
 
-  for (const ext of rawExternal) {
+  for (const ext of safeExternal) {
     if (!ext || !ext.title) {
       continue;
     }

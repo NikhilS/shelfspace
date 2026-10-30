@@ -10,7 +10,7 @@ import {GenreBreakdownCard} from '../../components/book/GenreBreakdownCard';
 import {CuratorPickCard} from '../../components/book/CuratorPickCard';
 import {ExplorePerspectivesStrip} from '../../components/book/ExplorePerspectivesStrip';
 import {ArchivalCoverImage} from '../../components/book/ArchivalCoverImage';
-import {CurrentlyReadingCard} from '../dashboard/CurrentlyReadingCard';
+import {CurrentlyReadingCard} from '../../components/book/CurrentlyReadingCard';
 import {preloadRouteChunk} from '../../lib/routePreload';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {formatShortDate} from '../../lib/date';
@@ -21,10 +21,7 @@ import {
   type ReadingStatusCacheUtils,
 } from '../../lib/readingStatusCache';
 import {toast} from 'sonner';
-import type {
-  TrackedBookItem,
-  TrackedShelfStatus,
-} from '../../server/services/readingTracker';
+import type {TrackedShelfStatus} from '../../server/services/readingTracker';
 import {User} from 'firebase/auth';
 
 interface LibraryOverviewProps {
@@ -78,22 +75,12 @@ export function LibraryOverview({
     preloadRouteChunk('bookDetails');
   }, []);
 
-  const readingBooks = useMemo<TrackedBookItem[]>(() => {
+  const readingBooks = useMemo<Book[]>(() => {
     if (!user) {
       return [];
     }
-    const isVirtual = library.id.startsWith('virtual_');
-    return books
-      .filter(b => b.readingStatus === 'reading')
-      .map(b => ({
-        ...b,
-        libraryId: library.id,
-        libraryName: library.name,
-        isVirtual,
-        ownershipStatus: b.ownershipStatus ?? (isVirtual ? 'unowned' : 'owned'),
-        readingStatus: 'reading' as const,
-      }));
-  }, [books, library.id, library.name, user]);
+    return books.filter(b => b.readingStatus === 'reading');
+  }, [books, user]);
 
   const handleReadingStatusChange = useCallback(
     async (
@@ -252,7 +239,10 @@ export function LibraryOverview({
                 {readingBooks.length > 0 && (
                   <CurrentlyReadingCard
                     readingBooks={readingBooks}
+                    defaultLibrary={{id: library.id, name: library.name}}
+                    showLibraryProvenance={false}
                     onStatusChange={handleReadingStatusChange}
+                    onOpenReadingLists={() => setCurrentTab('collection')}
                     fromPath={location.pathname + location.search}
                   />
                 )}

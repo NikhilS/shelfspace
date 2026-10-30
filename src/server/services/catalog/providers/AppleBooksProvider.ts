@@ -158,8 +158,13 @@ export class AppleBooksProvider implements ICatalogSourceProvider {
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {
-    const parts = [query.title, query.author, query.rawQuery]
-      .filter(Boolean)
+    const parts = Array.from(
+      new Set(
+        [query.title, query.author, query.rawQuery]
+          .map(s => s?.trim())
+          .filter((s): s is string => Boolean(s)),
+      ),
+    )
       .join(' ')
       .trim();
     if (!parts) {

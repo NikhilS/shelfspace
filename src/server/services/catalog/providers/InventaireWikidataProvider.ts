@@ -142,8 +142,13 @@ export class InventaireWikidataProvider implements ICatalogSourceProvider {
     query: CatalogQuery,
     signal?: AbortSignal,
   ): Promise<ProviderBookHit[]> {
-    const searchStr = [query.title, query.author, query.rawQuery]
-      .filter(Boolean)
+    const searchStr = Array.from(
+      new Set(
+        [query.title, query.author, query.rawQuery]
+          .map(s => s?.trim())
+          .filter((s): s is string => Boolean(s)),
+      ),
+    )
       .join(' ')
       .trim();
     if (!searchStr) {

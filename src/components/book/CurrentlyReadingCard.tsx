@@ -11,20 +11,76 @@ import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {NightstandBookIllustration} from '@/components/ui/empty-state-illustrations';
-import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
+import {ArchivalCoverImage} from './ArchivalCoverImage';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {preloadRouteChunk} from '../../lib/routePreload';
-import {
-  BookSwipeDeck,
-  type BookSwipeDeckHandle,
-} from '../book-details/BookSwipeDeck';
+import {BookSwipeDeck, type BookSwipeDeckHandle} from './BookSwipeDeck';
+import type {Book} from '../../types';
 import type {
   TrackedBookItem,
   TrackedShelfStatus,
 } from '../../server/services/readingTracker';
 
+export interface DefaultLibraryContext {
+  id: string;
+  name?: string;
+}
+
+/**
+ * Shared adapter that normalizes either a raw library `Book` or a `TrackedBookItem`
+ * into the canonical `TrackedBookItem` contract used across the Reading Room and Library Overview.
+ */
+export function normalizeToTrackedBookItem(
+  item: Book | TrackedBookItem,
+  defaultLibrary?: DefaultLibraryContext,
+): TrackedBookItem | null {
+  const rawStatus = item.readingStatus;
+  let readingStatus: TrackedShelfStatus | 'unset' = 'unset';
+  if (rawStatus === 'completed' || rawStatus === 'finished') {
+    readingStatus = 'finished';
+  } else if (
+    rawStatus === 'reading' ||
+    rawStatus === 'want_to_read' ||
+    rawStatus === 'abandoned'
+  ) {
+    readingStatus = rawStatus;
+  }
+
+  if (readingStatus === 'unset') {
+    return null;
+  }
+
+  const resolvedLibId = item.libraryId || defaultLibrary?.id || 'unknown';
+  const isVirtual =
+    ('isVirtual' in item && Boolean(item.isVirtual)) ||
+    resolvedLibId.startsWith('virtual_');
+
+  return {
+    ...item,
+    libraryId: resolvedLibId,
+    libraryName:
+      ('libraryName' in item && item.libraryName) ||
+      defaultLibrary?.name ||
+      (isVirtual ? 'Personal Reading Shelf' : 'Library'),
+    isVirtual,
+    ownershipStatus:
+      item.ownershipStatus === 'unowned' || isVirtual ? 'unowned' : 'owned',
+    readingStatus,
+    ...(typeof item.userRating === 'number'
+      ? {userRating: item.userRating}
+      : {}),
+  };
+}
+
 export interface CurrentlyReadingCardProps {
-  readingBooks: TrackedBookItem[];
+  readingBooks: Array<Book | TrackedBookItem>;
+  defaultLibrary?: DefaultLibraryContext;
+  /**
+   * Controls whether the library provenance label ("In <Library Name>" / "Un-owned Volume")
+   * is displayed above the book title. Defaults to `true` in the consolidated Reading Room
+   * and `false` when rendered inside a specific Library Overview where the library context is already known.
+   */
+  showLibraryProvenance?: boolean;
   onStatusChange?: (
     libraryId: string,
     bookId: string,
@@ -37,6 +93,8 @@ export interface CurrentlyReadingCardProps {
 
 export function CurrentlyReadingCard({
   readingBooks,
+  defaultLibrary,
+  showLibraryProvenance = true,
   onStatusChange,
   onTrackBook,
   onOpenReadingLists,
@@ -47,22 +105,32 @@ export function CurrentlyReadingCard({
   const deckRef = useRef<BookSwipeDeckHandle | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-  const [failedCovers, setFailedCovers] = useState<Set<string>>(new Set());
 
-  const safeIndex = selectedIndex < readingBooks.length ? selectedIndex : 0;
+  const normalizedBooks = useMemo<TrackedBookItem[]>(() => {
+    const result: TrackedBookItem[] = [];
+    for (const raw of readingBooks) {
+      const normalized = normalizeToTrackedBookItem(raw, defaultLibrary);
+      if (normalized && normalized.readingStatus === 'reading') {
+        result.push(normalized);
+      }
+    }
+    return result;
+  }, [readingBooks, defaultLibrary]);
+
+  const safeIndex = selectedIndex < normalizedBooks.length ? selectedIndex : 0;
   const displayedIndex =
-    previewIndex !== null && previewIndex < readingBooks.length
+    previewIndex !== null && previewIndex < normalizedBooks.length
       ? previewIndex
       : safeIndex;
-  const activeBook = readingBooks[safeIndex] || null;
+  const activeBook = normalizedBooks[safeIndex] || null;
 
   const compositeBookIds = useMemo(
-    () => readingBooks.map(book => `${book.libraryId}:${book.id}`),
-    [readingBooks],
+    () => normalizedBooks.map(book => `${book.libraryId}:${book.id}`),
+    [normalizedBooks],
   );
 
   const openBookDetails = (book: TrackedBookItem) => {
-    const sameLibraryBookIds = readingBooks
+    const sameLibraryBookIds = normalizedBooks
       .filter(b => b.libraryId === book.libraryId)
       .map(b => b.id);
     void navigate(
@@ -78,102 +146,97 @@ export function CurrentlyReadingCard({
     );
   };
 
-  const renderBookSlide = (book: TrackedBookItem) => (
-    <div
-      onMouseEnter={() => preloadRouteChunk('bookDetails')}
-      onTouchStart={() => preloadRouteChunk('bookDetails')}
-      className="flex flex-col sm:flex-row gap-5 items-center sm:items-start my-auto py-0.5"
-    >
-      {/* Framed 2:3 Cover */}
+  const renderBookSlide = (book: TrackedBookItem) => {
+    const provenanceLabel = showLibraryProvenance
+      ? book.ownershipStatus === 'unowned' || book.isVirtual
+        ? 'Un-owned Volume'
+        : `In ${toTitleCase(book.libraryName)}`
+      : null;
+
+    return (
       <div
-        onClick={() => openBookDetails(book)}
-        className="w-28 sm:w-32 aspect-[2/3] shrink-0 rounded-lg bg-surface-container book-cover-shadow border border-outline-variant/60 overflow-hidden relative cursor-pointer group"
+        onMouseEnter={() => preloadRouteChunk('bookDetails')}
+        onTouchStart={() => preloadRouteChunk('bookDetails')}
+        className="flex flex-col sm:flex-row gap-5 items-center sm:items-start my-auto py-0.5"
       >
+        {/* Framed 2:3 Cover */}
         <div
-          className="absolute inset-y-0 left-0 w-2 bg-gradient-to-r from-black/15 via-white/20 to-transparent z-10 pointer-events-none"
-          aria-hidden="true"
-        />
-        {book.coverUrl && !failedCovers.has(book.id) ? (
-          <img
+          onClick={() => openBookDetails(book)}
+          className="w-28 sm:w-32 aspect-[2/3] shrink-0 rounded-lg book-cover-shadow border border-outline-variant/60 overflow-hidden relative cursor-pointer group"
+        >
+          <ArchivalCoverImage
             src={book.coverUrl}
             alt={book.title}
-            draggable={false}
-            onError={() => setFailedCovers(prev => new Set(prev).add(book.id))}
-            className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300 select-none"
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <MonographCoverFallback
-            title={book.title}
             author={book.author}
             variant="compact"
+            draggable={false}
+            showSpineHighlight={true}
             className="w-full h-full"
+            imgClassName="group-hover:scale-[1.03] transition-transform duration-300 select-none"
           />
-        )}
-      </div>
-
-      {/* Book Editorial Callout */}
-      <div className="flex-1 min-w-0 text-center sm:text-left">
-        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs text-on-surface-variant mb-1.5">
-          <span className="font-sans font-medium">
-            {book.ownershipStatus === 'unowned' || book.isVirtual
-              ? 'Un-owned Volume'
-              : `In ${toTitleCase(book.libraryName)}`}
-          </span>
-          {book.primaryGenre && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>{book.primaryGenre}</span>
-            </>
-          )}
         </div>
 
-        <h3
-          onClick={() => openBookDetails(book)}
-          className="font-serif text-xl sm:text-2xl font-semibold tracking-tight text-primary hover:underline cursor-pointer line-clamp-2 leading-snug"
-        >
-          {toTitleCase(book.title)}
-        </h3>
-        <p className="font-sans text-sm text-on-surface-variant mt-1">
-          {toTitleCase(book.author || 'Unknown Author')}
-        </p>
+        {/* Book Editorial Callout */}
+        <div className="flex-1 min-w-0 text-center sm:text-left">
+          {(provenanceLabel || book.primaryGenre) && (
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs text-on-surface-variant mb-1.5">
+              {provenanceLabel && (
+                <span className="font-sans font-medium">{provenanceLabel}</span>
+              )}
+              {provenanceLabel && book.primaryGenre && (
+                <span aria-hidden="true">·</span>
+              )}
+              {book.primaryGenre && <span>{book.primaryGenre}</span>}
+            </div>
+          )}
 
-        {book.synopsis && (
-          <p className="font-sans text-xs text-on-surface-variant/90 line-clamp-2 mt-3 leading-relaxed max-w-xl">
-            {book.synopsis}
-          </p>
-        )}
-
-        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mt-4">
-          <Button
-            type="button"
-            size="sm"
-            onFocus={() => preloadRouteChunk('bookDetails')}
+          <h3
             onClick={() => openBookDetails(book)}
-            className="h-9 px-4 rounded-lg font-sans text-xs font-semibold"
+            className="font-serif text-xl sm:text-2xl font-semibold tracking-tight text-primary hover:underline cursor-pointer line-clamp-2 leading-snug"
           >
-            Book Details & Notes
-          </Button>
-          {onStatusChange && (
+            {toTitleCase(book.title)}
+          </h3>
+          <p className="font-sans text-sm text-on-surface-variant mt-1">
+            {toTitleCase(book.author || 'Unknown Author')}
+          </p>
+
+          {book.synopsis && (
+            <p className="font-sans text-xs text-on-surface-variant/90 line-clamp-2 mt-3 leading-relaxed max-w-xl">
+              {book.synopsis}
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mt-4">
             <Button
               type="button"
-              variant="outline"
               size="sm"
-              disabled={!isOnline}
-              title={!isOnline ? 'Unavailable while offline' : undefined}
-              onClick={() =>
-                void onStatusChange(book.libraryId, book.id, 'finished')
-              }
-              className="h-9 px-3.5 rounded-lg font-sans text-xs font-semibold gap-1.5 disabled:opacity-50"
+              onFocus={() => preloadRouteChunk('bookDetails')}
+              onClick={() => openBookDetails(book)}
+              className="h-9 px-4 rounded-lg font-sans text-xs font-semibold"
             >
-              <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
-              <span>Mark Finished</span>
+              Book Details & Notes
             </Button>
-          )}
+            {onStatusChange && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!isOnline}
+                title={!isOnline ? 'Unavailable while offline' : undefined}
+                onClick={() =>
+                  void onStatusChange(book.libraryId, book.id, 'finished')
+                }
+                className="h-9 px-3.5 rounded-lg font-sans text-xs font-semibold gap-1.5 disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+                <span>Mark Finished</span>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div
@@ -183,14 +246,14 @@ export function CurrentlyReadingCard({
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="flex items-center gap-2">
           <span className="metadata-eyebrow">Currently Reading</span>
-          {readingBooks.length > 0 && (
+          {normalizedBooks.length > 0 && (
             <Badge variant="status-reading" size="sm">
-              {readingBooks.length} Active
+              {normalizedBooks.length} Active
             </Badge>
           )}
         </div>
 
-        {readingBooks.length > 1 && (
+        {normalizedBooks.length > 1 && (
           <div className="flex items-center gap-3">
             {/* Compact Prev/Next Stepper (1 / N) */}
             <div
@@ -211,13 +274,13 @@ export function CurrentlyReadingCard({
                 data-testid="currently-reading-step-indicator"
                 className="font-mono text-[11px] font-semibold text-on-surface tabular-nums px-1 select-none"
               >
-                {displayedIndex + 1} / {readingBooks.length}
+                {displayedIndex + 1} / {normalizedBooks.length}
               </span>
               <button
                 type="button"
                 data-testid="currently-reading-next"
                 aria-label="Next currently reading book"
-                disabled={displayedIndex >= readingBooks.length - 1}
+                disabled={displayedIndex >= normalizedBooks.length - 1}
                 onClick={() => deckRef.current?.slideNext()}
                 className="w-6 h-6 rounded flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer"
               >
@@ -228,10 +291,11 @@ export function CurrentlyReadingCard({
             {onOpenReadingLists && (
               <button
                 type="button"
+                data-testid="currently-reading-view-all"
                 onClick={() => onOpenReadingLists('reading')}
                 className="text-xs font-sans font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
               >
-                <span>View All ({readingBooks.length})</span>
+                <span>View All ({normalizedBooks.length})</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
@@ -264,7 +328,7 @@ export function CurrentlyReadingCard({
         </div>
       ) : (
         <div className="flex flex-col justify-between flex-1 gap-5">
-          {readingBooks.length > 1 ? (
+          {normalizedBooks.length > 1 ? (
             <BookSwipeDeck
               ref={deckRef}
               bookIds={compositeBookIds}
@@ -277,7 +341,7 @@ export function CurrentlyReadingCard({
                 setSelectedIndex(committedIdx);
               }}
               renderSlide={({index}) => {
-                const slideBook = readingBooks[index] || activeBook;
+                const slideBook = normalizedBooks[index] || activeBook;
                 return renderBookSlide(slideBook);
               }}
             />

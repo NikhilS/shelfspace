@@ -145,6 +145,7 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
   });
 
   it('renders the unified swipeable CurrentlyReadingCard when multiple books in the library are being read', () => {
+    const setCurrentTab = vi.fn();
     const multiReadingBooks: Book[] = [
       ...mockBooks,
       {
@@ -169,7 +170,11 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
 
     render(
       <MemoryRouter>
-        <LibraryOverview {...defaultProps} books={multiReadingBooks} />
+        <LibraryOverview
+          {...defaultProps}
+          books={multiReadingBooks}
+          setCurrentTab={setCurrentTab}
+        />
       </MemoryRouter>,
     );
 
@@ -178,6 +183,16 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
     expect(
       screen.getByTestId('currently-reading-step-indicator'),
     ).toHaveTextContent('1 / 3');
+    // Redundant library provenance label is hidden inside LibraryOverview
+    expect(
+      screen.queryByText(/In Philosophy & Fiction/i),
+    ).not.toBeInTheDocument();
+
+    // View All switches to the library's collection tab
+    const viewAllBtn = screen.getByTestId('currently-reading-view-all');
+    expect(viewAllBtn).toHaveTextContent('View All (3)');
+    viewAllBtn.click();
+    expect(setCurrentTab).toHaveBeenCalledWith('collection');
   });
 
   it('renders the warm empty state with BookshelfBookendsIllustration and single CTA when library has 0 books', () => {

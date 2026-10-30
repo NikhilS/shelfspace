@@ -191,7 +191,6 @@ export const metadataRouter = router({
       const result = await catalogOrchestrator.searchByQuery(
         {
           rawQuery: input.query,
-          title: input.query,
           limit: input.limit ?? 15,
         },
         {

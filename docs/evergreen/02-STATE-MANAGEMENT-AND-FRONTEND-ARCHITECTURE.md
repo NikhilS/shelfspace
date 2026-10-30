@@ -129,7 +129,7 @@ The main browser thread must remain silky smooth ($60\text{fps}$). Any mathemati
 
 ## 5. Constant-$O(1)$ 3-Slot Motion Deck & Gesture Physics
 
-To maintain locked 60/120fps frame pacing when swiping through large book collections in `BookDetailsView`, **book(ish)** uses a custom, zero-re-render **3-Slot GPU Motion Deck** (`src/pages/book-details/BookSwipeDeck.tsx`) rather than third-party imperative carousel libraries:
+To maintain locked 60/120fps frame pacing when swiping through book collections in `BookDetailsView` and `CurrentlyReadingCard`, **book(ish)** uses a custom, zero-re-render **3-Slot GPU Motion Deck** (`src/components/book/BookSwipeDeck.tsx`) rather than third-party imperative carousel libraries:
 
 1. **Constant $O(1)$ Virtual Window (`prev`, `active`, `next`):**
    - Regardless of collection size, at most **3 physical slot containers** (`offset: -1 | 0 | 1`) are mounted in the DOM, keyed by `bookId`.

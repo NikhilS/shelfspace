@@ -4,6 +4,7 @@ import {render, screen, fireEvent} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import {CurrentlyReadingCard} from './CurrentlyReadingCard';
 import type {TrackedBookItem} from '../../server/services/readingTracker';
+import type {Book} from '../../types';
 
 const SAMPLE_BOOKS: TrackedBookItem[] = [
   {
@@ -74,7 +75,8 @@ describe('CurrentlyReadingCard', () => {
     );
 
     expect(screen.getByText('1 Active')).toBeInTheDocument();
-    expect(screen.getByText('Piranesi')).toBeInTheDocument();
+    expect(screen.getByText('In Main Study')).toBeInTheDocument();
+    expect(screen.getAllByText('Piranesi').length).toBeGreaterThanOrEqual(1);
     expect(
       screen.queryByTestId('currently-reading-stepper'),
     ).not.toBeInTheDocument();
@@ -82,7 +84,6 @@ describe('CurrentlyReadingCard', () => {
   });
 
   it('mounts BookSwipeDeck and compact stepper (1 / N) without bottom title pills when multiple books are active', () => {
-    // Use reduced motion in test so slide transitions commit synchronously
     vi.spyOn(window, 'matchMedia').mockImplementation(query => ({
       matches: query.includes('prefers-reduced-motion'),
       media: query,
@@ -94,12 +95,13 @@ describe('CurrentlyReadingCard', () => {
       dispatchEvent: vi.fn(),
     }));
 
+    const onOpenReadingLists = vi.fn();
     render(
       <MemoryRouter>
         <CurrentlyReadingCard
           readingBooks={SAMPLE_BOOKS}
           onStatusChange={vi.fn()}
-          onOpenReadingLists={vi.fn()}
+          onOpenReadingLists={onOpenReadingLists}
         />
       </MemoryRouter>,
     );
@@ -135,6 +137,52 @@ describe('CurrentlyReadingCard', () => {
       screen.getByTestId('currently-reading-step-indicator'),
     ).toHaveTextContent('2 / 3');
 
+    // View All action triggers onOpenReadingLists('reading')
+    fireEvent.click(screen.getByTestId('currently-reading-view-all'));
+    expect(onOpenReadingLists).toHaveBeenCalledWith('reading');
+
     vi.restoreAllMocks();
+  });
+
+  it('normalizes raw Book items directly and hides redundant library provenance when showLibraryProvenance is false', () => {
+    const rawLibraryBooks: Book[] = [
+      {
+        id: 'raw-1',
+        libraryId: 'lib-9',
+        title: 'The Dispossessed',
+        author: 'Ursula K. Le Guin',
+        primaryGenre: 'Science Fiction',
+        readingStatus: 'reading',
+        addedAt: '2026-01-01',
+      },
+      {
+        id: 'raw-2',
+        libraryId: 'lib-9',
+        title: 'Solaris',
+        author: 'Stanislaw Lem',
+        primaryGenre: 'Science Fiction',
+        readingStatus: 'reading',
+        addedAt: '2026-01-02',
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <CurrentlyReadingCard
+          readingBooks={rawLibraryBooks}
+          defaultLibrary={{id: 'lib-9', name: 'East Wing Archive'}}
+          showLibraryProvenance={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('2 Active')).toBeInTheDocument();
+    expect(screen.queryByText(/In East Wing Archive/i)).not.toBeInTheDocument();
+    expect(
+      screen.getAllByText('Science Fiction').length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText('The Dispossessed').length,
+    ).toBeGreaterThanOrEqual(1);
   });
 });
