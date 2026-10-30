@@ -16,6 +16,11 @@ import {TidyShelfCheckIllustration} from '@/components/ui/empty-state-illustrati
 import {Button} from '@/components/ui/button';
 import {BookLoader} from '../components/book/BookLoader';
 import {trpc, trpcVanilla} from '../lib/trpc';
+import {
+  applyOptimisticReadingStatusPatch,
+  invalidateReadingStatusQueries,
+  type ReadingStatusCacheUtils,
+} from '../lib/readingStatusCache';
 import {instrumentMutation} from '../lib/telemetry';
 import {toTitleCase} from '../lib/utils';
 import type {Book, ReadingStatusValue} from '../types';
@@ -591,8 +596,20 @@ export function ReadSwipeView() {
         }
         return nextBook;
       });
+      if (normalizedStatus !== undefined) {
+        applyOptimisticReadingStatusPatch(
+          utils as unknown as ReadingStatusCacheUtils,
+          {
+            libraryId,
+            bookId,
+            status: normalizedStatus,
+            reviewedAtIso: options.reviewedAtIso,
+            bookHint: booksById.get(bookId),
+          },
+        );
+      }
     },
-    [libraryId, utils.book],
+    [booksById, libraryId, utils],
   );
 
   const persistBookStatus = useCallback(
@@ -640,9 +657,13 @@ export function ReadSwipeView() {
             throw firstErr;
           }
         }
-        void (
-          utils as {readingTracker?: {getShelf?: {invalidate?: () => unknown}}}
-        ).readingTracker?.getShelf?.invalidate?.();
+        void invalidateReadingStatusQueries(
+          utils as unknown as ReadingStatusCacheUtils,
+          {
+            libraryId,
+            bookId,
+          },
+        );
       } catch (err) {
         console.warn('Failed to update reading status during swipe:', err);
         applyOptimisticBookPatch(bookId, {

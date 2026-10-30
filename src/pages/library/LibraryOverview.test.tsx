@@ -144,6 +144,42 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
     expect(screen.getByText('1 Unread')).toBeInTheDocument();
   });
 
+  it('renders the unified swipeable CurrentlyReadingCard when multiple books in the library are being read', () => {
+    const multiReadingBooks: Book[] = [
+      ...mockBooks,
+      {
+        id: 'b3',
+        title: 'The Left Hand of Darkness',
+        author: 'Ursula K. Le Guin',
+        libraryId: 'lib-1',
+        primaryGenre: 'Science Fiction',
+        readingStatus: 'reading',
+        addedAt: '2024-01-03',
+      },
+      {
+        id: 'b4',
+        title: 'Invisible Cities',
+        author: 'Italo Calvino',
+        libraryId: 'lib-1',
+        primaryGenre: 'Fiction',
+        readingStatus: 'reading',
+        addedAt: '2024-01-04',
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <LibraryOverview {...defaultProps} books={multiReadingBooks} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('3 Active')).toBeInTheDocument();
+    expect(screen.getByTestId('book-swipe-deck')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('currently-reading-step-indicator'),
+    ).toHaveTextContent('1 / 3');
+  });
+
   it('renders the warm empty state with BookshelfBookendsIllustration and single CTA when library has 0 books', () => {
     render(
       <MemoryRouter>

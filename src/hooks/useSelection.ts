@@ -4,6 +4,12 @@ import {toast} from 'sonner';
 import {useUIStore} from '../stores/uiStore';
 import {instrumentMutation} from '../lib/telemetry';
 import {trpc} from '../lib/trpc';
+import {
+  applyOptimisticReadingStatusPatch,
+  invalidateReadingStatusQueries,
+  removeBookFromReadingCaches,
+  type ReadingStatusCacheUtils,
+} from '../lib/readingStatusCache';
 
 export function useSelection(
   libraryId: string | undefined,
@@ -20,9 +26,10 @@ export function useSelection(
   const batchUpsertMutation = trpc.book.batchUpsert.useMutation({
     onSuccess: () => {
       if (libraryId) {
-        void utils.book?.list?.invalidate?.({libraryId});
-        void utils.library?.get?.invalidate?.({libraryId});
-        void utils.library?.list?.invalidate?.();
+        void invalidateReadingStatusQueries(
+          utils as unknown as ReadingStatusCacheUtils,
+          {libraryId, includeLibraries: true},
+        );
       }
     },
   });
@@ -52,15 +59,25 @@ export function useSelection(
     if (selectedBooks.size === 0 || !userId || !libraryId) {
       return;
     }
+    const booksArray = Array.from(selectedBooks);
+    const validStatus = newStatus as
+      | 'unset'
+      | 'want_to_read'
+      | 'reading'
+      | 'finished'
+      | 'completed'
+      | 'abandoned';
+    const rollbacks = booksArray.map(bookId =>
+      applyOptimisticReadingStatusPatch(
+        utils as unknown as ReadingStatusCacheUtils,
+        {
+          libraryId,
+          bookId,
+          status: validStatus,
+        },
+      ),
+    );
     try {
-      const booksArray = Array.from(selectedBooks);
-      const validStatus = newStatus as
-        | 'unset'
-        | 'want_to_read'
-        | 'reading'
-        | 'finished'
-        | 'completed'
-        | 'abandoned';
       await instrumentMutation(
         'update',
         `libraries/${libraryId}/books(bulk-status)`,
@@ -78,9 +95,16 @@ export function useSelection(
           });
         },
       );
+      await invalidateReadingStatusQueries(
+        utils as unknown as ReadingStatusCacheUtils,
+        {libraryId, includeLibraries: true},
+      );
       toast.success(`Updated status for ${selectedBooks.size} books`);
       clearSelection();
     } catch (error) {
+      for (const rollback of rollbacks) {
+        rollback();
+      }
       console.error('Failed to update status in bulk:', error);
       toast.error('Failed to update status for selected books');
     }
@@ -90,9 +114,15 @@ export function useSelection(
     if (selectedBooks.size === 0 || !libraryId) {
       return;
     }
+    const count = selectedBooks.size;
+    const booksArray = Array.from(selectedBooks);
+    const rollbacks = booksArray.map(bookId =>
+      removeBookFromReadingCaches(utils as unknown as ReadingStatusCacheUtils, {
+        libraryId,
+        bookId,
+      }),
+    );
     try {
-      const count = selectedBooks.size;
-      const booksArray = Array.from(selectedBooks);
       await instrumentMutation(
         'delete',
         `libraries/${libraryId}/books(bulk-delete)`,
@@ -107,9 +137,16 @@ export function useSelection(
           });
         },
       );
+      await invalidateReadingStatusQueries(
+        utils as unknown as ReadingStatusCacheUtils,
+        {libraryId, includeLibraries: true},
+      );
       toast.success(`Deleted ${count} books`);
       clearSelection();
     } catch (error) {
+      for (const rollback of rollbacks) {
+        rollback();
+      }
       console.error('Failed to bulk delete books:', error);
       toast.error('Failed to delete selected books');
     }

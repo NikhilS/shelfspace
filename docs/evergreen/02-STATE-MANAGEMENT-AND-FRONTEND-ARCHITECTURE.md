@@ -65,12 +65,32 @@ To avoid state fragmentation and dual-state synchronization bugs, **book(ish)** 
   ```
 
 ### Rule 3: Structured Optimistic Updates
-When applying optimistic mutations (such as toggling reading status or bulk-editing tags), use the structured `optimisticMutation` helper (`src/lib/optimisticMutation.ts`):
+When applying optimistic mutations (such as toggling reading status or bulk-editing tags), use the structured `optimisticMutation` helper (`src/lib/optimisticMutation.ts`) or domain cache synchronizers (`src/lib/readingStatusCache.ts`):
 1. Cancel outgoing queries for that key.
 2. Snapshot the existing cache data for rollback.
 3. Optimistically write the expected delta to the cache.
 4. On mutation error: automatically roll back to the snapshot and toast a user-friendly error.
 5. On mutation settlement: trigger background refetch to ensure parity with the database.
+
+### Rule 4: Cross-Query Cache Synchronization & Mutation Entry-Point Completeness
+Because `src/lib/queryClient.ts` configures a global **5-minute `staleTime`**, `refetchOnWindowFocus: false`, and **7-day IndexedDB cache persistence** (`idb-keyval`), any query key that is not explicitly patched or invalidated after a mutation will continue serving stale data for up to 5 minutes when the user navigates between views.
+
+1. **Synchronize the Entire Query Family, Never Just the Local View's Query:**
+   When a domain entity is projections-backed across multiple tRPC procedures, a mutation must update and invalidate **all** projections simultaneously. For book and reading-status state (`src/lib/readingStatusCache.ts`), the coupled query family is:
+   - `trpc.readingTracker.getShelf({ shelf: 'all' })` (Personal Reading Room Bento, Currently Reading card, Reading Lists modal, and shelf counts)
+   - `trpc.readingTracker.getUnreadLibraryBooks(undefined)` (*"Start Reading from Your Shelves"* picker)
+   - `trpc.book.list({ libraryId })` (`LibraryView` collection grid/list/table and `LibraryOverview` Reading Pulse)
+   - `trpc.book.get({ libraryId, bookId })` (`BookDetailsView` and `BookSwipeDeck` preview slots)
+   - `trpc.library.list()` / `trpc.library.get({ libraryId })` (when book counts or library membership change)
+
+2. **Centralize Cache Patching & Audit Every Mutation Entry Point:**
+   Never hand-roll partial `utils.*.invalidate()` calls inside individual components. Route every mutation through a shared domain cache helper (`applyOptimisticReadingStatusPatch`, `removeBookFromReadingCaches`, and `invalidateReadingStatusQueries` in `src/lib/readingStatusCache.ts`) and verify that **all** entry points are wired:
+   - Single-book detail actions (`src/pages/book-details/useBook.ts`)
+   - Personal Reading Room & shelf actions (`src/pages/dashboard/useReadingShelf.ts`)
+   - Library Overview inline status actions (`src/pages/library/LibraryOverview.tsx`)
+   - Bulk selection toolbar actions (`src/hooks/useSelection.ts`)
+   - Quick-add & full-page search/track flows (`src/components/book/QuickAddBookDialog.tsx`, `src/pages/AddBookView.tsx`, `src/pages/add-book/useAddBooks.ts`)
+   - Interactive triage flows (`src/pages/ReadSwipeView.tsx`)
 
 ---
 

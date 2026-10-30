@@ -1,6 +1,6 @@
 {
-  "summary":  "First-principles redesign of the Constellation Map featuring 3-tier 2D semantic zoom with close-zoom book cover art, offscreen-cached Canvas layers paired with a GPU-composited DOM overlay, focal-point pinch/wheel zoom and momentum panning physics, quadtree spatial indexing, and a mobile-first full-bleed viewport with a 3-state swipeable bottom sheet inspector.",
-  "updatedAt":  "2026-10-27T00:49:06.107844306Z",
+  "summary":  "Implementation plan to (1) make CurrentlyReadingCard swipeable using the shared 3-slot GPU-composited BookSwipeDeck with pointer/touch drag and a compact 1/N chevron stepper, (2) unify CurrentlyReadingCard across both the Reading Room Dashboard and LibraryOverview, and (3) eliminate the 5-minute client cache lag when updating reading status via a centralized optimistic cache patcher and cross-query invalidation helper.",
+  "updatedAt":  "2026-10-30T00:13:51.737620074Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -2,6 +2,11 @@ import {useState, useMemo, useCallback} from 'react';
 import {useAuth} from '../../stores/authStore';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {toast} from 'sonner';
+import {
+  applyOptimisticReadingStatusPatch,
+  invalidateReadingStatusQueries,
+  type ReadingStatusCacheUtils,
+} from '../../lib/readingStatusCache';
 import type {
   TrackedBookItem,
   TrackedShelfStatus,
@@ -106,16 +111,24 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
     return summary.items.filter(item => item.readingStatus === activeShelf);
   }, [summary.items, activeShelf]);
 
-  const invalidateAll = useCallback(async () => {
-    try {
-      await utils?.readingTracker?.getShelf?.invalidate?.();
-      await utils?.readingTracker?.getUnreadLibraryBooks?.invalidate?.();
-      await utils?.library?.list?.invalidate?.();
-    } catch {
-      void shelfQuery?.refetch?.();
-      void unreadQuery?.refetch?.();
-    }
-  }, [utils, shelfQuery, unreadQuery]);
+  const invalidateAll = useCallback(
+    async (target?: {libraryId?: string; bookId?: string}) => {
+      try {
+        await invalidateReadingStatusQueries(
+          utils as unknown as ReadingStatusCacheUtils | undefined,
+          {
+            libraryId: target?.libraryId,
+            bookId: target?.bookId,
+            includeLibraries: true,
+          },
+        );
+      } catch {
+        void shelfQuery?.refetch?.();
+        void unreadQuery?.refetch?.();
+      }
+    },
+    [utils, shelfQuery, unreadQuery],
+  );
 
   const updateItemStatus = useCallback(
     async (
@@ -126,6 +139,18 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
       if (!user) {
         return;
       }
+      const existingItem = summary.items.find(
+        item => item.id === bookId && item.libraryId === libraryId,
+      );
+      const rollback = applyOptimisticReadingStatusPatch(
+        utils as unknown as ReadingStatusCacheUtils | undefined,
+        {
+          libraryId,
+          bookId,
+          status: nextStatus,
+          bookHint: existingItem,
+        },
+      );
       try {
         if (trpcVanilla?.book?.updateStatus?.mutate) {
           await trpcVanilla.book.updateStatus.mutate({
@@ -146,13 +171,14 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
             ? 'Removed from reading list'
             : 'Reading status updated',
         );
-        await invalidateAll();
+        await invalidateAll({libraryId, bookId});
       } catch (err) {
+        rollback();
         console.error('Failed to update reading status:', err);
         toast.error('Failed to update reading status');
       }
     },
-    [user, invalidateAll],
+    [user, summary.items, utils, invalidateAll],
   );
 
   const trackBookItem = useCallback(
@@ -160,11 +186,38 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
       if (!user) {
         return undefined;
       }
-      const result = await trpcVanilla.readingTracker.trackBook.mutate(input);
-      await invalidateAll();
-      return result;
+      const rollback =
+        input.source === 'library'
+          ? applyOptimisticReadingStatusPatch(
+              utils as unknown as ReadingStatusCacheUtils | undefined,
+              {
+                libraryId: input.libraryId,
+                bookId: input.bookId,
+                status: input.status,
+              },
+            )
+          : () => {};
+      try {
+        const result = await trpcVanilla.readingTracker.trackBook.mutate(input);
+        const resolvedLibraryId =
+          input.source === 'library'
+            ? input.libraryId
+            : (result as {libraryId?: string} | undefined)?.libraryId;
+        const resolvedBookId =
+          input.source === 'library'
+            ? input.bookId
+            : (result as {bookId?: string} | undefined)?.bookId;
+        await invalidateAll({
+          libraryId: resolvedLibraryId,
+          bookId: resolvedBookId,
+        });
+        return result;
+      } catch (err) {
+        rollback();
+        throw err;
+      }
     },
-    [user, invalidateAll],
+    [user, utils, invalidateAll],
   );
 
   return {

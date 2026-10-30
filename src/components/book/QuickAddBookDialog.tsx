@@ -15,6 +15,11 @@ import {useExistingBooks} from '../../pages/add-book/useExistingBooks';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {
+  applyOptimisticReadingStatusPatch,
+  invalidateReadingStatusQueries,
+  type ReadingStatusCacheUtils,
+} from '../../lib/readingStatusCache';
+import {
   isDuplicateBook,
   normalizeBookDetails,
   toTitleCase,
@@ -105,6 +110,16 @@ export function QuickAddBookDialog({
     const effectiveStatus: TrackedShelfStatus =
       targetStatus === 'unset' ? 'want_to_read' : targetStatus;
 
+    const rollback = applyOptimisticReadingStatusPatch(
+      utils as unknown as ReadingStatusCacheUtils,
+      {
+        libraryId: match.libraryId,
+        bookId: match.bookId,
+        status: effectiveStatus,
+        bookHint: {title: match.title},
+      },
+    );
+
     try {
       await trpcVanilla.readingTracker.trackBook.mutate({
         source: 'library',
@@ -113,16 +128,20 @@ export function QuickAddBookDialog({
         status: effectiveStatus,
       });
 
-      await Promise.allSettled([
-        utils.readingTracker?.getShelf?.invalidate?.(),
-        utils.book?.list?.invalidate?.({libraryId: match.libraryId}),
-      ]);
+      await invalidateReadingStatusQueries(
+        utils as unknown as ReadingStatusCacheUtils,
+        {
+          libraryId: match.libraryId,
+          bookId: match.bookId,
+        },
+      );
 
       toast.success(
         `Tracked "${toTitleCase(match.title)}" on your reading list!`,
       );
       onClose();
     } catch (err) {
+      rollback();
       console.error('Failed to track existing library book:', err);
       toast.error('Failed to update reading status.');
       throw err;

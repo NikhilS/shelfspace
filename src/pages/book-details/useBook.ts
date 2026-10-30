@@ -7,6 +7,12 @@ import {useMutation} from '@tanstack/react-query';
 import {deleteBookAtomic} from '../../lib/bookActions';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {instrumentMutation} from '../../lib/telemetry';
+import {
+  applyOptimisticReadingStatusPatch,
+  invalidateReadingStatusQueries,
+  removeBookFromReadingCaches,
+  type ReadingStatusCacheUtils,
+} from '../../lib/readingStatusCache';
 
 export interface Review {
   id: string;
@@ -123,11 +129,13 @@ export function useBook(
     const readingTrackerUtils = (
       utils as {
         readingTracker?: {
-          getShelf?: {getData?: () => unknown};
+          getShelf?: {getData?: (input?: {shelf?: string}) => unknown};
         };
       }
     ).readingTracker;
-    const shelfData = readingTrackerUtils?.getShelf?.getData?.();
+    const shelfData =
+      readingTrackerUtils?.getShelf?.getData?.({shelf: 'all'}) ??
+      readingTrackerUtils?.getShelf?.getData?.();
     const shelfBooks = extractBookList(shelfData);
     return shelfBooks?.find(b => b.id === bookId) as FullBookRecord | undefined;
   }, [libraryId, bookId, utils]);
@@ -252,32 +260,21 @@ export function useBook(
       if (!libraryId || !bookId) {
         return {};
       }
-      const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
-      const prevList = utils.book?.list?.getData?.({libraryId});
-
-      utils.book?.list?.setData?.(
-        {libraryId},
-        old => patchBookInListCache(old, bookId, () => null) as typeof old,
+      const rollback = removeBookFromReadingCaches(
+        utils as unknown as ReadingStatusCacheUtils,
+        {libraryId, bookId},
       );
-
-      return {prevBook, prevList};
+      return {rollback};
     },
     onError: (_err, _vars, context) => {
-      if (!libraryId || !bookId || !context) {
-        return;
-      }
-      if (context.prevBook !== undefined) {
-        utils.book?.get?.setData?.({libraryId, bookId}, context.prevBook);
-      }
-      if (context.prevList !== undefined) {
-        utils.book?.list?.setData?.({libraryId}, context.prevList);
-      }
+      context?.rollback?.();
     },
     onSettled: () => {
       if (libraryId) {
-        void utils.book?.list?.invalidate?.({libraryId});
-        void utils.library?.get?.invalidate?.({libraryId});
-        void utils.library?.list?.invalidate?.();
+        void invalidateReadingStatusQueries(
+          utils as unknown as ReadingStatusCacheUtils,
+          {libraryId, bookId, includeLibraries: true},
+        );
       }
     },
   });
@@ -305,33 +302,29 @@ export function useBook(
       if (!user || !libraryId || !bookId) {
         return {};
       }
-      const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
-      const prevList = utils.book?.list?.getData?.({libraryId});
+      const rollback = applyOptimisticReadingStatusPatch(
+        utils as unknown as ReadingStatusCacheUtils,
+        {
+          libraryId,
+          bookId,
+          status: newStatus,
+          bookHint: book ?? undefined,
+        },
+      );
 
-      applyOptimisticBookPatch({readingStatus: newStatus});
-
-      return {prevBook, prevList};
+      return {rollback};
     },
     onError: (_err, _newStatus, context) => {
-      if (!libraryId || !bookId || !context) {
-        return;
-      }
-      if (context.prevBook !== undefined) {
-        utils.book?.get?.setData?.({libraryId, bookId}, context.prevBook);
-      }
-      if (context.prevList !== undefined) {
-        utils.book?.list?.setData?.({libraryId}, context.prevList);
-      }
+      context?.rollback?.();
     },
     onSettled: () => {
       if (!libraryId || !bookId) {
         return;
       }
-      void utils.book?.get?.invalidate?.({libraryId, bookId});
-      void utils.book?.list?.invalidate?.({libraryId});
-      void (
-        utils as {readingTracker?: {getShelf?: {invalidate?: () => unknown}}}
-      ).readingTracker?.getShelf?.invalidate?.();
+      void invalidateReadingStatusQueries(
+        utils as unknown as ReadingStatusCacheUtils,
+        {libraryId, bookId},
+      );
     },
   });
 
@@ -443,14 +436,28 @@ export function useBook(
       const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
       const prevList = utils.book?.list?.getData?.({libraryId});
 
+      const rollbackStatus =
+        partialBook.readingStatus !== undefined
+          ? applyOptimisticReadingStatusPatch(
+              utils as unknown as ReadingStatusCacheUtils,
+              {
+                libraryId,
+                bookId,
+                status: partialBook.readingStatus,
+                bookHint: (book || partialBook) ?? undefined,
+              },
+            )
+          : undefined;
+
       applyOptimisticBookPatch(partialBook);
 
-      return {prevBook, prevList};
+      return {prevBook, prevList, rollbackStatus};
     },
     onError: (_err, _newBook, context) => {
       if (!libraryId || !bookId || !context) {
         return;
       }
+      context.rollbackStatus?.();
       if (context.prevBook !== undefined) {
         utils.book?.get?.setData?.({libraryId, bookId}, context.prevBook);
       }
@@ -462,8 +469,10 @@ export function useBook(
       if (!libraryId || !bookId) {
         return;
       }
-      void utils.book?.get?.invalidate?.({libraryId, bookId});
-      void utils.book?.list?.invalidate?.({libraryId});
+      void invalidateReadingStatusQueries(
+        utils as unknown as ReadingStatusCacheUtils,
+        {libraryId, bookId},
+      );
     },
   });
 

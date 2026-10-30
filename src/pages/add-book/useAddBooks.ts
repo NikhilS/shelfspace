@@ -4,6 +4,10 @@ import {toast} from 'sonner';
 import {triggerHaptics, normalizeBookDetails} from '../../lib/utils';
 import {uploadBase64Image} from '../../lib/storage';
 import {trpc, trpcVanilla} from '../../lib/trpc';
+import {
+  invalidateReadingStatusQueries,
+  type ReadingStatusCacheUtils,
+} from '../../lib/readingStatusCache';
 import {useAuth} from '../../stores/authStore';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import type {TrackedShelfStatus} from '../../server/services/readingTracker';
@@ -187,16 +191,22 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
         enrichOnCreate: true,
       });
 
-      await Promise.allSettled([
-        utils.book?.list?.invalidate?.({libraryId: effectiveLibraryId}),
-        utils.library?.list?.invalidate?.(),
-        utils.readingTracker?.getShelf?.invalidate?.(),
-      ]);
+      await invalidateReadingStatusQueries(
+        utils as unknown as ReadingStatusCacheUtils,
+        {
+          libraryId: effectiveLibraryId,
+          includeLibraries: true,
+        },
+      );
 
       // Schedule a follow-up refresh to pick up any background server-side enrichment
       setTimeout(() => {
-        void utils.book?.list?.invalidate?.({libraryId: effectiveLibraryId});
-        void utils.readingTracker?.getShelf?.invalidate?.();
+        void invalidateReadingStatusQueries(
+          utils as unknown as ReadingStatusCacheUtils,
+          {
+            libraryId: effectiveLibraryId,
+          },
+        );
       }, 4500);
 
       triggerHaptics(20);

@@ -28,6 +28,8 @@ export interface BookSwipeDeckProps {
   onIndexCommit: (committedIndex: number) => void;
   renderSlide: (params: BookSwipeDeckSlotRenderParams) => React.ReactNode;
   className?: string;
+  autoHeight?: boolean;
+  enablePointerDrag?: boolean;
 }
 
 interface TouchGestureState {
@@ -60,15 +62,17 @@ const DISPLACEMENT_COMMIT_RATIO = 0.2;
 const VELOCITY_COMMIT_PX_PER_SEC = 400;
 const MIN_VELOCITY_TRAVEL_PX = 24;
 
-function isInteractiveNoSwipeTarget(target: EventTarget | null): boolean {
+function isInteractiveNoSwipeTarget(
+  target: EventTarget | null,
+  allowCardClickableTargets = false,
+): boolean {
   if (!(target instanceof Element)) {
     return false;
   }
-  return Boolean(
-    target.closest(
-      '[data-no-swipe="true"], .swiper-no-swiping, button, a, input, textarea, select, [role="button"], [role="combobox"], [role="slider"], [role="dialog"]',
-    ),
-  );
+  const selector = allowCardClickableTargets
+    ? '[data-no-swipe="true"], .swiper-no-swiping, button, a, input, textarea, select, [role="combobox"], [role="slider"], [role="dialog"]'
+    : '[data-no-swipe="true"], .swiper-no-swiping, button, a, input, textarea, select, [role="button"], [role="combobox"], [role="slider"], [role="dialog"]';
+  return Boolean(target.closest(selector));
 }
 
 function prefersReducedMotion(): boolean {
@@ -93,6 +97,8 @@ export const BookSwipeDeck = forwardRef<
       onIndexCommit,
       renderSlide,
       className = '',
+      autoHeight = false,
+      enablePointerDrag = false,
     },
     ref,
   ) => {
@@ -108,6 +114,8 @@ export const BookSwipeDeck = forwardRef<
     const pendingTargetIndexRef = useRef<number | null>(null);
     const activeAnimationRef = useRef<ReturnType<typeof animate> | null>(null);
     const gestureRef = useRef<TouchGestureState | null>(null);
+    const mouseGestureRef = useRef<TouchGestureState | null>(null);
+    const suppressNextClickRef = useRef(false);
 
     const stopActiveAnimation = useCallback(() => {
       if (activeAnimationRef.current) {
@@ -250,44 +258,33 @@ export const BookSwipeDeck = forwardRef<
       [slidePrev, slideNext, slideTo],
     );
 
-    const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-      if (e.touches.length !== 1 || bookIds.length <= 1) {
-        gestureRef.current = null;
-        return;
-      }
-
-      if (isInteractiveNoSwipeTarget(e.target)) {
-        gestureRef.current = null;
-        return;
-      }
-
-      // If the user catches a settling card mid-flight, finalize the in-flight index if >50% complete or stop in place
+    const beginGestureAt = (
+      clientX: number,
+      clientY: number,
+    ): TouchGestureState => {
       if (pendingTargetIndexRef.current !== null) {
         commitIndexAtomically(pendingTargetIndexRef.current);
       } else {
         stopActiveAnimation();
       }
 
-      const touch = e.touches[0];
-      gestureRef.current = {
-        startX: touch.clientX,
-        startY: touch.clientY,
-        lastX: touch.clientX,
+      return {
+        startX: clientX,
+        startY: clientY,
+        lastX: clientX,
         lastTime: performance.now(),
         velocityPxPerSec: 0,
         axisLock: 'none',
       };
     };
 
-    const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-      const gesture = gestureRef.current;
-      if (!gesture || e.touches.length !== 1) {
-        return;
-      }
-
-      const touch = e.touches[0];
-      const dx = touch.clientX - gesture.startX;
-      const dy = touch.clientY - gesture.startY;
+    const updateGestureAt = (
+      gesture: TouchGestureState,
+      clientX: number,
+      clientY: number,
+    ) => {
+      const dx = clientX - gesture.startX;
+      const dy = clientY - gesture.startY;
 
       if (gesture.axisLock === 'none') {
         if (
@@ -311,10 +308,10 @@ export const BookSwipeDeck = forwardRef<
       const now = performance.now();
       const dt = now - gesture.lastTime;
       if (dt > 0) {
-        const instantVx = ((touch.clientX - gesture.lastX) / dt) * 1000;
+        const instantVx = ((clientX - gesture.lastX) / dt) * 1000;
         gesture.velocityPxPerSec =
           gesture.velocityPxPerSec * 0.35 + instantVx * 0.65;
-        gesture.lastX = touch.clientX;
+        gesture.lastX = clientX;
         gesture.lastTime = now;
       }
 
@@ -328,18 +325,18 @@ export const BookSwipeDeck = forwardRef<
       dragX.set(effectiveDx);
     };
 
-    const finishTouchGesture = (e: React.TouchEvent<HTMLDivElement>) => {
-      const gesture = gestureRef.current;
-      gestureRef.current = null;
-
-      if (!gesture || gesture.axisLock !== 'horizontal') {
+    const settleGesture = (
+      gesture: TouchGestureState,
+      finalClientX?: number,
+    ) => {
+      if (gesture.axisLock !== 'horizontal') {
         return;
       }
 
-      const changedTouch = e.changedTouches[0];
-      const dx = changedTouch
-        ? changedTouch.clientX - gesture.startX
-        : dragX.get();
+      const dx =
+        finalClientX !== undefined
+          ? finalClientX - gesture.startX
+          : dragX.get();
       const vx = gesture.velocityPxPerSec;
       const width = getViewportWidth();
       const currentIdx = deckIndexRef.current;
@@ -364,6 +361,89 @@ export const BookSwipeDeck = forwardRef<
           ...SNAP_BACK_SPRING_CONFIG,
           velocity: vx,
         });
+      }
+    };
+
+    const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+      if (e.touches.length !== 1 || bookIds.length <= 1) {
+        gestureRef.current = null;
+        return;
+      }
+
+      if (isInteractiveNoSwipeTarget(e.target, enablePointerDrag)) {
+        gestureRef.current = null;
+        return;
+      }
+
+      const touch = e.touches[0];
+      gestureRef.current = beginGestureAt(touch.clientX, touch.clientY);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+      const gesture = gestureRef.current;
+      if (!gesture || e.touches.length !== 1) {
+        return;
+      }
+
+      const touch = e.touches[0];
+      updateGestureAt(gesture, touch.clientX, touch.clientY);
+    };
+
+    const finishTouchGesture = (e: React.TouchEvent<HTMLDivElement>) => {
+      const gesture = gestureRef.current;
+      gestureRef.current = null;
+
+      if (!gesture) {
+        return;
+      }
+
+      const changedTouch = e.changedTouches[0];
+      settleGesture(gesture, changedTouch?.clientX);
+    };
+
+    const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!enablePointerDrag || e.button !== 0 || bookIds.length <= 1) {
+        mouseGestureRef.current = null;
+        return;
+      }
+
+      if (isInteractiveNoSwipeTarget(e.target, true)) {
+        mouseGestureRef.current = null;
+        return;
+      }
+
+      suppressNextClickRef.current = false;
+      mouseGestureRef.current = beginGestureAt(e.clientX, e.clientY);
+    };
+
+    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+      const gesture = mouseGestureRef.current;
+      if (!enablePointerDrag || !gesture) {
+        return;
+      }
+
+      updateGestureAt(gesture, e.clientX, e.clientY);
+      if (gesture.axisLock === 'horizontal') {
+        suppressNextClickRef.current = true;
+      }
+    };
+
+    const finishMouseGesture = (e: React.MouseEvent<HTMLDivElement>) => {
+      const gesture = mouseGestureRef.current;
+      mouseGestureRef.current = null;
+
+      if (!enablePointerDrag || !gesture) {
+        return;
+      }
+
+      settleGesture(gesture, e.clientX);
+    };
+
+    const handleClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
+        e.stopPropagation();
+        e.preventDefault();
       }
     };
 
@@ -394,6 +474,12 @@ export const BookSwipeDeck = forwardRef<
       });
     }
 
+    const heightClass = autoHeight ? '' : 'h-full';
+    const pointerCursorClass =
+      enablePointerDrag && bookIds.length > 1
+        ? 'cursor-grab active:cursor-grabbing'
+        : '';
+
     return (
       <div
         ref={containerRef}
@@ -401,27 +487,39 @@ export const BookSwipeDeck = forwardRef<
         onTouchMove={handleTouchMove}
         onTouchEnd={finishTouchGesture}
         onTouchCancel={finishTouchGesture}
+        onMouseDown={enablePointerDrag ? handleMouseDown : undefined}
+        onMouseMove={enablePointerDrag ? handleMouseMove : undefined}
+        onMouseUp={enablePointerDrag ? finishMouseGesture : undefined}
+        onMouseLeave={enablePointerDrag ? finishMouseGesture : undefined}
+        onClickCapture={enablePointerDrag ? handleClickCapture : undefined}
+        onDragStart={enablePointerDrag ? e => e.preventDefault() : undefined}
         data-testid="book-swipe-deck"
-        className={`relative h-full w-full overflow-hidden touch-pan-y select-text ${className}`}
+        className={`relative ${heightClass} w-full overflow-hidden touch-pan-y select-text ${pointerCursorClass} ${className}`}
       >
         <motion.div
           style={{x: dragX}}
-          className="relative h-full w-full will-change-transform"
+          className={`relative ${heightClass} w-full will-change-transform`}
         >
-          {slots.map(slot => (
-            <div
-              key={slot.bookId}
-              data-testid={`book-swipe-slot-${slot.offset}`}
-              data-book-id={slot.bookId}
-              aria-hidden={!slot.isActive}
-              style={{
-                transform: `translate3d(${slot.offset * 100}%, 0, 0)`,
-              }}
-              className="absolute inset-0 h-full w-full overflow-hidden"
-            >
-              {renderSlide(slot)}
-            </div>
-          ))}
+          {slots.map(slot => {
+            const slotPositionClass =
+              autoHeight && slot.offset === 0
+                ? 'relative w-full overflow-hidden'
+                : 'absolute inset-0 h-full w-full overflow-hidden';
+            return (
+              <div
+                key={slot.bookId}
+                data-testid={`book-swipe-slot-${slot.offset}`}
+                data-book-id={slot.bookId}
+                aria-hidden={!slot.isActive}
+                style={{
+                  transform: `translate3d(${slot.offset * 100}%, 0, 0)`,
+                }}
+                className={slotPositionClass}
+              >
+                {renderSlide(slot)}
+              </div>
+            );
+          })}
         </motion.div>
       </div>
     );

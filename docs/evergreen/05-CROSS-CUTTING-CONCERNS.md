@@ -102,3 +102,25 @@ For deep runtime visibility into cache hit rates, network latency, and memory co
   - Mutating controls and AI features ("Find a Book", "Add Books", "Shelf Care", "Create Library", "Edit Details", reading status selectors, "Write Review", "Catch Me Up", "Other Books Like This", "Surprise Me", "Refresh Map") remain visible in place with `disabled={!isOnline}` and `title="Unavailable while offline"`.
   - Opening an uncached library or book while offline renders a dedicated offline empty state (`"Not Available Offline Yet"`) with a return button rather than a false `"Access Denied"` or `"Not Found"` redirect.
 
+---
+
+## 5. Client Caching Lifecycles & Cross-Query Invalidation
+
+### The 5-Minute Stale Window & Persistent Cache Contract
+`src/lib/queryClient.ts` configures TanStack Query with an aggressive client-side caching policy to eliminate redundant network chatter and support instant offline navigation:
+- **`staleTime: 1000 * 60 * 5` (5 minutes):** Mounted components will **not** automatically refetch query keys on mount if cached data is younger than 5 minutes.
+- **`refetchOnWindowFocus: false`:** Focusing the browser tab does not trigger background revalidation.
+- **7-Day IndexedDB Persistence (`idb-keyval`):** Query snapshots are persisted across reloads and offline sessions (`gcTime: 1000 * 60 * 60 * 24 * 7`).
+
+### Mandatory Cross-Query Invalidation & Optimistic Patching
+Because React Query treats `staleTime` as an absolute trust window unless a query key is explicitly updated via `setData` or marked stale via `invalidate`, any mutation that modifies an entity rendered across multiple query keys **must** synchronize the entire query family:
+1. **Shared Domain Cache Helpers (`src/lib/readingStatusCache.ts`):**
+   - Never hand-roll partial `utils.book.list.invalidate()` or `utils.readingTracker.getShelf.invalidate()` calls in isolation.
+   - Any mutation that creates, updates, or deletes a book or its `readingStatus` (Book Details, Library Overview, Reading Room Dashboard, Quick-Add / Add Books flows, Read Swipe Review, Bulk Selection) must use `applyOptimisticReadingStatusPatch` / `removeBookFromReadingCaches` in `onMutate` and `invalidateReadingStatusQueries` in `onSettled`.
+2. **Synchronized Query Keys for Reading Status & Books:**
+   - `readingTracker.getShelf({ shelf: 'all' })` (Personal Reading Room Bento, Currently Reading Card, Reading Lists, Stats, Timeline, World Map, Constellation Map)
+   - `readingTracker.getUnreadLibraryBooks()` (Swipe Review queue)
+   - `book.list({ libraryId })` (Library Overview Currently Reading card & Catalog grid)
+   - `book.get({ libraryId, bookId })` (Book Details view)
+   - `library.list()` / `library.get({ libraryId })` (when book counts or library membership change)
+

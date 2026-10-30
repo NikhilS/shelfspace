@@ -10,9 +10,21 @@ import {GenreBreakdownCard} from '../../components/book/GenreBreakdownCard';
 import {CuratorPickCard} from '../../components/book/CuratorPickCard';
 import {ExplorePerspectivesStrip} from '../../components/book/ExplorePerspectivesStrip';
 import {ArchivalCoverImage} from '../../components/book/ArchivalCoverImage';
+import {CurrentlyReadingCard} from '../dashboard/CurrentlyReadingCard';
 import {preloadRouteChunk} from '../../lib/routePreload';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {formatShortDate} from '../../lib/date';
+import {trpc, trpcVanilla} from '../../lib/trpc';
+import {
+  applyOptimisticReadingStatusPatch,
+  invalidateReadingStatusQueries,
+  type ReadingStatusCacheUtils,
+} from '../../lib/readingStatusCache';
+import {toast} from 'sonner';
+import type {
+  TrackedBookItem,
+  TrackedShelfStatus,
+} from '../../server/services/readingTracker';
 import {User} from 'firebase/auth';
 
 interface LibraryOverviewProps {
@@ -53,16 +65,85 @@ export function LibraryOverview({
   const location = useLocation();
   const isOnline = useOnlineStatus();
 
+  let utils: ReturnType<typeof trpc.useUtils> | undefined;
+  try {
+    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
+      utils = trpc.useUtils();
+    }
+  } catch {
+    utils = undefined;
+  }
+
   const handlePrewarmBookDetails = useCallback(() => {
     preloadRouteChunk('bookDetails');
   }, []);
 
-  const readingBooks = useMemo(() => {
+  const readingBooks = useMemo<TrackedBookItem[]>(() => {
     if (!user) {
       return [];
     }
-    return books.filter(b => b.readingStatus === 'reading').slice(0, 2);
-  }, [books, user]);
+    const isVirtual = library.id.startsWith('virtual_');
+    return books
+      .filter(b => b.readingStatus === 'reading')
+      .map(b => ({
+        ...b,
+        libraryId: library.id,
+        libraryName: library.name,
+        isVirtual,
+        ownershipStatus: b.ownershipStatus ?? (isVirtual ? 'unowned' : 'owned'),
+        readingStatus: 'reading' as const,
+      }));
+  }, [books, library.id, library.name, user]);
+
+  const handleReadingStatusChange = useCallback(
+    async (
+      targetLibraryId: string,
+      bookId: string,
+      nextStatus: TrackedShelfStatus | 'unset',
+    ) => {
+      if (!user) {
+        return;
+      }
+      const existingBook = books.find(b => b.id === bookId);
+      const rollback = applyOptimisticReadingStatusPatch(
+        utils as unknown as ReadingStatusCacheUtils | undefined,
+        {
+          libraryId: targetLibraryId,
+          bookId,
+          status: nextStatus,
+          bookHint: existingBook
+            ? {...existingBook, libraryName: library.name}
+            : undefined,
+        },
+      );
+      try {
+        if (trpcVanilla?.book?.updateStatus?.mutate) {
+          await trpcVanilla.book.updateStatus.mutate({
+            libraryId: targetLibraryId,
+            bookId,
+            status: nextStatus,
+          });
+        }
+        toast.success(
+          nextStatus === 'unset'
+            ? 'Removed from reading list'
+            : 'Reading status updated',
+        );
+        await invalidateReadingStatusQueries(
+          utils as unknown as ReadingStatusCacheUtils | undefined,
+          {
+            libraryId: targetLibraryId,
+            bookId,
+          },
+        );
+      } catch (err) {
+        rollback();
+        console.error('Failed to update reading status:', err);
+        toast.error('Failed to update reading status');
+      }
+    },
+    [books, library.name, user, utils],
+  );
 
   const {recentBooks, lastCatalogedDate, orderedBookIds} = useMemo(() => {
     if (books.length === 0) {
@@ -168,66 +249,13 @@ export function LibraryOverview({
 
               {/* Right Column: Currently Reading & AI Pick */}
               <div className="md:col-span-8 flex flex-col gap-5">
-                {readingBooks.length > 0 &&
-                  readingBooks.map(book => (
-                    <div
-                      key={`reading-${book.id}`}
-                      onMouseEnter={handlePrewarmBookDetails}
-                      onTouchStart={handlePrewarmBookDetails}
-                      className="bento-card p-5 sm:p-6 flex flex-col sm:flex-row gap-5 items-center sm:items-start"
-                    >
-                      <div
-                        className="w-24 sm:w-28 mx-auto sm:mx-0 flex-shrink-0 relative group cursor-pointer"
-                        onClick={() =>
-                          navigate(`/library/${library.id}/book/${book.id}`, {
-                            state: {
-                              from: location.pathname + location.search,
-                              bookList: readingBooks.map(b => b.id),
-                            },
-                          })
-                        }
-                      >
-                        <ArchivalCoverImage
-                          src={book.coverUrl}
-                          alt={book.title}
-                          author={book.author}
-                          variant="compact"
-                          className="relative w-full aspect-[2/3] rounded-lg book-cover-shadow border border-outline-variant/50 z-10"
-                        />
-                      </div>
-                      <div className="flex-grow min-w-0 w-full text-center sm:text-left break-words">
-                        <span className="metadata-eyebrow block">
-                          Currently Reading
-                        </span>
-                        <h3 className="font-serif text-xl sm:text-2xl font-semibold tracking-tight text-primary mt-1 mb-0.5 line-clamp-2">
-                          {toTitleCase(book.title)}
-                        </h3>
-                        <p className="font-sans text-xs sm:text-sm text-on-surface-variant mb-4">
-                          {toTitleCase(book.author)}
-                        </p>
-                        <div className="flex justify-center sm:justify-start">
-                          <Button
-                            size="sm"
-                            className="min-h-[38px] px-4 rounded-lg font-sans text-xs"
-                            onFocus={handlePrewarmBookDetails}
-                            onClick={() =>
-                              navigate(
-                                `/library/${library.id}/book/${book.id}`,
-                                {
-                                  state: {
-                                    from: location.pathname + location.search,
-                                    bookList: readingBooks.map(b => b.id),
-                                  },
-                                },
-                              )
-                            }
-                          >
-                            View Book Details
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                {readingBooks.length > 0 && (
+                  <CurrentlyReadingCard
+                    readingBooks={readingBooks}
+                    onStatusChange={handleReadingStatusChange}
+                    fromPath={location.pathname + location.search}
+                  />
+                )}
 
                 {/* AI Curator's Pick */}
                 <CuratorPickCard
