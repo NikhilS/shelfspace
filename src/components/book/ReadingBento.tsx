@@ -14,12 +14,19 @@ import {
 import {ReadStackCanvasCard} from '../../pages/dashboard/ReadStackCanvasCard';
 import {GenreBreakdownCard} from './GenreBreakdownCard';
 import {CuratorPickCard, type CuratorPickItem} from './CuratorPickCard';
+import {SuggestedNextReadsCard} from './SuggestedNextReadsCard';
 import {ExplorePerspectivesStrip} from './ExplorePerspectivesStrip';
+import {
+  ReadingOnboardingStudio,
+  ReadingOnboardingBanner,
+} from './ReadingOnboardingStudio';
 import {usePickOfTheDay} from '../../hooks/usePickOfTheDay';
+import {useBookRecommendations} from '../../hooks/useBookRecommendations';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {MonographCoverFallback} from './MonographCoverFallback';
 import {Button} from '@/components/ui/button';
 import type {Book} from '../../types';
+import type {BookRecommendationItem} from '../../schemas/recommendation';
 import type {
   TrackedBookItem,
   TrackedShelfStatus,
@@ -46,6 +53,19 @@ export interface ReadingBentoProps {
    * Optional pre-loaded unread books across all libraries accessible to the user.
    */
   unreadLibraryBooks?: UnreadLibraryBookItem[];
+  /**
+   * Optional total count of libraries (owned + shared) accessible to the user,
+   * used to tailor the Getting Started onboarding studio.
+   */
+  librariesCount?: number;
+  /**
+   * Optional primary library ID for quick navigation to the Have You Read It? swipe deck.
+   */
+  primaryLibraryId?: string;
+  /**
+   * Optional callback to open the Create Library dialog from the onboarding studio.
+   */
+  onCreateLibrary?: () => void;
   /**
    * Loading state override when `books` are controlled externally.
    */
@@ -91,6 +111,9 @@ export function ReadingBento({
   libraryId,
   books: externalBooks,
   unreadLibraryBooks: externalUnreadLibraryBooks,
+  librariesCount = 0,
+  primaryLibraryId,
+  onCreateLibrary,
   isLoading: externalIsLoading,
   onStatusChange: externalOnStatusChange,
   onTrackBook,
@@ -448,6 +471,90 @@ export function ReadingBento({
     }
   };
 
+  // Hybrid Recommendation Engine for Personal Reading Room
+  const {
+    items: hybridRecommendations,
+    allItems: allHybridRecommendations,
+    activeFilter: recommendationFilter,
+    setActiveFilter: setRecommendationFilter,
+    isLoading: isLoadingRecommendations,
+    isRefreshing: isRefreshingRecommendations,
+    refreshRecommendations,
+  } = useBookRecommendations({
+    enabled: !isLibraryScoped,
+    books: scopedItems,
+    unreadLibraryBooks: eligibleUnreadLibraryBooks,
+  });
+
+  // Merge activePick as an external discovery fallback when hybrid engine hasn't populated external items yet
+  const mergedRecommendations = useMemo<BookRecommendationItem[]>(() => {
+    const base = [...hybridRecommendations];
+    if (
+      activePick &&
+      (recommendationFilter === 'all' || recommendationFilter === 'discover')
+    ) {
+      const pickKey = activePick.title.toLowerCase().trim();
+      const alreadyPresent = base.some(
+        item => item.title.toLowerCase().trim() === pickKey,
+      );
+      if (!alreadyPresent) {
+        const fallbackItem: BookRecommendationItem = {
+          id: `pick:${pickKey}`,
+          title: activePick.title,
+          author: activePick.author,
+          coverUrl: activePick.coverUrl,
+          source: 'ai_curator',
+          reason: activePick.reason,
+          matchTag: 'Curated for Your Taste',
+        };
+        if (base.length === 0) {
+          base.push(fallbackItem);
+        } else {
+          // Place after any initial shelf pick or at index 1
+          base.splice(Math.min(1, base.length), 0, fallbackItem);
+        }
+      }
+    }
+    return base;
+  }, [hybridRecommendations, activePick, recommendationFilter]);
+
+  const trackedTitleKeys = useMemo(() => {
+    const keys = new Set<string>(internalSavedTitles);
+    for (const item of scopedItems) {
+      keys.add(
+        `${item.title.toLowerCase().trim()}::${item.author.toLowerCase().trim()}`,
+      );
+    }
+    return keys;
+  }, [scopedItems, internalSavedTitles]);
+
+  const handleAddRecommendationToWantToRead = async (
+    item: BookRecommendationItem,
+  ) => {
+    try {
+      await trackBookItem({
+        source: 'external',
+        status: 'want_to_read',
+        bookData: {
+          title: item.title,
+          author: item.author,
+          isbn: item.isbn,
+          coverUrl: item.coverUrl,
+          publishedDate: item.publishedDate,
+          primaryGenre: item.primaryGenre,
+          subgenres: item.subgenres,
+          synopsis: item.synopsis || item.reason,
+          series: item.series,
+        },
+      });
+      const key = `${item.title.toLowerCase().trim()}::${item.author.toLowerCase().trim()}`;
+      setInternalSavedTitles(prev => new Set(prev).add(key));
+      toast.success(`Added "${toTitleCase(item.title)}" to Want to Read`);
+    } catch {
+      toast.error('Failed to add recommendation to Want to Read');
+    }
+  };
+
   const handleTrackBookTrigger = (
     defaultShelf:
       'want_to_read' | 'reading' | 'finished' | 'abandoned' = 'want_to_read',
@@ -667,12 +774,41 @@ export function ReadingBento({
     </div>
   );
 
+  if (!isLibraryScoped && scopedItems.length === 0) {
+    return (
+      <div className="space-y-8" data-testid="reading-bento-personal-reading">
+        <ReadingOnboardingStudio
+          unreadLibraryBooks={eligibleUnreadLibraryBooks}
+          librariesCount={librariesCount}
+          primaryLibraryId={primaryLibraryId}
+          onTrackBook={handleTrackBookTrigger}
+          onCreateLibrary={onCreateLibrary}
+          onStatusChange={handleStatusChange}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className="space-y-8"
       data-testid={`reading-bento-${isLibraryScoped ? `library-${libraryId}` : 'personal-reading'}`}
     >
       <div className="space-y-6">
+        {!isLibraryScoped &&
+          (scopedItems.length < 3 || finishedBooks.length === 0) && (
+            <ReadingOnboardingBanner
+              totalTrackedCount={scopedItems.length}
+              readingCount={readingBooks.length}
+              finishedCount={finishedBooks.length}
+              unreadLibraryCount={eligibleUnreadLibraryBooks.length}
+              primaryLibraryId={
+                eligibleUnreadLibraryBooks[0]?.libraryId ?? primaryLibraryId
+              }
+              onTrackBook={handleTrackBookTrigger}
+            />
+          )}
+
         {/* Row 1: Active Reading Spotlight (7 cols) + Messy 5-Book Read Stack Canvas (5 cols) */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6 items-stretch">
           <div className="md:col-span-7">
@@ -693,7 +829,51 @@ export function ReadingBento({
           </div>
         </div>
 
-        {activeUnreadPickItem && activeUnreadLibraryBook ? (
+        {!isLibraryScoped ? (
+          <>
+            {/* Row 2 (Personal Reading Room): Compact Suggested Next Reads Hybrid Carousel */}
+            <SuggestedNextReadsCard
+              recommendations={mergedRecommendations}
+              allRecommendations={allHybridRecommendations}
+              activeFilter={recommendationFilter}
+              onFilterChange={setRecommendationFilter}
+              isLoading={isLoadingRecommendations && !activePick}
+              isRefreshing={
+                isRefreshingRecommendations || activeIsGeneratingPick
+              }
+              onRefresh={() => {
+                refreshRecommendations();
+                if (hasExternalPickControl) {
+                  activeGenerateNewPick();
+                }
+              }}
+              onAddExternalToWantToRead={handleAddRecommendationToWantToRead}
+              onUpdateShelfBookStatus={(libId, bId, nextStatus) =>
+                handleStatusChange(libId, bId, nextStatus)
+              }
+              onTrackBook={() => handleTrackBookTrigger('finished')}
+              trackedTitleKeys={trackedTitleKeys}
+            />
+
+            {/* Row 3: Books Read by Genre (5 cols) + Up Next · Want to Read (7 cols) — unlocked once at least 1 book is finished or on Want to Read */}
+            {(finishedBooks.length > 0 || wantToReadBooks.length > 0) && (
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6 items-stretch">
+                <div
+                  className={
+                    showWantToReadStrip ? 'md:col-span-5' : 'md:col-span-12'
+                  }
+                >
+                  {genreBreakdownCardNode}
+                </div>
+                {showWantToReadStrip && (
+                  <div className="md:col-span-7 flex">
+                    {renderWantToReadCard(true)}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : activeUnreadPickItem && activeUnreadLibraryBook ? (
           <>
             {/* Row 2 (When Unread Library Pick exists): Responsive 6+6 Discovery Row on Desktop, Stacked on Mobile/Tablet */}
             <div
@@ -747,7 +927,7 @@ export function ReadingBento({
           </>
         ) : (
           <>
-            {/* Row 2 (When no Unread Library Pick exists): Read by Genre Breakdown (5 cols) + Pick of the Day (7 cols) */}
+            {/* Row 2 (Library Overview): Read by Genre Breakdown (5 cols) + Pick of the Day (7 cols) */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6 items-stretch">
               <div className="md:col-span-5">{genreBreakdownCardNode}</div>
               <div className="md:col-span-7 flex">{pickOfTheDayCardNode}</div>

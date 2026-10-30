@@ -469,6 +469,9 @@ export function Dashboard() {
               mode="personal-reading"
               books={allItems}
               unreadLibraryBooks={unreadLibraryBooks}
+              librariesCount={libraryList.length}
+              primaryLibraryId={libraryList[0]?.id}
+              onCreateLibrary={() => setIsCreating(true)}
               isLoading={isLoadingShelf}
               onStatusChange={updateItemStatus}
               onTrackBook={openTrackBookDialog}
@@ -565,40 +568,92 @@ export function Dashboard() {
                   </Button>
                 </div>
               ) : libraryList.length === 0 && !isCreating ? (
-                <div className="text-center py-14 px-6 bg-surface-container-low rounded-xl border border-outline-variant/40">
-                  <BookshelfBookendsIllustration className="mx-auto mb-3" />
-                  <h3 className="empty-state-title">
-                    {scopes.includes('all')
-                      ? 'No Libraries Created Yet'
-                      : scopes.length === 1 && scopes[0] === 'shared'
-                        ? 'No Shared Libraries Yet'
-                        : scopes.length === 1 && scopes[0] === 'owned'
-                          ? 'No Personal Libraries Yet'
-                          : 'No Libraries Yet'}
-                  </h3>
-                  <p className="empty-state-description max-w-md mx-auto mb-5">
-                    {scopes.includes('all')
-                      ? 'No libraries have been set up across the workspace yet.'
-                      : scopes.length === 1 && scopes[0] === 'shared'
-                        ? 'When friends or family share a library with you, it will appear here.'
-                        : scopes.length === 1 && scopes[0] === 'owned'
-                          ? 'Create a library to organize the physical or digital books you own.'
-                          : 'Create a library to catalog the physical or digital books on your shelves.'}
-                  </p>
-                  {(!scopes.includes('shared') || scopes.includes('owned')) && (
-                    <Button
-                      variant="outline"
-                      disabled={!isOnline}
-                      title={
-                        !isOnline ? 'Unavailable while offline' : undefined
-                      }
-                      onClick={() => setIsCreating(true)}
-                      className="mx-auto flex items-center gap-2 min-h-[40px] px-5 rounded-lg font-sans font-semibold disabled:opacity-50"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Create Library</span>
-                    </Button>
-                  )}
+                <div
+                  data-testid="empty-libraries-guide"
+                  className="py-10 px-6 sm:px-8 bg-surface-container-low rounded-xl border border-outline-variant/40 space-y-6"
+                >
+                  <div className="text-center max-w-lg mx-auto">
+                    <BookshelfBookendsIllustration className="mx-auto mb-3" />
+                    <h3 className="empty-state-title">
+                      {scopes.includes('all')
+                        ? 'No Libraries Created Yet'
+                        : scopes.length === 1 && scopes[0] === 'shared'
+                          ? 'No Shared Libraries Yet'
+                          : scopes.length === 1 && scopes[0] === 'owned'
+                            ? 'No Personal Libraries Yet'
+                            : 'No Libraries Yet'}
+                    </h3>
+                    <p className="empty-state-description mt-1">
+                      {scopes.includes('all')
+                        ? 'No libraries have been set up across the workspace yet.'
+                        : scopes.length === 1 && scopes[0] === 'shared'
+                          ? 'When friends or family share a library with you, it will appear here.'
+                          : scopes.length === 1 && scopes[0] === 'owned'
+                            ? 'Create a library to organize the physical or digital books you own.'
+                            : 'Create a library to catalog the physical or digital books on your shelves.'}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto text-left">
+                    <div className="p-4 rounded-xl bg-surface border border-outline-variant/50 flex flex-col justify-between gap-3">
+                      <div className="space-y-1">
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-primary font-semibold">
+                          Personal Collection
+                        </span>
+                        <h4 className="font-serif text-sm sm:text-base font-semibold text-on-surface">
+                          Catalog Your Home Bookshelves
+                        </h4>
+                        <p className="font-sans text-xs text-on-surface-variant leading-relaxed">
+                          Create a library and add books by snapping a photo of
+                          your shelf, scanning ISBN barcodes, or searching by
+                          title.
+                        </p>
+                      </div>
+                      {(!scopes.includes('shared') ||
+                        scopes.includes('owned')) && (
+                        <div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!isOnline}
+                            title={
+                              !isOnline
+                                ? 'Unavailable while offline'
+                                : undefined
+                            }
+                            onClick={() => setIsCreating(true)}
+                            className="flex items-center gap-2 h-9 px-4 rounded-lg font-sans text-xs font-semibold disabled:opacity-50"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Create Your First Library</span>
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-surface border border-outline-variant/50 flex flex-col justify-between gap-3">
+                      <div className="space-y-1">
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-primary font-semibold">
+                          Shared Shelves
+                        </span>
+                        <h4 className="font-serif text-sm sm:text-base font-semibold text-on-surface">
+                          Browse Friends &amp; Family Libraries
+                        </h4>
+                        <p className="font-sans text-xs text-on-surface-variant leading-relaxed">
+                          When someone shares their library with{' '}
+                          <span className="font-mono text-on-surface">
+                            {user.email || 'your email'}
+                          </span>
+                          , it appears here automatically and feeds your{' '}
+                          <em>Have You Read It?</em> swipe deck.
+                        </p>
+                      </div>
+                      <span className="font-sans text-[11px] text-on-surface-variant">
+                        You can also share any library you create with
+                        collaborators or viewers.
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -215,45 +215,47 @@ export function LibraryOverview({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6">
-              {/* Left Column: Metrics & Categories */}
-              <div className="md:col-span-4 flex flex-col gap-5">
-                <GenreBreakdownCard
-                  books={books}
-                  eyebrow="Top Categories"
-                  headerRight={`Last added: ${lastCatalogedDate}`}
-                  onSelectGenre={genreName => {
-                    if (selectGenreAndGoToCollection) {
-                      selectGenreAndGoToCollection(genreName);
-                    } else {
-                      setFilterGenre(genreName);
-                      setCurrentTab('collection');
-                      setIsFiltersOpen(true);
-                    }
-                  }}
+            <div className="space-y-5 sm:space-y-6">
+              {readingBooks.length > 0 && (
+                <CurrentlyReadingCard
+                  readingBooks={readingBooks}
+                  defaultLibrary={{id: library.id, name: library.name}}
+                  showLibraryProvenance={false}
+                  onStatusChange={handleReadingStatusChange}
+                  onOpenReadingLists={() => setCurrentTab('collection')}
+                  fromPath={location.pathname + location.search}
                 />
-              </div>
+              )}
 
-              {/* Right Column: Currently Reading & AI Pick */}
-              <div className="md:col-span-8 flex flex-col gap-5">
-                {readingBooks.length > 0 && (
-                  <CurrentlyReadingCard
-                    readingBooks={readingBooks}
-                    defaultLibrary={{id: library.id, name: library.name}}
-                    showLibraryProvenance={false}
-                    onStatusChange={handleReadingStatusChange}
-                    onOpenReadingLists={() => setCurrentTab('collection')}
-                    fromPath={location.pathname + location.search}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6 items-stretch">
+                {/* Left Column: Metrics & Categories */}
+                <div className="md:col-span-4 flex flex-col">
+                  <GenreBreakdownCard
+                    books={books}
+                    eyebrow="Top Categories"
+                    headerRight={`Last added: ${lastCatalogedDate}`}
+                    onSelectGenre={genreName => {
+                      if (selectGenreAndGoToCollection) {
+                        selectGenreAndGoToCollection(genreName);
+                      } else {
+                        setFilterGenre(genreName);
+                        setCurrentTab('collection');
+                        setIsFiltersOpen(true);
+                      }
+                    }}
                   />
-                )}
+                </div>
 
-                {/* AI Curator's Pick */}
-                <CuratorPickCard
-                  pickOfTheDay={pickOfTheDay}
-                  isGeneratingPick={isGeneratingPick}
-                  generateNewPick={generateNewPick}
-                  pickError={pickError}
-                />
+                {/* Right Column: AI Curator's Pick */}
+                <div className="md:col-span-8 flex flex-col">
+                  <CuratorPickCard
+                    pickOfTheDay={pickOfTheDay}
+                    isGeneratingPick={isGeneratingPick}
+                    generateNewPick={generateNewPick}
+                    pickError={pickError}
+                    className="w-full h-full"
+                  />
+                </div>
               </div>
             </div>
           </section>

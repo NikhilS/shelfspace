@@ -84,7 +84,7 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
     ]);
   });
 
-  it('shows Reading Pulse in Tier 1 when a volume is actively being read', () => {
+  it('shows Reading Pulse in Tier 1 with Currently Reading above Top Categories when a volume is actively being read', () => {
     render(
       <MemoryRouter>
         <LibraryOverview {...defaultProps} />
@@ -92,7 +92,14 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
     );
 
     expect(screen.getByText('Reading Pulse')).toBeInTheDocument();
-    expect(screen.getByText('Currently Reading')).toBeInTheDocument();
+    const currentlyReadingCard = screen.getByTestId('currently-reading-card');
+    const topCategoriesHeading = screen.getByText('Top Categories');
+    expect(currentlyReadingCard).toBeInTheDocument();
+    expect(topCategoriesHeading).toBeInTheDocument();
+    expect(
+      currentlyReadingCard.compareDocumentPosition(topCategoriesHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
       screen.getAllByText('Klara And The Sun').length,
     ).toBeGreaterThanOrEqual(1);

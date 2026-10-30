@@ -25,6 +25,7 @@ export interface ReadingStatusCacheUtils {
   readingTracker?: {
     getShelf?: TrpcCacheSlot<{shelf?: string} | undefined, unknown>;
     getUnreadLibraryBooks?: TrpcCacheSlot<undefined, unknown>;
+    getRecommendations?: TrpcCacheSlot<unknown, unknown>;
   };
   library?: {
     get?: TrpcCacheSlot<{libraryId: string}, unknown>;
@@ -523,6 +524,9 @@ export async function invalidateReadingStatusQueries(
   }
   if (utils.readingTracker?.getUnreadLibraryBooks?.invalidate) {
     tasks.push(utils.readingTracker.getUnreadLibraryBooks.invalidate());
+  }
+  if (utils.readingTracker?.getRecommendations?.invalidate) {
+    tasks.push(utils.readingTracker.getRecommendations.invalidate());
   }
 
   if (options?.libraryId) {

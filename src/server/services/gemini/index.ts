@@ -3,3 +3,4 @@ export * from './embeddings';
 export * from './vision';
 export * from './covers';
 export * from './enrichment';
+export * from './recommendations';

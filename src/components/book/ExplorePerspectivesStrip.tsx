@@ -378,8 +378,10 @@ export function ExplorePerspectivesStrip({
                 {genreCount > 0 ? `${genreCount} Genres` : '3D Galaxy'}
               </Badge>
             </div>
-            <p className="font-sans text-xs text-on-surface-variant line-clamp-1 leading-snug">
-              Connected clusters by genre &amp; theme
+            <p className="font-sans text-xs text-on-surface-variant line-clamp-1 leading-snug tabular-nums">
+              {books.length < 3
+                ? `Needs 3+ books (${books.length}/3) · Connected clusters by genre & theme`
+                : 'Connected clusters by genre & theme'}
             </p>
           </div>
 

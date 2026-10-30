@@ -100,5 +100,6 @@ Empty states, ingestion dropzones, loaders, and error screens should feel like a
   * `ExLibrisStampIllustration` — Curator's Pick empty/unavailable states & corner bookplate watermark
   * `FallenBookendIllustration` — ErrorBoundary & Dashboard catalog error states
   * `ArchivalBookLoaderIllustration` — Animated open-book motif used by `<BookLoader />` (`src/components/ui/loader.tsx`)
-
-
+* **Progressive Onboarding & Getting Started Studio (`src/components/book/ReadingOnboardingStudio.tsx`):**
+  * **Zero-Book State (`0` Tracked Books):** Instead of rendering multiple empty Bento cards side-by-side in the Personal Reading Room, `ReadingBento` renders `<ReadingOnboardingStudio />`—a unified Getting Started studio highlighting 3 actionable quick-start paths (search & track a book, swipe through unread library shelves or create a home library via photo/ISBN/search, and build a Want-to-Read queue) plus a 3-milestone unlock preview rail.
+  * **Early-Reader State (`1–2` Tracked Books):** As books are added, `ReadingBento` progressively unlocks cards (`SuggestedNextReadsCard`, `GenreBreakdownCard` once a book is finished, and `ExplorePerspectivesStrip` with a `Needs 3+ books (X/3)` readiness indicator on Thematic Constellations) accompanied by a compact, dismissible `<ReadingOnboardingBanner />`.

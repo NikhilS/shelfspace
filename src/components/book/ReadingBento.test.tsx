@@ -120,7 +120,7 @@ describe('ReadingBento', () => {
     expect(timelineLink).toHaveAttribute('href', '/library/lib-1/timeline');
   });
 
-  it('renders an Unread Library Pick card using CuratorPickCard when an unread library book exists', () => {
+  it('includes unread library books in SuggestedNextReadsCard when an unread library book exists', () => {
     render(
       <MemoryRouter>
         <ReadingBento
@@ -146,7 +146,9 @@ describe('ReadingBento', () => {
     expect(
       screen.getByText('From Your Libraries · Shared Family Library'),
     ).toBeInTheDocument();
-    expect(screen.getByText('The Dispossessed')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('The Dispossessed').length,
+    ).toBeGreaterThanOrEqual(1);
     expect(
       screen.getByText(/Ursula K\. Le Guin · Shared Family Library/),
     ).toBeInTheDocument();
@@ -155,7 +157,7 @@ describe('ReadingBento', () => {
     ).toBeInTheDocument();
   });
 
-  it('omits the Unread Library Pick card when no unread books exist across accessible libraries', () => {
+  it('omits library shelf badges when no unread books exist across accessible libraries', () => {
     render(
       <MemoryRouter>
         <ReadingBento
@@ -167,5 +169,91 @@ describe('ReadingBento', () => {
     );
 
     expect(screen.queryByText(/From Your Libraries/)).not.toBeInTheDocument();
+  });
+
+  it('renders ReadingOnboardingStudio instead of empty cards when zero books are tracked in personal-reading mode', () => {
+    const onTrackBook = vi.fn();
+    const onCreateLibrary = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <ReadingBento
+          mode="personal-reading"
+          books={[]}
+          unreadLibraryBooks={[]}
+          librariesCount={0}
+          onTrackBook={onTrackBook}
+          onCreateLibrary={onCreateLibrary}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId('reading-onboarding-studio')).toBeInTheDocument();
+    expect(
+      screen.getByText('Welcome to Your Reading Room'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId('onboarding-path-create-library'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Books Read by Genre')).not.toBeInTheDocument();
+    expect(screen.queryByText('Explore Your Reading')).not.toBeInTheDocument();
+  });
+
+  it('adapts ReadingOnboardingStudio to highlight swiping unread library shelves when unread books exist', () => {
+    render(
+      <MemoryRouter>
+        <ReadingBento
+          mode="personal-reading"
+          books={[]}
+          librariesCount={1}
+          primaryLibraryId="lib-shared"
+          unreadLibraryBooks={[
+            {
+              id: 'b-unread-1',
+              libraryId: 'lib-shared',
+              libraryName: 'Shared Family Library',
+              readingStatus: 'unset',
+              title: 'The Left Hand of Darkness',
+              author: 'Ursula K. Le Guin',
+              addedAt: '2026-01-05',
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId('reading-onboarding-studio')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('onboarding-path-swipe-libraries'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('1 Unread on Shelves')).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/The Left Hand of Darkness/i).length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByRole('button', {name: /Swipe Through Shelves/i}),
+    ).toBeInTheDocument();
+  });
+
+  it('progressively unlocks cards for early readers with 1 reading book: shows ReadingOnboardingBanner, hides empty Genre/TBR row, and shows 3-book readiness on Constellations', () => {
+    localStorage.removeItem('bookish_reading_onboarding_dismissed');
+    const singleReadingBook: TrackedBookItem[] = [sampleBooks[0]];
+
+    render(
+      <MemoryRouter>
+        <ReadingBento
+          mode="personal-reading"
+          books={singleReadingBook}
+          unreadLibraryBooks={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId('reading-onboarding-banner')).toBeInTheDocument();
+    expect(screen.getByText('1 of 3 Milestones Complete')).toBeInTheDocument();
+    // Genre Breakdown and Want to Read row should be hidden when both finished and want_to_read are 0
+    expect(screen.queryByText('Books Read by Genre')).not.toBeInTheDocument();
+    // Explore Perspectives shows readiness indicator on Thematic Constellations
+    expect(screen.getByText(/Needs 3\+ books \(1\/3\)/i)).toBeInTheDocument();
   });
 });

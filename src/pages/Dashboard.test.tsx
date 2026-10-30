@@ -242,7 +242,7 @@ describe('Dashboard', () => {
     expect(screen.getByRole('button', {name: 'Un-owned'})).toBeInTheDocument();
   });
 
-  it('renders the unread library CuratorPickCard side-by-side in the discovery row when unread books exist and supports shuffle, Want to Read, and book detail navigation', async () => {
+  it('renders unread library books inside SuggestedNextReadsCard when unread books exist and supports Want to Read, pill selection, and book detail navigation', async () => {
     (
       useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
     ).mockReturnValue({
@@ -273,49 +273,49 @@ describe('Dashboard', () => {
       isLoading: false,
     });
 
-    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    renderDashboard();
 
-    try {
-      renderDashboard();
+    const suggestionsCard = await screen.findByTestId(
+      'suggested-next-reads-card',
+    );
+    expect(suggestionsCard).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/From Your Libraries/i).length,
+    ).toBeGreaterThanOrEqual(1);
 
-      const discoveryRow = await screen.findByTestId('reading-discovery-row');
-      expect(discoveryRow).toHaveClass('grid-cols-1', 'lg:grid-cols-12');
-      expect(
-        screen.getByText(/From Your Libraries · Test Library/i),
-      ).toBeInTheDocument();
-      expect(screen.getByText('The Dispossessed')).toBeInTheDocument();
+    // Filter to On Your Shelves and select The Dispossessed pill tab
+    fireEvent.click(screen.getByRole('tab', {name: /On Your Shelves/i}));
+    fireEvent.click(screen.getByRole('tab', {name: 'The Dispossessed'}));
+    const dispossessedHeading = await screen.findByRole('heading', {
+      name: 'The Dispossessed',
+    });
+    expect(dispossessedHeading).toBeInTheDocument();
 
-      // Clicking the book title navigates to the book detail view
-      fireEvent.click(screen.getByText('The Dispossessed'));
-      expect(mockNavigate).toHaveBeenCalledWith('/library/lib1/book/unread-1', {
-        state: {from: '/'},
+    // Clicking the book title navigates to the book detail view
+    fireEvent.click(dispossessedHeading);
+    expect(mockNavigate).toHaveBeenCalledWith('/library/lib1/book/unread-1', {
+      state: {from: '/'},
+    });
+
+    // Clicking Want to Read updates the book status to want_to_read
+    const wantToReadButtons = screen.getAllByRole('button', {
+      name: /^Want to Read$/i,
+    });
+    fireEvent.click(wantToReadButtons[0]);
+    await waitFor(() => {
+      expect(mockUpdateStatusMutate).toHaveBeenCalledWith({
+        libraryId: 'lib1',
+        bookId: 'unread-1',
+        status: 'want_to_read',
       });
+    });
 
-      // Clicking Want to Read updates the book status to want_to_read
-      const wantToReadButtons = screen.getAllByRole('button', {
-        name: /^Want to Read$/i,
-      });
-      fireEvent.click(wantToReadButtons[wantToReadButtons.length - 1]);
-      await waitFor(() => {
-        expect(mockUpdateStatusMutate).toHaveBeenCalledWith({
-          libraryId: 'lib1',
-          bookId: 'unread-1',
-          status: 'want_to_read',
-        });
-      });
-
-      // Clicking the shuffle button switches to the other unread book
-      const shuffleBtn = screen.getByTitle(
-        'Pick another unread book from your shelves',
-      );
-      fireEvent.click(shuffleBtn);
-      expect(await screen.findByText('Hyperion')).toBeInTheDocument();
-      expect(
-        screen.getByText(/From Your Libraries · Shared Family Shelf/i),
-      ).toBeInTheDocument();
-    } finally {
-      randomSpy.mockRestore();
-    }
+    // Clicking the Hyperion pill in the strip switches to the other unread book
+    const hyperionPill = screen.getByRole('tab', {name: 'Hyperion'});
+    fireEvent.click(hyperionPill);
+    expect(
+      await screen.findByRole('heading', {name: 'Hyperion'}),
+    ).toBeInTheDocument();
   });
 
   it('navigates to the library view when clicking a library card and opens QuickAddBookDialog with Advanced link when clicking Find a Book', async () => {
@@ -427,6 +427,59 @@ describe('Dashboard', () => {
       );
     } finally {
       onLineSpy.mockRestore();
+    }
+  });
+
+  it('renders the Getting Started onboarding studio and Empty Libraries guide when a new user has zero tracked books and zero libraries', async () => {
+    const {trpc} = await import('../lib/trpc');
+    const shelfMock = vi.mocked(trpc.readingTracker.getShelf.useQuery);
+    const listMock = vi.mocked(trpc.library.list.useQuery);
+    const prevShelfImpl = shelfMock.getMockImplementation();
+    const prevListImpl = listMock.getMockImplementation();
+
+    shelfMock.mockReturnValue({
+      data: {
+        items: [],
+        counts: {
+          all: 0,
+          want_to_read: 0,
+          reading: 0,
+          finished: 0,
+          abandoned: 0,
+        },
+      },
+      isLoading: false,
+    } as never);
+    listMock.mockReturnValue({
+      data: [],
+      isLoading: false,
+    } as never);
+
+    (
+      useAuth as unknown as {mockReturnValue: (...args: unknown[]) => unknown}
+    ).mockReturnValue({
+      user: {uid: 'new-user', email: 'newreader@example.com'},
+    });
+
+    try {
+      renderDashboard();
+
+      expect(
+        await screen.findByTestId('reading-onboarding-studio'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Welcome to Your Reading Room'),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('empty-libraries-guide')).toBeInTheDocument();
+      expect(
+        screen.getByText('Catalog Your Home Bookshelves'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Browse Friends & Family Libraries/i),
+      ).toBeInTheDocument();
+    } finally {
+      if (prevShelfImpl) shelfMock.mockImplementation(prevShelfImpl);
+      if (prevListImpl) listMock.mockImplementation(prevListImpl);
     }
   });
 });

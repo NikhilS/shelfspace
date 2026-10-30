@@ -1,8 +1,10 @@
 import {z} from 'zod';
 import {router, protectedProcedure} from '../trpc';
 import {ReadingTrackerService} from '../../services/readingTracker';
+import {RecommendationService} from '../../services/recommendations';
 import {safeIdSchema, safeImageUrlSchema} from '../../../schemas/common';
 import {safeBookOrStateIdSchema} from '../../../schemas/readingState';
+import {getRecommendationsInputSchema} from '../../../schemas/recommendation';
 
 export const trackedShelfEnum = z.enum([
   'want_to_read',
@@ -37,6 +39,21 @@ export const readingTrackerRouter = router({
       ctx.user.email,
     );
   }),
+
+  getRecommendations: protectedProcedure
+    .input(getRecommendationsInputSchema)
+    .query(async ({ctx, input}) => {
+      return await RecommendationService.getRecommendationsForUser(
+        ctx.user.uid,
+        ctx.user.email,
+        {
+          filter: input?.filter ?? 'all',
+          limit: input?.limit ?? 12,
+          includeAi: input?.includeAi ?? true,
+          refreshSeed: input?.refreshSeed ?? 0,
+        },
+      );
+    }),
 
   searchUnified: protectedProcedure
     .input(
