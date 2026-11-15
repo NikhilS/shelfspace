@@ -29,16 +29,39 @@ export const readingTrackerRouter = router({
       return await ReadingTrackerService.getPersonalReadingShelf(
         ctx.user.uid,
         ctx.user.email,
-        {shelf: input?.shelf ?? 'all'},
+        {
+          shelf: input?.shelf ?? 'all',
+          ...(ctx.requestLoaders ? {requestLoaders: ctx.requestLoaders} : {}),
+        },
       );
     }),
 
-  getUnreadLibraryBooks: protectedProcedure.query(async ({ctx}) => {
-    return await ReadingTrackerService.getUnreadLibraryBooks(
-      ctx.user.uid,
-      ctx.user.email,
-    );
-  }),
+  getUnreadLibraryBooks: protectedProcedure
+    .input(
+      z
+        .object({
+          limit: z.number().int().min(1).max(500).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ctx, input}) => {
+      const hasOptions =
+        input?.limit !== undefined || ctx.requestLoaders !== undefined;
+      if (hasOptions) {
+        return await ReadingTrackerService.getUnreadLibraryBooks(
+          ctx.user.uid,
+          ctx.user.email,
+          {
+            ...(input?.limit !== undefined ? {limit: input.limit} : {}),
+            ...(ctx.requestLoaders ? {requestLoaders: ctx.requestLoaders} : {}),
+          },
+        );
+      }
+      return await ReadingTrackerService.getUnreadLibraryBooks(
+        ctx.user.uid,
+        ctx.user.email,
+      );
+    }),
 
   getRecommendations: protectedProcedure
     .input(getRecommendationsInputSchema)

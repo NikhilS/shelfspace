@@ -14,6 +14,7 @@ import {
   libraryDocConverter,
   LibraryApiRecord,
 } from './libraryCrudService';
+import {LibraryMetadataCache} from './libraryMetadataCache';
 import {
   resetMetadata,
   auditPlaceholderCovers,
@@ -53,6 +54,7 @@ export {
   updateLibrary,
   deleteLibrary,
   libraryDocConverter,
+  LibraryMetadataCache,
   getUserRole,
   upsertCollaborator,
   removeCollaborator,

@@ -1,17 +1,20 @@
 import {QueryClient} from '@tanstack/react-query';
-import {persistQueryClient} from '@tanstack/react-query-persist-client';
-import {createAsyncStoragePersister} from '@tanstack/query-async-storage-persister';
-import {get, set, del} from 'idb-keyval';
-import {DebugTelemetryEngine, estimateStringBytes} from './telemetry';
+import {readAuthShellSnapshot} from './authTokenCache';
+import {
+  attachShardedQueryPersistence,
+  clearPersistedQueryShards,
+} from './idbQueryShardPersister';
+import {DebugTelemetryEngine} from './telemetry';
 
-export const QUERY_CACHE_BUSTER = 'v2.0.0';
+export const QUERY_CACHE_BUSTER = 'v2.1.0';
+const SEVEN_DAYS_MS = 1000 * 60 * 60 * 24 * 7;
 
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes fresh
-      gcTime: 1000 * 60 * 60 * 24 * 7, // 7 days retention in storage
-      networkMode: 'offlineFirst', // Serve from cache immediately when offline
+      gcTime: SEVEN_DAYS_MS, // 7 days retention in storage
+      networkMode: 'offlineFirst', // Serve from cache immediately when offline or booting
       refetchOnWindowFocus: false,
       retry: 2,
     },
@@ -22,12 +25,36 @@ export const queryClient = new QueryClient({
   },
 });
 
+let activePersistenceUid: string | null =
+  typeof window !== 'undefined' ? (readAuthShellSnapshot()?.uid ?? null) : null;
+
+export function setActivePersistenceUid(uid: string | null): void {
+  activePersistenceUid = uid;
+}
+
+function getActivePersistenceUid(): string {
+  if (activePersistenceUid) {
+    return activePersistenceUid;
+  }
+  const snapshotUid = readAuthShellSnapshot()?.uid;
+  if (snapshotUid) {
+    activePersistenceUid = snapshotUid;
+    return snapshotUid;
+  }
+  return 'anon';
+}
+
+export async function resetClientQueryCaches(uid?: string): Promise<void> {
+  queryClient.clear();
+  await clearPersistedQueryShards(uid);
+}
+
 function formatQueryKeyLabel(queryKey: readonly unknown[]): string {
   try {
     if (Array.isArray(queryKey) && Array.isArray(queryKey[0])) {
       return (queryKey[0] as string[]).join('.');
     }
-    return JSON.stringify(queryKey);
+    return String(queryKey[0] ?? 'query');
   } catch {
     return 'query';
   }
@@ -41,8 +68,10 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    // Ignore internal debug telemetry polling query
-    const keyLabel = formatQueryKeyLabel(query.queryKey);
+    const rawQueryKey: unknown = query.queryKey;
+    const keyLabel = formatQueryKeyLabel(
+      Array.isArray(rawQueryKey) ? (rawQueryKey as readonly unknown[]) : [],
+    );
     if (keyLabel.includes('debugTelemetry')) {
       return;
     }
@@ -64,7 +93,7 @@ if (typeof window !== 'undefined') {
           DebugTelemetryEngine.getInstance().recordCacheAccess(false, keyLabel);
         }
       } else if (event.action.type === 'error') {
-        const err = event.action.error;
+        const err: unknown = event.action.error;
         DebugTelemetryEngine.getInstance().addLog(
           'error',
           `[Cache] Query "${keyLabel}" failed: ${
@@ -83,7 +112,7 @@ if (typeof window !== 'undefined') {
 
   queryClient.getMutationCache().subscribe(event => {
     if (event.type === 'updated' && event.mutation.state.status === 'error') {
-      const err = event.mutation.state.error;
+      const err: unknown = event.mutation.state.error;
       const mutKey = event.mutation.options.mutationKey
         ? formatQueryKeyLabel(event.mutation.options.mutationKey)
         : 'mutation';
@@ -133,92 +162,58 @@ export function subscribeToQueryCacheRestore(listener: () => void): () => void {
   };
 }
 
-// Configure transparent IndexedDB backing for browser runtime
+// Configure sharded structured-clone IndexedDB backing for browser runtime
 if (typeof window !== 'undefined' && typeof indexedDB !== 'undefined') {
+  const isOffline =
+    typeof navigator !== 'undefined' && navigator.onLine === false;
+  const safetyTimeoutMs = isOffline ? 600 : 150;
   const safetyTimer = setTimeout(() => {
     markQueryCacheRestored();
-  }, 600);
+  }, safetyTimeoutMs);
 
   try {
     DebugTelemetryEngine.getInstance().recordIdbPersistenceState('restoring');
-    const idbPersister = createAsyncStoragePersister({
-      storage: {
-        getItem: async (key: string) => {
-          try {
-            const val = await get<string>(key);
-            if (typeof val === 'string') {
-              DebugTelemetryEngine.getInstance().recordIdbPersistenceState(
-                'hydrated',
-                estimateStringBytes(val),
-              );
-            }
-            return val ?? null;
-          } catch {
-            DebugTelemetryEngine.getInstance().recordIdbPersistenceState(
-              'error',
-            );
-            return null;
-          }
-        },
-        setItem: async (key: string, value: string) => {
-          try {
-            await set(key, value);
-            if (DebugTelemetryEngine.isHudActive()) {
-              DebugTelemetryEngine.getInstance().recordIdbPersistenceState(
-                'hydrated',
-                estimateStringBytes(value),
-              );
-            }
-          } catch {
-            // Storage quota or permission error
-          }
-        },
-        removeItem: async (key: string) => {
-          try {
-            await del(key);
-          } catch {
-            // Storage cleanup error
-          }
-        },
+    attachShardedQueryPersistence(queryClient, {
+      buster: QUERY_CACHE_BUSTER,
+      maxAgeMs: SEVEN_DAYS_MS,
+      getActiveUid: getActivePersistenceUid,
+      getPathname: () => window.location.pathname,
+      onInitialRestoreComplete: () => {
+        clearTimeout(safetyTimer);
+        markQueryCacheRestored();
+        const currentStatus =
+          DebugTelemetryEngine.getInstance().getMetrics().idbPersistStatus;
+        if (currentStatus === 'restoring') {
+          DebugTelemetryEngine.getInstance().recordIdbPersistenceState(
+            'hydrated',
+            0,
+          );
+        }
+      },
+      onHydratedShardCount: shardCount => {
+        if (DebugTelemetryEngine.isHudActive()) {
+          DebugTelemetryEngine.getInstance().recordIdbPersistenceState(
+            'hydrated',
+            shardCount * 1024,
+          );
+        }
+      },
+      onError: err => {
+        clearTimeout(safetyTimer);
+        markQueryCacheRestored();
+        DebugTelemetryEngine.getInstance().recordIdbPersistenceState('error');
+        console.warn(
+          '[QueryClient] Failed to restore persisted query shards:',
+          err,
+        );
       },
     });
-
-    const [, restorePromise] = persistQueryClient({
-      queryClient,
-      persister: idbPersister,
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-      buster: QUERY_CACHE_BUSTER,
-    });
-    if (restorePromise && typeof restorePromise.then === 'function') {
-      restorePromise
-        .then(() => {
-          clearTimeout(safetyTimer);
-          markQueryCacheRestored();
-          const currentStatus =
-            DebugTelemetryEngine.getInstance().getMetrics().idbPersistStatus;
-          if (currentStatus === 'restoring') {
-            DebugTelemetryEngine.getInstance().recordIdbPersistenceState(
-              'hydrated',
-              0,
-            );
-          }
-        })
-        .catch(err => {
-          clearTimeout(safetyTimer);
-          markQueryCacheRestored();
-          DebugTelemetryEngine.getInstance().recordIdbPersistenceState('error');
-          console.warn('[QueryClient] Failed to restore persisted cache:', err);
-        });
-    } else {
-      clearTimeout(safetyTimer);
-      markQueryCacheRestored();
-    }
   } catch (err) {
     clearTimeout(safetyTimer);
     markQueryCacheRestored();
     DebugTelemetryEngine.getInstance().recordIdbPersistenceState('error');
     console.warn(
-      '[QueryClient] Failed to initialize IndexedDB persistence:',
+      '[QueryClient] Failed to initialize sharded IndexedDB persistence:',
       err,
     );
   }

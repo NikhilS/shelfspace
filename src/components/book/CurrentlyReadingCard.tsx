@@ -1,4 +1,4 @@
-import React, {useState, useRef, useMemo} from 'react';
+import React, {useState, useRef, useMemo, useLayoutEffect} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {
   CheckCircle2,
@@ -12,14 +12,13 @@ import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {NightstandBookIllustration} from '@/components/ui/empty-state-illustrations';
 import {ArchivalCoverImage} from './ArchivalCoverImage';
+import {SharedCoverFrame} from './SharedCoverFrame';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {preloadRouteChunk} from '../../lib/routePreload';
+import {navigateWithCoverTransition} from '../../lib/bookCoverTransition';
+import {useCoverTransitionStore} from '../../stores/coverTransitionStore';
 import {BookSwipeDeck, type BookSwipeDeckHandle} from './BookSwipeDeck';
-import type {Book} from '../../types';
-import type {
-  TrackedBookItem,
-  TrackedShelfStatus,
-} from '../../server/services/readingTracker';
+import type {Book, TrackedBookItem, TrackedShelfStatus} from '../../types';
 
 export interface DefaultLibraryContext {
   id: string;
@@ -117,7 +116,33 @@ export function CurrentlyReadingCard({
     return result;
   }, [readingBooks, defaultLibrary]);
 
-  const safeIndex = selectedIndex < normalizedBooks.length ? selectedIndex : 0;
+  const returnMatchedIndex = useCoverTransitionStore(state => {
+    const active = state.activeTransition;
+    if (
+      !active ||
+      active.phase !== 'to-shelf' ||
+      active.originSurface !== 'currently-reading'
+    ) {
+      return -1;
+    }
+    return normalizedBooks.findIndex(
+      b => b.libraryId === active.libraryId && b.id === active.bookId,
+    );
+  });
+
+  useLayoutEffect(() => {
+    if (returnMatchedIndex >= 0 && returnMatchedIndex !== selectedIndex) {
+      setSelectedIndex(returnMatchedIndex);
+      setPreviewIndex(null);
+    }
+  }, [returnMatchedIndex, selectedIndex]);
+
+  const effectiveSelectedIndex =
+    returnMatchedIndex >= 0 ? returnMatchedIndex : selectedIndex;
+  const safeIndex =
+    effectiveSelectedIndex < normalizedBooks.length
+      ? effectiveSelectedIndex
+      : 0;
   const displayedIndex =
     previewIndex !== null && previewIndex < normalizedBooks.length
       ? previewIndex
@@ -133,20 +158,31 @@ export function CurrentlyReadingCard({
     const sameLibraryBookIds = normalizedBooks
       .filter(b => b.libraryId === book.libraryId)
       .map(b => b.id);
-    void navigate(
-      `/library/${encodeURIComponent(book.libraryId)}/book/${encodeURIComponent(book.id)}`,
-      {
-        state: {
-          from: fromPath,
-          ...(sameLibraryBookIds.length > 0
-            ? {bookList: sameLibraryBookIds}
-            : {}),
-        },
+    navigateWithCoverTransition({
+      navigate,
+      libraryId: book.libraryId,
+      bookId: book.id,
+      originSurface: 'currently-reading',
+      fromRouteKey: fromPath,
+      bookList: sameLibraryBookIds.length > 0 ? sameLibraryBookIds : undefined,
+      coverPreview: {
+        title: book.title,
+        author: book.author,
+        coverUrl: book.coverUrl,
+        publishedDate: book.publishedDate,
+        primaryGenre: book.primaryGenre,
+        subgenres: book.subgenres,
+        series: book.series,
+        synopsis: book.synopsis,
+        readingStatus: book.readingStatus,
+        ownershipStatus: book.ownershipStatus,
+        format: book.format,
+        isbn: book.isbn,
       },
-    );
+    });
   };
 
-  const renderBookSlide = (book: TrackedBookItem) => {
+  const renderBookSlide = (book: TrackedBookItem, isSlideActive = true) => {
     const provenanceLabel = showLibraryProvenance
       ? book.ownershipStatus === 'unowned' || book.isVirtual
         ? 'Un-owned Volume'
@@ -160,7 +196,10 @@ export function CurrentlyReadingCard({
         className="flex flex-col sm:flex-row gap-5 items-center sm:items-start my-auto py-0.5"
       >
         {/* Framed 2:3 Cover */}
-        <div
+        <SharedCoverFrame
+          surface="currently-reading"
+          libraryId={isSlideActive ? book.libraryId : undefined}
+          bookId={isSlideActive ? book.id : undefined}
           onClick={() => openBookDetails(book)}
           className="w-28 sm:w-32 aspect-[2/3] shrink-0 rounded-lg book-cover-shadow border border-outline-variant/60 overflow-hidden relative cursor-pointer group"
         >
@@ -174,7 +213,7 @@ export function CurrentlyReadingCard({
             className="w-full h-full"
             imgClassName="group-hover:scale-[1.03] transition-transform duration-300 select-none"
           />
-        </div>
+        </SharedCoverFrame>
 
         {/* Book Editorial Callout */}
         <div className="flex-1 min-w-0 text-center sm:text-left">
@@ -340,13 +379,13 @@ export function CurrentlyReadingCard({
                 setPreviewIndex(null);
                 setSelectedIndex(committedIdx);
               }}
-              renderSlide={({index}) => {
+              renderSlide={({index, isActive}) => {
                 const slideBook = normalizedBooks[index] || activeBook;
-                return renderBookSlide(slideBook);
+                return renderBookSlide(slideBook, isActive);
               }}
             />
           ) : (
-            renderBookSlide(activeBook)
+            renderBookSlide(activeBook, true)
           )}
         </div>
       )}

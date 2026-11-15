@@ -1,10 +1,23 @@
 import {
   ProviderQuotaScheduler,
   CapacitySnapshot,
+  ExecutionPool,
   SchedulePriority,
-  IGlobalConcurrencyGovernor,
+  GlobalConcurrencyGovernor,
   attachGlobalProviderGovernor,
 } from './providerQuotaScheduler';
+
+export interface PoolSlotBudgetConfig {
+  maxConcurrent: number;
+  reservedInteractiveSlots: number;
+}
+
+export interface PoolTelemetrySnapshot {
+  activeInteractive: number;
+  activeBatch: number;
+  maxConcurrent: number;
+  reservedInteractiveSlots: number;
+}
 
 export interface ProviderTelemetrySummary {
   activeProviders: string[];
@@ -20,29 +33,78 @@ export interface ProviderTelemetrySummary {
   totalInFlight: number;
   totalQueuedRequests: number;
   maxGlobalConcurrent: number;
+  poolTelemetry?: Record<ExecutionPool, PoolTelemetrySnapshot>;
+}
+
+interface MutablePoolState {
+  maxConcurrent: number;
+  reservedInteractiveSlots: number;
+  activeInteractive: number;
+  activeBatch: number;
+  wakeCursor: number;
 }
 
 /**
- * Global Two-Tier Outbound Quota & Concurrency Governor.
- * Coordinates across all 11 local ProviderQuotaSchedulers (8 Catalog providers,
- * Wikipedia, Gemini Structured, and Gemini Embedding) to enforce a global outbound
- * concurrency ceiling while reserving fast-lane capacity for INTERACTIVE user actions.
+ * Global Two-Tier Outbound Quota & Concurrency Governor with Isolated Execution Pools.
+ * Partitions outbound concurrency across `FAST_DECISION` (`gemini-decision-1`),
+ * `EXTERNAL_CATALOG` (Apple Books, Google Books, Open Library, PRH, Hardcover, Wikipedia),
+ * and `GENERATIVE_AI` (`gemini-structured`, `gemini-embedding`) so slow catalog HTTP scrapes
+ * never starve sub-300ms calibrated Decision evaluations.
  */
-export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
+export class GlobalProviderGovernor implements GlobalConcurrencyGovernor {
   private static instance: GlobalProviderGovernor;
 
   private readonly schedulers = new Map<string, ProviderQuotaScheduler>();
   private readonly maxGlobalConcurrent: number;
   private readonly reservedInteractiveSlots: number;
-  private activeInteractiveCount = 0;
-  private activeBatchCount = 0;
-  private wakeCursor = 0;
+  private readonly pools: Record<ExecutionPool, MutablePoolState>;
   private readonly recentSkips = new Map<string, number>();
   private readonly listeners = new Set<() => void>();
 
-  constructor(maxGlobalConcurrent = 24, reservedInteractiveSlots = 4) {
+  constructor(
+    maxGlobalConcurrent = 24,
+    reservedInteractiveSlots = 4,
+    poolOverrides?: Partial<Record<ExecutionPool, PoolSlotBudgetConfig>>,
+  ) {
     this.maxGlobalConcurrent = maxGlobalConcurrent;
     this.reservedInteractiveSlots = reservedInteractiveSlots;
+
+    const catalogBudget = poolOverrides?.EXTERNAL_CATALOG ?? {
+      maxConcurrent: maxGlobalConcurrent,
+      reservedInteractiveSlots,
+    };
+    const decisionBudget = poolOverrides?.FAST_DECISION ?? {
+      maxConcurrent: 8,
+      reservedInteractiveSlots: 2,
+    };
+    const generativeBudget = poolOverrides?.GENERATIVE_AI ?? {
+      maxConcurrent: 8,
+      reservedInteractiveSlots: 2,
+    };
+
+    this.pools = {
+      EXTERNAL_CATALOG: {
+        maxConcurrent: catalogBudget.maxConcurrent,
+        reservedInteractiveSlots: catalogBudget.reservedInteractiveSlots,
+        activeInteractive: 0,
+        activeBatch: 0,
+        wakeCursor: 0,
+      },
+      FAST_DECISION: {
+        maxConcurrent: decisionBudget.maxConcurrent,
+        reservedInteractiveSlots: decisionBudget.reservedInteractiveSlots,
+        activeInteractive: 0,
+        activeBatch: 0,
+        wakeCursor: 0,
+      },
+      GENERATIVE_AI: {
+        maxConcurrent: generativeBudget.maxConcurrent,
+        reservedInteractiveSlots: generativeBudget.reservedInteractiveSlots,
+        activeInteractive: 0,
+        activeBatch: 0,
+        wakeCursor: 0,
+      },
+    };
   }
 
   static getInstance(): GlobalProviderGovernor {
@@ -84,48 +146,59 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
     return this.schedulers.get(providerId);
   }
 
-  canAcquireSlot(priority: SchedulePriority): boolean {
-    const totalActive = this.activeInteractiveCount + this.activeBatchCount;
+  canAcquireSlot(
+    priority: SchedulePriority,
+    pool: ExecutionPool = 'EXTERNAL_CATALOG',
+  ): boolean {
+    const state = this.pools[pool];
+    const totalActive = state.activeInteractive + state.activeBatch;
     if (priority === 'INTERACTIVE') {
-      return totalActive < this.maxGlobalConcurrent;
+      return totalActive < state.maxConcurrent;
     }
     const maxBatchAllowed = Math.max(
-      2,
-      this.maxGlobalConcurrent - this.reservedInteractiveSlots,
+      1,
+      state.maxConcurrent - state.reservedInteractiveSlots,
     );
     return (
-      totalActive < this.maxGlobalConcurrent &&
-      this.activeBatchCount < maxBatchAllowed
+      totalActive < state.maxConcurrent && state.activeBatch < maxBatchAllowed
     );
   }
 
-  acquireSlot(priority: SchedulePriority): void {
+  acquireSlot(
+    priority: SchedulePriority,
+    pool: ExecutionPool = 'EXTERNAL_CATALOG',
+  ): void {
+    const state = this.pools[pool];
     if (priority === 'INTERACTIVE') {
-      this.activeInteractiveCount++;
+      state.activeInteractive++;
     } else {
-      this.activeBatchCount++;
+      state.activeBatch++;
     }
     this.notifyListeners();
   }
 
-  releaseSlot(priority: SchedulePriority): void {
+  releaseSlot(
+    priority: SchedulePriority,
+    pool: ExecutionPool = 'EXTERNAL_CATALOG',
+  ): void {
+    const state = this.pools[pool];
     if (priority === 'INTERACTIVE') {
-      this.activeInteractiveCount = Math.max(
-        0,
-        this.activeInteractiveCount - 1,
-      );
+      state.activeInteractive = Math.max(0, state.activeInteractive - 1);
     } else {
-      this.activeBatchCount = Math.max(0, this.activeBatchCount - 1);
+      state.activeBatch = Math.max(0, state.activeBatch - 1);
     }
-    // Wake waiting schedulers in round-robin order so early registered providers
-    // cannot starve downstream providers when global concurrency is saturated.
-    const schedulerList = Array.from(this.schedulers.values());
-    const count = schedulerList.length;
+
+    // Wake waiting schedulers in this execution pool in round-robin order so early
+    // registered providers cannot starve peers when pool concurrency is saturated.
+    const poolSchedulers = Array.from(this.schedulers.values()).filter(
+      scheduler => (scheduler.executionPool ?? 'EXTERNAL_CATALOG') === pool,
+    );
+    const count = poolSchedulers.length;
     if (count > 0) {
-      const startIdx = this.wakeCursor % count;
-      this.wakeCursor = (startIdx + 1) % count;
+      const startIdx = state.wakeCursor % count;
+      state.wakeCursor = (startIdx + 1) % count;
       for (let i = 0; i < count; i++) {
-        schedulerList[(startIdx + i) % count].drain();
+        poolSchedulers[(startIdx + i) % count].drain();
       }
     }
     this.notifyListeners();
@@ -144,6 +217,32 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
       snapshots.push(scheduler.inspectCapacity(priority));
     }
     return snapshots;
+  }
+
+  getPoolTelemetry(): Record<ExecutionPool, PoolTelemetrySnapshot> {
+    return {
+      FAST_DECISION: {
+        activeInteractive: this.pools.FAST_DECISION.activeInteractive,
+        activeBatch: this.pools.FAST_DECISION.activeBatch,
+        maxConcurrent: this.pools.FAST_DECISION.maxConcurrent,
+        reservedInteractiveSlots:
+          this.pools.FAST_DECISION.reservedInteractiveSlots,
+      },
+      EXTERNAL_CATALOG: {
+        activeInteractive: this.pools.EXTERNAL_CATALOG.activeInteractive,
+        activeBatch: this.pools.EXTERNAL_CATALOG.activeBatch,
+        maxConcurrent: this.pools.EXTERNAL_CATALOG.maxConcurrent,
+        reservedInteractiveSlots:
+          this.pools.EXTERNAL_CATALOG.reservedInteractiveSlots,
+      },
+      GENERATIVE_AI: {
+        activeInteractive: this.pools.GENERATIVE_AI.activeInteractive,
+        activeBatch: this.pools.GENERATIVE_AI.activeBatch,
+        maxConcurrent: this.pools.GENERATIVE_AI.maxConcurrent,
+        reservedInteractiveSlots:
+          this.pools.GENERATIVE_AI.reservedInteractiveSlots,
+      },
+    };
   }
 
   getTelemetrySummary(
@@ -200,10 +299,14 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
       totalInFlight: totalActiveRequests,
       totalQueuedRequests,
       maxGlobalConcurrent: this.maxGlobalConcurrent,
+      poolTelemetry: this.getPoolTelemetry(),
     };
   }
 
-  getSnapshot(priority: SchedulePriority = 'INTERACTIVE'): {
+  getSnapshot(
+    priority: SchedulePriority = 'INTERACTIVE',
+    pool?: ExecutionPool,
+  ): {
     providers: CapacitySnapshot[];
     activeTotal: number;
     activeInteractive: number;
@@ -212,11 +315,32 @@ export class GlobalProviderGovernor implements IGlobalConcurrencyGovernor {
     reservedInteractiveSlots: number;
   } {
     const providers = this.inspectAllProviders(priority);
+    if (pool) {
+      const state = this.pools[pool];
+      return {
+        providers,
+        activeTotal: state.activeInteractive + state.activeBatch,
+        activeInteractive: state.activeInteractive,
+        activeBatch: state.activeBatch,
+        maxGlobalConcurrent: state.maxConcurrent,
+        reservedInteractiveSlots: state.reservedInteractiveSlots,
+      };
+    }
+
+    const activeInteractive =
+      this.pools.EXTERNAL_CATALOG.activeInteractive +
+      this.pools.FAST_DECISION.activeInteractive +
+      this.pools.GENERATIVE_AI.activeInteractive;
+    const activeBatch =
+      this.pools.EXTERNAL_CATALOG.activeBatch +
+      this.pools.FAST_DECISION.activeBatch +
+      this.pools.GENERATIVE_AI.activeBatch;
+
     return {
       providers,
-      activeTotal: this.activeInteractiveCount + this.activeBatchCount,
-      activeInteractive: this.activeInteractiveCount,
-      activeBatch: this.activeBatchCount,
+      activeTotal: activeInteractive + activeBatch,
+      activeInteractive,
+      activeBatch,
       maxGlobalConcurrent: this.maxGlobalConcurrent,
       reservedInteractiveSlots: this.reservedInteractiveSlots,
     };

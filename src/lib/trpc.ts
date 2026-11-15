@@ -1,15 +1,61 @@
 import {createTRPCReact} from '@trpc/react-query';
-import {createTRPCClient, httpBatchLink, httpLink} from '@trpc/client';
+import {
+  createTRPCClient,
+  httpBatchStreamLink,
+  httpLink,
+  splitLink,
+} from '@trpc/client';
 import type {AppRouter} from '../server/trpc/routers/_app';
 import {auth} from '../firebase';
 import {useAuthStore} from '../stores/authStore';
+import {
+  getCachedIdToken,
+  primeCachedIdToken,
+  waitForLiveAuthResolution,
+} from './authTokenCache';
 import {DebugTelemetryEngine, estimateStringBytes} from './telemetry';
 
-export const getAuthHeaders = async (): Promise<Record<string, string>> => {
+const SLOW_LANE_PREFIXES = ['gemini.', 'metadata.', 'enrichment.'];
+const SLOW_LANE_PROCEDURES = new Set<string>([
+  'readingTracker.getRecommendations',
+  'readingTracker.searchUnified',
+]);
+
+/**
+ * Partitions tRPC operations into Fast Lane (core auth, library, book, and shelf I/O)
+ * vs Slow Lane (Gemini AI, external catalog orchestration, and enrichment jobs) so
+ * multi-second AI/catalog calls never head-of-line block core UI reads or mutations.
+ */
+export function isSlowLaneProcedure(path: string): boolean {
+  if (SLOW_LANE_PROCEDURES.has(path)) {
+    return true;
+  }
+  return SLOW_LANE_PREFIXES.some(prefix => path.startsWith(prefix));
+}
+
+export async function getAuthHeaders(): Promise<Record<string, string>> {
   try {
+    const storeState = useAuthStore?.getState?.();
+    const expectedUid = auth?.currentUser?.uid || storeState?.user?.uid;
+    const cachedToken = getCachedIdToken(expectedUid);
+    if (cachedToken) {
+      return {Authorization: `Bearer ${cachedToken}`};
+    }
+
+    if (!auth?.currentUser && storeState?.isOptimisticShell) {
+      await waitForLiveAuthResolution(2000);
+      const postWaitToken = getCachedIdToken(auth?.currentUser?.uid);
+      if (postWaitToken) {
+        return {Authorization: `Bearer ${postWaitToken}`};
+      }
+    }
+
     if (auth?.currentUser) {
       const token = await auth.currentUser.getIdToken(false);
       if (token) {
+        if (auth.currentUser.uid) {
+          primeCachedIdToken(token, auth.currentUser.uid);
+        }
         return {Authorization: `Bearer ${token}`};
       }
     }
@@ -17,6 +63,9 @@ export const getAuthHeaders = async (): Promise<Record<string, string>> => {
     if (storeUser && typeof storeUser.getIdToken === 'function') {
       const token = await storeUser.getIdToken(false);
       if (token) {
+        if (storeUser.uid) {
+          primeCachedIdToken(token, storeUser.uid);
+        }
         return {Authorization: `Bearer ${token}`};
       }
     }
@@ -27,7 +76,7 @@ export const getAuthHeaders = async (): Promise<Record<string, string>> => {
     }
     return {};
   }
-};
+}
 
 function isHtmlOrGatewayFallback(response: Response): boolean {
   const contentType = (
@@ -100,9 +149,7 @@ const customFetch = async (
   options?: RequestInit,
 ): Promise<Response> => {
   const nativeFn =
-    typeof window !== 'undefined'
-      ? (window as unknown as {__nativeFetch?: typeof fetch}).__nativeFetch
-      : undefined;
+    typeof window !== 'undefined' ? window.__nativeFetch : undefined;
   const fetchFn = nativeFn || fetch;
   const start = Date.now();
   const urlStr =
@@ -279,10 +326,20 @@ export const trpc = createTRPCReact<AppRouter>();
 
 export const trpcClient = trpc.createClient({
   links: [
-    httpBatchLink({
-      url: '/trpc',
-      headers: getAuthHeaders,
-      fetch: customFetch,
+    splitLink({
+      condition: op => isSlowLaneProcedure(op.path),
+      true: httpBatchStreamLink({
+        url: '/trpc',
+        headers: getAuthHeaders,
+        fetch: customFetch,
+        maxURLLength: 2083,
+      }),
+      false: httpBatchStreamLink({
+        url: '/trpc',
+        headers: getAuthHeaders,
+        fetch: customFetch,
+        maxURLLength: 2083,
+      }),
     }),
   ],
 });

@@ -90,6 +90,22 @@ export const allowlistDocConverter = {
 export class AllowlistService {
   private static cache = new Map<string, CachedUserPerms>();
   private static DEFAULT_TTL_MS = 1000 * 60 * 3; // 3 minutes
+  private static MAX_CACHE_ENTRIES = 1000;
+
+  private static writeBoundedCache(
+    normalizedEmail: string,
+    entry: CachedUserPerms,
+  ): void {
+    if (this.cache.has(normalizedEmail)) {
+      this.cache.delete(normalizedEmail);
+    } else if (this.cache.size >= this.MAX_CACHE_ENTRIES) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.cache.delete(oldestKey);
+      }
+    }
+    this.cache.set(normalizedEmail, entry);
+  }
 
   /**
    * Resolves permission flags (isAppAllowed, isAdmin, hasAiPlan) for an email.
@@ -114,11 +130,16 @@ export class AllowlistService {
       return {isAppAllowed: true, isAdmin: true, hasAiPlan: true};
     }
 
-    // Cache lookup
+    // Cache lookup (refresh insertion order for LRU)
     const now = Date.now();
     const cached = this.cache.get(normalizedEmail);
     if (cached && cached.expiresAt > now) {
+      this.cache.delete(normalizedEmail);
+      this.cache.set(normalizedEmail, cached);
       return cached.perms;
+    }
+    if (cached) {
+      this.cache.delete(normalizedEmail);
     }
 
     // Query Firestore via firebase-admin
@@ -136,7 +157,7 @@ export class AllowlistService {
       if (docSnap && docSnap.exists) {
         const data = allowlistDocConverter.fromFirestore(
           normalizedEmail,
-          (docSnap.data() || {}) as Record<string, unknown>,
+          docSnap.data() || {},
         );
         const isAdmin = data.role === 'admin';
         result = {
@@ -146,7 +167,7 @@ export class AllowlistService {
         };
       }
 
-      this.cache.set(normalizedEmail, {
+      this.writeBoundedCache(normalizedEmail, {
         perms: result,
         expiresAt: now + this.DEFAULT_TTL_MS,
       });
@@ -240,7 +261,7 @@ export class AllowlistService {
           if (snap && snap.exists) {
             const data = allowlistDocConverter.fromFirestore(
               email,
-              (snap.data() || {}) as Record<string, unknown>,
+              snap.data() || {},
             );
             const isAdmin = data.role === 'admin';
             perm = {
@@ -249,7 +270,7 @@ export class AllowlistService {
               hasAiPlan: isAdmin || Boolean(data.hasAiPlan),
             };
           }
-          this.cache.set(email, {
+          this.writeBoundedCache(email, {
             perms: perm,
             expiresAt: now + this.DEFAULT_TTL_MS,
           });
@@ -293,7 +314,7 @@ export class AllowlistService {
     ttlMs: number = this.DEFAULT_TTL_MS,
   ): void {
     const normalizedEmail = email.toLowerCase().trim();
-    this.cache.set(normalizedEmail, {
+    this.writeBoundedCache(normalizedEmail, {
       perms: {
         ...perms,
         hasAiPlan: Boolean(perms.isAdmin || perms.hasAiPlan),
@@ -314,7 +335,7 @@ export class AllowlistService {
     return snap.docs.map(doc => {
       const data = allowlistDocConverter.fromFirestore(
         doc.id,
-        (doc.data() || {}) as Record<string, unknown>,
+        doc.data() || {},
       );
       const role = data.role || 'user';
       const isAdmin = role === 'admin' || doc.id === superAdminEmail;
@@ -450,10 +471,7 @@ export class AllowlistService {
     const docRef = db.collection('appSettings/allowlist/users').doc(normalized);
     const snap = await docRef.get();
     const existingData = snap?.exists
-      ? allowlistDocConverter.fromFirestore(
-          normalized,
-          (snap.data() || {}) as Record<string, unknown>,
-        )
+      ? allowlistDocConverter.fromFirestore(normalized, snap.data() || {})
       : undefined;
     const role: AllowlistRole = existingData?.role || 'user';
     const isAdmin =

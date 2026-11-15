@@ -3,16 +3,18 @@ import {sanitizeBookStorage, hasHeavyLeaks} from './sanitizeStorage';
 import {Book} from '../types';
 import {trpcVanilla} from './trpc';
 
-const mockResetMetadata = vi.fn().mockResolvedValue({
-  success: true,
-  count: 3,
-});
+const mockResetMetadata = vi
+  .fn<(input: unknown) => Promise<{success: boolean; count: number}>>()
+  .mockResolvedValue({
+    success: true,
+    count: 3,
+  });
 
 vi.mock('./trpc', () => ({
   trpcVanilla: {
     library: {
       resetMetadata: {
-        mutate: vi.fn((...args) => mockResetMetadata(...args)),
+        mutate: vi.fn((input: unknown) => mockResetMetadata(input)),
       },
     },
   },
@@ -24,19 +26,19 @@ describe('sanitizeStorage', () => {
   });
 
   it('correctly detects books with heavy leaks', () => {
-    expect(hasHeavyLeaks({id: '1', title: 'Clean Book'} as Book)).toBe(false);
+    expect(hasHeavyLeaks({id: '1', title: 'Clean Book'})).toBe(false);
     expect(
-      hasHeavyLeaks({id: '2', title: 'Leaked', synopsis: 'Long text'} as Book),
+      hasHeavyLeaks({id: '2', title: 'Leaked', synopsis: 'Long text'}),
     ).toBe(true);
-    expect(
-      hasHeavyLeaks({id: '3', title: 'Leaked', embedding: [0.1]} as Book),
-    ).toBe(true);
+    expect(hasHeavyLeaks({id: '3', title: 'Leaked', embedding: [0.1]})).toBe(
+      true,
+    );
     expect(
       hasHeavyLeaks({
         id: '4',
         title: 'Leaked',
         _inBooks: {},
-      } as unknown as Book),
+      }),
     ).toBe(true);
   });
 

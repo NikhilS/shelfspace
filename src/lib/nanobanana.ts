@@ -85,7 +85,9 @@ export function applyNanobananaFlash(
       resolve(canvas.toDataURL('image/jpeg', 0.85));
     };
     img.onerror = err => {
-      reject(err);
+      reject(
+        err instanceof Error ? err : new Error('Failed to decode cover image'),
+      );
     };
     img.src = base64Image;
   });

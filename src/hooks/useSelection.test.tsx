@@ -6,18 +6,27 @@ import React from 'react';
 import {Book} from '../types';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 
-const mockBatchUpsert = vi.fn().mockResolvedValue({
-  createdCount: 0,
-  updatedCount: 2,
-  deletedCount: 0,
-  totalOperations: 2,
-});
+const mockBatchUpsert = vi
+  .fn<
+    (vars: unknown) => Promise<{
+      createdCount: number;
+      updatedCount: number;
+      deletedCount: number;
+      totalOperations: number;
+    }>
+  >()
+  .mockResolvedValue({
+    createdCount: 0,
+    updatedCount: 2,
+    deletedCount: 0,
+    totalOperations: 2,
+  });
 
 vi.mock('../lib/trpc', () => ({
   trpcVanilla: {
     book: {
       batchUpsert: {
-        mutate: vi.fn((...args) => mockBatchUpsert(...args)),
+        mutate: vi.fn((vars: unknown) => mockBatchUpsert(vars)),
       },
     },
   },
@@ -33,7 +42,7 @@ vi.mock('../lib/trpc', () => ({
       batchUpsert: {
         useMutation: (options?: {onSuccess?: () => void}) => ({
           mutate: vi.fn((vars: unknown) => {
-            mockBatchUpsert(vars);
+            void mockBatchUpsert(vars);
             options?.onSuccess?.();
           }),
           mutateAsync: vi.fn(async (vars: unknown) => {

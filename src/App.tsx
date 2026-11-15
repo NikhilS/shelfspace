@@ -1,4 +1,5 @@
 import React, {Suspense, lazy} from 'react';
+import {LayoutGroup, MotionConfig} from 'motion/react';
 import {QueryClientProvider} from '@tanstack/react-query';
 import {
   BrowserRouter,
@@ -39,13 +40,18 @@ import {WaitlistScreen} from './components/account/WaitlistScreen';
 
 import {Dashboard} from './pages/Dashboard';
 import {LibraryView} from './pages/LibraryView';
+import {BookDetailsView} from './pages/BookDetailsView';
 import {Login} from './pages/Login';
+import {
+  VISUALIZER_DESCRIPTORS,
+  type VisualizerId,
+} from './constants/visualizerDescriptors';
 
 // Initialize Auth
 initAuthListener();
 
-function lazyWithRetry<T extends React.ComponentType<unknown>>(
-  factory: () => Promise<{default: T}>,
+function lazyWithRetry<Component extends React.ComponentType>(
+  factory: () => Promise<{default: Component}>,
 ) {
   return lazy(async () => {
     try {
@@ -57,17 +63,8 @@ function lazyWithRetry<T extends React.ComponentType<unknown>>(
   });
 }
 
-const BookDetailsView = lazyWithRetry(() =>
-  import('./pages/BookDetailsView').then(m => ({default: m.BookDetailsView})),
-);
 const AddBookView = lazyWithRetry(() =>
   import('./pages/AddBookView').then(m => ({default: m.AddBookView})),
-);
-const ConstellationMap = lazyWithRetry(() =>
-  import('./pages/ConstellationMap').then(m => ({default: m.ConstellationMap})),
-);
-const WorldMap = lazyWithRetry(() =>
-  import('./pages/WorldMap').then(m => ({default: m.WorldMap})),
 );
 const SpruceUpView = lazyWithRetry(() =>
   import('./pages/SpruceUpView').then(m => ({default: m.SpruceUpView})),
@@ -75,11 +72,15 @@ const SpruceUpView = lazyWithRetry(() =>
 const AdminDashboard = lazyWithRetry(() =>
   import('./pages/AdminDashboard').then(m => ({default: m.AdminDashboard})),
 );
-const TimelineView = lazyWithRetry(() =>
-  import('./pages/TimelineView').then(m => ({default: m.TimelineView})),
-);
-const ReadSwipeView = lazyWithRetry(() =>
-  import('./pages/ReadSwipeView').then(m => ({default: m.ReadSwipeView})),
+
+const LAZY_VISUALIZER_VIEWS = new Map<
+  VisualizerId,
+  React.LazyExoticComponent<React.ComponentType>
+>(
+  VISUALIZER_DESCRIPTORS.map(descriptor => [
+    descriptor.id,
+    lazyWithRetry(descriptor.loadComponent),
+  ]),
 );
 
 function LoadingScreen() {
@@ -112,7 +113,7 @@ function PageWrapper({children}: {children?: React.ReactNode}) {
 }
 
 function PrivateRoute({children}: {children?: React.ReactNode}) {
-  const {user, isAuthReady} = useAuthStore();
+  const {user, isAuthReady, isOptimisticShell = false} = useAuthStore();
   const [isCacheRestored, setIsCacheRestored] = React.useState(() =>
     isQueryCacheRestored(),
   );
@@ -129,7 +130,7 @@ function PrivateRoute({children}: {children?: React.ReactNode}) {
   const isOffline =
     typeof navigator !== 'undefined' && navigator.onLine === false;
 
-  if (!isAuthReady || (isOffline && !isCacheRestored)) {
+  if (!isAuthReady || ((isOffline || isOptimisticShell) && !isCacheRestored)) {
     return <LoadingScreen />;
   }
 
@@ -196,24 +197,6 @@ function AnimatedRoutes() {
           />
 
           <Route
-            path="/library/:id/constellation"
-            element={
-              <RequireLibraryPermission requires="viewer">
-                <ConstellationMap />
-              </RequireLibraryPermission>
-            }
-          />
-
-          <Route
-            path="/library/:id/map"
-            element={
-              <RequireLibraryPermission requires="viewer">
-                <WorldMap />
-              </RequireLibraryPermission>
-            }
-          />
-
-          <Route
             path="/library/:id/spruce-up"
             element={
               <RequireLibraryPermission requires="editor" requireAdmin>
@@ -222,31 +205,43 @@ function AnimatedRoutes() {
             }
           />
 
-          <Route
-            path="/library/:id/timeline"
-            element={
-              <RequireLibraryPermission requires="viewer">
-                <TimelineView />
-              </RequireLibraryPermission>
+          {VISUALIZER_DESCRIPTORS.map(descriptor => {
+            const ViewComponent = LAZY_VISUALIZER_VIEWS.get(descriptor.id);
+            if (!ViewComponent) {
+              return null;
             }
-          />
-
-          <Route
-            path="/library/:id/swipe"
-            element={
-              <RequireLibraryPermission requires="viewer">
-                <ReadSwipeView />
-              </RequireLibraryPermission>
-            }
-          />
+            return (
+              <Route
+                key={`lib-vis-${descriptor.id}`}
+                path={descriptor.libraryRoutePath}
+                element={
+                  <RequireLibraryPermission
+                    requires={descriptor.requiredPermission}
+                  >
+                    <ViewComponent />
+                  </RequireLibraryPermission>
+                }
+              />
+            );
+          })}
 
           <Route path="/reading/add" element={<AddBookView />} />
 
-          <Route path="/reading/constellation" element={<ConstellationMap />} />
-
-          <Route path="/reading/map" element={<WorldMap />} />
-
-          <Route path="/reading/timeline" element={<TimelineView />} />
+          {VISUALIZER_DESCRIPTORS.filter(d => Boolean(d.readingRoutePath)).map(
+            descriptor => {
+              const ViewComponent = LAZY_VISUALIZER_VIEWS.get(descriptor.id);
+              if (!ViewComponent || !descriptor.readingRoutePath) {
+                return null;
+              }
+              return (
+                <Route
+                  key={`reading-vis-${descriptor.id}`}
+                  path={descriptor.readingRoutePath}
+                  element={<ViewComponent />}
+                />
+              );
+            },
+          )}
 
           <Route
             path="/library/:libraryId/book/:bookId"
@@ -265,11 +260,23 @@ function AnimatedRoutes() {
 }
 
 function AuthGuard({children}: {children: React.ReactNode}) {
-  const {user, isAuthReady, authError, logOut} = useAuthStore();
+  const {
+    user,
+    isAuthReady,
+    authError,
+    logOut,
+    isOptimisticShell = false,
+  } = useAuthStore();
   const {isAppAllowed, isLoadingPermissions, refetchPermissions} =
     useAppPermissions();
 
-  if (isAuthReady && user && !isLoadingPermissions && !isAppAllowed) {
+  if (
+    isAuthReady &&
+    user &&
+    !isOptimisticShell &&
+    !isLoadingPermissions &&
+    !isAppAllowed
+  ) {
     return (
       <WaitlistScreen
         user={{
@@ -410,11 +417,15 @@ export function App() {
         <ErrorBoundary>
           <ThemeProvider>
             <AuthGuard>
-              <BrowserRouter>
-                <AnimatedRoutes />
-                <DebugDataClearer />
-                <TelemetryHud />
-              </BrowserRouter>
+              <MotionConfig reducedMotion="user">
+                <LayoutGroup id="archival-cover-transitions">
+                  <BrowserRouter>
+                    <AnimatedRoutes />
+                    <DebugDataClearer />
+                    <TelemetryHud />
+                  </BrowserRouter>
+                </LayoutGroup>
+              </MotionConfig>
             </AuthGuard>
             <Toaster position="bottom-right" />
           </ThemeProvider>

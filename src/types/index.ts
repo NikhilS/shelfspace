@@ -35,6 +35,7 @@ import type {
 import {computeReadingStateKey} from '../schemas/book';
 
 export * from './metadata';
+export * from './readingTracker';
 
 export {computeReadingStateKey};
 

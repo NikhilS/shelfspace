@@ -7,18 +7,19 @@ import {
 } from './timelineMath';
 import {Book} from '../../types';
 
-const makeBook = (
+function makeBook(
   id: string,
   title: string,
   temporalMetadata?: Book['temporalMetadata'],
-): Book =>
-  ({
+): Book {
+  return {
     id,
     title,
     author: 'Author',
-    createdAt: 1000,
+    addedAt: 1000,
     temporalMetadata,
-  }) as Book;
+  };
+}
 
 describe('timelineMath chronological engine', () => {
   it('computes accurate bucket start years across zoom levels (1, 5, 20) for BCE and CE', () => {

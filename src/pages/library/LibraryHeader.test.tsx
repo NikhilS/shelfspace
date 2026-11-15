@@ -23,7 +23,7 @@ describe('LibraryHeader - Adaptive Density', () => {
       libraryId: 'lib-1',
       primaryGenre: 'Science Fiction',
       subgenres: ['Space Opera'],
-      status: 'reading',
+      readingStatus: 'reading',
       addedAt: '2024-01-01',
     },
   ];

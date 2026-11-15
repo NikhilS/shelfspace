@@ -2,7 +2,7 @@ import React, {useState} from 'react';
 import {toast} from 'sonner';
 import {StarRating} from '@/components/ui/star-rating';
 import {Review} from './useBook';
-import {Book, FirestoreDate} from '../../types';
+import {Book} from '../../types';
 import {useAuth} from '../../stores/authStore';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {Button} from '@/components/ui/button';
@@ -47,7 +47,7 @@ export function ReviewSection({
       userName: user.displayName || user.email || 'Unknown User',
       rating: reviewRating,
       text: reviewText.trim(),
-      createdAt: new Date() as unknown as FirestoreDate,
+      createdAt: new Date().toISOString(),
     };
 
     const originalReviews = [...reviews];

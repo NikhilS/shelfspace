@@ -30,7 +30,7 @@ export function useLibraryPermissions(
       return undefined;
     }
     return (
-      (utils.library.get?.getData?.({libraryId}) as Library | undefined) ||
+      utils.library.get?.getData?.({libraryId}) ||
       (
         utils.library.list?.getData?.({scopes: ['owned', 'shared']})
           ?.libraries as Library[] | undefined
@@ -64,10 +64,10 @@ export function useLibraryPermissions(
       )
     : undefined;
 
-  // Fallback for isolated test mocks that only define library.getPermissions.useQuery
+  // Fallback for isolated test mocks that only define library.getUserRole.useQuery
   const legacyPermQuery =
-    !hasLibraryGetQuery && Boolean(trpc?.library?.getPermissions?.useQuery)
-      ? trpc.library.getPermissions.useQuery(
+    !hasLibraryGetQuery && Boolean(trpc?.library?.getUserRole?.useQuery)
+      ? trpc.library.getUserRole.useQuery(
           {libraryId: libraryId || ''},
           {
             enabled: isQueryEnabled,
@@ -89,11 +89,7 @@ export function useLibraryPermissions(
   }
 
   const resolvedFromLibrary = libraryQuery?.data
-    ? getAccessFromLibrary(
-        libraryQuery.data as unknown as Library,
-        userId,
-        email,
-      )
+    ? getAccessFromLibrary(libraryQuery.data, userId, email)
     : undefined;
 
   const effective =

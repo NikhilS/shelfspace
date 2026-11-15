@@ -11,6 +11,8 @@ vi.mock('../../services/userService', () => ({
 }));
 
 const userCtx: SecurityContext = {
+  req: {} as SecurityContext['req'],
+  res: {} as SecurityContext['res'],
   user: {
     uid: 'user-123',
     email: 'reader@example.com',
@@ -22,6 +24,8 @@ const userCtx: SecurityContext = {
 };
 
 const adminCtx: SecurityContext = {
+  req: {} as SecurityContext['req'],
+  res: {} as SecurityContext['res'],
   user: {
     uid: 'admin-1',
     email: 'admin@example.com',

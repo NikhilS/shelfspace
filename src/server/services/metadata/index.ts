@@ -1,4 +1,20 @@
-export {MetadataRegistry} from './registry';
+export {
+  type FastTierOnCreateResult,
+  mergeOnCreateUpdateMaps,
+  MetadataRegistry,
+  metadataRegistry,
+  type OnCreateEnrichmentOptions,
+} from './registry';
+export {
+  applyNonDestructiveBonusCatalogPatch,
+  extractBonusCatalogFields,
+  hydrateCatalogForResidualBooks,
+  mergeBonusCatalogFields,
+} from './bonusCatalogPatcher';
+export {
+  executePluginStagesHorizontally,
+  runPluginStagesToRecord,
+} from './stageRunner';
 export {resolveBookSynopses} from './utils';
 export {GeoMetadataProvider} from './providers/GeoMetadataProvider';
 export {TemporalMetadataProvider} from './providers/TemporalMetadataProvider';

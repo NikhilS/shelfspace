@@ -195,7 +195,7 @@ function extractCachedLibraryFromQueryClient(
     if (trpcUtils?.library) {
       const fromGet = trpcUtils.library.get?.getData?.({
         libraryId,
-      }) as Library | undefined;
+      });
       if (fromGet && fromGet.id === libraryId) {
         return fromGet;
       }
@@ -269,7 +269,7 @@ function extractCachedBooksFromQueryClient(
         raw &&
         typeof raw === 'object' &&
         'books' in raw &&
-        Array.isArray((raw as {books: unknown}).books)
+        Array.isArray(raw.books)
       ) {
         return (raw as {books: Book[]}).books;
       }
@@ -291,7 +291,7 @@ function extractCachedBooksFromQueryClient(
       data &&
       typeof data === 'object' &&
       'books' in data &&
-      Array.isArray((data as {books: unknown}).books)
+      Array.isArray(data.books)
     ) {
       return (data as {books: Book[]}).books;
     }

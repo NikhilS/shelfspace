@@ -25,7 +25,7 @@ import type {
   TrackedShelfStatus,
   UnifiedLibrarySearchMatch,
   UnifiedExternalSearchMatch,
-} from '../../server/services/readingTracker';
+} from '../../types';
 
 const STATUS_LABELS: Record<TrackedShelfStatus | 'unset', string> = {
   want_to_read: 'Want to Read',

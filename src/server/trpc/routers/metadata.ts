@@ -2,17 +2,11 @@ import {z} from 'zod';
 import {TRPCError} from '@trpc/server';
 import {router, protectedProcedure, adminProcedure} from '../trpc';
 import {MetadataRegistry} from '../../services/metadata';
-import {MetadataKey, CoreBookData} from '../../../types/metadata';
+import {MetadataKey} from '../../../types/metadata';
 import {catalogOrchestrator, wikipediaProvider} from '../../services/catalog';
 import {serverTelemetryBuffer} from '../../services/telemetry/serverTelemetryBuffer';
+import {requiresAiPlanForEnrichment} from '../../../constants/enrichmentDescriptors';
 import {safeIdSchema, safeImageUrlSchema} from '../../../schemas/common';
-
-const PURE_AI_METADATA_KEYS = new Set<MetadataKey>([
-  MetadataKey.GEO,
-  MetadataKey.TEMPORAL,
-  MetadataKey.GENRE,
-  MetadataKey.EMBEDDING,
-]);
 
 const coreBookSchema = z
   .object({
@@ -56,14 +50,13 @@ export const metadataRouter = router({
 
       const providerPromises = createProviders.map(async provider => {
         const key = provider.getKey();
-        if (!allowAiFallback && PURE_AI_METADATA_KEYS.has(key)) {
+        if (!allowAiFallback && requiresAiPlanForEnrichment(key)) {
           return;
         }
         try {
-          const batchResult = await provider.bulkFetch(
-            input.books as CoreBookData[],
-            {allowAiFallback},
-          );
+          const batchResult = await provider.bulkFetch(input.books, {
+            allowAiFallback,
+          });
           for (const [bookId, metadata] of Object.entries(batchResult)) {
             if (metadata !== null && metadata !== undefined) {
               if (!enrichedResults[bookId]) {
@@ -98,7 +91,7 @@ export const metadataRouter = router({
     )
     .mutation(async ({ctx, input}) => {
       const allowAiFallback = Boolean(ctx.isAdmin || ctx.hasAiPlan !== false);
-      if (!allowAiFallback && PURE_AI_METADATA_KEYS.has(input.providerKey)) {
+      if (!allowAiFallback && requiresAiPlanForEnrichment(input.providerKey)) {
         throw new TRPCError({
           code: 'FORBIDDEN',
           message:
@@ -120,7 +113,7 @@ export const metadataRouter = router({
       }
 
       try {
-        return await provider.bulkFetch(input.books as CoreBookData[], {
+        return await provider.bulkFetch(input.books, {
           allowAiFallback,
         });
       } catch (error) {

@@ -428,7 +428,7 @@ export class BookPartitioner {
       id: bookId,
       title: input.title,
       author: authorStr,
-      format: (input.format as string) || 'physical',
+      format: input.format || 'physical',
       ...(computedCleanIsbn ? {cleanIsbn: computedCleanIsbn} : {}),
       ...(computedDedupeKey ? {dedupeKey: computedDedupeKey} : {}),
       ...(computedSearchTokens.length > 0
@@ -569,7 +569,7 @@ export class BookPartitioner {
       ) {
         // Additive token merge when only series or isbn is patched without baseline title/author
         const deltaTokens = computeBookSearchTokens({
-          isbn: hasIsbnUpdate ? (coreUpdates.isbn as string) : undefined,
+          isbn: hasIsbnUpdate ? coreUpdates.isbn : undefined,
           series: hasSeriesUpdate ? (coreUpdates.series as string) : undefined,
         });
         if (deltaTokens.length > 0) {
@@ -666,15 +666,16 @@ export class BookPartitioner {
       normalizeFirestoreTimestamp(bookData.addedAt) || new Date().toISOString();
     const normalizedUpdatedAt = normalizeFirestoreTimestamp(bookData.updatedAt);
     const hasSearchTokens =
-      Boolean(bookData.hasSearchTokens) ||
+      ('hasSearchTokens' in bookData && Boolean(bookData.hasSearchTokens)) ||
       (Array.isArray(bookData.searchTokens) &&
         bookData.searchTokens.length > 0);
+    const baseFields = bookData as Partial<Book>;
 
     const merged: Book = {
+      ...baseFields,
       title: bookData.title || 'Untitled Book',
       author: bookData.author || 'Unknown Author',
       addedBy: bookData.addedBy ?? null,
-      ...bookData,
       addedAt: normalizedAddedAt,
       ...(normalizedUpdatedAt ? {updatedAt: normalizedUpdatedAt} : {}),
       id: bookId,

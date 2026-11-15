@@ -1,4 +1,5 @@
 export * from './types';
+export * from './providerManifest';
 export * from './catalogOrchestrator';
 export * from './providers/AppleBooksProvider';
 export * from './providers/PenguinRandomHouseProvider';

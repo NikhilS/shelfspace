@@ -19,7 +19,9 @@ const mockBatch = vi.fn(() => ({
   set: mockBatchSet,
   commit: mockBatchCommit,
 }));
-const mockGetAll = vi.fn(async () => []);
+const mockGetAll = vi.fn<(...args: unknown[]) => Promise<unknown[]>>(
+  async () => [],
+);
 
 const mockCollection = vi.fn((path: string) => {
   if (path === 'libraries') {
@@ -428,8 +430,8 @@ describe('LibraryService', () => {
       expect(mockBatchUpdate).toHaveBeenCalledWith(
         mockRef,
         expect.objectContaining({
-          geoMetadata: expect.anything(),
-          'enrichmentStatus.geo': expect.anything(),
+          geoMetadata: expect.anything() as unknown,
+          'enrichmentStatus.geo': expect.anything() as unknown,
         }),
       );
     });

@@ -1,4 +1,4 @@
-import {AnimatePresence} from 'motion/react';
+import {AnimatePresence, motion} from 'motion/react';
 import React, {useState, useEffect, useMemo} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
@@ -27,6 +27,16 @@ import {ReadingStatusSelect} from './ReadingStatusSelect';
 import {AiInsightsPanel} from './AiInsightsPanel';
 import {useBookInsights} from './useBookInsights';
 import {useDebug} from '../../stores/debugStore';
+import {
+  ARCHIVAL_COVER_SPRING,
+  getSharedCoverLayoutId,
+  prefersReducedMotion,
+  useCoverTransitionStore,
+} from '../../stores/coverTransitionStore';
+
+const EDITORIAL_SPREAD_EASE: [number, number, number, number] = [
+  0.16, 1, 0.3, 1,
+];
 
 const formatYear = (year: number) => {
   if (year < 0) {
@@ -84,6 +94,23 @@ export function BookContent({
   const [isBioExpanded, setIsBioExpanded] = useState(false);
   const [coverError, setCoverError] = useState(false);
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  const isDeckDragging = useCoverTransitionStore(state => state.isDeckDragging);
+  const transitionPhase = useCoverTransitionStore(state => {
+    const active = state.activeTransition;
+    if (!active || active.libraryId !== libraryId || active.bookId !== bookId) {
+      return null;
+    }
+    return active.phase;
+  });
+
+  const reducedMotion = prefersReducedMotion();
+  const sharedCoverLayoutId =
+    isActive && !isDeckDragging && transitionPhase && !reducedMotion
+      ? getSharedCoverLayoutId(libraryId, bookId)
+      : undefined;
+  const shouldRevealEditorialSpread =
+    isActive && transitionPhase === 'to-detail' && !reducedMotion;
 
   useEffect(() => {
     setIsEditingDetails(false);
@@ -205,59 +232,133 @@ export function BookContent({
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12 items-start">
         {/* Left Column: Edition Showcase & Archival Accession Ledger */}
         <div className="md:col-span-4 md:sticky md:top-24 flex flex-col gap-5 items-center md:items-stretch">
-          <div className="aspect-[2/3] w-3/4 max-w-[240px] md:w-full md:max-w-none mx-auto bg-surface-container rounded-xl overflow-hidden book-cover-shadow border border-outline-variant/60 relative flex-shrink-0">
-            {/* Subtle book spine crease */}
-            <div
-              className="absolute inset-y-0 left-0 w-3 bg-gradient-to-r from-black/20 via-white/20 to-transparent z-10 pointer-events-none"
-              aria-hidden="true"
-            />
-            {book.coverUrl && !coverError ? (
-              <img
-                src={book.coverUrl}
-                alt={book.title}
-                onError={() => setCoverError(true)}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
+          {sharedCoverLayoutId ? (
+            <motion.div
+              layoutId={sharedCoverLayoutId}
+              transition={ARCHIVAL_COVER_SPRING}
+              onLayoutAnimationComplete={() => {
+                useCoverTransitionStore.getState().markDetailSettled();
+              }}
+              style={{zIndex: 30}}
+              data-testid="book-detail-cover-frame"
+              className="aspect-[2/3] w-3/4 max-w-[240px] md:w-full md:max-w-none mx-auto bg-surface-container rounded-xl overflow-hidden book-cover-shadow border border-outline-variant/60 relative flex-shrink-0"
+            >
+              {/* Subtle book spine crease */}
+              <div
+                className="absolute inset-y-0 left-0 w-3 bg-gradient-to-r from-black/20 via-white/20 to-transparent z-10 pointer-events-none"
+                aria-hidden="true"
               />
-            ) : (
-              <MonographCoverFallback
-                title={book.title}
-                author={book.author}
-                publishedYear={book.publishedDate}
-                variant="card"
-                className="absolute inset-0 p-6"
-              />
-            )}
-            {/* Status Badge */}
-            {book.readingStatus && book.readingStatus !== 'unset' && (
-              <div className="absolute top-3.5 right-3.5 shadow-xs swiper-no-swiping z-20">
-                <Badge
-                  variant={
-                    book.readingStatus === 'want_to_read'
-                      ? 'status-to-read'
+              {book.coverUrl && !coverError ? (
+                <img
+                  src={book.coverUrl}
+                  alt={book.title}
+                  onError={() => setCoverError(true)}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <MonographCoverFallback
+                  title={book.title}
+                  author={book.author}
+                  publishedYear={book.publishedDate}
+                  variant="card"
+                  className="absolute inset-0 p-6"
+                />
+              )}
+              {/* Status Badge */}
+              {book.readingStatus && book.readingStatus !== 'unset' && (
+                <div className="absolute top-3.5 right-3.5 shadow-xs swiper-no-swiping z-20">
+                  <Badge
+                    variant={
+                      book.readingStatus === 'want_to_read'
+                        ? 'status-to-read'
+                        : book.readingStatus === 'reading'
+                          ? 'status-reading'
+                          : book.readingStatus === 'finished' ||
+                              book.readingStatus === 'completed'
+                            ? 'status-read'
+                            : 'status-abandoned'
+                    }
+                  >
+                    {book.readingStatus === 'want_to_read'
+                      ? 'WANT TO READ'
                       : book.readingStatus === 'reading'
-                        ? 'status-reading'
+                        ? 'READING'
                         : book.readingStatus === 'finished' ||
                             book.readingStatus === 'completed'
-                          ? 'status-read'
-                          : 'status-abandoned'
-                  }
-                >
-                  {book.readingStatus === 'want_to_read'
-                    ? 'WANT TO READ'
-                    : book.readingStatus === 'reading'
-                      ? 'READING'
-                      : book.readingStatus === 'finished' ||
-                          book.readingStatus === 'completed'
-                        ? 'FINISHED'
-                        : 'ABANDONED'}
-                </Badge>
-              </div>
-            )}
-          </div>
+                          ? 'FINISHED'
+                          : 'ABANDONED'}
+                  </Badge>
+                </div>
+              )}
+            </motion.div>
+          ) : (
+            <div
+              data-testid="book-detail-cover-frame"
+              className="aspect-[2/3] w-3/4 max-w-[240px] md:w-full md:max-w-none mx-auto bg-surface-container rounded-xl overflow-hidden book-cover-shadow border border-outline-variant/60 relative flex-shrink-0"
+            >
+              {/* Subtle book spine crease */}
+              <div
+                className="absolute inset-y-0 left-0 w-3 bg-gradient-to-r from-black/20 via-white/20 to-transparent z-10 pointer-events-none"
+                aria-hidden="true"
+              />
+              {book.coverUrl && !coverError ? (
+                <img
+                  src={book.coverUrl}
+                  alt={book.title}
+                  onError={() => setCoverError(true)}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <MonographCoverFallback
+                  title={book.title}
+                  author={book.author}
+                  publishedYear={book.publishedDate}
+                  variant="card"
+                  className="absolute inset-0 p-6"
+                />
+              )}
+              {/* Status Badge */}
+              {book.readingStatus && book.readingStatus !== 'unset' && (
+                <div className="absolute top-3.5 right-3.5 shadow-xs swiper-no-swiping z-20">
+                  <Badge
+                    variant={
+                      book.readingStatus === 'want_to_read'
+                        ? 'status-to-read'
+                        : book.readingStatus === 'reading'
+                          ? 'status-reading'
+                          : book.readingStatus === 'finished' ||
+                              book.readingStatus === 'completed'
+                            ? 'status-read'
+                            : 'status-abandoned'
+                    }
+                  >
+                    {book.readingStatus === 'want_to_read'
+                      ? 'WANT TO READ'
+                      : book.readingStatus === 'reading'
+                        ? 'READING'
+                        : book.readingStatus === 'finished' ||
+                            book.readingStatus === 'completed'
+                          ? 'FINISHED'
+                          : 'ABANDONED'}
+                  </Badge>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Archival Accession Ledger */}
-          <dl className="bento-card p-4 w-full divide-y divide-outline-variant/50 text-xs font-sans">
+          <motion.dl
+            initial={shouldRevealEditorialSpread ? {opacity: 0, y: 8} : false}
+            animate={{opacity: 1, y: 0}}
+            transition={{
+              duration: 0.18,
+              delay: shouldRevealEditorialSpread ? 0.04 : 0,
+              ease: EDITORIAL_SPREAD_EASE,
+            }}
+            className="bento-card p-4 w-full divide-y divide-outline-variant/50 text-xs font-sans"
+          >
             <div className="py-2 first:pt-0 flex items-center justify-between gap-3">
               <dt className="metadata-eyebrow">Collection</dt>
               <dd className="font-medium text-on-surface text-right">
@@ -285,11 +386,20 @@ export function BookContent({
                 {book.isbn || 'None listed'}
               </dd>
             </div>
-          </dl>
+          </motion.dl>
         </div>
 
         {/* Right Column: Magazine Literary Spread */}
-        <div className="md:col-span-8 flex flex-col gap-6 sm:gap-8 min-w-0">
+        <motion.div
+          initial={shouldRevealEditorialSpread ? {opacity: 0, y: 8} : false}
+          animate={{opacity: 1, y: 0}}
+          transition={{
+            duration: 0.2,
+            delay: shouldRevealEditorialSpread ? 0.06 : 0,
+            ease: EDITORIAL_SPREAD_EASE,
+          }}
+          className="md:col-span-8 flex flex-col gap-6 sm:gap-8 min-w-0"
+        >
           <BookHeader
             book={book}
             canEdit={canEdit}
@@ -513,10 +623,10 @@ export function BookContent({
                                     variant="outline"
                                     size="sm"
                                     className={`text-[10px] font-bold tracking-wider uppercase shrink-0 ${getAdminBadgeClass(
-                                      loc.adminLevel,
+                                      loc.adminLevel || '',
                                     )}`}
                                   >
-                                    {loc.adminLevel}
+                                    {loc.adminLevel || 'place'}
                                   </Badge>
                                 </div>
                                 {loc.rationale && (
@@ -600,10 +710,12 @@ export function BookContent({
                               size="sm"
                               className="text-[11px] font-mono tabular-nums"
                             >
-                              {book.temporalMetadata.startYear !== undefined &&
-                              book.temporalMetadata.endYear !== undefined
+                              {typeof book.temporalMetadata.startYear ===
+                                'number' &&
+                              typeof book.temporalMetadata.endYear === 'number'
                                 ? `${formatYear(book.temporalMetadata.startYear)} – ${formatYear(book.temporalMetadata.endYear)}`
-                                : book.temporalMetadata.startYear !== undefined
+                                : typeof book.temporalMetadata.startYear ===
+                                    'number'
                                   ? `Circa ${formatYear(book.temporalMetadata.startYear)}`
                                   : 'Historical Epoch'}
                             </Badge>
@@ -745,7 +857,7 @@ export function BookContent({
               />
             </>
           )}
-        </div>
+        </motion.div>
       </div>
 
       <AnimatePresence>

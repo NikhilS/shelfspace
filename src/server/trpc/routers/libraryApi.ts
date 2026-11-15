@@ -17,10 +17,23 @@ export const libraryApiRouter = router({
   list: protectedProcedure
     .input(libraryListSchema)
     .query(async ({ctx, input}) => {
+      const scopes = input?.scopes ?? ['owned', 'shared'];
+      const isDefaultOwnedShared =
+        scopes.length === 2 &&
+        scopes.includes('owned') &&
+        scopes.includes('shared') &&
+        !scopes.includes('all');
+      if (ctx.requestLoaders && isDefaultOwnedShared) {
+        return await ctx.requestLoaders.getUserLibraries(
+          ctx.user.uid,
+          ctx.user.email,
+          ctx.isAdmin,
+        );
+      }
       return await LibraryService.getUserLibraries(
         ctx.user.uid,
         ctx.user.email,
-        input?.scopes ?? ['owned', 'shared'],
+        scopes,
         ctx.isAdmin,
       );
     }),

@@ -172,9 +172,9 @@ export interface SchemaValidationContext {
   logger?: (message: string, details: Record<string, unknown>) => void;
 }
 
-export interface SchemaValidationResult<T> {
+export interface SchemaValidationResult<Payload> {
   success: boolean;
-  data: T;
+  data: Payload;
   issues: ValidationIssueDetail[];
 }
 
@@ -363,11 +363,11 @@ function logSchemaValidationFailure(
  * logging clear field-level diagnostic details for development debugging and
  * throwing a `SchemaValidationError` when validation fails.
  */
-export function validateIncomingApiData<T>(
-  schema: z.ZodType<T>,
+export function validateIncomingApiData<Schema extends z.ZodType>(
+  schema: Schema,
   data: unknown,
   context: Omit<SchemaValidationContext, 'strict'>,
-): T {
+): z.output<Schema> {
   const parsed = schema.safeParse(data);
   if (parsed.success) {
     return parsed.data;
@@ -391,11 +391,11 @@ export function validateIncomingApiData<T>(
  * logging clear field-level diagnostic details for development debugging and
  * throwing a `SchemaValidationError` when validation fails.
  */
-export function validateFirestoreReadPayload<T>(
-  schema: z.ZodType<T>,
+export function validateFirestoreReadPayload<Schema extends z.ZodType>(
+  schema: Schema,
   data: unknown,
   context: Omit<SchemaValidationContext, 'strict'>,
-): T {
+): z.output<Schema> {
   const parsed = schema.safeParse(data);
   if (parsed.success) {
     return parsed.data;
@@ -421,11 +421,11 @@ export function validateFirestoreReadPayload<T>(
  * on a validation clone so domain fields are checked accurately while preserving sentinels on the returned payload.
  * Defaults to `strict: true` (throws `SchemaValidationError` on schema violations unless `strict: false` is passed).
  */
-export function validateFirestoreWritePayload<T extends object>(
+export function validateFirestoreWritePayload<Payload extends object>(
   schema: z.ZodType<unknown>,
-  payload: T,
+  payload: Payload,
   context: SchemaValidationContext,
-): SchemaValidationResult<T> {
+): SchemaValidationResult<Payload> {
   const validationCandidate = stripFirestoreSentinels(payload);
   const parsed = schema.safeParse(validationCandidate);
   if (parsed.success) {

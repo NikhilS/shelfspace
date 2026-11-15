@@ -1,3 +1,4 @@
+import {useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
 import {logger} from '../stores/debugStore';
 import {trpc, trpcVanilla} from '../lib/trpc';
@@ -10,12 +11,22 @@ export interface PickSeedBook {
   subgenres?: string[];
 }
 
+function getLocalDateBucket(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export function usePickOfTheDay(
   books: PickSeedBook[],
   currentTabOrEnabled: string | boolean = 'overview',
   scopeKey: string = 'library',
 ) {
   const {hasAiPlan} = useAppPermissions();
+  const [refreshEpoch, setRefreshEpoch] = useState(0);
+  const localDateBucket = getLocalDateBucket();
   const getPickOfTheDayMutation =
     trpc?.gemini?.getPickOfTheDay?.useMutation?.();
 
@@ -25,7 +36,7 @@ export function usePickOfTheDay(
       : currentTabOrEnabled === 'overview';
 
   const query = useQuery({
-    queryKey: ['pickOfTheDay', scopeKey, books.length],
+    queryKey: ['pickOfTheDay', scopeKey, localDateBucket, refreshEpoch],
     enabled:
       books.length > 0 &&
       isEnabled &&
@@ -153,7 +164,9 @@ export function usePickOfTheDay(
   return {
     pickOfTheDay: query.data || null,
     isGeneratingPick: query.isFetching,
-    generateNewPick: () => query.refetch(),
+    generateNewPick: () => {
+      setRefreshEpoch(prev => prev + 1);
+    },
     error: query.error ? query.error.message : null,
   };
 }

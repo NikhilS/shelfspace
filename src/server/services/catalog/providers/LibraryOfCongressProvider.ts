@@ -8,7 +8,7 @@ import {mapLegacyGenreToTaxonomy} from '../../../../constants/taxonomy';
 import {ProviderQuotaScheduler} from '../../scheduler/providerQuotaScheduler';
 import {
   CatalogQuery,
-  ICatalogSourceProvider,
+  CatalogSourceProvider,
   ProviderBookHit,
   ProviderCapabilities,
   fetchWithProviderTimeout,
@@ -27,7 +27,7 @@ interface LocResponse {
   results?: LocResultItem[];
 }
 
-export class LibraryOfCongressProvider implements ICatalogSourceProvider {
+export class LibraryOfCongressProvider implements CatalogSourceProvider {
   readonly id = 'library-of-congress' as const;
   readonly name = 'Library of Congress';
   readonly authorityWeight = 78;
@@ -38,6 +38,7 @@ export class LibraryOfCongressProvider implements ICatalogSourceProvider {
     synopsis: true,
     series: false,
     genre: true,
+    batchWave: 2,
   };
 
   readonly scheduler = new ProviderQuotaScheduler({

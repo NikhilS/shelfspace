@@ -6,6 +6,7 @@ import {getRouteBoundaryKey} from '../components/layout/ScrollToTop';
 import {MemoryRouter, Route, Routes} from 'react-router-dom';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {Book} from '../types';
+import {useCoverTransitionStore} from '../stores/coverTransitionStore';
 
 const createTestQueryClient = () =>
   new QueryClient({
@@ -214,6 +215,7 @@ vi.mock('../lib/trpc', () => ({
 describe('BookDetailsView & 3-Slot BookSwipeDeck', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useCoverTransitionStore.getState().resetCoverTransitions();
     mockGetListData.mockReturnValue(undefined);
     mockGetBookData.mockReturnValue(undefined);
     mockBookGetUseQuery.mockReturnValue({data: null, isLoading: true});
@@ -376,6 +378,122 @@ describe('BookDetailsView & 3-Slot BookSwipeDeck', () => {
     });
     expect(screen.getByTestId('book-swipe-slot-0')).toHaveAttribute(
       'data-book-id',
+      'b-3',
+    );
+  });
+
+  it('tracks swiped active book in coverTransitionStore and arms reverse cover flight on Back click', async () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    mockGetListData.mockReturnValue(mockBooksList);
+    mockBookGetUseQuery.mockImplementation((input, opts) => ({
+      data:
+        opts?.initialData?.() ||
+        mockBooksList.find(b => b.id === input.bookId) ||
+        null,
+      isLoading: false,
+    }));
+
+    useCoverTransitionStore.getState().armCoverTransition({
+      libraryId: '123',
+      bookId: 'b-2',
+      originSurface: 'library-grid',
+      originRouteKey: '/library/123/collection',
+      scrollY: 512,
+      coverPreview: {
+        title: 'Piranesi',
+        author: 'Susanna Clarke',
+      },
+    });
+
+    const testQueryClient = createTestQueryClient();
+    render(
+      <QueryClientProvider client={testQueryClient}>
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: '/library/123/book/b-2',
+              state: {
+                from: '/library/123/collection',
+                bookList: mockBooksList.map(b => b.id),
+              },
+            },
+          ]}
+        >
+          <Routes>
+            <Route
+              path="/library/:libraryId/book/:bookId"
+              element={<BookDetailsView />}
+            />
+            <Route
+              path="/library/:libraryId/collection"
+              element={<div data-testid="shelf-destination">Shelf View</div>}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    // Advance to b-3 via immediate index commit when reduced-motion is off by clicking Next Book
+    // Note: switch matchMedia to reduced-motion just for instant slide step in JSDOM, then restore
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query.includes('prefers-reduced-motion'),
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+    fireEvent.keyDown(window, {key: 'ArrowRight'});
+
+    await waitFor(() => {
+      expect(useCoverTransitionStore.getState().activeTransition?.bookId).toBe(
+        'b-3',
+      );
+    });
+    expect(
+      useCoverTransitionStore.getState().activeTransition?.initialBookId,
+    ).toBe('b-2');
+
+    // Re-enable full motion before clicking Back to Library
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    const backLinks = screen.getAllByLabelText('Back to Library');
+    fireEvent.click(backLinks[0]);
+
+    expect(useCoverTransitionStore.getState().activeTransition?.phase).toBe(
+      'to-shelf',
+    );
+    expect(useCoverTransitionStore.getState().activeTransition?.bookId).toBe(
       'b-3',
     );
   });

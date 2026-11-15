@@ -8,10 +8,7 @@ import type {
   GetRecommendationsOutput,
   RecommendationCategoryFilter,
 } from '../schemas/recommendation';
-import type {
-  TrackedBookItem,
-  UnreadLibraryBookItem,
-} from '../server/services/readingTracker';
+import type {TrackedBookItem, UnreadLibraryBookItem} from '../types';
 
 export interface UseBookRecommendationsOptions {
   enabled?: boolean;
@@ -171,7 +168,7 @@ export function useBookRecommendations(
         {
           enabled:
             isEnabled && (books.length > 0 || unreadLibraryBooks.length > 0),
-          staleTime: 1000 * 60 * 30, // 30 minutes
+          staleTime: 1000 * 60 * 60 * 24, // 24 hours daily editorial cache
           refetchOnWindowFocus: false,
         },
       );

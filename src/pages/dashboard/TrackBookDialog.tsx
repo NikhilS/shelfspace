@@ -28,13 +28,13 @@ import {StarRating} from '@/components/ui/star-rating';
 import {trpcVanilla} from '../../lib/trpc';
 import {toTitleCase} from '../../lib/utils';
 import {toast} from 'sonner';
-import type {Library} from '../../types';
 import type {
+  Library,
   TrackedShelfStatus,
   UnifiedLibrarySearchMatch,
   UnifiedExternalSearchMatch,
   TrackBookInput,
-} from '../../server/services/readingTracker';
+} from '../../types';
 
 interface TrackBookDialogProps {
   isOpen: boolean;

@@ -55,6 +55,7 @@ export const bookTemporalMetadataSchema = z
     startYear: z.number().nullable().optional(),
     endYear: z.number().nullable().optional(),
     eraName: z.string().max(300).nullable().optional(),
+    eraLabel: z.string().max(300).nullable().optional(),
     rationale: z.string().max(2000).nullable().optional(),
     lastProcessedAt: z.string().max(100).nullable().optional(),
     lastSyncedAt: z.string().max(100).nullable().optional(),

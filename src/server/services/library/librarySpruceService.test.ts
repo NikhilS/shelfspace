@@ -142,7 +142,7 @@ describe('librarySpruceService — Image Upload & Magic-Byte Validation (SEC-02)
         metadata: expect.objectContaining({
           contentType: 'image/png',
           contentDisposition: 'inline',
-        }),
+        }) as unknown,
       }),
     );
   });
@@ -210,7 +210,7 @@ describe('librarySpruceService — Image Upload & Magic-Byte Validation (SEC-02)
           'darkness',
           'ursula',
           'guin',
-        ]),
+        ]) as unknown,
         synopsis: 'MOCK_DELETE_FIELD',
       }),
     );

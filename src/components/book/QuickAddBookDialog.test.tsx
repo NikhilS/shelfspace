@@ -6,37 +6,45 @@ import {MemoryRouter} from 'react-router-dom';
 import {QuickAddBookDialog} from './QuickAddBookDialog';
 import {useAuth} from '../../stores/authStore';
 
-const mockNavigate = vi.fn();
-const mockBatchUpsertMutate = vi.fn().mockResolvedValue({success: true});
-const mockSearchUnifiedQuery = vi.fn().mockResolvedValue({
-  libraryMatches: [
+const {
+  mockNavigate,
+  mockBatchUpsertMutate,
+  mockSearchUnifiedQuery,
+  mockSearchByTitleMutate,
+  mockTrackBookMutate,
+} = vi.hoisted(() => ({
+  mockNavigate: vi.fn(),
+  mockBatchUpsertMutate: vi.fn().mockResolvedValue({success: true}),
+  mockSearchUnifiedQuery: vi.fn().mockResolvedValue({
+    libraryMatches: [
+      {
+        bookId: 'existing-lib-book-1',
+        libraryId: 'lib123',
+        libraryName: 'Living Room Shelf',
+        isVirtual: false,
+        ownershipStatus: 'owned',
+        title: 'The Left Hand of Darkness',
+        author: 'Ursula K. Le Guin',
+        readingStatus: 'unset',
+      },
+    ],
+    externalMatches: [
+      {
+        title: 'Piranesi',
+        author: 'Susanna Clarke',
+        isbn: '9781635575637',
+      },
+    ],
+  }),
+  mockSearchByTitleMutate: vi.fn().mockResolvedValue([
     {
-      bookId: 'existing-lib-book-1',
-      libraryId: 'lib123',
-      libraryName: 'Living Room Shelf',
-      isVirtual: false,
-      ownershipStatus: 'owned',
-      title: 'The Left Hand of Darkness',
-      author: 'Ursula K. Le Guin',
-      readingStatus: 'unset',
+      title: 'Project Hail Mary',
+      author: 'Andy Weir',
+      isbn: '9780593135204',
     },
-  ],
-  externalMatches: [
-    {
-      title: 'Piranesi',
-      author: 'Susanna Clarke',
-      isbn: '9781635575637',
-    },
-  ],
-});
-const mockSearchByTitleMutate = vi.fn().mockResolvedValue([
-  {
-    title: 'Project Hail Mary',
-    author: 'Andy Weir',
-    isbn: '9780593135204',
-  },
-]);
-const mockTrackBookMutate = vi.fn().mockResolvedValue({success: true});
+  ]),
+  mockTrackBookMutate: vi.fn().mockResolvedValue({success: true}),
+}));
 
 vi.mock('../../stores/authStore', () => ({
   useAuth: vi.fn(),
@@ -92,15 +100,15 @@ vi.mock('../../lib/trpc', () => ({
   trpcVanilla: {
     book: {
       batchUpsert: {
-        mutate: (...args: unknown[]) => mockBatchUpsertMutate(...args),
+        mutate: mockBatchUpsertMutate,
       },
     },
     readingTracker: {
       searchUnified: {
-        query: (...args: unknown[]) => mockSearchUnifiedQuery(...args),
+        query: mockSearchUnifiedQuery,
       },
       trackBook: {
-        mutate: (...args: unknown[]) => mockTrackBookMutate(...args),
+        mutate: mockTrackBookMutate,
       },
     },
     metadata: {
@@ -108,7 +116,7 @@ vi.mock('../../lib/trpc', () => ({
         mutate: vi.fn().mockResolvedValue(null),
       },
       searchByTitle: {
-        mutate: (...args: unknown[]) => mockSearchByTitleMutate(...args),
+        mutate: mockSearchByTitleMutate,
       },
     },
   },
@@ -174,7 +182,7 @@ describe('QuickAddBookDialog', () => {
                 title: 'Piranesi',
                 ownershipStatus: 'unowned',
                 readingStatus: 'reading',
-              }),
+              }) as unknown,
             }),
           ],
         }),
@@ -230,7 +238,7 @@ describe('QuickAddBookDialog', () => {
               data: expect.objectContaining({
                 title: 'Project Hail Mary',
                 ownershipStatus: 'owned',
-              }),
+              }) as unknown,
             }),
           ],
         }),

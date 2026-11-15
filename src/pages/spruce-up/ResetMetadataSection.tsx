@@ -36,7 +36,22 @@ interface ResetMetadataSectionProps {
   books?: Book[];
 }
 
-const RESETTABLE_METADATA_OPTIONS = [
+type ResettableMetadataType =
+  | 'genre'
+  | 'geo'
+  | 'temporal'
+  | 'synopsis'
+  | 'authorBio'
+  | 'embedding'
+  | 'coverImage';
+
+const RESETTABLE_METADATA_OPTIONS: Array<{
+  id: ResettableMetadataType;
+  label: string;
+  shortLabel: string;
+  description: string;
+  isLegacy: boolean;
+}> = [
   {
     id: 'genre',
     label: 'Primary Genre & Subgenres (Current Taxonomy)',
@@ -106,7 +121,8 @@ export function ResetMetadataSection({
     utils = undefined;
   }
 
-  const [selectedType, setSelectedType] = useState<string>('genre');
+  const [selectedType, setSelectedType] =
+    useState<ResettableMetadataType>('genre');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [lastResetInfo, setLastResetInfo] = useState<{
@@ -362,8 +378,13 @@ export function ResetMetadataSection({
               <Select
                 value={selectedType}
                 onValueChange={val => {
-                  setSelectedType(val);
-                  setLastResetInfo(null);
+                  const matched = RESETTABLE_METADATA_OPTIONS.find(
+                    opt => opt.id === val,
+                  );
+                  if (matched) {
+                    setSelectedType(matched.id);
+                    setLastResetInfo(null);
+                  }
                 }}
               >
                 <SelectTrigger

@@ -24,18 +24,18 @@ The **book(ish)** monorepo follows a strict, layered folder structure with clear
     ├── hooks/                        # Shared React hooks (use*.ts)
     ├── stores/                       # Ephemeral Zustand UI stores (*Store.ts)
     ├── workers/                      # Web Workers (*.worker.ts)
-    ├── lib/                          # Pure client utilities & gateway helpers (camelCase.ts)
+    ├── lib/                          # Pure client utilities, clustering/telemetry packages & gateway helpers
     ├── services/                     # Browser lifecycle listeners (authListener.ts)
-    ├── constants/                    # Immutable domain constants & taxonomies (camelCase.ts)
-    ├── types/                        # Shared TypeScript domain interfaces (index.ts barrel)
-    ├── schemas/                      # Shared Zod runtime validation schemas (camelCase.ts)
-    └── server/                       # Server-only boundary (NEVER imported by browser code)
+    ├── constants/                    # Immutable domain constants, taxonomies, Decisions catalogs & plugin descriptors (enrichmentDescriptors.ts, visualizerDescriptors.ts)
+    ├── types/                        # Shared TypeScript domain interfaces & DTOs (index.ts barrel, readingTracker.ts, metadata.ts)
+    ├── schemas/                      # Shared Zod runtime validation schemas (common.ts, book.ts, libraryApi.ts, decisions.ts)
+    └── server/                       # Server-only boundary (NEVER imported by browser code; enforced by ESLint)
         ├── auth/                     # JWT verification, RBAC/ABAC permissions & procedures
         ├── middleware/               # Express security headers, rate limiting & SSE guards
         ├── trpc/
         │   ├── trpc.ts               # tRPC initialization & procedure re-exports
-        │   └── routers/              # 1-to-1 domain routers + _app.ts root router
-        └── services/                 # Server domain service packages & orchestrators
+        │   └── routers/              # 1-to-1 domain routers + _app.ts root router (`readingTracker`, `enrichment`, `metadata`, etc.)
+        └── services/                 # Modular server domain service packages (`book/`, `library/`, `readingTracker/`, `catalog/`, `metadata/`, `gemini/`)
 ```
 
 ---
@@ -58,21 +58,28 @@ The **book(ish)** monorepo follows a strict, layered folder structure with clear
 
 ## 3. Module Resolution & Barrel Rules (No Sibling Shims)
 
-1. **Single Canonical Entry Point per Module:**
-   - When a domain service or type module grows into a multi-file directory (e.g., `src/types/`, `src/lib/telemetry/`, `src/server/services/book/`, `src/server/services/library/`, `src/server/services/gemini/`, `src/server/services/catalog/`, `src/server/services/metadata/`), expose its public surface via `index.ts` inside that directory.
+1. **Single Canonical Entry Point per Module & Provider Barrel Encapsulation:**
+   - When a domain service, math engine, or type module grows into a multi-file directory (e.g., `src/types/`, `src/lib/clustering/`, `src/lib/telemetry/`, `src/server/services/book/`, `src/server/services/library/`, `src/server/services/readingTracker/`, `src/server/services/gemini/`, `src/server/services/catalog/`, `src/server/services/metadata/`), expose its public surface via `index.ts` inside that directory and keep individual implementation modules focused (<1,000 LOC).
    - **Never** create a redundant 1-line sibling re-export file (such as `src/types.ts` next to `src/types/index.ts`, or `bookService.ts` next to `book/index.ts`). Every module must have exactly one import path.
-2. **1-to-1 tRPC Router Mapping:**
+   - External server callers must import metadata and catalog providers through `src/server/services/metadata` or `src/server/services/catalog` (deep imports into `providers/*` outside those packages are blocked by `eslint.config.cjs`).
+2. **Typed Plugin Registries (Open-Closed Extensibility):**
+   - **Metadata Enrichment**: Declared in `src/constants/enrichmentDescriptors.ts` (`ENRICHMENT_DESCRIPTORS`) and executed via `MetadataPlugin<Output>` registrations in `MetadataRegistry` (`src/server/services/metadata/`).
+   - **Catalog Sources**: Declared via `CatalogSourceProvider` implementations registered in `src/server/services/catalog/providerManifest.ts` (`createDefaultCatalogProviders()`), driving wave scheduling and structured-series authority in `CatalogOrchestrator`.
+   - **Interactive Visualizers**: Declared in `src/constants/visualizerDescriptors.ts` (`VISUALIZER_DESCRIPTORS`) with per-visualizer progressive unlock readiness (`computeReadiness`).
+   - See [`CONTRIBUTING.md`](../../CONTRIBUTING.md) for step-by-step plugin recipes.
+3. **1-to-1 tRPC Router Mapping:**
    - Every top-level namespace on `appRouter` in `src/server/trpc/routers/_app.ts` must live in its own dedicated file inside `src/server/trpc/routers/`:
      - `auth` → `auth.ts`
      - `user` → `user.ts`
      - `library` → `libraryApi.ts`
      - `book` → `bookApi.ts`
+     - `readingTracker` → `readingTracker.ts`
      - `enrichment` → `enrichmentApi.ts`
      - `metadata` → `metadata.ts`
      - `gemini` → `gemini.ts`
-3. **Strict Client/Server Boundary:**
-   - Files under `src/server/` may never be imported by browser components, hooks, or stores (except `import type {AppRouter}` in `src/lib/trpc.ts`).
-   - Browser code must never contain a `db/` directory or import `firebase/firestore`. Client-side mutation wrappers (`storage.ts`, `bookActions.ts`, `sanitizeStorage.ts`) live in `src/lib/` and delegate 100% of persistence to `trpc`.
+4. **Strict Client/Server Boundary (Enforced in `eslint.config.cjs`):**
+   - Files under `src/server/` and `firebase-admin` may never be imported by browser components, hooks, or stores (except `import type {AppRouter}` in `src/lib/trpc.ts`). Shared DTOs (such as `src/types/readingTracker.ts`) must reside in `src/types/` or `src/schemas/`.
+   - Browser and server code must never import `firebase/firestore` or `@firebase/firestore`. Client-side mutation wrappers (`storage.ts`, `bookActions.ts`, `sanitizeStorage.ts`) live in `src/lib/` and delegate 100% of persistence to `trpc`.
 
 ---
 
@@ -97,13 +104,15 @@ The repository adheres to the official [Google TypeScript Style Guide](https://g
    - Use `T[]` or `readonly T[]` for simple array types and `Array<...>` for complex union/function types (`@typescript-eslint/array-type: ['error', {default: 'array-simple'}]`).
 4. **No Redundant `public` Modifiers:**
    - Class properties, methods, and constructors are public by default in TypeScript. Never add the explicit `public` keyword (`@typescript-eslint/explicit-member-accessibility: ['error', {accessibility: 'no-public'}]`). Use `readonly` directly on constructor parameter properties (`constructor(readonly id: string)`), and use `private` or `protected` for non-public members.
-5. **Whole-Word CamelCase for Acronyms (§ 7.2):**
+5. **Whole-Word CamelCase for Acronyms & No Hungarian Prefixes (§ 7.2):**
    - Treat acronyms and initialisms of 3+ letters as whole words in both `PascalCase` and `camelCase` identifiers and filenames: write `CsvImportTab`, `ScanIsbnTab`, `DebugConsoleHud`, `handleExportToCsv`, and `isbn` rather than `CSVImportTab`, `ScanISBNTab`, `DebugConsoleHUD`, `handleExportToCSV`, or `ISBN`.
+   - Never prefix interfaces with Hungarian `I` (`MetadataPlugin`, `CatalogSourceProvider`, `GlobalConcurrencyGovernor` — never `IMetadataPlugin`) and never prefix multi-letter generic type parameters with Hungarian `T` (`MetadataPlugin<Output>`, `SchemaValidationResult<Payload>`, or single-letter `<T>` — never `<TOutput>`). Both rules are enforced via `@typescript-eslint/naming-convention`.
 6. **Mandatory Braces on All Control Flow (`curly`):**
    - Every `if`, `else`, `for`, `while`, and `do` statement must use curly braces (`{ ... }`), even when the body is a single statement (`curly: ['error', 'all']`).
-7. **Zero `any` Across Production & Test Files:**
-   - `@typescript-eslint/no-explicit-any: 'error'` is enforced across 100% of the repository, including all `*.test.ts` and `*.test.tsx` suites. Prefer `unknown`, `Partial<T>`, `Parameters<typeof fn>`, or typed test factory helpers over `any`.
-   - Lint suppressions (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`) are prohibited.
+7. **Zero `any` & Strict Type-Checked Linting Across Production & Test Files:**
+   - `tsconfig.json` enforces `"strict": true`, `"noImplicitReturns": true`, `"noFallthroughCasesInSwitch": true`, `"noImplicitOverride": true`, and `"useUnknownInCatchVariables": true` across all source and co-located test files.
+   - `eslint.config.cjs` enforces `@typescript-eslint/no-explicit-any: 'error'` together with full type-checked `no-unsafe-*` rules (`no-unsafe-assignment`, `no-unsafe-member-access`, `no-unsafe-call`, `no-unsafe-return`, `no-unsafe-argument`), `no-unnecessary-type-assertion`, `await-thenable`, `no-misused-promises`, `only-throw-error`, and `prefer-promise-reject-errors` across 100% of the repository, including `*.test.ts` and `*.test.tsx`. Prefer `unknown` with runtime narrowing or Zod schemas, `Partial<T>`, `Parameters<typeof fn>`, and typed `vi.fn<Signature>()` helpers over `any` or redundant assertions.
+   - Lint and compiler suppressions (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`) are prohibited (`@typescript-eslint/ban-ts-comment: 'error'`).
 
 ### Intentional React & Vite Framework Exceptions
 - **`PascalCase.tsx` Component Filenames:** While Google's general TypeScript guide uses `snake_case` or `camelCase` filenames, **book(ish)** follows the idiomatic React convention of `PascalCase.tsx` for React views/components and `camelCase.ts` for hooks/utilities (as defined in Section 2).

@@ -177,9 +177,9 @@ describe('LibrarySettingsModals', () => {
     expect(
       screen.getByRole('heading', {name: /admin allowlist/i}),
     ).toBeInTheDocument();
-    const emailInput = screen.getByLabelText(
+    const emailInput = screen.getByLabelText<HTMLInputElement>(
       /allowlist email address/i,
-    ) as HTMLInputElement;
+    );
     expect(emailInput.value).toBe('pending@example.com');
   });
 

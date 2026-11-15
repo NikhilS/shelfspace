@@ -6,14 +6,14 @@ import {
 import {ProviderQuotaScheduler} from '../../scheduler/providerQuotaScheduler';
 import {
   CatalogQuery,
-  ICatalogSourceProvider,
+  CatalogSourceProvider,
   ProviderBookHit,
   ProviderCapabilities,
   fetchWithProviderTimeout,
 } from '../types';
 import type {CoverCandidate} from '../../../../schemas/book';
 
-export class LongitoodCoverProvider implements ICatalogSourceProvider {
+export class LongitoodCoverProvider implements CatalogSourceProvider {
   readonly id = 'longitood-cover' as const;
   readonly name = 'Longitood Cover Archive';
   readonly authorityWeight = 88;
@@ -24,6 +24,7 @@ export class LongitoodCoverProvider implements ICatalogSourceProvider {
     synopsis: false,
     series: false,
     genre: false,
+    batchWave: 2,
   };
 
   readonly scheduler = new ProviderQuotaScheduler({

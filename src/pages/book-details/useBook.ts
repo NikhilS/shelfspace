@@ -9,10 +9,14 @@ import {trpc, trpcVanilla} from '../../lib/trpc';
 import {instrumentMutation} from '../../lib/telemetry';
 import {
   applyOptimisticReadingStatusPatch,
-  invalidateReadingStatusQueries,
+  buildBookSnapshotHint,
+  commitBookDeleteDelta,
+  commitBookReviewDelta,
+  commitBookUpsertDelta,
+  commitReadingStatusDelta,
   removeBookFromReadingCaches,
-  type ReadingStatusCacheUtils,
 } from '../../lib/readingStatusCache';
+import {useCoverTransitionStore} from '../../stores/coverTransitionStore';
 
 export interface Review {
   id: string;
@@ -23,18 +27,22 @@ export interface Review {
   createdAt: FirestoreDate | string;
 }
 
-type FullBookRecord = Book & BookDetailsPayload;
+type FullBookRecord = Omit<Book, keyof BookDetailsPayload> &
+  Omit<BookDetailsPayload, 'updatedAt'> & {updatedAt?: FirestoreDate};
 
-function extractBookList(cachedData: unknown): Book[] | undefined {
+export type OptimisticBookPatch = Partial<FullBookRecord>;
+
+function extractBookList(cachedData: unknown): FullBookRecord[] | undefined {
   if (Array.isArray(cachedData)) {
-    return cachedData as Book[];
+    return cachedData as FullBookRecord[];
   }
-  if (
-    cachedData &&
-    typeof cachedData === 'object' &&
-    Array.isArray((cachedData as {books?: unknown}).books)
-  ) {
-    return (cachedData as {books: Book[]}).books;
+  if (cachedData && typeof cachedData === 'object') {
+    if (Array.isArray((cachedData as {books?: unknown}).books)) {
+      return (cachedData as {books: FullBookRecord[]}).books;
+    }
+    if (Array.isArray((cachedData as {items?: unknown}).items)) {
+      return (cachedData as {items: FullBookRecord[]}).items;
+    }
   }
   return undefined;
 }
@@ -121,8 +129,7 @@ export function useBook(
     }
     const cachedData = utils.book?.list?.getData?.({libraryId});
     const cachedBooks = extractBookList(cachedData);
-    const fromLibraryList = cachedBooks?.find(b => b.id === bookId) as
-      FullBookRecord | undefined;
+    const fromLibraryList = cachedBooks?.find(b => b.id === bookId);
     if (fromLibraryList) {
       return fromLibraryList;
     }
@@ -130,6 +137,7 @@ export function useBook(
       utils as {
         readingTracker?: {
           getShelf?: {getData?: (input?: {shelf?: string}) => unknown};
+          getUnreadLibraryBooks?: {getData?: () => unknown};
         };
       }
     ).readingTracker;
@@ -137,7 +145,49 @@ export function useBook(
       readingTrackerUtils?.getShelf?.getData?.({shelf: 'all'}) ??
       readingTrackerUtils?.getShelf?.getData?.();
     const shelfBooks = extractBookList(shelfData);
-    return shelfBooks?.find(b => b.id === bookId) as FullBookRecord | undefined;
+    const fromShelf = shelfBooks?.find(b => b.id === bookId);
+    if (fromShelf) {
+      return fromShelf;
+    }
+
+    const unreadData = readingTrackerUtils?.getUnreadLibraryBooks?.getData?.();
+    const unreadBooks = extractBookList(unreadData);
+    const fromUnread = unreadBooks?.find(b => b.id === bookId);
+    if (fromUnread) {
+      return {
+        ...fromUnread,
+        addedAt: fromUnread.addedAt ?? '',
+      };
+    }
+
+    const activeTransition =
+      useCoverTransitionStore.getState().activeTransition;
+    if (
+      activeTransition &&
+      activeTransition.libraryId === libraryId &&
+      activeTransition.bookId === bookId
+    ) {
+      const preview = activeTransition.coverPreview;
+      return {
+        id: bookId,
+        libraryId,
+        title: preview.title,
+        author: preview.author,
+        coverUrl: preview.coverUrl,
+        publishedDate: preview.publishedDate,
+        primaryGenre: preview.primaryGenre,
+        subgenres: preview.subgenres,
+        series: preview.series,
+        synopsis: preview.synopsis,
+        readingStatus: preview.readingStatus as Book['readingStatus'],
+        ownershipStatus: preview.ownershipStatus,
+        format: preview.format,
+        isbn: preview.isbn,
+        addedAt: '',
+      };
+    }
+
+    return undefined;
   }, [libraryId, bookId, utils]);
 
   const hasFullCachedDetail = Boolean(
@@ -202,11 +252,18 @@ export function useBook(
     };
   }, [rawBook]);
 
-  const book = useMemo<FullBookRecord | null>(() => {
+  const book = useMemo<(Book & {description?: string}) | null>(() => {
     if (!rawBook) {
       return null;
     }
-    return rawBook;
+    return {
+      ...rawBook,
+      synopsis: rawBook.synopsis ?? undefined,
+      authorBio: rawBook.authorBio ?? undefined,
+      embedding: rawBook.embedding ?? undefined,
+      clusterCoordinates: rawBook.clusterCoordinates ?? undefined,
+      description: rawBook.description ?? undefined,
+    };
   }, [rawBook]);
 
   const reviews = useMemo<Review[]>(() => {
@@ -224,7 +281,7 @@ export function useBook(
   const isLoading = trpcBookQuery.isLoading && !book;
 
   const applyOptimisticBookPatch = useCallback(
-    (partialBook: Partial<FullBookRecord>) => {
+    (partialBook: OptimisticBookPatch) => {
       if (!libraryId || !bookId) {
         return;
       }
@@ -242,6 +299,22 @@ export function useBook(
           patchBookInListCache(old, bookId, existing => ({
             ...existing,
             ...partialBook,
+            synopsis:
+              partialBook.synopsis !== undefined
+                ? (partialBook.synopsis ?? undefined)
+                : existing.synopsis,
+            authorBio:
+              partialBook.authorBio !== undefined
+                ? (partialBook.authorBio ?? undefined)
+                : existing.authorBio,
+            embedding:
+              partialBook.embedding !== undefined
+                ? (partialBook.embedding ?? undefined)
+                : existing.embedding,
+            clusterCoordinates:
+              partialBook.clusterCoordinates !== undefined
+                ? (partialBook.clusterCoordinates ?? undefined)
+                : existing.clusterCoordinates,
           })) as typeof old,
       );
     },
@@ -260,21 +333,22 @@ export function useBook(
       if (!libraryId || !bookId) {
         return {};
       }
-      const rollback = removeBookFromReadingCaches(
-        utils as unknown as ReadingStatusCacheUtils,
-        {libraryId, bookId},
-      );
+      const rollback = removeBookFromReadingCaches(utils, {
+        libraryId,
+        bookId,
+      });
       return {rollback};
     },
     onError: (_err, _vars, context) => {
       context?.rollback?.();
     },
-    onSettled: () => {
-      if (libraryId) {
-        void invalidateReadingStatusQueries(
-          utils as unknown as ReadingStatusCacheUtils,
-          {libraryId, bookId, includeLibraries: true},
-        );
+    onSuccess: () => {
+      if (libraryId && bookId) {
+        commitBookDeleteDelta(utils, {
+          libraryId,
+          bookId,
+          bookCountDelta: -1,
+        });
       }
     },
   });
@@ -284,9 +358,13 @@ export function useBook(
       status: 'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned',
     ) => {
       if (!libraryId || !bookId || !user) {
-        return;
+        return undefined;
       }
-      await instrumentMutation(
+      const snapshotHint = buildBookSnapshotHint(book ?? undefined, {
+        libraryId,
+        bookId,
+      });
+      return instrumentMutation(
         'update',
         `users/${user.uid}/readingStates`,
         {libraryId, bookId, status},
@@ -295,6 +373,7 @@ export function useBook(
             libraryId,
             bookId,
             status,
+            ...(snapshotHint ? {bookSnapshot: snapshotHint} : {}),
           }),
       );
     },
@@ -302,38 +381,42 @@ export function useBook(
       if (!user || !libraryId || !bookId) {
         return {};
       }
-      const rollback = applyOptimisticReadingStatusPatch(
-        utils as unknown as ReadingStatusCacheUtils,
-        {
-          libraryId,
-          bookId,
-          status: newStatus,
-          bookHint: book ?? undefined,
-        },
-      );
+      const rollback = applyOptimisticReadingStatusPatch(utils, {
+        libraryId,
+        bookId,
+        status: newStatus,
+        bookHint: book ?? undefined,
+      });
 
       return {rollback};
     },
     onError: (_err, _newStatus, context) => {
       context?.rollback?.();
     },
-    onSettled: () => {
+    onSuccess: (result, requestedStatus) => {
       if (!libraryId || !bookId) {
         return;
       }
-      void invalidateReadingStatusQueries(
-        utils as unknown as ReadingStatusCacheUtils,
-        {libraryId, bookId},
-      );
+      commitReadingStatusDelta(utils, {
+        libraryId,
+        bookId,
+        status: result?.status ?? requestedStatus,
+        reviewedAt: result?.reviewedAt,
+        rating: result?.rating,
+        startedAt: result?.startedAt,
+        finishedAt: result?.finishedAt,
+        bookSnapshot: result?.bookSnapshot,
+        bookHint: book ?? undefined,
+      });
     },
   });
 
   const addReviewMutation = useMutation({
     mutationFn: async ({rating, text}: {rating: number; text: string}) => {
       if (!libraryId || !bookId || !user) {
-        return;
+        return undefined;
       }
-      await instrumentMutation(
+      return instrumentMutation(
         'create',
         `libraries/${libraryId}/books/${bookId}/reviews`,
         {rating, text},
@@ -366,7 +449,17 @@ export function useBook(
       });
       utils.book?.listReviews?.setData?.({libraryId, bookId}, old => ({
         reviews: [
-          rev as unknown as NonNullable<typeof old>['reviews'][number],
+          {
+            id: rev.id,
+            userId: rev.userId,
+            userName: rev.userName,
+            rating: rev.rating,
+            text: rev.text,
+            createdAt:
+              typeof rev.createdAt === 'string'
+                ? rev.createdAt
+                : new Date().toISOString(),
+          },
           ...(old?.reviews || []),
         ],
       }));
@@ -381,28 +474,46 @@ export function useBook(
         context.prevReviews,
       );
     },
-    onSettled: () => {
-      if (!libraryId || !bookId) {
+    onSuccess: (result, submitted) => {
+      if (!libraryId || !bookId || !user) {
         return;
       }
-      if (utils.book?.listReviews?.invalidate) {
-        void utils.book.listReviews.invalidate({libraryId, bookId});
-      } else {
-        void trpcReviewsQuery.refetch?.();
-      }
-      void utils.book?.get?.invalidate?.({libraryId, bookId});
-      void (
-        utils as {readingTracker?: {getShelf?: {invalidate?: () => unknown}}}
-      ).readingTracker?.getShelf?.invalidate?.();
+      commitBookReviewDelta(utils, {
+        libraryId,
+        bookId,
+        review: {
+          id: result?.id || user.uid,
+          userId: user.uid,
+          userName:
+            result?.userName ||
+            user.displayName ||
+            user.email ||
+            'Unknown User',
+          rating: result?.rating ?? submitted.rating,
+          text: result?.reviewText ?? submitted.text,
+          createdAt: result?.reviewedAt || new Date().toISOString(),
+        },
+      });
     },
   });
 
   const updateBookMutation = useMutation({
     mutationFn: async (cleanForm: Partial<FullBookRecord>) => {
       if (!libraryId || !bookId || !book) {
-        return;
+        return undefined;
       }
-      const cargo = {...cleanForm};
+      const cargo = {
+        ...cleanForm,
+        synopsis: cleanForm.synopsis ?? undefined,
+        authorBio: cleanForm.authorBio ?? undefined,
+        embedding: cleanForm.embedding ?? undefined,
+        clusterCoordinates: cleanForm.clusterCoordinates ?? undefined,
+        description: cleanForm.description ?? undefined,
+        updatedAt:
+          typeof cleanForm.updatedAt === 'string'
+            ? cleanForm.updatedAt
+            : undefined,
+      };
 
       if (cargo.coverUrl && cargo.coverUrl.startsWith('data:')) {
         const storagePath = `libraries/${libraryId}/books/${bookId}/cover.png`;
@@ -417,7 +528,7 @@ export function useBook(
         );
       }
 
-      await instrumentMutation(
+      const result = await instrumentMutation(
         'update',
         `libraries/${libraryId}/books/${bookId}`,
         cargo,
@@ -428,6 +539,7 @@ export function useBook(
             updates: cargo,
           }),
       );
+      return {result, cargo};
     },
     onMutate: async partialBook => {
       if (!libraryId || !bookId) {
@@ -438,15 +550,12 @@ export function useBook(
 
       const rollbackStatus =
         partialBook.readingStatus !== undefined
-          ? applyOptimisticReadingStatusPatch(
-              utils as unknown as ReadingStatusCacheUtils,
-              {
-                libraryId,
-                bookId,
-                status: partialBook.readingStatus,
-                bookHint: (book || partialBook) ?? undefined,
-              },
-            )
+          ? applyOptimisticReadingStatusPatch(utils, {
+              libraryId,
+              bookId,
+              status: partialBook.readingStatus,
+              bookHint: book ?? undefined,
+            })
           : undefined;
 
       applyOptimisticBookPatch(partialBook);
@@ -465,14 +574,24 @@ export function useBook(
         utils.book?.list?.setData?.({libraryId}, context.prevList);
       }
     },
-    onSettled: () => {
-      if (!libraryId || !bookId) {
+    onSuccess: payload => {
+      if (!libraryId || !bookId || !book || !payload) {
         return;
       }
-      void invalidateReadingStatusQueries(
-        utils as unknown as ReadingStatusCacheUtils,
-        {libraryId, bookId},
-      );
+      const mergedBook: Book = {
+        ...book,
+        ...payload.cargo,
+        id: bookId,
+        libraryId,
+        title: payload.cargo.title ?? book.title,
+        author: payload.cargo.author ?? book.author,
+        updatedAt: payload.result?.updatedAt ?? new Date().toISOString(),
+      };
+      commitBookUpsertDelta(utils, {
+        libraryId,
+        book: mergedBook,
+        bookCountDelta: 0,
+      });
     },
   });
 
@@ -501,7 +620,17 @@ export function useBook(
       utils.book?.listReviews?.setData?.(
         {libraryId, bookId},
         {
-          reviews: newReviews as unknown as [],
+          reviews: newReviews.map(r => ({
+            id: r.id,
+            userId: r.userId,
+            userName: r.userName,
+            rating: r.rating,
+            text: r.text,
+            createdAt:
+              typeof r.createdAt === 'string'
+                ? r.createdAt
+                : new Date().toISOString(),
+          })),
         },
       );
     },

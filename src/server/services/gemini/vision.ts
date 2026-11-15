@@ -1,11 +1,184 @@
-import {Type, ThinkingLevel} from '@google/genai';
+import {Decisions, ThinkingLevel, Type} from '@google/genai';
 import Papa from 'papaparse';
+import type {
+  DecisionChoiceAnswer,
+  DecisionNoulAnswer,
+  DecisionScoreAnswer,
+} from '../../../schemas/decisions';
+import type {SchedulePriority} from '../scheduler/providerQuotaScheduler';
 import {
-  logger,
+  decideWithLimiter,
+  geminiDecisionProvider,
   generateContentWithLimiter,
-  isApiKeyError,
   handleGeminiError,
+  isApiKeyError,
+  logger,
 } from './client';
+
+export class BookshelfPrescreenError extends Error {
+  readonly primaryIssue: string;
+
+  constructor(message: string, primaryIssue: string) {
+    super(message);
+    this.name = 'BookshelfPrescreenError';
+    this.primaryIssue = primaryIssue;
+  }
+}
+
+export interface BookshelfPhotoPrescreenResult {
+  allowExtraction: boolean;
+  hasBooksProbability: number;
+  legibilityScore: number;
+  primaryIssue: string;
+  userMessage?: string;
+}
+
+const BOOKSHELF_LEGIBILITY_RUBRIC: string[] = [
+  '0: Completely unreadable — severe motion blur, extreme darkness, glare, or spines too tiny to read any title.',
+  '1: Barely legible — most titles are obscured or blurred beyond reliable transcription.',
+  '2: Moderately legible — several book titles and authors can be transcribed accurately.',
+  '3: Crisp and clear — book spines or covers are sharp, well-lit, and readily legible.',
+];
+
+const BOOKSHELF_ISSUE_CRITERIA: Record<string, string> = {
+  none: 'Photo clearly shows legible books',
+  no_books_visible:
+    'No physical books, book spines, or book covers appear in the frame',
+  too_blurry_or_glare:
+    'Severe motion blur, out-of-focus lens, or strong specular glare obscures spine text',
+  too_dark_or_distant:
+    'Lighting is too dim or camera is too far away to read spine lettering',
+};
+
+const ISSUE_USER_MESSAGES: Record<string, string> = {
+  no_books_visible:
+    'No books were detected in this photo. Frame a bookshelf, stack, or book cover and try again.',
+  too_blurry_or_glare:
+    'This shelf photo is too blurry or has strong glare over the spines. Hold steady in even light and retake.',
+  too_dark_or_distant:
+    'Book spines are too dim or far away to read clearly. Move closer with brighter lighting and try again.',
+};
+
+export async function prescreenBookshelfImage(
+  base64Image: string,
+  mimeType: string,
+  options?: {
+    priority?: SchedulePriority;
+    signal?: AbortSignal;
+  },
+): Promise<BookshelfPhotoPrescreenResult> {
+  const rawData = base64Image.includes(',')
+    ? base64Image.split(',')[1] || ''
+    : base64Image;
+
+  if (!rawData.trim()) {
+    return {
+      allowExtraction: false,
+      hasBooksProbability: 0,
+      legibilityScore: 0,
+      primaryIssue: 'no_books_visible',
+      userMessage: ISSUE_USER_MESSAGES.no_books_visible,
+    };
+  }
+
+  const questions: Record<string, Decisions.Question> = {
+    has_books: {
+      type: 'noul',
+      instructions:
+        'Does this photograph visibly contain one or more physical books, book spines, or book covers?',
+      criteria: {
+        true_description:
+          'At least one physical book cover, book stack, or shelved book spine is visible.',
+        false_description:
+          'No books are visible (blank wall, floor, person, pet, screen, or unrelated object).',
+      },
+    },
+    legibility: {
+      type: 'score',
+      instructions:
+        'Rate the optical legibility of the book titles/spines in this photograph for OCR transcription.',
+      criteria: BOOKSHELF_LEGIBILITY_RUBRIC,
+    },
+    primary_issue: {
+      type: 'choice',
+      instructions:
+        'Identify the primary optical quality status or issue in this bookshelf photograph.',
+      criteria: BOOKSHELF_ISSUE_CRITERIA,
+    },
+  };
+
+  const answers = await decideWithLimiter(
+    {
+      input: [
+        {
+          type: 'image',
+          data: rawData,
+          mime_type: mimeType || 'image/jpeg',
+        },
+        {
+          type: 'text',
+          text: 'Inspect this bookshelf or book cover photograph before optical spine transcription.',
+        },
+      ],
+      questions,
+      operation: 'gemini.prescreenBookshelfImage',
+    },
+    {
+      priority: options?.priority ?? 'INTERACTIVE',
+      signal: options?.signal,
+    },
+  );
+
+  const hasBooksAns = answers.has_books as DecisionNoulAnswer | undefined;
+  const legibilityAns = answers.legibility as DecisionScoreAnswer | undefined;
+  const issueAns = answers.primary_issue as DecisionChoiceAnswer | undefined;
+
+  if (!hasBooksAns && !legibilityAns) {
+    return {
+      allowExtraction: true,
+      hasBooksProbability: 1,
+      legibilityScore: 3,
+      primaryIssue: 'none',
+    };
+  }
+
+  const hasBooksProbability =
+    hasBooksAns?.type === 'noul' ? hasBooksAns.noul : 1;
+  const legibilityScore =
+    legibilityAns?.type === 'score' ? legibilityAns.score : 3;
+  const primaryIssue = issueAns?.type === 'choice' ? issueAns.choice : 'none';
+
+  if (hasBooksProbability < 0.25) {
+    return {
+      allowExtraction: false,
+      hasBooksProbability,
+      legibilityScore,
+      primaryIssue: 'no_books_visible',
+      userMessage: ISSUE_USER_MESSAGES.no_books_visible,
+    };
+  }
+
+  if (legibilityScore < 1.0) {
+    const resolvedIssue =
+      primaryIssue in ISSUE_USER_MESSAGES
+        ? primaryIssue
+        : 'too_blurry_or_glare';
+    return {
+      allowExtraction: false,
+      hasBooksProbability,
+      legibilityScore,
+      primaryIssue: resolvedIssue,
+      userMessage: ISSUE_USER_MESSAGES[resolvedIssue],
+    };
+  }
+
+  return {
+    allowExtraction: true,
+    hasBooksProbability,
+    legibilityScore,
+    primaryIssue,
+  };
+}
 
 export async function extractBooksFromImage(
   base64Image: string,
@@ -17,6 +190,28 @@ export async function extractBooksFromImage(
       logger.error('Invalid image data: image is empty');
       throw new Error('Invalid image data provided.');
     }
+
+    if (geminiDecisionProvider.isAvailable()) {
+      try {
+        const prescreen = await prescreenBookshelfImage(base64Image, mimeType, {
+          priority: 'INTERACTIVE',
+        });
+        if (!prescreen.allowExtraction && prescreen.userMessage) {
+          throw new BookshelfPrescreenError(
+            prescreen.userMessage,
+            prescreen.primaryIssue,
+          );
+        }
+      } catch (prescreenErr) {
+        if (prescreenErr instanceof BookshelfPrescreenError) {
+          throw prescreenErr;
+        }
+        logger.warn(
+          `Bookshelf pre-screening skipped due to non-fatal error: ${prescreenErr instanceof Error ? prescreenErr.message : String(prescreenErr)}`,
+        );
+      }
+    }
+
     const extractionSchema = {
       type: Type.ARRAY,
       description: 'Array of detected books on the shelf or cover',
@@ -119,10 +314,22 @@ Important Directives:
       .trim();
 
     try {
-      const parsed = JSON.parse(text);
+      const parsed: unknown = JSON.parse(text);
       if (Array.isArray(parsed)) {
-        logger.info(`Successfully parsed ${parsed.length} books from image`);
-        return parsed;
+        const extracted = (parsed as unknown[])
+          .filter(
+            (item): item is Record<string, unknown> =>
+              Boolean(item) && typeof item === 'object',
+          )
+          .map(item => ({
+            title: typeof item.title === 'string' ? item.title : '',
+            author: typeof item.author === 'string' ? item.author : '',
+            ...(typeof item.isbn === 'string' && item.isbn
+              ? {isbn: item.isbn}
+              : {}),
+          }));
+        logger.info(`Successfully parsed ${extracted.length} books from image`);
+        return extracted;
       }
       logger.warn('Gemini response is not an array');
       return [];
@@ -133,6 +340,9 @@ Important Directives:
       return [];
     }
   } catch (error) {
+    if (error instanceof BookshelfPrescreenError) {
+      throw error;
+    }
     if (isApiKeyError(error)) {
       logger.info(
         'Book extraction is pending valid GEMINI_API_KEY configuration.',
@@ -252,7 +462,8 @@ export async function extractBooksFromCsv(
           header: false,
           skipEmptyLines: true,
           complete: results => resolve(results),
-          error: (error: unknown) => reject(error),
+          error: (error: unknown) =>
+            reject(error instanceof Error ? error : new Error(String(error))),
         });
       },
     );

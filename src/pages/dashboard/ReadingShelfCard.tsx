@@ -10,10 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type {
-  TrackedBookItem,
-  TrackedShelfStatus,
-} from '../../server/services/readingTracker';
+import {SharedCoverFrame} from '../../components/book/SharedCoverFrame';
+import {navigateWithCoverTransition} from '../../lib/bookCoverTransition';
+import type {TrackedBookItem, TrackedShelfStatus} from '../../types';
 
 interface ReadingShelfCardProps {
   item: TrackedBookItem;
@@ -53,12 +52,27 @@ export function ReadingShelfCard({
     STATUS_BADGE_MAP[item.readingStatus] || STATUS_BADGE_MAP.want_to_read;
 
   const handleNavigate = () => {
-    void navigate(
-      `/library/${encodeURIComponent(item.libraryId)}/book/${encodeURIComponent(item.id)}`,
-      {
-        state: {from: '/'},
+    navigateWithCoverTransition({
+      navigate,
+      libraryId: item.libraryId,
+      bookId: item.id,
+      originSurface: 'reading-shelf-card',
+      fromRouteKey: '/',
+      coverPreview: {
+        title: item.title,
+        author: item.author,
+        coverUrl: item.coverUrl,
+        publishedDate: item.publishedDate,
+        primaryGenre: item.primaryGenre,
+        subgenres: item.subgenres,
+        series: item.series,
+        synopsis: item.synopsis,
+        readingStatus: item.readingStatus,
+        ownershipStatus: item.ownershipStatus,
+        format: item.format,
+        isbn: item.isbn,
       },
-    );
+    });
   };
 
   return (
@@ -69,7 +83,12 @@ export function ReadingShelfCard({
       <div>
         {/* Top Row: Cover Thumbnail + Editorial Details */}
         <div className="flex gap-3.5 items-start">
-          <div className="w-16 sm:w-20 aspect-[2/3] shrink-0 bg-surface-container rounded-md book-cover-shadow overflow-hidden border border-outline-variant/50 relative">
+          <SharedCoverFrame
+            surface="reading-shelf-card"
+            libraryId={item.libraryId}
+            bookId={item.id}
+            className="w-16 sm:w-20 aspect-[2/3] shrink-0 bg-surface-container rounded-md book-cover-shadow overflow-hidden border border-outline-variant/50 relative"
+          >
             <div
               className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-r from-black/15 via-white/20 to-transparent z-10 pointer-events-none"
               aria-hidden="true"
@@ -90,7 +109,7 @@ export function ReadingShelfCard({
                 </span>
               </div>
             )}
-          </div>
+          </SharedCoverFrame>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2 mb-1">

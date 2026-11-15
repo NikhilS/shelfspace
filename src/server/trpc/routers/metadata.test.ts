@@ -19,12 +19,16 @@ vi.mock('../../services/catalog', () => ({
 }));
 
 const userCtx: SecurityContext = {
+  req: {} as SecurityContext['req'],
+  res: {} as SecurityContext['res'],
   user: {uid: 'user-1', email: 'reader@example.com'},
   isAdmin: false,
   isAppAllowed: true,
 };
 
 const adminCtx: SecurityContext = {
+  req: {} as SecurityContext['req'],
+  res: {} as SecurityContext['res'],
   user: {uid: 'admin-1', email: 'admin@example.com'},
   isAdmin: true,
   isAppAllowed: true,
@@ -106,6 +110,8 @@ describe('metadataRouter tRPC procedures', () => {
       title: 'Dune',
       author: 'Frank Herbert',
       isbn: '9780441172719',
+      coverUrl: '',
+      publishedDate: '1965',
       sources: ['open-library'],
     });
     expect(await caller.searchByIsbn({isbn: '9780441172719'})).toMatchObject({
@@ -117,11 +123,14 @@ describe('metadataRouter tRPC procedures', () => {
         {
           title: 'Dune',
           author: 'Frank Herbert',
+          isbn: '9780441172719',
+          coverUrl: '',
+          publishedDate: '1965',
           sources: ['google-books'],
         },
       ],
-      sourcesQueried: ['google-books'],
-      sourcesSucceeded: ['google-books'],
+      skippedProviders: [],
+      respondedProviders: ['google-books'],
     });
 
     expect(
@@ -145,14 +154,19 @@ describe('metadataRouter tRPC procedures', () => {
       },
     );
 
-    vi.mocked(catalogOrchestrator.fetchCoverCandidates).mockResolvedValue([
-      {
-        url: 'https://covers.openlibrary.org/b/id/1-L.jpg',
-        sourceId: 'open-library',
-        sourceName: 'Open Library',
-      },
-    ]);
-    expect(await caller.fetchCoverCandidates({title: 'Dune'})).toHaveLength(1);
+    vi.mocked(catalogOrchestrator.fetchCoverCandidates).mockResolvedValue({
+      candidates: [
+        {
+          url: 'https://covers.openlibrary.org/b/id/1-L.jpg',
+          source: 'Open Library',
+        },
+      ],
+      skippedProviders: [],
+      respondedProviders: ['Open Library'],
+    });
+    expect(
+      (await caller.fetchCoverCandidates({title: 'Dune'})).candidates,
+    ).toHaveLength(1);
 
     vi.mocked(wikipediaProvider.fetchAuthorBio).mockResolvedValue(
       'Frank Herbert was an American science-fiction author.',

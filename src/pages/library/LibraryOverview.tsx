@@ -1,6 +1,6 @@
 import React, {useMemo, useCallback} from 'react';
 import {motion} from 'motion/react';
-import {Book, Library} from '../../types';
+import {Book, Library, type TrackedShelfStatus} from '../../types';
 import {Plus, ArrowRight} from 'lucide-react';
 import {toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {useNavigate, useLocation} from 'react-router-dom';
@@ -10,18 +10,19 @@ import {GenreBreakdownCard} from '../../components/book/GenreBreakdownCard';
 import {CuratorPickCard} from '../../components/book/CuratorPickCard';
 import {ExplorePerspectivesStrip} from '../../components/book/ExplorePerspectivesStrip';
 import {ArchivalCoverImage} from '../../components/book/ArchivalCoverImage';
+import {SharedCoverFrame} from '../../components/book/SharedCoverFrame';
 import {CurrentlyReadingCard} from '../../components/book/CurrentlyReadingCard';
 import {preloadRouteChunk} from '../../lib/routePreload';
+import {navigateWithCoverTransition} from '../../lib/bookCoverTransition';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {formatShortDate} from '../../lib/date';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {
   applyOptimisticReadingStatusPatch,
-  invalidateReadingStatusQueries,
-  type ReadingStatusCacheUtils,
+  buildBookSnapshotHint,
+  commitReadingStatusDelta,
 } from '../../lib/readingStatusCache';
 import {toast} from 'sonner';
-import type {TrackedShelfStatus} from '../../server/services/readingTracker';
 import {User} from 'firebase/auth';
 
 interface LibraryOverviewProps {
@@ -92,36 +93,47 @@ export function LibraryOverview({
         return;
       }
       const existingBook = books.find(b => b.id === bookId);
-      const rollback = applyOptimisticReadingStatusPatch(
-        utils as unknown as ReadingStatusCacheUtils | undefined,
-        {
-          libraryId: targetLibraryId,
-          bookId,
-          status: nextStatus,
-          bookHint: existingBook
-            ? {...existingBook, libraryName: library.name}
-            : undefined,
-        },
-      );
+      const bookHint = existingBook
+        ? {...existingBook, libraryName: library.name}
+        : undefined;
+      const snapshotHint = buildBookSnapshotHint(bookHint, {
+        libraryId: targetLibraryId,
+        bookId,
+        libraryName: library.name,
+      });
+      const rollback = applyOptimisticReadingStatusPatch(utils, {
+        libraryId: targetLibraryId,
+        bookId,
+        status: nextStatus,
+        bookHint,
+      });
       try {
+        let response:
+          | Awaited<ReturnType<typeof trpcVanilla.book.updateStatus.mutate>>
+          | undefined;
         if (trpcVanilla?.book?.updateStatus?.mutate) {
-          await trpcVanilla.book.updateStatus.mutate({
+          response = await trpcVanilla.book.updateStatus.mutate({
             libraryId: targetLibraryId,
             bookId,
             status: nextStatus,
+            ...(snapshotHint ? {bookSnapshot: snapshotHint} : {}),
           });
         }
+        commitReadingStatusDelta(utils, {
+          libraryId: targetLibraryId,
+          bookId,
+          status: response?.status ?? nextStatus,
+          reviewedAt: response?.reviewedAt,
+          rating: response?.rating,
+          startedAt: response?.startedAt,
+          finishedAt: response?.finishedAt,
+          bookSnapshot: response?.bookSnapshot,
+          bookHint,
+        });
         toast.success(
           nextStatus === 'unset'
             ? 'Removed from reading list'
             : 'Reading status updated',
-        );
-        await invalidateReadingStatusQueries(
-          utils as unknown as ReadingStatusCacheUtils | undefined,
-          {
-            libraryId: targetLibraryId,
-            bookId,
-          },
         );
       } catch (err) {
         rollback();
@@ -296,22 +308,46 @@ export function LibraryOverview({
                     onFocus={handlePrewarmBookDetails}
                     onTouchStart={handlePrewarmBookDetails}
                     onClick={() =>
-                      navigate(`/library/${library.id}/book/${book.id}`, {
-                        state: {
-                          from: location.pathname + location.search,
-                          bookList: orderedBookIds,
+                      navigateWithCoverTransition({
+                        navigate,
+                        libraryId: library.id,
+                        bookId: book.id,
+                        originSurface: 'library-recent',
+                        fromRouteKey: location.pathname + location.search,
+                        bookList: orderedBookIds,
+                        coverPreview: {
+                          title: book.title,
+                          author: book.author,
+                          coverUrl: book.coverUrl,
+                          publishedDate: book.publishedDate,
+                          primaryGenre: book.primaryGenre,
+                          subgenres: book.subgenres,
+                          series: book.series,
+                          synopsis: book.synopsis,
+                          readingStatus: book.readingStatus,
+                          ownershipStatus: book.ownershipStatus,
+                          format: book.format,
+                          isbn: book.isbn,
                         },
                       })
                     }
                     className="group flex flex-col p-3 bento-card-interactive cursor-pointer"
                   >
-                    <ArchivalCoverImage
-                      src={book.coverUrl}
-                      alt={book.title}
-                      author={book.author}
-                      variant="compact"
-                      className="relative aspect-[2/3] w-full rounded-lg overflow-hidden bg-surface-container mb-2.5 border border-outline-variant/50 book-cover-shadow group-hover:scale-[1.02] transition-transform"
-                    />
+                    <SharedCoverFrame
+                      surface="library-recent"
+                      libraryId={library.id}
+                      bookId={book.id}
+                      className="relative aspect-[2/3] w-full rounded-lg overflow-hidden bg-surface-container mb-2.5 border border-outline-variant/50 book-cover-shadow"
+                    >
+                      <ArchivalCoverImage
+                        src={book.coverUrl}
+                        alt={book.title}
+                        author={book.author}
+                        variant="compact"
+                        className="w-full h-full"
+                        imgClassName="group-hover:scale-[1.02] transition-transform"
+                      />
+                    </SharedCoverFrame>
                     <h4 className="card-title-editorial truncate group-hover:text-primary transition-colors">
                       {toTitleCase(book.title)}
                     </h4>

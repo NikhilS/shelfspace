@@ -3,6 +3,9 @@ import {Library, Book} from '../types';
 import {toast} from 'sonner';
 import {DebugTelemetryEngine, calculatePayloadBytes} from '../lib/telemetry';
 import {trpc, trpcVanilla} from '../lib/trpc';
+import {getFirestoreTime} from '../lib/utils';
+import {computeReadingStateKey} from '../schemas/readingState';
+import {normalizeReadingStatus} from '../lib/readingStatusCache';
 import {markLibraryVisited} from '../components/layout/SuspenseFallbackRouter';
 
 export interface UseLibraryDataResult {
@@ -18,12 +21,39 @@ export interface UseLibraryDataResult {
   refetch: () => Promise<void>;
 }
 
+type CachedBookRecord = NonNullable<
+  Awaited<ReturnType<typeof trpcVanilla.book.list.query>>
+>['books'][number];
+
 interface InFlightDrainResult {
-  extraBooks: Book[];
+  extraBooks: CachedBookRecord[];
   latestTotalCount?: number;
 }
 
 const activeLibraryDrains = new Map<string, Promise<InFlightDrainResult>>();
+const activeWarmSyncs = new Map<string, Promise<void>>();
+const lastWarmSyncAtByLibrary = new Map<string, number>();
+const WARM_SYNC_COOLDOWN_MS = 45_000;
+
+export function resetWarmSyncStateForTests(): void {
+  activeWarmSyncs.clear();
+  lastWarmSyncAtByLibrary.clear();
+}
+
+function computeHighWaterUpdatedAtMs(books: Book[]): number {
+  let maxMs = 0;
+  for (const book of books) {
+    const updatedMs = getFirestoreTime(book.updatedAt) || 0;
+    const addedMs = getFirestoreTime(book.addedAt) || 0;
+    if (updatedMs > maxMs) {
+      maxMs = updatedMs;
+    }
+    if (addedMs > maxMs) {
+      maxMs = addedMs;
+    }
+  }
+  return maxMs;
+}
 
 export function mapDocToBook(docSnap: {
   id: string;
@@ -39,20 +69,17 @@ export function mapDocToBook(docSnap: {
   } as unknown as Book;
 
   if (bookData.temporalMetadata) {
-    if (
-      bookData.temporalMetadata.startYear !== undefined &&
-      bookData.temporalMetadata.endYear === undefined
-    ) {
-      bookData.temporalMetadata.endYear = bookData.temporalMetadata.startYear;
+    const {startYear, endYear} = bookData.temporalMetadata;
+    if (startYear !== undefined && endYear === undefined) {
+      bookData.temporalMetadata.endYear = startYear;
     }
 
+    const updatedEndYear = bookData.temporalMetadata.endYear;
     if (
-      (bookData.temporalMetadata.startYear !== undefined &&
-        (bookData.temporalMetadata.startYear < -10000 ||
-          bookData.temporalMetadata.startYear > 2100)) ||
-      (bookData.temporalMetadata.endYear !== undefined &&
-        (bookData.temporalMetadata.endYear < -10000 ||
-          bookData.temporalMetadata.endYear > 2100))
+      (typeof startYear === 'number' &&
+        (startYear < -10000 || startYear > 2100)) ||
+      (typeof updatedEndYear === 'number' &&
+        (updatedEndYear < -10000 || updatedEndYear > 2100))
     ) {
       delete bookData.temporalMetadata;
     }
@@ -64,7 +91,7 @@ export function mapDocToBook(docSnap: {
 export function useLibraryData(
   libraryId: string | undefined,
   userId: string | undefined,
-  navigate?: (path: string) => void,
+  navigate?: (path: string) => void | Promise<void>,
 ): UseLibraryDataResult {
   const isEnabled = Boolean(libraryId && userId);
 
@@ -85,7 +112,7 @@ export function useLibraryData(
       return undefined;
     }
     const getFn = currentUtils.library.get?.getData;
-    const fromGet = getFn?.({libraryId}) as Library | undefined;
+    const fromGet = getFn?.({libraryId});
     if (fromGet) {
       return fromGet;
     }
@@ -120,12 +147,19 @@ export function useLibraryData(
     },
   );
 
-  // 2. Declarative Books Collection Query (First 1,000 books for instant first paint)
+  const hasWarmBookListCache = Boolean(
+    libraryId &&
+    utilsRef.current?.book?.list?.getData?.({libraryId}) &&
+    typeof trpcVanilla?.book?.syncChanges?.query === 'function',
+  );
+
+  // 2. Declarative Books Collection Query (First 1,000 books for instant first paint;
+  // warm caches stay fresh for 60m and reconcile deltas via lightweight book.syncChanges)
   const booksQuery = trpc.book.list.useQuery(
     {libraryId: libraryId || ''},
     {
       enabled: isEnabled,
-      staleTime: 1000 * 60 * 5,
+      staleTime: hasWarmBookListCache ? 1000 * 60 * 60 : 1000 * 60 * 5,
       gcTime: 1000 * 60 * 60 * 24 * 7, // 7 days IndexedDB retention
       networkMode: 'offlineFirst',
       retry: 2,
@@ -214,7 +248,7 @@ export function useLibraryData(
 
     const mergeBooksIntoQueryCache = (
       targetLibId: string,
-      extraBooks: Book[],
+      extraBooks: CachedBookRecord[],
       nextCursor: string | undefined,
       latestTotalCount: number | undefined,
     ) => {
@@ -224,12 +258,12 @@ export function useLibraryData(
       }
       let finalMergedLength = 0;
       currentUtils.book.list.setData({libraryId: targetLibId}, old => {
-        if (!old || Array.isArray(old)) {
+        if (!old || !Array.isArray(old.books)) {
           return old;
         }
-        const existing = Array.isArray(old.books) ? old.books : [];
+        const existing = old.books;
         const seen = new Set<string>();
-        const merged: Book[] = [];
+        const merged: CachedBookRecord[] = [];
         for (const b of existing) {
           if (b?.id && !seen.has(b.id)) {
             seen.add(b.id);
@@ -273,18 +307,16 @@ export function useLibraryData(
       sharedPromise = (async (): Promise<InFlightDrainResult> => {
         const visitedCursors = new Set<string>();
         let currentCursor: string | undefined = initialNextCursor;
-        const accumulatedExtra: Book[] = [];
+        const accumulatedExtra: CachedBookRecord[] = [];
         let latestTotalCount: number | undefined;
 
         while (currentCursor && !visitedCursors.has(currentCursor)) {
           visitedCursors.add(currentCursor);
-          const page = (await trpcVanilla.book.list.query({
+          const page = await trpcVanilla.book.list.query({
             libraryId,
             cursor: currentCursor,
             limit: 1000,
-          })) as
-            | {books?: Book[]; nextCursor?: string; totalCount?: number}
-            | undefined;
+          });
 
           if (!page) {
             break;
@@ -365,6 +397,170 @@ export function useLibraryData(
     completedDrainKey,
   ]);
 
+  // 2c. Incremental Warm Delta Sync (`book.syncChanges`) for Warm Cached Libraries
+  useEffect(() => {
+    const isOffline =
+      typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (
+      !isEnabled ||
+      !libraryId ||
+      libraryId.startsWith('virtual_') ||
+      Boolean(initialNextCursor) ||
+      booksQuery.isLoading ||
+      baseBooks.length === 0 ||
+      isOffline ||
+      typeof trpcVanilla?.book?.syncChanges?.query !== 'function'
+    ) {
+      return undefined;
+    }
+
+    const lastSyncedAt = lastWarmSyncAtByLibrary.get(libraryId) ?? 0;
+    if (Date.now() - lastSyncedAt < WARM_SYNC_COOLDOWN_MS) {
+      return undefined;
+    }
+
+    const sinceUpdatedAtMs = computeHighWaterUpdatedAtMs(baseBooks);
+    if (sinceUpdatedAtMs <= 0) {
+      return undefined;
+    }
+
+    lastWarmSyncAtByLibrary.set(libraryId, Date.now());
+    let sharedSync = activeWarmSyncs.get(libraryId);
+    if (!sharedSync) {
+      sharedSync = (async () => {
+        try {
+          const delta = await trpcVanilla.book.syncChanges.query({
+            libraryId,
+            sinceUpdatedAtMs,
+            knownCount: baseBooks.length,
+          });
+          if (!delta) {
+            return;
+          }
+          const currentUtils = utilsRef.current;
+          if (!currentUtils?.book?.list?.setData) {
+            return;
+          }
+
+          interface SyncReadingStateOverlay {
+            status: string;
+            rating?: number;
+            readStatusReviewedAt?: string | null;
+          }
+
+          const deletedSet = new Set<string>(delta.deletedBookIds ?? []);
+          const activeSet = Array.isArray(delta.activeBookIds)
+            ? new Set<string>(delta.activeBookIds)
+            : null;
+          const upsertedMap = new Map<string, CachedBookRecord>();
+          for (const upserted of delta.upsertedBooks ?? []) {
+            if (upserted?.id) {
+              upsertedMap.set(upserted.id, upserted);
+            }
+          }
+          const statesMap = (delta.readingStates ?? {}) as Record<
+            string,
+            SyncReadingStateOverlay | undefined
+          >;
+
+          currentUtils.book.list.setData({libraryId}, old => {
+            if (!old || !Array.isArray(old.books)) {
+              return old;
+            }
+
+            const seen = new Set<string>();
+            const nextBooks: CachedBookRecord[] = [];
+
+            // Prepend newly created books first so recent additions surface at top
+            for (const [id, upserted] of upsertedMap.entries()) {
+              const existedBefore = old.books.some(b => b.id === id);
+              if (!existedBefore && !deletedSet.has(id)) {
+                seen.add(id);
+                nextBooks.push(upserted);
+              }
+            }
+
+            for (const existing of old.books) {
+              if (!existing?.id || seen.has(existing.id)) {
+                continue;
+              }
+              if (deletedSet.has(existing.id)) {
+                continue;
+              }
+              if (activeSet && !activeSet.has(existing.id)) {
+                continue;
+              }
+              seen.add(existing.id);
+
+              const upsertedReplacement = upsertedMap.get(existing.id);
+              const mergedBase = upsertedReplacement
+                ? {...existing, ...upsertedReplacement}
+                : existing;
+
+              const stateKey = computeReadingStateKey({
+                isbn: mergedBase.isbn,
+                bookId: mergedBase.id,
+              });
+              const overlay = statesMap[stateKey];
+              if (overlay) {
+                nextBooks.push({
+                  ...mergedBase,
+                  readingStatus: normalizeReadingStatus(overlay.status),
+                  ...(overlay.rating !== undefined
+                    ? {userRating: overlay.rating}
+                    : {}),
+                  ...(overlay.readStatusReviewedAt !== undefined
+                    ? {readStatusReviewedAt: overlay.readStatusReviewedAt}
+                    : {}),
+                });
+              } else {
+                nextBooks.push(mergedBase);
+              }
+            }
+
+            return {
+              ...old,
+              books: nextBooks,
+              totalCount: delta.totalCount ?? nextBooks.length,
+            };
+          });
+
+          if (
+            typeof delta.totalCount === 'number' &&
+            currentUtils.library?.get?.setData
+          ) {
+            currentUtils.library.get.setData({libraryId}, oldLib => {
+              if (!oldLib) {
+                return oldLib;
+              }
+              return {
+                ...oldLib,
+                bookCount: delta.totalCount,
+              };
+            });
+          }
+        } catch (err) {
+          console.warn(
+            `[useLibraryData] Warm delta sync failed for library '${libraryId}':`,
+            err,
+          );
+        }
+      })().finally(() => {
+        activeWarmSyncs.delete(libraryId);
+      });
+      activeWarmSyncs.set(libraryId, sharedSync);
+    }
+
+    return undefined;
+  }, [
+    isEnabled,
+    libraryId,
+    initialNextCursor,
+    booksQuery.isLoading,
+    baseBooks,
+    drainEpoch,
+  ]);
+
   // 3. Normalized Data Derivation (single source of truth in TanStack Query cache)
   const books = useMemo(() => {
     const activeDrainKey =
@@ -399,8 +595,7 @@ export function useLibraryData(
   const isPaginating = isDrainingCursor || !isCursorExhausted;
 
   const library = useMemo(() => {
-    const rawLib =
-      (libraryQuery.data as unknown as Library) ?? cachedLibrary ?? null;
+    const rawLib: Library | null = libraryQuery.data ?? cachedLibrary ?? null;
     if (!rawLib) {
       return null;
     }
@@ -509,7 +704,7 @@ export function useLibraryData(
     if (libraryQuery.isError && !library && !isOffline) {
       toast.error('Library not found or access denied');
       if (navigate) {
-        navigate('/');
+        void navigate('/');
       }
     }
   }, [libraryQuery.isError, library, navigate]);

@@ -38,13 +38,14 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
         (Boolean(user?.uid) && lib.ownerId === user?.uid);
       const canEdit = isOwner || normalizedRole === 'editor';
 
-      currentUtils.library.get.setData({libraryId: lib.id}, {
-        ...lib,
-        isOwner,
-        canEdit,
-      } as unknown as NonNullable<
-        ReturnType<typeof currentUtils.library.get.getData>
-      >);
+      currentUtils.library.get.setData(
+        {libraryId: lib.id},
+        {
+          ...lib,
+          isOwner,
+          canEdit,
+        },
+      );
     }
     if (lib.id && user) {
       const email = user.email?.toLowerCase();

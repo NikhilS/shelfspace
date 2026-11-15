@@ -7,6 +7,7 @@ import {
   adminProcedure,
 } from './trpc';
 import {SUPERADMIN_EMAIL} from '../../constants/auth';
+import type {SecurityContext} from '../auth/types';
 import {TRPCError} from '@trpc/server';
 
 const mockVerifyIdToken = vi.fn();
@@ -53,7 +54,7 @@ describe('tRPC Context & Middlewares (JWT Authentication)', () => {
   });
 
   type CreateContextOpts = Parameters<typeof createContext>[0];
-  type CallerCtx = Parameters<typeof testRouter.createCaller>[0];
+  type CallerCtx = SecurityContext;
 
   describe('createContext - JWT Token Auth', () => {
     it('returns null user when no authorization headers are present', async () => {

@@ -2,6 +2,7 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {bookApiRouter} from './bookApi';
 import {BookService} from '../../services/book';
 import {PermissionService} from '../../auth/permissions';
+import type {SecurityContext} from '../../auth/types';
 import {TRPCError} from '@trpc/server';
 
 vi.mock('../../services/book', () => ({
@@ -26,14 +27,16 @@ vi.mock('../../auth/permissions', () => ({
 }));
 
 describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
-  const mockUserCtx = {
+  const mockUserCtx: SecurityContext = {
+    req: {} as SecurityContext['req'],
+    res: {} as SecurityContext['res'],
     user: {
       uid: 'user-456',
       email: 'editor@example.com',
     },
     isAppAllowed: true,
     isAdmin: false,
-  } as unknown as Parameters<typeof bookApiRouter.createCaller>[0];
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -322,6 +325,7 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
         success: true,
         id: 'b-1',
         status: 'want_to_read',
+        stateKey: 'bookid:b-1',
       });
 
       const caller = bookApiRouter.createCaller(mockUserCtx);
@@ -347,6 +351,7 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
         success: true,
         id: 'b-1',
         status: 'want_to_read',
+        stateKey: 'bookid:b-1',
       });
     });
   });

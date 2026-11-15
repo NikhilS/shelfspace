@@ -120,7 +120,7 @@ export function buildTimelineClusters(
       const spanningBooks = cBooks.filter(b => {
         const s = b.temporalMetadata?.startYear;
         const e = b.temporalMetadata?.endYear;
-        return s !== undefined && e !== undefined && e - s >= 15;
+        return typeof s === 'number' && typeof e === 'number' && e - s >= 15;
       });
 
       return {

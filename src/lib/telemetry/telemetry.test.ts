@@ -115,7 +115,8 @@ describe('Telemetry Bus, Zero-Cost Gating & Scoped Loggers', () => {
 
   it('notifies registered plugins when metrics update', () => {
     const engine = DebugTelemetryEngine.getInstance();
-    const onMetricUpdate = vi.fn();
+    const onMetricUpdate =
+      vi.fn<(metrics: ReturnType<typeof engine.getMetrics>) => void>();
     engine.registerPlugin({
       id: 'listener_test',
       name: 'Listener Test',
@@ -131,7 +132,7 @@ describe('Telemetry Bus, Zero-Cost Gating & Scoped Loggers', () => {
     });
 
     expect(onMetricUpdate).toHaveBeenCalled();
-    expect(onMetricUpdate.mock.calls[0][0].totalFirestoreWrites).toBe(1);
+    expect(onMetricUpdate.mock.calls[0]?.[0]?.totalFirestoreWrites).toBe(1);
   });
 
   it('instruments mutation functions with timing and telemetry tracking', async () => {

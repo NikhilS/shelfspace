@@ -1,9 +1,37 @@
 import {
-  CoreBookData,
-  MetadataBulkFetchOptions,
-  MetadataKey,
+  type CoreBookData,
+  type MetadataBulkFetchOptions,
+  type MetadataProvider,
 } from '../../../types/metadata';
-import {MetadataRegistry} from './registry';
+import {SynopsisMetadataProvider} from './providers/SynopsisMetadataProvider';
+
+type SynopsisProviderResolver = () =>
+  MetadataProvider<string | null> | undefined;
+
+let synopsisProviderResolver: SynopsisProviderResolver | null = null;
+let fallbackSynopsisProvider: SynopsisMetadataProvider | null = null;
+
+/**
+ * Registers a dynamic lookup hook for the active Synopsis provider so
+ * `resolveBookSynopses` never imports `MetadataRegistry` (eliminating circular
+ * module initialization between `registry.ts`, providers, and `utils.ts`).
+ */
+export function registerSynopsisProviderResolver(
+  resolver: SynopsisProviderResolver,
+): void {
+  synopsisProviderResolver = resolver;
+}
+
+function getActiveSynopsisProvider():
+  MetadataProvider<string | null> | undefined {
+  if (synopsisProviderResolver) {
+    return synopsisProviderResolver();
+  }
+  if (!fallbackSynopsisProvider) {
+    fallbackSynopsisProvider = new SynopsisMetadataProvider();
+  }
+  return fallbackSynopsisProvider;
+}
 
 /**
  * Resolves synopses for a batch of books using bulk lookup.
@@ -19,9 +47,7 @@ export async function resolveBookSynopses(
   const missingSynopsisBooks: CoreBookData[] = [];
 
   for (const b of books) {
-    const rawSynopsis =
-      (b as Record<string, unknown>).synopsis ||
-      (b as Record<string, unknown>).description;
+    const rawSynopsis = b.synopsis || b.description;
     if (typeof rawSynopsis === 'string' && rawSynopsis.trim().length > 0) {
       synopsisMap.set(b.id, rawSynopsis.trim());
     } else {
@@ -30,13 +56,11 @@ export async function resolveBookSynopses(
   }
 
   if (missingSynopsisBooks.length > 0 && !options?.signal?.aborted) {
-    const synopsisProvider = MetadataRegistry.getInstance().getProvider<
-      string | null
-    >(MetadataKey.SYNOPSIS);
+    const synopsisProvider = getActiveSynopsisProvider();
     const isAvailable =
       typeof synopsisProvider?.isAvailable === 'function'
         ? synopsisProvider.isAvailable()
-        : !!synopsisProvider;
+        : Boolean(synopsisProvider);
     if (synopsisProvider && isAvailable) {
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const scopedAbort = new AbortController();

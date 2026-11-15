@@ -1,8 +1,17 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {UmapWorkerRequest} from './umap.worker';
 
+interface WorkerMessagePayload {
+  error?: string;
+  reduced?: unknown[];
+  labels?: number[];
+  relaxedCoords?: unknown[];
+  neighborIndexLists?: unknown[];
+  softMemberships?: unknown[];
+}
+
 describe('umap.worker message protocol', () => {
-  const postMessageMock = vi.fn();
+  const postMessageMock = vi.fn<(payload: WorkerMessagePayload) => void>();
 
   beforeEach(async () => {
     postMessageMock.mockReset();
@@ -23,7 +32,7 @@ describe('umap.worker message protocol', () => {
 
     handler({
       data: {mode: 'geometryOnly', rawCoords: []},
-    } as MessageEvent<UmapWorkerRequest>);
+    } as unknown as MessageEvent<UmapWorkerRequest>);
     expect(postMessageMock).toHaveBeenLastCalledWith({
       relaxedCoords: [],
       neighborIndexLists: [],
@@ -40,7 +49,7 @@ describe('umap.worker message protocol', () => {
         ],
         clusterIds: [0, 0, 1],
       },
-    } as MessageEvent<UmapWorkerRequest>);
+    } as unknown as MessageEvent<UmapWorkerRequest>);
 
     const result = postMessageMock.mock.calls[1][0];
     expect(result.relaxedCoords).toHaveLength(3);
@@ -57,7 +66,7 @@ describe('umap.worker message protocol', () => {
 
     handler({
       data: {mode: 'full', embeddings: [[0.1, 0.2, 0.3], undefined]},
-    } as MessageEvent<UmapWorkerRequest>);
+    } as unknown as MessageEvent<UmapWorkerRequest>);
 
     expect(postMessageMock).toHaveBeenCalledWith({
       error: 'Not enough data points for UMAP',
@@ -87,7 +96,7 @@ describe('umap.worker message protocol', () => {
         nNeighbors: 3,
         seed: 42,
       },
-    } as MessageEvent<UmapWorkerRequest>);
+    } as unknown as MessageEvent<UmapWorkerRequest>);
 
     expect(postMessageMock).toHaveBeenCalledTimes(1);
     const payload = postMessageMock.mock.calls[0][0];

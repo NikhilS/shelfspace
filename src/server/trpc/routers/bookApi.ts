@@ -11,6 +11,7 @@ import {
 } from '../../../schemas/libraryApi';
 import {bookStatusEnum, safeBookOrStateIdSchema} from '../../../schemas/book';
 import {safeIdSchema} from '../../../schemas/common';
+import {userReadingStateBookSnapshotSchema} from '../../../schemas/readingState';
 
 export const bookApiRouter = router({
   create: libraryProcedure('editor')
@@ -31,8 +32,10 @@ export const bookApiRouter = router({
         libraryId: safeIdSchema,
         bookId: safeBookOrStateIdSchema,
         status: bookStatusEnum,
+        rating: z.number().min(1).max(5).optional(),
         recordReadStatusReview: z.boolean().optional(),
         reviewedAtOverride: z.string().max(100).nullable().optional(),
+        bookSnapshot: userReadingStateBookSnapshotSchema.optional(),
       }),
     )
     .mutation(async ({ctx, input}) => {
@@ -43,8 +46,14 @@ export const bookApiRouter = router({
         input.status,
         {
           skipAccessCheck: true,
-          recordReadStatusReview: input.recordReadStatusReview,
-          reviewedAtOverride: input.reviewedAtOverride,
+          ...(input.rating !== undefined ? {rating: input.rating} : {}),
+          ...(input.recordReadStatusReview !== undefined
+            ? {recordReadStatusReview: input.recordReadStatusReview}
+            : {}),
+          ...(input.reviewedAtOverride !== undefined
+            ? {reviewedAtOverride: input.reviewedAtOverride}
+            : {}),
+          ...(input.bookSnapshot ? {bookSnapshot: input.bookSnapshot} : {}),
         },
       );
     }),
@@ -55,9 +64,19 @@ export const bookApiRouter = router({
         libraryId: safeIdSchema,
         bookId: safeBookOrStateIdSchema,
         reviewedAt: z.string().max(100).nullable().optional(),
+        bookSnapshot: userReadingStateBookSnapshotSchema.optional(),
       }),
     )
     .mutation(async ({ctx, input}) => {
+      if (input.bookSnapshot) {
+        return await BookService.recordReadSwipeReview(
+          ctx.user.uid,
+          input.libraryId,
+          input.bookId,
+          input.reviewedAt,
+          {bookSnapshot: input.bookSnapshot},
+        );
+      }
       return await BookService.recordReadSwipeReview(
         ctx.user.uid,
         input.libraryId,
@@ -94,9 +113,18 @@ export const bookApiRouter = router({
       z.object({
         libraryId: safeIdSchema,
         bookId: safeBookOrStateIdSchema,
+        cleanIsbn: z.string().max(64).optional(),
       }),
     )
     .query(async ({ctx, input}) => {
+      if (input.cleanIsbn !== undefined) {
+        return await BookService.getBook(
+          ctx.user.uid,
+          input.libraryId,
+          input.bookId,
+          {cleanIsbn: input.cleanIsbn},
+        );
+      }
       return await BookService.getBook(
         ctx.user.uid,
         input.libraryId,
@@ -118,6 +146,24 @@ export const bookApiRouter = router({
           ? {...input, prefetchedLibraryData: ctx.libraryData}
           : input,
       );
+    }),
+
+  syncChanges: libraryProcedure('viewer')
+    .input(
+      z.object({
+        libraryId: safeIdSchema,
+        sinceUpdatedAtMs: z.number().int().min(0),
+        knownCount: z.number().int().min(0).optional(),
+      }),
+    )
+    .query(async ({ctx, input}) => {
+      return await BookService.syncChanges(ctx.user.uid, input.libraryId, {
+        sinceUpdatedAtMs: input.sinceUpdatedAtMs,
+        ...(input.knownCount !== undefined
+          ? {knownCount: input.knownCount}
+          : {}),
+        ...(ctx.libraryData ? {prefetchedLibraryData: ctx.libraryData} : {}),
+      });
     }),
 
   getBookDetailsChunk: libraryProcedure('viewer')

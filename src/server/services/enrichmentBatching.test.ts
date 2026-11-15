@@ -80,8 +80,10 @@ vi.mock('./catalog', () => ({
 
 vi.mock('./limiters', () => ({
   geminiLimiter: {
-    schedule: vi.fn((fnOrOpts: unknown, maybeFn?: () => unknown) =>
-      typeof fnOrOpts === 'function' ? fnOrOpts() : maybeFn?.(),
+    schedule: vi.fn((fnOrOpts: unknown, maybeFn?: () => unknown): unknown =>
+      typeof fnOrOpts === 'function'
+        ? (fnOrOpts as () => unknown)()
+        : maybeFn?.(),
     ),
   },
 }));

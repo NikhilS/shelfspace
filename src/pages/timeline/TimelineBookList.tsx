@@ -67,8 +67,9 @@ export function TimelineDesktopEpochDrawer({
             {selectedCluster.books.map(book => {
               const startY = book.temporalMetadata?.startYear;
               const endY = book.temporalMetadata?.endYear;
-              const hasMultiYearSpan =
-                startY !== undefined && endY !== undefined && endY > startY;
+              const hasStartY = typeof startY === 'number';
+              const hasEndY = typeof endY === 'number';
+              const hasMultiYearSpan = hasStartY && hasEndY && endY > startY;
 
               return (
                 <Link
@@ -104,14 +105,14 @@ export function TimelineDesktopEpochDrawer({
                     </p>
 
                     <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-mono tabular-nums text-on-surface-variant">
-                      {startY !== undefined && (
+                      {hasStartY && (
                         <span className="font-semibold text-[#215a6d] dark:text-[#6ab0c7]">
-                          {hasMultiYearSpan
+                          {hasMultiYearSpan && hasEndY
                             ? `${formatYear(startY)} – ${formatYear(endY)}`
                             : formatYear(startY)}
                         </span>
                       )}
-                      {hasMultiYearSpan && (
+                      {hasMultiYearSpan && hasStartY && hasEndY && (
                         <>
                           <span
                             aria-hidden="true"
@@ -223,8 +224,9 @@ export function TimelineMobileEpochSheet({
               {selectedCluster.books.map(book => {
                 const startY = book.temporalMetadata?.startYear;
                 const endY = book.temporalMetadata?.endYear;
-                const hasMultiYearSpan =
-                  startY !== undefined && endY !== undefined && endY > startY;
+                const hasStartY = typeof startY === 'number';
+                const hasEndY = typeof endY === 'number';
+                const hasMultiYearSpan = hasStartY && hasEndY && endY > startY;
 
                 return (
                   <Link
@@ -257,9 +259,9 @@ export function TimelineMobileEpochSheet({
                       <p className="text-xs text-on-surface-variant line-clamp-1 mt-0.5">
                         {book.author || 'Unknown Author'}
                       </p>
-                      {startY !== undefined && (
+                      {hasStartY && (
                         <div className="mt-1.5 text-[11px] font-mono tabular-nums font-semibold text-[#215a6d] dark:text-[#6ab0c7]">
-                          {hasMultiYearSpan
+                          {hasMultiYearSpan && hasEndY
                             ? `${formatYear(startY)} – ${formatYear(endY)} (${endY - startY} yrs)`
                             : formatYear(startY)}
                         </div>

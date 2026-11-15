@@ -18,78 +18,10 @@ import {ResetMetadataSection} from './spruce-up/ResetMetadataSection';
 import {PageLoading} from '../components/layout/PageLoading';
 import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {useOnlineStatus} from '../hooks/useOnlineStatus';
+import {isBookMissingCoreEnrichment} from '../constants/enrichmentDescriptors';
 import {hasHeavyLeaks} from '../lib/sanitizeStorage';
 
 export type ShelfCareTab = 'enrichment' | 'duplicates' | 'maintenance';
-
-function isBookMissingAnyMetadata(book: {
-  coverUrl?: string;
-  coverUrlRaw?: string;
-  primaryGenre?: string;
-  series?: string;
-  geoMetadata?: {isNonEarth?: boolean; locations?: unknown[]};
-  temporalMetadata?: {
-    isNonHistorical?: boolean;
-    startYear?: number;
-    eraName?: string;
-    eraLabel?: string;
-    rationale?: string;
-  };
-  bookDetailsMetadata?: {
-    hasSynopsis?: boolean;
-    hasAuthorBio?: boolean;
-    hasEmbedding?: boolean;
-  };
-  enrichmentStatus?: Record<string, string | undefined>;
-}): boolean {
-  const status = book.enrichmentStatus || {};
-  const hasCover = Boolean(
-    book.coverUrl ||
-    book.coverUrlRaw ||
-    status.coverImage === 'completed' ||
-    status.coverImage === 'unsupported',
-  );
-  const hasGenre = Boolean(
-    (book.primaryGenre && book.primaryGenre.trim()) ||
-    status.genre === 'completed' ||
-    status.genre === 'unsupported',
-  );
-  const hasSynopsis = Boolean(
-    book.bookDetailsMetadata?.hasSynopsis ||
-    status.synopsis === 'completed' ||
-    status.synopsis === 'unsupported',
-  );
-  const hasBio = Boolean(
-    book.bookDetailsMetadata?.hasAuthorBio ||
-    status.authorBio === 'completed' ||
-    status.authorBio === 'unsupported',
-  );
-  const hasGeo = Boolean(
-    book.geoMetadata?.isNonEarth ||
-    (Array.isArray(book.geoMetadata?.locations) &&
-      book.geoMetadata.locations.length > 0) ||
-    status.geo === 'completed' ||
-    status.geo === 'unsupported',
-  );
-  const hasTemporal = Boolean(
-    (book.temporalMetadata &&
-      (book.temporalMetadata.isNonHistorical ||
-        book.temporalMetadata.startYear !== undefined ||
-        book.temporalMetadata.eraName ||
-        book.temporalMetadata.eraLabel ||
-        book.temporalMetadata.rationale)) ||
-    status.temporal === 'completed' ||
-    status.temporal === 'unsupported',
-  );
-  return !(
-    hasCover &&
-    hasGenre &&
-    hasSynopsis &&
-    hasBio &&
-    hasGeo &&
-    hasTemporal
-  );
-}
 
 export function SpruceUpView() {
   const {id: libraryId} = useParams<{id: string}>();
@@ -131,7 +63,7 @@ export function SpruceUpView() {
     if (!books) {
       return 0;
     }
-    return books.filter(isBookMissingAnyMetadata).length;
+    return books.filter(isBookMissingCoreEnrichment).length;
   }, [books]);
 
   const leaksCount = useMemo(() => {

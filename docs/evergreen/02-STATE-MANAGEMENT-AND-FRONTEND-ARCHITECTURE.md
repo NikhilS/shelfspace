@@ -28,6 +28,7 @@ To avoid state fragmentation and dual-state synchronization bugs, **book(ish)** 
 | - `useAppStore`: Theme mode (`light` | `dark` | `system`) persisted to local |
 | - `useUIStore`: Active multi-selection set (`selectedBookIds: Set<string>`) |
 | - `useAuthStore`: Firebase Auth user, allowlist readiness, superadmin flag  |
+| - `useCoverTransitionStore`: Shared-element FLIP cover state & scrollY map  |
 | - `useDebugStore`: HUD visibility, telemetry log ring buffer (max 200)       |
 +-----------------------------------------------------------------------------+
                                        |
@@ -64,33 +65,33 @@ To avoid state fragmentation and dual-state synchronization bugs, **book(ish)** 
   await utils.book.list.invalidate({ libraryId });
   ```
 
-### Rule 3: Structured Optimistic Updates
-When applying optimistic mutations (such as toggling reading status or bulk-editing tags), use the structured `optimisticMutation` helper (`src/lib/optimisticMutation.ts`) or domain cache synchronizers (`src/lib/readingStatusCache.ts`):
-1. Cancel outgoing queries for that key.
-2. Snapshot the existing cache data for rollback.
-3. Optimistically write the expected delta to the cache.
-4. On mutation error: automatically roll back to the snapshot and toast a user-friendly error.
-5. On mutation settlement: trigger background refetch to ensure parity with the database.
+### Rule 3: Optimistic Mutations & Surgical Zero-Refetch Delta Commits
+When applying mutations (toggling reading status, adding/editing/deleting a book, or posting a review), use the domain cache reconcilers in `src/lib/readingStatusCache.ts`:
+1. Snapshot the existing cache data for rollback and apply the optimistic patch (`applyOptimisticReadingStatusPatch` / `removeBookFromReadingCaches`).
+2. When mutating reading status or swipe reviews on a client-known book, pass `bookSnapshot: buildBookSnapshotHint(...)` so the server skips pre-write Firestore reads (`0` pre-write reads).
+3. On mutation error: roll back to the snapshot and toast a warm, clear message.
+4. On mutation success: commit the authoritative delta returned by the server via `setData` (`commitReadingStatusDelta`, `commitBookUpsertDelta`, `commitBookDeleteDelta`, `commitBookReviewDelta`)—**do not** trigger full-collection `invalidateQueries` storms for single-entity writes. Reserve `invalidateReadingStatusQueries` strictly for multi-entity background enrichment or merge jobs (with `includeRecommendations: false` so daily editorial picks remain stable).
 
-### Rule 4: Cross-Query Cache Synchronization & Mutation Entry-Point Completeness
-Because `src/lib/queryClient.ts` configures a global **5-minute `staleTime`**, `refetchOnWindowFocus: false`, and **7-day IndexedDB cache persistence** (`idb-keyval`), any query key that is not explicitly patched or invalidated after a mutation will continue serving stale data for up to 5 minutes when the user navigates between views.
+### Rule 4: Cross-Query Cache Synchronization & Sharded Persistence
+`src/lib/queryClient.ts` configures a **5-minute `staleTime`** (60 minutes for warm `book.list` caches backed by incremental `book.syncChanges`), `refetchOnWindowFocus: false`, and **7-day Sharded Structured-Clone IndexedDB Persistence** (`bookish-cache-v2` in `src/lib/idbQueryShardPersister.ts`, flushing only dirty domain shards with `embedding` vectors stripped and zero `JSON.stringify`).
 
 1. **Synchronize the Entire Query Family, Never Just the Local View's Query:**
-   When a domain entity is projections-backed across multiple tRPC procedures, a mutation must update and invalidate **all** projections simultaneously. For book and reading-status state (`src/lib/readingStatusCache.ts`), the coupled query family is:
+   When a domain entity is projection-backed across multiple tRPC procedures, a mutation must patch **all** projections simultaneously (`src/lib/readingStatusCache.ts`):
    - `trpc.readingTracker.getShelf({ shelf: 'all' })` (Personal Reading Room Bento, Currently Reading card, Reading Lists modal, and shelf counts)
    - `trpc.readingTracker.getUnreadLibraryBooks(undefined)` (*"Start Reading from Your Shelves"* picker)
    - `trpc.book.list({ libraryId })` (`LibraryView` collection grid/list/table and `LibraryOverview` Reading Pulse)
-   - `trpc.book.get({ libraryId, bookId })` (`BookDetailsView` and `BookSwipeDeck` preview slots)
-   - `trpc.library.list()` / `trpc.library.get({ libraryId })` (when book counts or library membership change)
+   - `trpc.book.get({ libraryId, bookId })` & `trpc.book.listReviews({ libraryId, bookId })` (`BookDetailsView` and `BookSwipeDeck` preview slots)
+   - `trpc.library.list()` / `trpc.library.get({ libraryId })` (incrementing/decrementing `bookCount` in place)
+   - Daily editorial queries (`usePickOfTheDay` keyed by `(scopeKey, YYYY-MM-DD, refreshEpoch)` and `useBookRecommendations` with 24h `staleTime`) are intentionally decoupled from catalog counts so status/book edits never trigger redundant Gemini calls.
 
 2. **Centralize Cache Patching & Audit Every Mutation Entry Point:**
-   Never hand-roll partial `utils.*.invalidate()` calls inside individual components. Route every mutation through a shared domain cache helper (`applyOptimisticReadingStatusPatch`, `removeBookFromReadingCaches`, and `invalidateReadingStatusQueries` in `src/lib/readingStatusCache.ts`) and verify that **all** entry points are wired:
+   Never hand-roll partial cache patches inside individual components. Route every mutation through `src/lib/readingStatusCache.ts` across all entry points:
    - Single-book detail actions (`src/pages/book-details/useBook.ts`)
    - Personal Reading Room & shelf actions (`src/pages/dashboard/useReadingShelf.ts`)
    - Library Overview inline status actions (`src/pages/library/LibraryOverview.tsx`)
    - Bulk selection toolbar actions (`src/hooks/useSelection.ts`)
    - Quick-add & full-page search/track flows (`src/components/book/QuickAddBookDialog.tsx`, `src/pages/AddBookView.tsx`, `src/pages/add-book/useAddBooks.ts`)
-   - Interactive triage flows (`src/pages/ReadSwipeView.tsx`)
+   - Interactive triage flows (`src/pages/read-swipe/useReadSwipeSession.ts`)
 
 ---
 
@@ -141,6 +142,9 @@ To maintain locked 60/120fps frame pacing when swiping through book collections 
    - Flanking slots (`isActive === false`) render synchronously from the TanStack Query cache (`utils.book.get.getData` / `utils.book.list.getData`) with `listReviews`, `useBookInsights` auto-enrichment timers, `Markdown` AST parsing, and `ReviewSection` disabled until the slot settles into `isActive === true`.
 4. **Idle-Deferred Data & Bitmap Pre-Warming:**
    - `PrefetchAdjacentBooks` defers tRPC prefetching and `new Image().decode()` cover pre-warming for `[index - 2, index + 2]` to `requestIdleCallback` after the swipe spring settles.
+5. **Zero-Overhead Shared-Element Cover Transitions (`useCoverTransitionStore` & `SharedCoverFrame`):**
+   - `SharedCoverFrame` renders a plain `<div>` for 99.9% of shelf items via the granular `useShelfCoverLayoutId(surface, libraryId, bookId)` selector, upgrading only the single active `(surface, libraryId, bookId)` slot inside `flushSync` (`navigateWithCoverTransition`) so 1,000-book virtualized shelves incur zero idle Motion layout observers.
+   - `BookSwipeDeck` notifies `setDeckDragging(true | false)` so `BookContent` detaches `layoutId` during horizontal drags and calls `syncActiveDetailBook(libraryId, nextBookId)` on commit—allowing `prepareReturnWithCoverTransition` and `ScrollToTop` (`useLayoutEffect` pre-paint `scrollY` restoration) to reverse-morph whichever book the reader swiped to back into its shelf slot.
 
 ---
 
@@ -156,5 +160,7 @@ To support multi-thousand-volume libraries without sacrificing first-paint speed
    - `getBookDetailsChunk` batches full `bookDetails` reads in chunks of up to 250 books per request.
 3. **Lookahead Pagination & Self-Healing `library.bookCount` (`BookService.listBooks`):**
    - Server queries use `limit + 1` lookahead to set `nextCursor` only when a $(N+1)\text{th}$ document exists, and asynchronously self-heal `libraries/{libraryId}.bookCount` whenever an unfiltered read detects drift between the stored count and actual collection count.
+4. **Incremental Warm Delta Sync (`book.syncChanges`):**
+   - Once a library's initial catalog is cached in memory or hydrated from its `library:<id>` IndexedDB shard, `useLibraryData` extends `book.list` freshness to 60 minutes and reconciles collaborator/cross-device changes via `trpcVanilla.book.syncChanges.query({ libraryId, sinceUpdatedAtMs, knownCount })` (throttled to 45s per library), downloading only modified `books` documents, hard-delete tombstones (`LibraryMetadataCache`), and reading-state overlays (`0` book documents transferred when unchanged).
 
 

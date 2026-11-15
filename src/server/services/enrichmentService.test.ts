@@ -217,7 +217,7 @@ describe('EnrichmentService', () => {
       expect.objectContaining({
         enrichmentStatus: expect.objectContaining({
           geo: 'unsupported',
-        }),
+        }) as unknown,
       }),
     );
   });
@@ -313,7 +313,7 @@ describe('EnrichmentService', () => {
         temporalMetadata: {startYear: 1812, endYear: 1812},
         enrichmentStatus: expect.objectContaining({
           temporal: 'completed',
-        }),
+        }) as unknown,
       }),
     );
   });
@@ -368,7 +368,7 @@ describe('EnrichmentService', () => {
         subgenres: ['Space Opera', 'Cyberpunk'],
         enrichmentStatus: expect.objectContaining({
           genre: 'completed',
-        }),
+        }) as unknown,
       }),
     );
   });
@@ -416,7 +416,11 @@ describe('EnrichmentService', () => {
     expect(res.processedCount).toBe(1);
 
     // Assert that books/{bookId}.update receives bookDetailsMetadata and NOT synopsis
-    const updateCallArg = mockBookUpdate.mock.calls[0][0];
+    const updateCallArg = mockBookUpdate.mock.calls[0][0] as {
+      synopsis?: unknown;
+      bookDetailsMetadata?: unknown;
+      enrichmentStatus: {synopsis?: string};
+    };
     expect(updateCallArg.synopsis).toBeUndefined();
     expect(updateCallArg.bookDetailsMetadata).toEqual({
       hasSynopsis: true,
@@ -478,7 +482,10 @@ describe('EnrichmentService', () => {
     expect(res.processedCount).toBe(1);
 
     // Assert that books/{bookId}.update does not have raw embedding array
-    const updateCallArg = mockBookUpdate.mock.calls[0][0];
+    const updateCallArg = mockBookUpdate.mock.calls[0][0] as {
+      embedding?: unknown;
+      bookDetailsMetadata?: unknown;
+    };
     expect(updateCallArg.embedding).toBeUndefined();
     expect(updateCallArg.bookDetailsMetadata).toEqual({
       hasSynopsis: true,
@@ -586,5 +593,168 @@ describe('EnrichmentService', () => {
     expect(mockBatchUpdate).toHaveBeenCalledTimes(2);
     expect(mockBatchCommit).toHaveBeenCalledTimes(1);
     expect(mockBookUpdate).not.toHaveBeenCalled();
+  });
+
+  it('executes single-wave stageIndex mode by committing resolved/pruned books and escalating residuals without premature tombstones', async () => {
+    vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
+
+    const stage0Execute = vi.fn().mockResolvedValue(
+      new Map([
+        [
+          'b_pruned',
+          {
+            status: 'pruned',
+            reason: 'standalone',
+          },
+        ],
+        [
+          'b_escalated',
+          {
+            status: 'escalate',
+            enrichedBook: {series: undefined},
+          },
+        ],
+      ]),
+    );
+    const stage1Execute = vi.fn().mockResolvedValue(
+      new Map([
+        [
+          'b_escalated',
+          {
+            status: 'resolved',
+            value: 'The Expanse #1',
+            winningProvider: 'apple_books',
+            bonusCatalog: {
+              isbn: '978-0-316-12908-4',
+              publishedDate: '2011',
+              synopsis: 'Ice hauler captain uncovers an alien conspiracy.',
+            },
+          },
+        ],
+      ]),
+    );
+
+    const stagedSeriesPlugin = {
+      isAvailable: () => true,
+      bulkFetch: vi.fn(),
+      stages: [
+        {id: 'series-decision-gate', tier: 'decision', execute: stage0Execute},
+        {id: 'series-catalog', tier: 'catalog', execute: stage1Execute},
+      ],
+    };
+
+    vi.mocked(MetadataRegistry.getInstance).mockReturnValue({
+      getProvider: () => stagedSeriesPlugin,
+    } as unknown as MetadataRegistry);
+
+    mockBookGet
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          title: 'Middlemarch',
+          author: 'George Eliot',
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          title: 'Leviathan Wakes',
+          author: 'James S. A. Corey',
+        }),
+      });
+
+    const wave0Progress: Array<{bookId: string; stage: string}> = [];
+    const wave0Res = await EnrichmentService.triggerBatchEnrichment(
+      'u1',
+      'u1@example.com',
+      {
+        libraryId: 'lib1',
+        enrichmentType: 'series',
+        bookIds: ['b_pruned', 'b_escalated'],
+      },
+      {
+        stageIndex: 0,
+        callbacks: {
+          onBookProgress: u =>
+            wave0Progress.push({bookId: u.bookId, stage: u.stage}),
+        },
+      },
+    );
+
+    expect(stage0Execute).toHaveBeenCalledTimes(1);
+    expect(stage1Execute).not.toHaveBeenCalled();
+    expect(wave0Res.prunedCount).toBe(1);
+    expect(wave0Res.processedCount).toBe(0);
+    expect(wave0Res.escalatedBooks).toEqual([
+      {
+        bookId: 'b_escalated',
+        state: {enrichedBook: {series: undefined}},
+      },
+    ]);
+    // Only the pruned standalone book should receive an 'unsupported' write in Wave 0
+    expect(mockBookUpdate).toHaveBeenCalledTimes(1);
+    expect(mockBookUpdate).toHaveBeenCalledWith({
+      enrichmentStatus: {series: 'unsupported'},
+    });
+    expect(wave0Progress).toContainEqual({
+      bookId: 'b_escalated',
+      stage: 'evaluating_decisions',
+    });
+    expect(wave0Progress).not.toContainEqual({
+      bookId: 'b_escalated',
+      stage: 'skipped',
+    });
+
+    // Now run Wave 1 strictly on the escalated book and verify bonus catalog fields persist
+    mockBookUpdate.mockClear();
+    mockBookDetailsSet.mockClear();
+    mockBookGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        title: 'Leviathan Wakes',
+        author: 'James S. A. Corey',
+      }),
+    });
+
+    const priorEscalations = new Map(
+      (wave0Res.escalatedBooks ?? []).map(item => [item.bookId, item.state]),
+    );
+    const wave1Res = await EnrichmentService.triggerBatchEnrichment(
+      'u1',
+      'u1@example.com',
+      {
+        libraryId: 'lib1',
+        enrichmentType: 'series',
+        bookIds: ['b_escalated'],
+      },
+      {
+        skipAccessCheck: true,
+        stageIndex: 1,
+        priorEscalations,
+      },
+    );
+
+    expect(stage1Execute).toHaveBeenCalledTimes(1);
+    expect(wave1Res.processedCount).toBe(1);
+    expect(wave1Res.escalatedBooks).toEqual([]);
+    expect(mockBookUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        series: 'The Expanse #1',
+        isbn: '978-0-316-12908-4',
+        cleanIsbn: '9780316129084',
+        publishedDate: '2011',
+        bookDetailsMetadata: {hasSynopsis: true},
+        enrichmentStatus: {
+          series: 'completed',
+          synopsis: 'completed',
+        },
+      }),
+    );
+    expect(mockBookDetailsSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        synopsis: 'Ice hauler captain uncovers an alien conspiracy.',
+      }),
+      {merge: true},
+    );
   });
 });

@@ -14,17 +14,28 @@ import {Button} from '@/components/ui/button';
 import {MagnifyingBookmarkIllustration} from '@/components/ui/empty-state-illustrations';
 import {Book} from '../types';
 import {trpc} from '../lib/trpc';
+import {useCoverTransitionStore} from '../stores/coverTransitionStore';
+import {prepareReturnWithCoverTransition} from '../lib/bookCoverTransition';
+
+interface BookDetailsLocationState {
+  from?: string;
+  bookList?: string[];
+}
 
 export function BookDetailsView() {
   const {libraryId, bookId} = useParams<{libraryId: string; bookId: string}>();
   const navigate = useNavigate();
   const location = useLocation();
+  const locationState =
+    location.state && typeof location.state === 'object'
+      ? (location.state as BookDetailsLocationState)
+      : null;
   const utils = trpc.useUtils();
 
   const {user} = useAuth();
 
   const backUrl =
-    location.state?.from ||
+    (typeof locationState?.from === 'string' && locationState.from) ||
     (libraryId?.startsWith('virtual_') ? '/' : `/library/${libraryId}`);
 
   // Fetch only library permissions for canEdit; do NOT subscribe to the entire books collection
@@ -43,8 +54,13 @@ export function BookDetailsView() {
   // If navigated with state.bookList, use it.
   // Else if books are cached from bookshelf view, use cached IDs for carousel navigation.
   // Else (cold direct URL visit), use [bookId] without subscribing to the collection.
+  const stateBookList = Array.isArray(locationState?.bookList)
+    ? locationState.bookList.filter(
+        (id): id is string => typeof id === 'string',
+      )
+    : undefined;
   const bookList: string[] =
-    location.state?.bookList ||
+    stateBookList ||
     (cachedBooks && cachedBooks.length > 0
       ? cachedBooks.map(b => b.id)
       : bookId
@@ -57,10 +73,37 @@ export function BookDetailsView() {
   const deckRef = useRef<BookSwipeDeckHandle | null>(null);
   const [committedIndex, setCommittedIndex] = useState(activeIndex);
 
-  // Sync committedIndex when activeIndex changes from URL/history navigation
+  // Sync committedIndex and coverTransitionStore active book when URL/history navigation changes
   useEffect(() => {
     setCommittedIndex(activeIndex);
-  }, [activeIndex]);
+    if (libraryId && bookId) {
+      const matched = cachedBooks?.find(b => b.id === bookId);
+      useCoverTransitionStore.getState().syncActiveDetailBook(
+        libraryId,
+        bookId,
+        matched
+          ? {
+              title: matched.title,
+              author: matched.author,
+              coverUrl: matched.coverUrl,
+              publishedDate: matched.publishedDate,
+              primaryGenre: matched.primaryGenre,
+              subgenres: matched.subgenres,
+              series: matched.series,
+              synopsis: matched.synopsis,
+              readingStatus: matched.readingStatus,
+              ownershipStatus: matched.ownershipStatus,
+              format: matched.format,
+              isbn: matched.isbn,
+            }
+          : undefined,
+      );
+    }
+  }, [activeIndex, bookId, cachedBooks, libraryId]);
+
+  const handleDeckDragStateChange = useCallback((isDragging: boolean) => {
+    useCoverTransitionStore.getState().setDeckDragging(isDragging);
+  }, []);
 
   const handleIndexCommit = useCallback(
     (newIndex: number) => {
@@ -68,6 +111,29 @@ export function BookDetailsView() {
 
       if (newIndex >= 0 && newIndex < bookList.length && libraryId) {
         const nextBookId = bookList[newIndex];
+        if (nextBookId) {
+          const matched = cachedBooks?.find(b => b.id === nextBookId);
+          useCoverTransitionStore.getState().syncActiveDetailBook(
+            libraryId,
+            nextBookId,
+            matched
+              ? {
+                  title: matched.title,
+                  author: matched.author,
+                  coverUrl: matched.coverUrl,
+                  publishedDate: matched.publishedDate,
+                  primaryGenre: matched.primaryGenre,
+                  subgenres: matched.subgenres,
+                  series: matched.series,
+                  synopsis: matched.synopsis,
+                  readingStatus: matched.readingStatus,
+                  ownershipStatus: matched.ownershipStatus,
+                  format: matched.format,
+                  isbn: matched.isbn,
+                }
+              : undefined,
+          );
+        }
         if (nextBookId && nextBookId !== bookId) {
           void navigate(`/library/${libraryId}/book/${nextBookId}`, {
             state: {from: backUrl, bookList},
@@ -76,10 +142,11 @@ export function BookDetailsView() {
         }
       }
     },
-    [backUrl, bookId, bookList, libraryId, navigate],
+    [backUrl, bookId, bookList, cachedBooks, libraryId, navigate],
   );
 
   const handleNavigateBack = useCallback(() => {
+    prepareReturnWithCoverTransition();
     void navigate(backUrl, {replace: true});
   }, [backUrl, navigate]);
 
@@ -114,7 +181,11 @@ export function BookDetailsView() {
       <div className="h-full w-full bg-surface flex flex-col">
         <div className="w-full bg-surface/90 backdrop-blur-md border-b border-surface-variant/40 z-20 shrink-0 shadow-xs">
           <div className="layout-container py-1.5 flex items-center justify-between">
-            <BackToLibrary libraryId={libraryId} customTo={backUrl} />
+            <BackToLibrary
+              libraryId={libraryId}
+              customTo={backUrl}
+              onClick={prepareReturnWithCoverTransition}
+            />
           </div>
         </div>
         <div className="layout-page-content flex flex-col items-center justify-center min-h-[40vh] text-center">
@@ -127,7 +198,11 @@ export function BookDetailsView() {
               ? 'It may have been removed from your reading shelf.'
               : 'It may have been moved or removed from this library.'}
           </p>
-          <BackToLibrary libraryId={libraryId} customTo={backUrl} />
+          <BackToLibrary
+            libraryId={libraryId}
+            customTo={backUrl}
+            onClick={prepareReturnWithCoverTransition}
+          />
         </div>
       </div>
     );
@@ -146,7 +221,11 @@ export function BookDetailsView() {
         {/* Top Navigation Bar with Back to Library */}
         <div className="w-full bg-surface/90 backdrop-blur-md border-b border-surface-variant/40 z-20 shrink-0 shadow-xs">
           <div className="layout-container py-1.5 flex items-center justify-between">
-            <BackToLibrary libraryId={libraryId} customTo={backUrl} />
+            <BackToLibrary
+              libraryId={libraryId}
+              customTo={backUrl}
+              onClick={prepareReturnWithCoverTransition}
+            />
             {bookList.length > 1 && (
               <div className="flex items-center gap-2">
                 <span
@@ -223,6 +302,7 @@ export function BookDetailsView() {
             bookIds={bookList}
             activeIndex={activeIndex}
             onIndexCommit={handleIndexCommit}
+            onDragStateChange={handleDeckDragStateChange}
             renderSlide={({bookId: slideBookId, isActive}) => (
               <BookContent
                 libraryId={libraryId}

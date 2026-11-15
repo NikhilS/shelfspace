@@ -4,6 +4,7 @@ import {Book, FirestoreDate} from '../../types';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {ArchivalCoverImage} from './ArchivalCoverImage';
+import {SharedCoverFrame} from './SharedCoverFrame';
 import {preloadRouteChunk} from '../../lib/routePreload';
 
 export interface BookCardProps {
@@ -12,6 +13,7 @@ export interface BookCardProps {
     addedAt: FirestoreDate;
     synopsis?: string;
   };
+  fallbackLibraryId?: string;
   onClick?: () => void;
   onNavigateBook?: (bookId: string) => void;
   canEdit: boolean;
@@ -23,6 +25,7 @@ export interface BookCardProps {
 
 function BookCardComponent({
   book,
+  fallbackLibraryId,
   onClick,
   onNavigateBook,
   isSelected,
@@ -36,6 +39,7 @@ function BookCardComponent({
       : null;
 
   const hasSelectHandler = Boolean(onSelect || onSelectBook);
+  const resolvedLibraryId = book.libraryId || fallbackLibraryId;
 
   const handlePrewarm = useCallback(() => {
     preloadRouteChunk('bookDetails');
@@ -62,7 +66,12 @@ function BookCardComponent({
       }`}
     >
       {/* Framed 2:3 Book Cover Showcase */}
-      <div className="relative aspect-[2/3] mb-3.5 bg-surface-container rounded-lg book-cover-shadow overflow-hidden border border-outline-variant/50">
+      <SharedCoverFrame
+        surface="library-grid"
+        libraryId={resolvedLibraryId}
+        bookId={book.id}
+        className="relative aspect-[2/3] mb-3.5 bg-surface-container rounded-lg book-cover-shadow overflow-hidden border border-outline-variant/50"
+      >
         {hasSelectHandler && (
           <Button
             type="button"
@@ -121,7 +130,7 @@ function BookCardComponent({
           imgClassName="group-hover:scale-[1.02] transition-transform duration-300"
           fallbackClassName="absolute inset-0"
         />
-      </div>
+      </SharedCoverFrame>
 
       {/* Bento Editorial Metadata & Synopsis Preview */}
       <div className="flex flex-col flex-1 justify-between min-w-0 pt-0.5">
@@ -162,6 +171,7 @@ function areBookCardPropsEqual(
 ): boolean {
   return (
     prev.book === next.book &&
+    prev.fallbackLibraryId === next.fallbackLibraryId &&
     prev.canEdit === next.canEdit &&
     prev.isSelected === next.isSelected &&
     prev.isSelectMode === next.isSelectMode &&

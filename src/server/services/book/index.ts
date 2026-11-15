@@ -1,4 +1,12 @@
-import {getBook, listBooks, getBookDetailsChunk} from './bookReadService';
+import {
+  getBook,
+  listBooks,
+  getBookDetailsChunk,
+  syncChanges,
+  type ReadingStateSyncEntry,
+  type SyncBookChangesOptions,
+  type SyncBookChangesResult,
+} from './bookReadService';
 import {
   createBook,
   updateBook,
@@ -26,6 +34,7 @@ import {
   normalizeReadingStateDoc,
   fetchUserReadingStateForBook,
   fetchUserReadingStatesMap,
+  loadUserReadingStatesMap,
   overlayReadingStateOnBook,
 } from './readingStateLedger';
 
@@ -39,6 +48,7 @@ export class BookService {
   static mergeDuplicates = mergeDuplicates;
   static getBook = getBook;
   static listBooks = listBooks;
+  static syncChanges = syncChanges;
   static listReviews = listReviews;
   static addReview = addReview;
   static getBookDetailsChunk = getBookDetailsChunk;
@@ -54,10 +64,14 @@ export {
   mergeDuplicates,
   getBook,
   listBooks,
+  syncChanges,
   listReviews,
   addReview,
   reviewDocConverter,
   getBookDetailsChunk,
+  type ReadingStateSyncEntry,
+  type SyncBookChangesOptions,
+  type SyncBookChangesResult,
   BookPartitioner,
   bookDocConverter,
   bookDetailsDocConverter,
@@ -72,5 +86,6 @@ export {
   normalizeReadingStateDoc,
   fetchUserReadingStateForBook,
   fetchUserReadingStatesMap,
+  loadUserReadingStatesMap,
   overlayReadingStateOnBook,
 };

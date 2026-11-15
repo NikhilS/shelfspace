@@ -16,7 +16,6 @@ const mockLibrary: Library = {
   name: 'botanical manuscripts',
   ownerId: 'user-1',
   ownerName: 'Ada Lovelace',
-  ownerEmail: 'ada@example.com',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-02T00:00:00.000Z',
   bookCount: 42,

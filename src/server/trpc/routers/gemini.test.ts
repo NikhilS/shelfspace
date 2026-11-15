@@ -19,12 +19,16 @@ vi.mock('../../services/gemini', () => ({
 }));
 
 const authCtx: SecurityContext = {
+  req: {} as SecurityContext['req'],
+  res: {} as SecurityContext['res'],
   user: {uid: 'user-1', email: 'reader@example.com'},
   isAdmin: false,
   isAppAllowed: true,
 };
 
 const unauthCtx: SecurityContext = {
+  req: {} as SecurityContext['req'],
+  res: {} as SecurityContext['res'],
   user: null,
   isAdmin: false,
   isAppAllowed: false,
@@ -44,6 +48,8 @@ describe('geminiRouter tRPC procedures & security boundaries', () => {
 
   it('rejects non-admin callers with hasAiPlan: false on AI procedures with FORBIDDEN', async () => {
     const noAiCtx: SecurityContext = {
+      req: {} as SecurityContext['req'],
+      res: {} as SecurityContext['res'],
       user: {uid: 'user-no-ai', email: 'basic@example.com'},
       isAdmin: false,
       isAppAllowed: true,

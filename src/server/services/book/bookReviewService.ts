@@ -158,7 +158,14 @@ export async function addReview(
   bookIdRaw: string,
   input: {rating: number; text: string},
   options?: {skipAccessCheck?: boolean; status?: string},
-): Promise<{success: true; id: string}> {
+): Promise<{
+  success: true;
+  id: string;
+  rating: number;
+  reviewText: string;
+  reviewedAt: string;
+  userName: string;
+}> {
   if (!options?.skipAccessCheck) {
     await LibraryService.verifyLibraryAccess(
       userId,
@@ -224,6 +231,14 @@ export async function addReview(
   }
 
   await batch.commit();
+  const resolvedUserName = userName || userEmail || 'Anonymous';
 
-  return {success: true, id: reviewRef.id || userId};
+  return {
+    success: true,
+    id: reviewRef.id || userId,
+    rating: input.rating,
+    reviewText: input.text.trim(),
+    reviewedAt: new Date().toISOString(),
+    userName: resolvedUserName,
+  };
 }

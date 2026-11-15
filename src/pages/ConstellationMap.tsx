@@ -1,6 +1,7 @@
 import React, {Suspense, lazy} from 'react';
 import {useParams, useNavigate} from 'react-router-dom';
 import {RefreshCw, Plus} from 'lucide-react';
+import {CONSTELLATION_MIN_BOOKS} from '../constants/visualizerDescriptors';
 import {useConstellationData} from '../hooks/useConstellationData';
 import {useOnlineStatus} from '../hooks/useOnlineStatus';
 import {Button} from '@/components/ui/button';
@@ -80,7 +81,7 @@ export function ConstellationMap() {
             {progress}
           </p>
         </div>
-      ) : plotData.length < 3 ? (
+      ) : plotData.length < CONSTELLATION_MIN_BOOKS ? (
         <div className="flex flex-col items-center justify-center min-h-[50vh] bg-surface-container-low rounded-2xl border border-outline-variant/50 p-8 text-center">
           <ConstellationSkyIllustration className="mb-3" />
           <h2 className="font-serif text-xl font-semibold text-on-surface mb-1.5">

@@ -6,7 +6,8 @@ import {useAppPermissions} from '../../hooks/useAppPermissions';
 
 export function useBookInsights(
   libraryId: string | undefined,
-  book: (Book & BookDetailsPayload) | null,
+  book:
+    (Omit<Book, keyof BookDetailsPayload> & BookDetailsPayload) | Book | null,
   canEdit: boolean,
   isActive: boolean = true,
 ) {
@@ -161,7 +162,9 @@ export function useBookInsights(
       }
     };
 
-    const timerId = setTimeout(runAutoEnrichment, 1200);
+    const timerId = setTimeout(() => {
+      void runAutoEnrichment();
+    }, 1200);
 
     return () => {
       clearTimeout(timerId);

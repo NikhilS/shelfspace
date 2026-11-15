@@ -71,12 +71,7 @@ export function DebugPwaSystemTab({
     if (typeof navigator === 'undefined') {
       return {};
     }
-    const conn = (
-      navigator as unknown as {
-        connection?: NetworkConnectionInfo;
-      }
-    ).connection;
-    return conn || {};
+    return navigator.connection || {};
   }, [isOnline]);
 
   const localStorageSummary = useMemo(() => {
@@ -136,8 +131,7 @@ export function DebugPwaSystemTab({
   const handleHardReset = () => {
     const resetFn =
       typeof window !== 'undefined'
-        ? (window as unknown as {__bookishHardResetAndReload?: () => void})
-            .__bookishHardResetAndReload
+        ? window.__bookishHardResetAndReload
         : undefined;
     if (typeof resetFn === 'function') {
       resetFn();

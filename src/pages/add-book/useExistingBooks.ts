@@ -1,5 +1,37 @@
-import {Book, BookDetails} from '../../types';
+import type {Book, BookDetails} from '../../types';
 import {trpc} from '../../lib/trpc';
+
+interface BookLikeSummary {
+  title: string;
+  author: string;
+  isbn?: string | null;
+  coverUrl?: string | null;
+  publishedDate?: string | null;
+  synopsis?: string | null;
+  authorBio?: string | null;
+  primaryGenre?: string | null;
+  subgenres?: string[];
+  isCustomPrimary?: boolean;
+  series?: string | null;
+  format?: 'physical' | 'digital';
+}
+
+function toBookDetails(item: BookLikeSummary): BookDetails {
+  return {
+    title: item.title,
+    author: item.author,
+    isbn: item.isbn ?? '',
+    coverUrl: item.coverUrl ?? '',
+    publishedDate: item.publishedDate ?? '',
+    synopsis: item.synopsis ?? undefined,
+    authorBio: item.authorBio ?? undefined,
+    primaryGenre: item.primaryGenre ?? undefined,
+    subgenres: item.subgenres,
+    isCustomPrimary: item.isCustomPrimary,
+    series: item.series ?? undefined,
+    format: item.format ?? 'physical',
+  };
+}
 
 export function useExistingBooks(
   libraryId?: string,
@@ -13,9 +45,11 @@ export function useExistingBooks(
     ? utils?.book?.list?.getData?.({libraryId})
     : undefined;
 
-  const cachedBooks = Array.isArray(cachedData)
+  const cachedRawBooks: BookLikeSummary[] | undefined = Array.isArray(
+    cachedData,
+  )
     ? (cachedData as Book[])
-    : (cachedData as {books?: Book[]})?.books;
+    : cachedData?.books;
 
   const bookListQuery = trpc.book?.list?.useQuery
     ? trpc.book.list.useQuery(
@@ -24,7 +58,7 @@ export function useExistingBooks(
           enabled: Boolean(
             libraryId &&
             !isReadingMode &&
-            (!cachedBooks || cachedBooks.length === 0),
+            (!cachedRawBooks || cachedRawBooks.length === 0),
           ),
           staleTime: 1000 * 60 * 5,
         },
@@ -41,18 +75,21 @@ export function useExistingBooks(
       )
     : undefined;
 
-  const queryBooks = Array.isArray(bookListQuery?.data)
-    ? (bookListQuery.data as unknown as BookDetails[])
-    : (bookListQuery?.data?.books as unknown as BookDetails[]);
+  const queryRawBooks: BookLikeSummary[] | undefined = Array.isArray(
+    bookListQuery?.data,
+  )
+    ? (bookListQuery.data as Book[])
+    : bookListQuery?.data?.books;
 
-  const shelfBooks = (readingShelfQuery?.data?.items ||
-    []) as unknown as BookDetails[];
+  const cachedBooks = cachedRawBooks?.map(toBookDetails);
+  const queryBooks = queryRawBooks?.map(toBookDetails);
+  const shelfBooks = (readingShelfQuery?.data?.items ?? []).map(toBookDetails);
 
-  const existingBooks = isReadingMode
+  const existingBooks: BookDetails[] = isReadingMode
     ? shelfBooks.length > 0
       ? shelfBooks
-      : (cachedBooks as unknown as BookDetails[]) || queryBooks || []
-    : (cachedBooks as unknown as BookDetails[]) || queryBooks || [];
+      : cachedBooks || queryBooks || []
+    : cachedBooks || queryBooks || [];
 
   return {existingBooks};
 }

@@ -1,4 +1,6 @@
 import {z} from 'zod';
+import {normalizeEnrichmentType} from '../constants/enrichmentDescriptors';
+import type {CanonicalEnrichmentType} from '../types/metadata';
 import {
   bookCreateSchema,
   bookUpdateSchema,
@@ -15,7 +17,9 @@ export {
   bookDeleteSchema,
   bookBatchUpsertSchema,
   bookMergeDuplicatesSchema,
+  normalizeEnrichmentType,
 };
+export type {CanonicalEnrichmentType};
 
 export const libraryAccessRoleEnum = z.enum(['owner', 'editor', 'viewer']);
 export type LibraryAccessRole = z.infer<typeof libraryAccessRoleEnum>;
@@ -129,43 +133,6 @@ export const enrichmentFlowEnum = z.enum([
 ]);
 
 export type RawEnrichmentFlow = z.infer<typeof enrichmentFlowEnum>;
-export type CanonicalEnrichmentType =
-  | 'geo'
-  | 'temporal'
-  | 'genre'
-  | 'synopsis'
-  | 'authorBio'
-  | 'coverImage'
-  | 'series'
-  | 'embedding';
-
-export function normalizeEnrichmentType(raw?: string): CanonicalEnrichmentType {
-  switch (raw) {
-    case 'geo':
-    case 'geoMetadata':
-      return 'geo';
-    case 'temporal':
-    case 'temporalMetadata':
-      return 'temporal';
-    case 'genre':
-    case 'primaryGenre':
-      return 'genre';
-    case 'synopsis':
-      return 'synopsis';
-    case 'authorBio':
-      return 'authorBio';
-    case 'coverImage':
-    case 'coverUrl':
-      return 'coverImage';
-    case 'series':
-      return 'series';
-    case 'embedding':
-    case 'embeddings':
-      return 'embedding';
-    default:
-      return 'genre';
-  }
-}
 
 export const enrichmentTriggerSchema = z
   .object({
@@ -221,6 +188,32 @@ export const enrichmentJobStatusSchema = z.object({
 
 export const enrichmentAuditCoversSchema = z.object({
   libraryId: safeIdSchema,
+  enableVisualAudit: z.boolean().optional(),
+});
+
+export const duplicateAdjudicationCandidateSchema = z.object({
+  id: safeIdSchema,
+  title: z.string().trim().min(1).max(500),
+  author: z.string().max(300).optional(),
+  isbn: z.string().max(40).optional(),
+  series: z.string().max(300).optional(),
+  publishedDate: z.string().max(60).optional(),
+  pageCount: z.number().int().min(0).max(50000).optional(),
+  hasCover: z.boolean().optional(),
+  hasSynopsis: z.boolean().optional(),
+});
+
+export const enrichmentAdjudicateDuplicatesSchema = z.object({
+  libraryId: safeIdSchema,
+  groups: z
+    .array(
+      z.object({
+        groupKey: z.string().trim().min(1).max(2048),
+        books: z.array(duplicateAdjudicationCandidateSchema).min(2).max(12),
+      }),
+    )
+    .min(1)
+    .max(50),
 });
 
 export const libraryResetMetadataSchema = z.object({

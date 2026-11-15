@@ -1,4 +1,4 @@
-import React, {useState, useRef, useMemo} from 'react';
+import React, {useState, useRef, useMemo, useLayoutEffect} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {
   Sparkles,
@@ -17,14 +17,17 @@ import {Button} from '@/components/ui/button';
 import {Badge} from '@/components/ui/badge';
 import {BookLoader} from './BookLoader';
 import {ArchivalCoverImage} from './ArchivalCoverImage';
+import {SharedCoverFrame} from './SharedCoverFrame';
 import {ExLibrisStampIllustration} from '@/components/ui/empty-state-illustrations';
 import {BookSwipeDeck, type BookSwipeDeckHandle} from './BookSwipeDeck';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
+import {navigateWithCoverTransition} from '../../lib/bookCoverTransition';
+import {useCoverTransitionStore} from '../../stores/coverTransitionStore';
 import type {
   BookRecommendationItem,
   RecommendationCategoryFilter,
 } from '../../schemas/recommendation';
-import type {TrackedShelfStatus} from '../../server/services/readingTracker';
+import type {TrackedShelfStatus} from '../../types';
 
 export interface SuggestedNextReadsCardProps {
   recommendations: BookRecommendationItem[];
@@ -96,7 +99,34 @@ export function SuggestedNextReadsCard({
     new Set(),
   );
 
-  const safeIndex = selectedIndex < recommendations.length ? selectedIndex : 0;
+  const returnMatchedIndex = useCoverTransitionStore(state => {
+    const active = state.activeTransition;
+    if (
+      !active ||
+      active.phase !== 'to-shelf' ||
+      active.originSurface !== 'suggested-reads'
+    ) {
+      return -1;
+    }
+    return recommendations.findIndex(
+      item =>
+        item.libraryId === active.libraryId && item.bookId === active.bookId,
+    );
+  });
+
+  useLayoutEffect(() => {
+    if (returnMatchedIndex >= 0 && returnMatchedIndex !== selectedIndex) {
+      setSelectedIndex(returnMatchedIndex);
+      setPreviewIndex(null);
+    }
+  }, [returnMatchedIndex, selectedIndex]);
+
+  const effectiveSelectedIndex =
+    returnMatchedIndex >= 0 ? returnMatchedIndex : selectedIndex;
+  const safeIndex =
+    effectiveSelectedIndex < recommendations.length
+      ? effectiveSelectedIndex
+      : 0;
   const displayedIndex =
     previewIndex !== null && previewIndex < recommendations.length
       ? previewIndex
@@ -184,13 +214,31 @@ export function SuggestedNextReadsCard({
     if (!item.libraryId || !item.bookId) {
       return;
     }
-    void navigate(
-      `/library/${encodeURIComponent(item.libraryId)}/book/${encodeURIComponent(item.bookId)}`,
-      {state: {from: '/'}},
-    );
+    navigateWithCoverTransition({
+      navigate,
+      libraryId: item.libraryId,
+      bookId: item.bookId,
+      originSurface: 'suggested-reads',
+      fromRouteKey: '/',
+      coverPreview: {
+        title: item.title,
+        author: item.author,
+        coverUrl: item.coverUrl,
+        publishedDate: item.publishedDate,
+        primaryGenre: item.primaryGenre,
+        subgenres: item.subgenres,
+        series: item.series,
+        synopsis: item.synopsis || item.reason,
+        readingStatus: item.readingStatus,
+        isbn: item.isbn,
+      },
+    });
   };
 
-  const renderRecommendationSlide = (item: BookRecommendationItem) => {
+  const renderRecommendationSlide = (
+    item: BookRecommendationItem,
+    isSlideActive = true,
+  ) => {
     const isShelfBook =
       item.source === 'shelf' && Boolean(item.libraryId && item.bookId);
     const isSaving = savingItemIds.has(item.id);
@@ -200,7 +248,10 @@ export function SuggestedNextReadsCard({
     return (
       <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 items-center sm:items-start py-1">
         {/* Book Cover */}
-        <div
+        <SharedCoverFrame
+          surface="suggested-reads"
+          libraryId={isShelfBook && isSlideActive ? item.libraryId : undefined}
+          bookId={isShelfBook && isSlideActive ? item.bookId : undefined}
           onClick={isShelfBook ? () => openLibraryBook(item) : undefined}
           className={`w-24 sm:w-28 aspect-[2/3] shrink-0 rounded-lg book-cover-shadow border border-outline-variant/60 overflow-hidden relative ${
             isShelfBook ? 'cursor-pointer group' : ''
@@ -216,7 +267,7 @@ export function SuggestedNextReadsCard({
             className="w-full h-full"
             imgClassName="group-hover:scale-[1.03] transition-transform duration-300 select-none"
           />
-        </div>
+        </SharedCoverFrame>
 
         {/* Editorial Recommendation Details */}
         <div className="flex-1 min-w-0 text-center sm:text-left">
@@ -512,9 +563,9 @@ export function SuggestedNextReadsCard({
                   setPreviewIndex(null);
                   setSelectedIndex(committedIdx);
                 }}
-                renderSlide={({index}) => {
+                renderSlide={({index, isActive}) => {
                   const slideItem = recommendations[index] || activeItem;
-                  return renderRecommendationSlide(slideItem);
+                  return renderRecommendationSlide(slideItem, isActive);
                 }}
               />
 
@@ -550,7 +601,7 @@ export function SuggestedNextReadsCard({
               </div>
             </>
           ) : (
-            renderRecommendationSlide(activeItem)
+            renderRecommendationSlide(activeItem, true)
           )}
         </div>
       )}

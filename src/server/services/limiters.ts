@@ -13,6 +13,7 @@ export const geminiLimiter = new ProviderQuotaScheduler({
   burstCapacity: 8,
   defaultCooldownMs: 10_000,
   maxRetries: 3,
+  executionPool: 'GENERATIVE_AI',
 });
 
 /**
@@ -27,7 +28,26 @@ export const geminiEmbeddingLimiter = new ProviderQuotaScheduler({
   burstCapacity: 15,
   defaultCooldownMs: 10_000,
   maxRetries: 3,
+  executionPool: 'GENERATIVE_AI',
+});
+
+/**
+ * First-class capacity-aware scheduler for Gemini Decisions API calls
+ * (`gemini-decision-1` single-pass calibrated evaluations).
+ * Runs in the dedicated `FAST_DECISION` pool so slow catalog HTTP scrapes
+ * never delay Decision evaluations.
+ */
+export const geminiDecisionLimiter = new ProviderQuotaScheduler({
+  providerId: 'gemini-decision',
+  maxConcurrent: 8,
+  minSpacingMs: 100,
+  maxRequestsPerMinute: 150,
+  burstCapacity: 16,
+  defaultCooldownMs: 10_000,
+  maxRetries: 3,
+  executionPool: 'FAST_DECISION',
 });
 
 globalProviderGovernor.registerScheduler(geminiLimiter);
 globalProviderGovernor.registerScheduler(geminiEmbeddingLimiter);
+globalProviderGovernor.registerScheduler(geminiDecisionLimiter);

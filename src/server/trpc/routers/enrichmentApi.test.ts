@@ -3,7 +3,14 @@ import {enrichmentApiRouter} from './enrichmentApi';
 import {EnrichmentService} from '../../services/enrichmentService';
 import {enrichmentJobCoordinator} from '../../services/enrichmentJobCoordinator';
 import {PermissionService} from '../../auth/permissions';
+import type {SecurityContext} from '../../auth/types';
 import {SUPERADMIN_EMAIL} from '../../../constants/auth';
+
+import {
+  adjudicateDuplicateGroups,
+  geminiDecisionProvider,
+} from '../../services/gemini';
+import {LibraryService} from '../../services/library';
 
 vi.mock('../../services/enrichmentService', () => ({
   EnrichmentService: {
@@ -19,6 +26,19 @@ vi.mock('../../services/enrichmentJobCoordinator', () => ({
   },
 }));
 
+vi.mock('../../services/gemini', () => ({
+  adjudicateDuplicateGroups: vi.fn(),
+  geminiDecisionProvider: {
+    isAvailable: vi.fn(() => true),
+  },
+}));
+
+vi.mock('../../services/library', () => ({
+  LibraryService: {
+    auditPlaceholderCovers: vi.fn(),
+  },
+}));
+
 vi.mock('../../auth/permissions', () => ({
   PermissionService: {
     verifyLibraryAccess: vi.fn(),
@@ -26,14 +46,16 @@ vi.mock('../../auth/permissions', () => ({
 }));
 
 describe('enrichmentApiRouter', () => {
-  const mockCtx = {
+  const mockCtx: SecurityContext = {
+    req: {} as SecurityContext['req'],
+    res: {} as SecurityContext['res'],
     user: {
       uid: 'user-123',
       email: SUPERADMIN_EMAIL,
     },
     isAppAllowed: true,
     isAdmin: true,
-  } as unknown as Parameters<typeof enrichmentApiRouter.createCaller>[0];
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -119,7 +141,9 @@ describe('enrichmentApiRouter', () => {
       userId: 'user-standard',
     });
 
-    const nonAiCtx = {
+    const nonAiCtx: SecurityContext = {
+      req: {} as SecurityContext['req'],
+      res: {} as SecurityContext['res'],
       user: {
         uid: 'user-standard',
         email: 'reader@example.com',
@@ -127,7 +151,7 @@ describe('enrichmentApiRouter', () => {
       isAppAllowed: true,
       isAdmin: false,
       hasAiPlan: false,
-    } as unknown as Parameters<typeof enrichmentApiRouter.createCaller>[0];
+    };
 
     const caller = enrichmentApiRouter.createCaller(nonAiCtx);
     await expect(
@@ -153,7 +177,9 @@ describe('enrichmentApiRouter', () => {
       ReturnType<typeof EnrichmentService.triggerBatchEnrichment>
     >);
 
-    const nonAiCtx = {
+    const nonAiCtx: SecurityContext = {
+      req: {} as SecurityContext['req'],
+      res: {} as SecurityContext['res'],
       user: {
         uid: 'user-standard',
         email: 'reader@example.com',
@@ -161,7 +187,7 @@ describe('enrichmentApiRouter', () => {
       isAppAllowed: true,
       isAdmin: false,
       hasAiPlan: false,
-    } as unknown as Parameters<typeof enrichmentApiRouter.createCaller>[0];
+    };
 
     const caller = enrichmentApiRouter.createCaller(nonAiCtx);
     await caller.triggerBatch({
@@ -179,6 +205,104 @@ describe('enrichmentApiRouter', () => {
         allowAiFallback: false,
       }),
       {skipAccessCheck: true},
+    );
+  });
+
+  it('adjudicates fuzzy duplicate groups via Gemini Decisions for AI-enabled users and falls back cleanly without AI plan', async () => {
+    vi.mocked(PermissionService.verifyLibraryAccess).mockResolvedValue({
+      role: 'viewer',
+      userId: 'user-123',
+    });
+    vi.mocked(geminiDecisionProvider.isAvailable).mockReturnValue(true);
+    vi.mocked(adjudicateDuplicateGroups).mockResolvedValueOnce([
+      {
+        groupKey: 'fuzzy_0',
+        isDuplicate: false,
+        calibratedConfidence: 8,
+        preferredSurvivorId: 'b1',
+      },
+    ]);
+
+    const caller = enrichmentApiRouter.createCaller(mockCtx);
+    const aiRes = await caller.adjudicateDuplicates({
+      libraryId: 'lib-1',
+      groups: [
+        {
+          groupKey: 'fuzzy_0',
+          books: [
+            {id: 'b1', title: 'Dune: Book One', author: 'Frank Herbert'},
+            {
+              id: 'b2',
+              title: 'Dune Messiah: Book Two',
+              author: 'Frank Herbert',
+            },
+          ],
+        },
+      ],
+    });
+    expect(adjudicateDuplicateGroups).toHaveBeenCalledTimes(1);
+    expect(aiRes.results).toEqual([
+      {
+        groupKey: 'fuzzy_0',
+        isDuplicate: false,
+        calibratedConfidence: 8,
+        preferredSurvivorId: 'b1',
+      },
+    ]);
+
+    const nonAiCtx: SecurityContext = {
+      req: {} as SecurityContext['req'],
+      res: {} as SecurityContext['res'],
+      user: {
+        uid: 'user-standard',
+        email: 'reader@example.com',
+      },
+      isAppAllowed: true,
+      isAdmin: false,
+      hasAiPlan: false,
+    };
+
+    const nonAiCaller = enrichmentApiRouter.createCaller(nonAiCtx);
+    const fallbackRes = await nonAiCaller.adjudicateDuplicates({
+      libraryId: 'lib-1',
+      groups: [
+        {
+          groupKey: 'fuzzy_1',
+          books: [
+            {id: 'b3', title: 'Neuromancer', author: 'William Gibson'},
+            {id: 'b4', title: 'Neuromancer (Ace)', author: 'William Gibson'},
+          ],
+        },
+      ],
+    });
+    expect(adjudicateDuplicateGroups).toHaveBeenCalledTimes(1);
+    expect(fallbackRes.results).toEqual([
+      {
+        groupKey: 'fuzzy_1',
+        isDuplicate: true,
+        calibratedConfidence: 88,
+        preferredSurvivorId: 'b3',
+      },
+    ]);
+
+    vi.mocked(PermissionService.verifyLibraryAccess).mockResolvedValueOnce({
+      role: 'editor',
+      userId: 'user-123',
+    });
+    vi.mocked(LibraryService.auditPlaceholderCovers).mockResolvedValueOnce({
+      scannedCount: 4,
+      clearedCount: 1,
+      clearedBookIds: ['b1'],
+    });
+    await caller.auditPlaceholderCovers({
+      libraryId: 'lib-1',
+      enableVisualAudit: true,
+    });
+    expect(LibraryService.auditPlaceholderCovers).toHaveBeenCalledWith(
+      'user-123',
+      SUPERADMIN_EMAIL,
+      'lib-1',
+      {skipAccessCheck: true, enableVisualAudit: true},
     );
   });
 });

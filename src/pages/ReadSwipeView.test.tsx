@@ -27,7 +27,7 @@ vi.mock('../hooks/useOnlineStatus', () => ({
 
 const mockUseLibraryData = vi.fn();
 vi.mock('../hooks/useLibraryData', () => ({
-  useLibraryData: (...args: unknown[]) => mockUseLibraryData(...args),
+  useLibraryData: (...args: unknown[]): unknown => mockUseLibraryData(...args),
 }));
 
 vi.mock('../lib/trpc', () => ({
@@ -45,13 +45,16 @@ vi.mock('../lib/trpc', () => ({
   trpcVanilla: {
     book: {
       updateStatus: {
-        mutate: (...args: unknown[]) => mockUpdateStatusMutate(...args),
+        mutate: (...args: unknown[]): unknown =>
+          mockUpdateStatusMutate(...args),
       },
       recordReadSwipeReview: {
-        mutate: (...args: unknown[]) => mockRecordReviewMutate(...args),
+        mutate: (...args: unknown[]): unknown =>
+          mockRecordReviewMutate(...args),
       },
       getBookDetailsChunk: {
-        mutate: (...args: unknown[]) => mockGetDetailsChunkMutate(...args),
+        mutate: (...args: unknown[]): unknown =>
+          mockGetDetailsChunkMutate(...args),
       },
     },
   },

@@ -24,12 +24,12 @@ export const PRESETS = [
   },
 ];
 
-export const formatYear = (year: number): string => {
+export function formatYear(year: number): string {
   if (year < 0) {
     return `${Math.abs(year)} BCE`;
   }
   return `${year} CE`;
-};
+}
 
 export interface TimelineCluster {
   key: number;

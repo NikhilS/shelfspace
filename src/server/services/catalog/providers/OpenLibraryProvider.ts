@@ -8,7 +8,7 @@ import {mapLegacyGenreToTaxonomy} from '../../../../constants/taxonomy';
 import {ProviderQuotaScheduler} from '../../scheduler/providerQuotaScheduler';
 import {
   CatalogQuery,
-  ICatalogSourceProvider,
+  CatalogSourceProvider,
   ProviderBookHit,
   ProviderCapabilities,
   fetchWithProviderTimeout,
@@ -29,7 +29,7 @@ interface OpenLibraryResponse {
   docs?: OpenLibraryDoc[];
 }
 
-export class OpenLibraryProvider implements ICatalogSourceProvider {
+export class OpenLibraryProvider implements CatalogSourceProvider {
   readonly id = 'open-library' as const;
   readonly name = 'Open Library';
   readonly authorityWeight = 75;
@@ -40,6 +40,7 @@ export class OpenLibraryProvider implements ICatalogSourceProvider {
     synopsis: true,
     series: false,
     genre: true,
+    batchWave: 1,
   };
 
   readonly scheduler = new ProviderQuotaScheduler({

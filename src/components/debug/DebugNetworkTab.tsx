@@ -11,8 +11,11 @@ import {
 import {TelemetryLog, TelemetryMetrics} from '../../lib/telemetry';
 import {trpcVanilla} from '../../lib/trpc';
 import type {TelemetryLogPayload} from '../../types';
-import type {ServerTelemetrySnapshot} from '../../server/services/telemetry/serverTelemetryBuffer';
 import {Button} from '@/components/ui/button';
+
+type ServerTelemetrySnapshot = Awaited<
+  ReturnType<typeof trpcVanilla.metadata.debugTelemetry.query>
+>;
 
 interface DebugNetworkTabProps {
   networkLogs: TelemetryLog[];
@@ -42,17 +45,8 @@ export function DebugNetworkTab({
   const fetchServerTelemetry = useCallback(async () => {
     try {
       setIsLoadingServer(true);
-      const client = trpcVanilla as unknown as {
-        metadata?: {
-          debugTelemetry?: {
-            query: (input?: {
-              sinceMs?: number;
-            }) => Promise<ServerTelemetrySnapshot>;
-          };
-        };
-      };
-      if (client?.metadata?.debugTelemetry?.query) {
-        const snap = await client.metadata.debugTelemetry.query();
+      if (trpcVanilla.metadata?.debugTelemetry?.query) {
+        const snap = await trpcVanilla.metadata.debugTelemetry.query();
         setServerSnapshot(snap);
       }
     } catch {

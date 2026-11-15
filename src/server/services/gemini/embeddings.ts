@@ -110,29 +110,33 @@ ${clusters
           .replace(/```/g, '')
           .trim()
       : '[]';
-    const parsed = JSON.parse(text);
+    const parsed: unknown = JSON.parse(text);
 
     const result: Record<number, ClusterThemeInfo> = {};
     if (Array.isArray(parsed)) {
-      for (const item of parsed) {
-        if (typeof item?.id === 'number' && typeof item?.name === 'string') {
-          const cleanName = item.name.trim();
-          const cleanThesis =
-            typeof item.thesis === 'string' ? item.thesis.trim() : '';
-          if (cleanName) {
-            result[item.id] = {
-              name: cleanName,
-              thesis: cleanThesis,
-            };
+      for (const rawItem of parsed as unknown[]) {
+        if (rawItem && typeof rawItem === 'object') {
+          const item = rawItem as Record<string, unknown>;
+          if (typeof item.id === 'number' && typeof item.name === 'string') {
+            const cleanName = item.name.trim();
+            const cleanThesis =
+              typeof item.thesis === 'string' ? item.thesis.trim() : '';
+            if (cleanName) {
+              result[item.id] = {
+                name: cleanName,
+                thesis: cleanThesis,
+              };
+            }
           }
         }
       }
     } else if (parsed && typeof parsed === 'object') {
-      for (const key of Object.keys(parsed)) {
+      const parsedRecord = parsed as Record<string, unknown>;
+      for (const key of Object.keys(parsedRecord)) {
         const numericMatch = key.match(/\d+/);
         if (numericMatch) {
           const cid = parseInt(numericMatch[0], 10);
-          const val = (parsed as Record<string, unknown>)[key];
+          const val = parsedRecord[key];
           if (typeof val === 'string' && val.trim()) {
             result[cid] = {name: val.trim(), thesis: ''};
           } else if (val && typeof val === 'object') {
@@ -188,7 +192,10 @@ export async function generateBookEmbeddings(
     if (!texts || texts.length === 0) {
       return [];
     }
-    const embeddings: number[][] = new Array(texts.length).fill([]);
+    const embeddings: number[][] = Array.from(
+      {length: texts.length},
+      (): number[] => [],
+    );
 
     let completedCount = 0;
     const priority = options?.priority ?? 'BATCH';

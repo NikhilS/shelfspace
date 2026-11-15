@@ -16,7 +16,7 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = {
+  override state: State = {
     hasError: false,
     error: null,
   };
@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return {hasError: true, error};
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     const boundaryName = this.props.name || 'Root Application View';
     console.error(
       `[ErrorBoundary] Caught render error in "${boundaryName}":`,
@@ -34,18 +34,7 @@ export class ErrorBoundary extends Component<Props, State> {
     );
     try {
       const reportFn =
-        typeof window !== 'undefined'
-          ? (
-              window as unknown as {
-                __reportClientLog?: (
-                  level: string,
-                  message: string,
-                  stack?: string,
-                  meta?: unknown,
-                ) => void;
-              }
-            ).__reportClientLog
-          : undefined;
+        typeof window !== 'undefined' ? window.__reportClientLog : undefined;
       if (typeof reportFn === 'function') {
         reportFn(
           'error',
@@ -80,8 +69,7 @@ export class ErrorBoundary extends Component<Props, State> {
       sessionStorage.removeItem('chunk_retry_reloaded');
       const hardReset =
         typeof window !== 'undefined'
-          ? (window as unknown as {__bookishHardResetAndReload?: () => void})
-              .__bookishHardResetAndReload
+          ? window.__bookishHardResetAndReload
           : undefined;
       if (typeof hardReset === 'function') {
         hardReset();
@@ -93,7 +81,7 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;

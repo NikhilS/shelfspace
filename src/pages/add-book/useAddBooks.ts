@@ -1,16 +1,15 @@
 import {useState} from 'react';
-import {BookDetails} from '../../types';
+import {BookDetails, type TrackedShelfStatus} from '../../types';
 import {toast} from 'sonner';
 import {triggerHaptics, normalizeBookDetails} from '../../lib/utils';
 import {uploadBase64Image} from '../../lib/storage';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {
+  commitBookUpsertDelta,
   invalidateReadingStatusQueries,
-  type ReadingStatusCacheUtils,
 } from '../../lib/readingStatusCache';
 import {useAuth} from '../../stores/authStore';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
-import type {TrackedShelfStatus} from '../../server/services/readingTracker';
 
 const MAX_CONCURRENT_IMAGE_UPLOADS = 3;
 
@@ -106,11 +105,7 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
           if (finalCoverUrl && finalCoverUrl.startsWith('data:image/')) {
             try {
               const path = `libraries/${effectiveLibraryId}/covers/${bookId}.jpg`;
-              finalCoverUrl = await uploadBase64Image(
-                finalCoverUrl,
-                path,
-                effectiveLibraryId,
-              );
+              finalCoverUrl = await uploadBase64Image(finalCoverUrl, path);
             } catch (e) {
               console.error('Failed to upload base64 cover image', e);
               if (finalCoverUrl.length > 2048) {
@@ -125,7 +120,6 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
               finalCoverUrlRaw = await uploadBase64Image(
                 finalCoverUrlRaw,
                 rawPath,
-                effectiveLibraryId,
               );
             } catch (e) {
               console.error('Failed to upload raw base64 cover image', e);
@@ -142,7 +136,10 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
             finalCoverUrlRaw = undefined;
           }
 
-          const rawRecord: Record<string, unknown> = {
+          const format: 'digital' | 'physical' =
+            book.format === 'digital' ? 'digital' : 'physical';
+
+          const bookData = {
             title: (book.title?.trim() || 'Unknown Title').slice(0, 500),
             author: (book.author?.trim() || 'Unknown Author').slice(0, 500),
             isbn: (book.isbn?.trim() || '').slice(0, 64),
@@ -151,9 +148,9 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
               ? {coverUrlRaw: finalCoverUrlRaw}
               : {}),
             publishedDate: (book.publishedDate?.trim() || '').slice(0, 100),
-            primaryGenre: book.primaryGenre
-              ? book.primaryGenre.trim().slice(0, 200)
-              : undefined,
+            ...(book.primaryGenre
+              ? {primaryGenre: book.primaryGenre.trim().slice(0, 200)}
+              : {}),
             subgenres: Array.isArray(book.subgenres)
               ? book.subgenres
                   .map(s => String(s).trim().slice(0, 200))
@@ -164,17 +161,13 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
             series: book.series ? book.series.trim().slice(0, 300) : '',
             synopsis: book.synopsis ? book.synopsis.slice(0, 50000) : '',
             authorBio: book.authorBio ? book.authorBio.slice(0, 50000) : '',
-            format: book.format === 'digital' ? 'digital' : 'physical',
+            format,
             ownershipStatus,
             ...(targetStatus !== 'unset' ? {readingStatus: targetStatus} : {}),
             ...(book.fieldSources && Object.keys(book.fieldSources).length > 0
               ? {fieldSources: book.fieldSources}
               : {}),
           };
-
-          const bookData = Object.fromEntries(
-            Object.entries(rawRecord).filter(([, val]) => val !== undefined),
-          );
 
           return {
             type: 'create' as const,
@@ -191,22 +184,42 @@ export function useAddBooks(libraryId?: string, options?: UseAddBooksOptions) {
         enrichOnCreate: true,
       });
 
-      await invalidateReadingStatusQueries(
-        utils as unknown as ReadingStatusCacheUtils,
-        {
+      const nowIso = new Date().toISOString();
+      for (const op of preparedOperations) {
+        commitBookUpsertDelta(utils, {
           libraryId: effectiveLibraryId,
-          includeLibraries: true,
-        },
-      );
-
-      // Schedule a follow-up refresh to pick up any background server-side enrichment
-      setTimeout(() => {
-        void invalidateReadingStatusQueries(
-          utils as unknown as ReadingStatusCacheUtils,
-          {
+          book: {
+            id: op.bookId,
             libraryId: effectiveLibraryId,
+            title: op.data.title,
+            author: op.data.author,
+            isbn: op.data.isbn || undefined,
+            coverUrl: op.data.coverUrl || undefined,
+            coverUrlRaw: op.data.coverUrlRaw,
+            publishedDate: op.data.publishedDate || undefined,
+            primaryGenre: op.data.primaryGenre,
+            subgenres: op.data.subgenres,
+            isCustomPrimary: op.data.isCustomPrimary,
+            series: op.data.series || undefined,
+            synopsis: op.data.synopsis || undefined,
+            authorBio: op.data.authorBio || undefined,
+            format: op.data.format,
+            ownershipStatus: op.data.ownershipStatus,
+            readingStatus: op.data.readingStatus ?? 'unset',
+            addedAt: nowIso,
+            updatedAt: nowIso,
           },
-        );
+          bookCountDelta: 1,
+        });
+      }
+
+      // Schedule a targeted follow-up refresh to pick up background server-side enrichment
+      // without invalidating daily AI recommendations
+      setTimeout(() => {
+        void invalidateReadingStatusQueries(utils, {
+          libraryId: effectiveLibraryId,
+          includeRecommendations: false,
+        });
       }, 4500);
 
       triggerHaptics(20);

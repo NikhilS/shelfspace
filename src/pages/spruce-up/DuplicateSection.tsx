@@ -35,7 +35,10 @@ export function DuplicateSection({
   handleDelete,
   handleMergeDuplicates,
 }: DuplicateSectionProps) {
-  const [mergingGroup, setMergingGroup] = useState<Book[] | null>(null);
+  const [mergingState, setMergingState] = useState<{
+    books: Book[];
+    preferredSurvivorId?: string;
+  } | null>(null);
 
   return (
     <section className="bg-surface-container-low border border-outline-variant/30 rounded-2xl overflow-hidden shadow-sm flex flex-col">
@@ -262,7 +265,13 @@ export function DuplicateSection({
                           {handleMergeDuplicates && (
                             <Button
                               size="sm"
-                              onClick={() => setMergingGroup(group)}
+                              onClick={() =>
+                                setMergingState({
+                                  books: group,
+                                  preferredSurvivorId:
+                                    meta?.preferredSurvivorId,
+                                })
+                              }
                               data-testid={`open-merge-modal-btn-${idx}`}
                               className="w-full sm:w-[156px] flex items-center justify-center gap-1.5 font-bold text-xs"
                             >
@@ -305,9 +314,10 @@ export function DuplicateSection({
       {handleMergeDuplicates && (
         <DuplicateMergeModal
           libraryId={libraryId}
-          group={mergingGroup}
-          open={Boolean(mergingGroup)}
-          onClose={() => setMergingGroup(null)}
+          group={mergingState?.books ?? null}
+          preferredSurvivorId={mergingState?.preferredSurvivorId}
+          open={Boolean(mergingState)}
+          onClose={() => setMergingState(null)}
           onConfirmMerge={handleMergeDuplicates}
         />
       )}

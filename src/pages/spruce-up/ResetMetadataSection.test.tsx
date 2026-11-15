@@ -12,24 +12,32 @@ vi.mock('sonner', () => ({
   },
 }));
 
-const mockResetMetadata = vi.fn().mockImplementation(({metadataType}) => {
-  if (metadataType === 'genre') {
-    return Promise.resolve({success: true, count: 1});
-  }
-  if (metadataType === 'geo') {
-    return Promise.resolve({success: true, count: 1});
-  }
-  if (metadataType === 'sanitize') {
-    return Promise.resolve({success: true, count: 1});
-  }
-  return Promise.resolve({success: true, count: 0});
-});
+const mockResetMetadata = vi
+  .fn<
+    (input: {
+      metadataType: string;
+    }) => Promise<{success: boolean; count: number}>
+  >()
+  .mockImplementation(({metadataType}) => {
+    if (metadataType === 'genre') {
+      return Promise.resolve({success: true, count: 1});
+    }
+    if (metadataType === 'geo') {
+      return Promise.resolve({success: true, count: 1});
+    }
+    if (metadataType === 'sanitize') {
+      return Promise.resolve({success: true, count: 1});
+    }
+    return Promise.resolve({success: true, count: 0});
+  });
 
 vi.mock('../../lib/trpc', () => ({
   trpcVanilla: {
     library: {
       resetMetadata: {
-        mutate: vi.fn((...args) => mockResetMetadata(...args)),
+        mutate: vi.fn((input: {metadataType: string}) =>
+          mockResetMetadata(input),
+        ),
       },
     },
   },

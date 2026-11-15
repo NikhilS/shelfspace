@@ -1,3 +1,6 @@
+import type {z} from 'zod';
+import type {EnrichmentTier} from '../constants/enrichment';
+
 export enum MetadataKey {
   GEO = 'geoMetadata',
   TEMPORAL = 'temporalMetadata',
@@ -6,9 +9,19 @@ export enum MetadataKey {
   AUTHOR_BIO = 'authorBio',
   EMBEDDING = 'embeddings',
   SERIES = 'series',
-  BASIC_INFO = 'basicInfo', // Google Books / Wikipedia fundamental data
-  COVER_IMAGE = 'coverUrl', // High-res cover images
+  BASIC_INFO = 'basicInfo',
+  COVER_IMAGE = 'coverUrl',
 }
+
+export type CanonicalEnrichmentType =
+  | 'geo'
+  | 'temporal'
+  | 'genre'
+  | 'synopsis'
+  | 'authorBio'
+  | 'coverImage'
+  | 'series'
+  | 'embedding';
 
 export interface BookGenreData {
   primaryGenre: string;
@@ -17,7 +30,7 @@ export interface BookGenreData {
 }
 
 export interface CoreBookData {
-  id: string; // The unique storage ID for a book in the database, also used to key results in bulk operations
+  id: string;
   title: string;
   author: string;
   isbn?: string;
@@ -34,26 +47,103 @@ export interface MetadataBulkFetchOptions {
   customGenres?: string[];
 }
 
-export interface IMetadataProvider<T = unknown> {
-  // 1. Identification & Storage Mapping
-  // Serves as both the unique identifier for the provider and the exact field name in the database model.
+/**
+ * Opportunistic bibliographic metadata harvested when a book escalates to
+ * external catalog providers, persisted strictly non-destructively.
+ */
+export interface BonusCatalogFields {
+  coverUrl?: string;
+  isbn?: string;
+  publishedDate?: string;
+  series?: string;
+  synopsis?: string;
+  winningProvider?: string;
+}
+
+export interface StageEscalationState<Output = unknown> {
+  enrichedBook?: Partial<CoreBookData>;
+  fallbackValue?: Output;
+  bonusCatalog?: BonusCatalogFields;
+}
+
+export type StageBookOutcome<Output = unknown> =
+  | {
+      status: 'resolved';
+      value: Output;
+      winningProvider?: string;
+      bonusCatalog?: BonusCatalogFields;
+    }
+  | {
+      status: 'pruned';
+      reason?: string;
+      bonusCatalog?: BonusCatalogFields;
+    }
+  | {
+      status: 'escalate';
+      enrichedBook?: Partial<CoreBookData>;
+      fallbackValue?: Output;
+      bonusCatalog?: BonusCatalogFields;
+    };
+
+export interface EnrichmentStageContext<Output = unknown> {
+  books: CoreBookData[];
+  options?: MetadataBulkFetchOptions;
+  priorEscalations?: ReadonlyMap<string, StageEscalationState<Output>>;
+}
+
+export interface EnrichmentPipelineStage<Output = unknown> {
+  readonly id: string;
+  readonly tier: EnrichmentTier;
+  execute(
+    context: EnrichmentStageContext<Output>,
+  ): Promise<Map<string, StageBookOutcome<Output>>>;
+}
+
+/**
+ * Base metadata provider contract following Google TypeScript Style Guide
+ * naming (no Hungarian `I` prefix; descriptive `Output` type parameter).
+ */
+export interface MetadataProvider<Output = unknown> {
   getKey(): MetadataKey;
-
-  // 2. Data Fetching
-  // Fetch metadata for a single book. Return type `T` varies by provider.
-  fetch(book: CoreBookData, options?: MetadataBulkFetchOptions): Promise<T>;
-
-  // Fetch metadata for multiple books, optimizing for batch APIs or parallel limits.
-  // Returns a map of Book ID -> Extracted Metadata (T).
+  fetch(
+    book: CoreBookData,
+    options?: MetadataBulkFetchOptions,
+  ): Promise<Output>;
   bulkFetch(
     books: CoreBookData[],
     options?: MetadataBulkFetchOptions,
-  ): Promise<Record<string, T>>;
-
-  // 3. Configuration
-  // Should this metadata type be fetched synchronously/asynchronously the moment a new book is added?
+  ): Promise<Record<string, Output>>;
   shouldFetchOnCreate(): boolean;
-
-  // Determines if the provider has all necessary config to run (e.g. valid GEMINI_API_KEY)
   isAvailable(): boolean;
+}
+
+export interface MetadataPersistenceContext<Output = unknown> {
+  book: CoreBookData;
+  value: Output;
+  existingStatus: Record<string, unknown>;
+  existingDetailsMeta: Record<string, unknown>;
+  nowIso: string;
+}
+
+export interface MetadataPersistencePatch {
+  bookUpdate: Record<string, unknown>;
+  detailsUpdate?: Record<string, unknown>;
+  resultPreview: Record<string, unknown>;
+}
+
+/**
+ * Full server metadata enrichment plugin contract combining declarative
+ * multi-tier pipeline stages, runtime Zod output validation, and typed persistence patching.
+ */
+export interface MetadataPlugin<
+  Output = unknown,
+> extends MetadataProvider<Output> {
+  readonly statusKey: CanonicalEnrichmentType;
+  readonly needsSynopsis: boolean;
+  readonly supportsHybridAiFallback: boolean;
+  readonly outputSchema: z.ZodType<Output>;
+  readonly stages?: ReadonlyArray<EnrichmentPipelineStage<Output>>;
+  toPersistencePatch(
+    context: MetadataPersistenceContext<Output>,
+  ): MetadataPersistencePatch;
 }

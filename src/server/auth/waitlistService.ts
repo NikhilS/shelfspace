@@ -152,7 +152,7 @@ export class WaitlistService {
 
       const data = waitlistDocConverter.fromFirestore(
         normalized,
-        (docSnap.data() || {}) as Record<string, unknown>,
+        docSnap.data() || {},
       );
       const entry: WaitlistEntry = {
         email: normalized,
@@ -223,7 +223,7 @@ export class WaitlistService {
     if (existingSnap && existingSnap.exists) {
       const existing = waitlistDocConverter.fromFirestore(
         normalized,
-        (existingSnap.data() || {}) as Record<string, unknown>,
+        existingSnap.data() || {},
       );
       entry = {
         email: normalized,
@@ -340,7 +340,7 @@ export class WaitlistService {
       if (existingSnap && existingSnap.exists) {
         const existing = waitlistDocConverter.fromFirestore(
           email,
-          (existingSnap.data() || {}) as Record<string, unknown>,
+          existingSnap.data() || {},
         );
         const entry: WaitlistEntry = {
           email,
@@ -392,10 +392,7 @@ export class WaitlistService {
     const snap = await db.collection('appSettings/waitlist/entries').get();
 
     const entries: WaitlistEntry[] = snap.docs.map(doc => {
-      const data = waitlistDocConverter.fromFirestore(
-        doc.id,
-        (doc.data() || {}) as Record<string, unknown>,
-      );
+      const data = waitlistDocConverter.fromFirestore(doc.id, doc.data() || {});
       return {
         email: doc.id,
         displayName: data.displayName || undefined,

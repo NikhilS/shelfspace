@@ -6,9 +6,9 @@ import {instrumentMutation} from '../lib/telemetry';
 import {trpc} from '../lib/trpc';
 import {
   applyOptimisticReadingStatusPatch,
-  invalidateReadingStatusQueries,
+  commitBookDeleteDelta,
+  commitReadingStatusDelta,
   removeBookFromReadingCaches,
-  type ReadingStatusCacheUtils,
 } from '../lib/readingStatusCache';
 
 export function useSelection(
@@ -23,16 +23,7 @@ export function useSelection(
     clearSelection,
   } = useUIStore();
 
-  const batchUpsertMutation = trpc.book.batchUpsert.useMutation({
-    onSuccess: () => {
-      if (libraryId) {
-        void invalidateReadingStatusQueries(
-          utils as unknown as ReadingStatusCacheUtils,
-          {libraryId, includeLibraries: true},
-        );
-      }
-    },
-  });
+  const batchUpsertMutation = trpc.book.batchUpsert.useMutation();
 
   const toggleBookSelection = (e: React.MouseEvent, bookId: string) => {
     e.stopPropagation();
@@ -68,14 +59,11 @@ export function useSelection(
       | 'completed'
       | 'abandoned';
     const rollbacks = booksArray.map(bookId =>
-      applyOptimisticReadingStatusPatch(
-        utils as unknown as ReadingStatusCacheUtils,
-        {
-          libraryId,
-          bookId,
-          status: validStatus,
-        },
-      ),
+      applyOptimisticReadingStatusPatch(utils, {
+        libraryId,
+        bookId,
+        status: validStatus,
+      }),
     );
     try {
       await instrumentMutation(
@@ -95,10 +83,13 @@ export function useSelection(
           });
         },
       );
-      await invalidateReadingStatusQueries(
-        utils as unknown as ReadingStatusCacheUtils,
-        {libraryId, includeLibraries: true},
-      );
+      for (const bookId of booksArray) {
+        commitReadingStatusDelta(utils, {
+          libraryId,
+          bookId,
+          status: validStatus,
+        });
+      }
       toast.success(`Updated status for ${selectedBooks.size} books`);
       clearSelection();
     } catch (error) {
@@ -117,7 +108,7 @@ export function useSelection(
     const count = selectedBooks.size;
     const booksArray = Array.from(selectedBooks);
     const rollbacks = booksArray.map(bookId =>
-      removeBookFromReadingCaches(utils as unknown as ReadingStatusCacheUtils, {
+      removeBookFromReadingCaches(utils, {
         libraryId,
         bookId,
       }),
@@ -137,10 +128,13 @@ export function useSelection(
           });
         },
       );
-      await invalidateReadingStatusQueries(
-        utils as unknown as ReadingStatusCacheUtils,
-        {libraryId, includeLibraries: true},
-      );
+      for (const bookId of booksArray) {
+        commitBookDeleteDelta(utils, {
+          libraryId,
+          bookId,
+          bookCountDelta: -1,
+        });
+      }
       toast.success(`Deleted ${count} books`);
       clearSelection();
     } catch (error) {

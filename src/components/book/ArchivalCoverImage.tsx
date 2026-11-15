@@ -6,7 +6,7 @@ export interface ArchivalCoverImageProps {
   alt: string;
   author?: string;
   publishedYear?: string | null;
-  variant?: 'card' | 'compact' | 'detail';
+  variant?: 'card' | 'compact' | 'detail' | 'micro';
   loading?: 'eager' | 'lazy';
   draggable?: boolean;
   className?: string;
@@ -43,6 +43,7 @@ export function ArchivalCoverImage({
   }, []);
 
   const showImage = Boolean(src) && !hasError;
+  const fallbackVariant = variant === 'detail' ? 'card' : variant;
 
   return (
     <div
@@ -75,7 +76,7 @@ export function ArchivalCoverImage({
           title={alt}
           author={author}
           publishedYear={publishedYear}
-          variant={variant}
+          variant={fallbackVariant}
           className={fallbackClassName}
         />
       )}

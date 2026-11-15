@@ -92,20 +92,7 @@ export function useSpruceUp(libraryId: string | undefined) {
       return;
     }
 
-    const enrichmentClient = (
-      trpcVanilla as unknown as {
-        enrichment?: {
-          auditPlaceholderCovers?: {
-            mutate: (input: {libraryId: string}) => Promise<{
-              scannedCount: number;
-              clearedCount: number;
-              clearedBookIds: string[];
-            }>;
-          };
-        };
-      }
-    ).enrichment;
-
+    const enrichmentClient = trpcVanilla.enrichment;
     if (!enrichmentClient?.auditPlaceholderCovers?.mutate) {
       return;
     }
@@ -122,30 +109,24 @@ export function useSpruceUp(libraryId: string | undefined) {
         const clearedSet = new Set(result.clearedBookIds);
         if (typeof utilsRef.current.book?.list?.setData === 'function') {
           utilsRef.current.book.list.setData({libraryId}, old => {
-            if (!old) {
+            if (!old || !Array.isArray(old.books)) {
               return old;
-            }
-            const clearBookCover = (b: Book): Book => {
-              if (!clearedSet.has(b.id)) {
-                return b;
-              }
-              const nextStatus = {...(b.enrichmentStatus || {})};
-              delete nextStatus.coverImage;
-              return {
-                ...b,
-                coverUrl: undefined,
-                coverUrlRaw: undefined,
-                enrichmentStatus: nextStatus,
-              };
-            };
-            if (Array.isArray(old)) {
-              return (old as Book[]).map(
-                clearBookCover,
-              ) as unknown as typeof old;
             }
             return {
               ...old,
-              books: (old.books || []).map(clearBookCover),
+              books: old.books.map(b => {
+                if (!clearedSet.has(b.id)) {
+                  return b;
+                }
+                const nextStatus = {...(b.enrichmentStatus || {})};
+                delete nextStatus.coverImage;
+                return {
+                  ...b,
+                  coverUrl: undefined,
+                  coverUrlRaw: undefined,
+                  enrichmentStatus: nextStatus,
+                };
+              }),
             };
           });
         }
@@ -268,15 +249,113 @@ export function useSpruceUp(libraryId: string | undefined) {
     };
   }, [booksFingerprint, booksLoading]);
 
+  const [adjudicatedByKey, setAdjudicatedByKey] = useState<
+    Record<
+      string,
+      {
+        isDuplicate: boolean;
+        calibratedConfidence: number;
+        preferredSurvivorId?: string;
+      }
+    >
+  >({});
+  const requestedAdjudicationKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!libraryId || rawDuplicateGroups.length === 0) {
+      return;
+    }
+
+    const fuzzyPending = rawDuplicateGroups.filter(
+      group =>
+        group.reason === 'Fuzzy Title/Subtitle Match' &&
+        !requestedAdjudicationKeysRef.current.has(group.groupKey),
+    );
+
+    if (fuzzyPending.length === 0) {
+      return;
+    }
+
+    const enrichmentClient = trpcVanilla.enrichment;
+    if (!enrichmentClient?.adjudicateDuplicates?.mutate) {
+      return;
+    }
+
+    for (const g of fuzzyPending) {
+      requestedAdjudicationKeysRef.current.add(g.groupKey);
+    }
+
+    let cancelled = false;
+    void enrichmentClient.adjudicateDuplicates
+      .mutate({
+        libraryId,
+        groups: fuzzyPending.slice(0, 50).map(group => ({
+          groupKey: group.groupKey,
+          books: group.books.slice(0, 12).map(b => ({
+            id: b.id,
+            title: b.title,
+            author: b.author || undefined,
+            isbn: b.isbn || undefined,
+            series: b.series || undefined,
+            publishedDate: b.publishedDate || undefined,
+            hasCover: Boolean(b.coverUrl),
+            hasSynopsis: Boolean(
+              b.bookDetailsMetadata?.hasSynopsis ||
+              b.enrichmentStatus?.synopsis === 'completed',
+            ),
+          })),
+        })),
+      })
+      .then(response => {
+        if (cancelled || !response?.results) {
+          return;
+        }
+        setAdjudicatedByKey(prev => {
+          const next = {...prev};
+          for (const item of response.results) {
+            next[item.groupKey] = {
+              isDuplicate: item.isDuplicate,
+              calibratedConfidence: item.calibratedConfidence,
+              preferredSurvivorId: item.preferredSurvivorId,
+            };
+          }
+          return next;
+        });
+      })
+      .catch(err => {
+        console.warn('Fuzzy duplicate adjudication skipped:', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [libraryId, rawDuplicateGroups]);
+
   const duplicateGroupsWithMeta = useMemo(() => {
-    return rawDuplicateGroups.filter(group => {
-      const groupIds = group.books.map(b => b.id);
-      const isAllowed = allowedDuplicateGroups.some(allowedGroup =>
-        groupIds.every(id => allowedGroup.includes(id)),
-      );
-      return !isAllowed;
-    });
-  }, [rawDuplicateGroups, allowedDuplicateGroups]);
+    return rawDuplicateGroups
+      .filter(group => {
+        const verdict = adjudicatedByKey[group.groupKey];
+        if (verdict && !verdict.isDuplicate) {
+          return false;
+        }
+        const groupIds = group.books.map(b => b.id);
+        const isAllowed = allowedDuplicateGroups.some(allowedGroup =>
+          groupIds.every(id => allowedGroup.includes(id)),
+        );
+        return !isAllowed;
+      })
+      .map(group => {
+        const verdict = adjudicatedByKey[group.groupKey];
+        if (!verdict) {
+          return group;
+        }
+        return {
+          ...group,
+          confidence: verdict.calibratedConfidence,
+          preferredSurvivorId: verdict.preferredSurvivorId,
+        };
+      });
+  }, [rawDuplicateGroups, allowedDuplicateGroups, adjudicatedByKey]);
 
   const duplicates = useMemo(
     () => duplicateGroupsWithMeta.map(g => g.books),
@@ -291,17 +370,12 @@ export function useSpruceUp(libraryId: string | undefined) {
     setProcessingIds(prev => new Set(prev).add(id));
     try {
       utilsRef.current.book.list.setData({libraryId}, old => {
-        if (!old) {
+        if (!old || !Array.isArray(old.books)) {
           return {books: []};
-        }
-        if (Array.isArray(old)) {
-          return (old as Book[]).filter(
-            b => b.id !== id,
-          ) as unknown as typeof old;
         }
         return {
           ...old,
-          books: (old.books || []).filter(b => b.id !== id),
+          books: old.books.filter(b => b.id !== id),
         };
       });
 
@@ -354,19 +428,53 @@ export function useSpruceUp(libraryId: string | undefined) {
     if (!libraryId) {
       return;
     }
-    const bookClient = trpcVanilla.book as unknown as {
-      mergeDuplicates?: {
-        mutate: (
-          input: DuplicateMergePayload & {libraryId: string},
-        ) => Promise<unknown>;
-      };
-    };
+    const normalizedFormat: 'physical' | 'digital' | undefined =
+      payload.mergedFields.format === 'ebook' ||
+      payload.mergedFields.format === 'audiobook'
+        ? 'digital'
+        : payload.mergedFields.format;
 
     try {
-      if (bookClient?.mergeDuplicates?.mutate) {
-        await bookClient.mergeDuplicates.mutate({
+      if (trpcVanilla.book?.mergeDuplicates?.mutate) {
+        await trpcVanilla.book.mergeDuplicates.mutate({
           libraryId,
-          ...payload,
+          survivorBookId: payload.survivorBookId,
+          duplicateBookIds: payload.duplicateBookIds,
+          mergedFields: {
+            ...(payload.mergedFields.title !== undefined
+              ? {title: payload.mergedFields.title}
+              : {}),
+            ...(payload.mergedFields.author !== undefined
+              ? {author: payload.mergedFields.author}
+              : {}),
+            ...(payload.mergedFields.isbn !== undefined
+              ? {isbn: payload.mergedFields.isbn}
+              : {}),
+            ...(payload.mergedFields.coverUrl !== undefined
+              ? {coverUrl: payload.mergedFields.coverUrl}
+              : {}),
+            ...(payload.mergedFields.publishedDate !== undefined
+              ? {publishedDate: payload.mergedFields.publishedDate}
+              : {}),
+            ...(payload.mergedFields.primaryGenre !== undefined
+              ? {primaryGenre: payload.mergedFields.primaryGenre}
+              : {}),
+            ...(payload.mergedFields.subgenres !== undefined
+              ? {subgenres: payload.mergedFields.subgenres}
+              : {}),
+            ...(payload.mergedFields.series !== undefined
+              ? {series: payload.mergedFields.series}
+              : {}),
+            ...(normalizedFormat !== undefined
+              ? {format: normalizedFormat}
+              : {}),
+            ...(payload.mergedHeavyFields?.synopsis !== undefined
+              ? {synopsis: payload.mergedHeavyFields.synopsis}
+              : {}),
+            ...(payload.mergedHeavyFields?.authorBio !== undefined
+              ? {authorBio: payload.mergedHeavyFields.authorBio}
+              : {}),
+          },
         });
       }
       await utilsRef.current.book.list.invalidate({libraryId});

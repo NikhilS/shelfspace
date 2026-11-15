@@ -7,7 +7,7 @@ import {
 import {ProviderQuotaScheduler} from '../../scheduler/providerQuotaScheduler';
 import {
   CatalogQuery,
-  ICatalogSourceProvider,
+  CatalogSourceProvider,
   ProviderBookHit,
   ProviderCapabilities,
   fetchWithProviderTimeout,
@@ -51,7 +51,7 @@ function pickEnglishOrFirst(dict?: Record<string, string>): string {
   );
 }
 
-export class InventaireWikidataProvider implements ICatalogSourceProvider {
+export class InventaireWikidataProvider implements CatalogSourceProvider {
   readonly id = 'inventaire-wikidata' as const;
   readonly name = 'Inventaire · Wikidata';
   readonly authorityWeight = 82;
@@ -62,6 +62,8 @@ export class InventaireWikidataProvider implements ICatalogSourceProvider {
     synopsis: true,
     series: true,
     genre: false,
+    batchWave: 2,
+    structuredSeries: true,
   };
 
   readonly scheduler = new ProviderQuotaScheduler({

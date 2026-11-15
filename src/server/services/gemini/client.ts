@@ -1,10 +1,24 @@
-import {GoogleGenAI, ThinkingLevel} from '@google/genai';
-import {geminiLimiter, geminiEmbeddingLimiter} from '../limiters';
+import {Decisions, GoogleGenAI, ThinkingLevel} from '@google/genai';
+import {hasControlCharacters} from '../../../schemas/common';
+import {
+  type DecisionAnswerPayload,
+  validateDecisionResponse,
+} from '../../../schemas/decisions';
+import {
+  geminiDecisionLimiter,
+  geminiEmbeddingLimiter,
+  geminiLimiter,
+} from '../limiters';
 import type {
   ProviderQuotaScheduler,
   SchedulePriority,
   ScheduleTaskOptions,
 } from '../scheduler/providerQuotaScheduler';
+
+export const GEMINI_DECISION_MODEL = 'gemini-decision-1' as const;
+export const MAX_DECISION_QUESTIONS = 1000;
+export const MIN_DECISION_OPTIONS = 2;
+export const MAX_DECISION_OPTIONS = 255;
 
 export const logger = {
   info: (msg: string) => {
@@ -51,6 +65,90 @@ export function getGeminiClient(): GoogleGenAI {
   });
 }
 
+export function getGeminiDecisionClient(): GoogleGenAI {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+    throw new Error(
+      'AI features require a valid GEMINI_API_KEY. Please set this in the Settings > Secrets menu.',
+    );
+  }
+
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      apiVersion: 'v1beta',
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
+
+export interface DecisionBatchRequest {
+  input: Decisions.CreateDecisionRequest['input'];
+  questions: Decisions.CreateDecisionRequest['questions'];
+  model?: string;
+  operation?: string;
+}
+
+export function assertValidDecisionQuestions(
+  questions: Decisions.CreateDecisionRequest['questions'],
+): void {
+  const entries = Object.entries(questions);
+  if (entries.length < 1 || entries.length > MAX_DECISION_QUESTIONS) {
+    throw new Error(
+      `Gemini Decisions requires between 1 and ${MAX_DECISION_QUESTIONS} questions per request (received ${entries.length}).`,
+    );
+  }
+
+  for (const [questionId, question] of entries) {
+    if (!questionId.trim() || hasControlCharacters(questionId)) {
+      throw new Error(
+        `Invalid Gemini Decisions question identifier '${questionId}'.`,
+      );
+    }
+    if (question.type === 'choice') {
+      const optionKeys = Object.keys(question.criteria);
+      if (
+        optionKeys.length < MIN_DECISION_OPTIONS ||
+        optionKeys.length > MAX_DECISION_OPTIONS
+      ) {
+        throw new Error(
+          `Choice question '${questionId}' must define between ${MIN_DECISION_OPTIONS} and ${MAX_DECISION_OPTIONS} options (received ${optionKeys.length}).`,
+        );
+      }
+      for (const optionKey of optionKeys) {
+        if (
+          !optionKey ||
+          optionKey !== optionKey.trim() ||
+          hasControlCharacters(optionKey)
+        ) {
+          throw new Error(
+            `Choice question '${questionId}' contains an invalid option key '${optionKey}'.`,
+          );
+        }
+      }
+    } else if (question.type === 'score') {
+      if (
+        question.criteria.length < MIN_DECISION_OPTIONS ||
+        question.criteria.length > MAX_DECISION_OPTIONS
+      ) {
+        throw new Error(
+          `Score question '${questionId}' must define between ${MIN_DECISION_OPTIONS} and ${MAX_DECISION_OPTIONS} rubric levels (received ${question.criteria.length}).`,
+        );
+      }
+      for (const level of question.criteria) {
+        if (!level || !level.trim()) {
+          throw new Error(
+            `Score question '${questionId}' contains an empty rubric level description.`,
+          );
+        }
+      }
+    }
+  }
+}
+
 /**
  * First-class provider wrapper for Gemini Structured Extraction & Literary Insights.
  * Participates in both Local (`gemini-structured` token bucket) and Global (`GlobalProviderGovernor`)
@@ -81,13 +179,68 @@ export class GeminiStructuredProvider {
 }
 
 /**
+ * First-class provider wrapper for Gemini Decisions API (`gemini-decision-1` on `v1beta`).
+ * Evaluates calibrated `noul`, `choice`, and `score` rubrics in a single forward pass
+ * with dual-lane `ProviderQuotaScheduler` governance and runtime Zod validation.
+ */
+export class GeminiDecisionProvider {
+  readonly id = 'gemini-decision' as const;
+  readonly name = 'Gemini Decisions' as const;
+  readonly scheduler: ProviderQuotaScheduler =
+    geminiDecisionLimiter ?? geminiLimiter;
+
+  isAvailable(): boolean {
+    const apiKey = process.env.GEMINI_API_KEY;
+    return Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY');
+  }
+
+  createClient(): GoogleGenAI {
+    return getGeminiDecisionClient();
+  }
+
+  async decide(
+    request: DecisionBatchRequest,
+    scheduleOptions?: ScheduleTaskOptions,
+  ): Promise<Record<string, DecisionAnswerPayload>> {
+    assertValidDecisionQuestions(request.questions);
+    const ai = this.createClient();
+    const requestOptions = scheduleOptions?.signal
+      ? {fetch_options: {signal: scheduleOptions.signal}}
+      : undefined;
+
+    const executeDecision = async () => {
+      const rawResponse = await ai.decisions.create(
+        {
+          model: request.model ?? GEMINI_DECISION_MODEL,
+          input: request.input,
+          questions: request.questions,
+          api_version: 'v1beta',
+        },
+        requestOptions,
+      );
+      const validated = validateDecisionResponse(
+        rawResponse,
+        request.operation ?? 'gemini.decisions.create',
+      );
+      return validated.answers;
+    };
+
+    if (scheduleOptions && Object.keys(scheduleOptions).length > 0) {
+      return this.scheduler.schedule(scheduleOptions, executeDecision);
+    }
+    return this.scheduler.schedule({priority: 'BATCH'}, executeDecision);
+  }
+}
+
+/**
  * First-class provider wrapper for Gemini Vector Embeddings (`gemini-embedding-2-preview`).
  * Ensures embedding generation participates in dual-lane priority scheduling and 429 cooldowns.
  */
 export class GeminiEmbeddingProvider {
   readonly id = 'gemini-embedding' as const;
   readonly name = 'Gemini Embeddings' as const;
-  readonly scheduler: ProviderQuotaScheduler = geminiEmbeddingLimiter;
+  readonly scheduler: ProviderQuotaScheduler =
+    geminiEmbeddingLimiter ?? geminiLimiter;
 
   isAvailable(): boolean {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -115,6 +268,7 @@ export class GeminiEmbeddingProvider {
 }
 
 export const geminiStructuredProvider = new GeminiStructuredProvider();
+export const geminiDecisionProvider = new GeminiDecisionProvider();
 export const geminiEmbeddingProvider = new GeminiEmbeddingProvider();
 
 /**
@@ -126,6 +280,16 @@ export async function generateContentWithLimiter(
   scheduleOptions?: ScheduleTaskOptions,
 ) {
   return geminiStructuredProvider.generateContent(options, scheduleOptions);
+}
+
+/**
+ * Centrally rate-limited wrapper for Gemini Decisions API (`gemini-decision-1`).
+ */
+export async function decideWithLimiter(
+  request: DecisionBatchRequest,
+  scheduleOptions?: ScheduleTaskOptions,
+): Promise<Record<string, DecisionAnswerPayload>> {
+  return geminiDecisionProvider.decide(request, scheduleOptions);
 }
 
 export function handleGeminiError(error: unknown): never {

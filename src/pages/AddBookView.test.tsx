@@ -87,15 +87,15 @@ vi.mock('../lib/trpc', () => ({
         mutate: vi.fn().mockResolvedValue({id: 'new-book-1'}),
       },
       batchUpsert: {
-        mutate: (...args: unknown[]) => mockBatchUpsertMutate(...args),
+        mutate: (...args: unknown[]): unknown => mockBatchUpsertMutate(...args),
       },
     },
     readingTracker: {
       searchUnified: {
-        query: (...args: unknown[]) => mockSearchUnifiedQuery(...args),
+        query: (...args: unknown[]): unknown => mockSearchUnifiedQuery(...args),
       },
       trackBook: {
-        mutate: (...args: unknown[]) => mockTrackBookMutate(...args),
+        mutate: (...args: unknown[]): unknown => mockTrackBookMutate(...args),
       },
     },
     metadata: {
@@ -224,7 +224,7 @@ describe('AddBookView', () => {
     // Mock canvas context
     HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
       drawImage: vi.fn(),
-    } as unknown as CanvasRenderingContext2D);
+    });
     HTMLCanvasElement.prototype.toDataURL = vi
       .fn()
       .mockReturnValue('data:image/png;base64,mocked');
@@ -249,7 +249,7 @@ describe('AddBookView', () => {
             data: expect.objectContaining({
               title: 'Book One',
               ownershipStatus: 'owned',
-            }),
+            }) as unknown,
           }),
         ],
       }),
@@ -370,7 +370,7 @@ describe('AddBookView', () => {
                 title: 'Piranesi',
                 ownershipStatus: 'unowned',
                 readingStatus: 'reading',
-              }),
+              }) as unknown,
             }),
           ],
         }),

@@ -9,8 +9,12 @@ import {
   ProviderTelemetrySummary,
 } from './scheduler/globalProviderGovernor';
 import {LibraryService} from './library';
-import {ENRICHMENT_CONSTANTS} from '../../constants/enrichment';
+import {
+  ENRICHMENT_CONSTANTS,
+  type EnrichmentTier,
+} from '../../constants/enrichment';
 import {CanonicalEnrichmentType} from '../../schemas/libraryApi';
+import type {StageEscalationState} from '../../types/metadata';
 
 export type EnrichmentJobStatus =
   'idle' | 'running' | 'cancelling' | 'completed' | 'cancelled' | 'failed';
@@ -22,6 +26,13 @@ export interface BookJobTelemetryEntry {
   updatedFields?: string[];
   error?: string;
   updatedAt: number;
+}
+
+export interface ActiveEnrichmentWave {
+  waveNumber: number;
+  totalWaves: number;
+  tier: EnrichmentTier;
+  remainingInWave: number;
 }
 
 export interface EnrichmentJobSnapshot {
@@ -37,6 +48,7 @@ export interface EnrichmentJobSnapshot {
   startedAt: number;
   updatedAt: number;
   completedAt?: number;
+  activeWave?: ActiveEnrichmentWave;
   perBookStates: Record<string, BookJobTelemetryEntry>;
   providerTelemetry: ProviderTelemetrySummary;
   results: Array<Record<string, unknown>>;
@@ -75,6 +87,7 @@ export type EnrichmentSseEvent =
         failedBooks: number;
         skippedBooks: number;
         totalBooks: number;
+        activeWave?: ActiveEnrichmentWave;
       };
     }
   | {
@@ -97,6 +110,7 @@ interface InternalJobState {
   startedAt: number;
   updatedAt: number;
   completedAt?: number;
+  activeWave?: ActiveEnrichmentWave;
   perBookStates: Map<string, BookJobTelemetryEntry>;
   accumulatedResults: Array<Record<string, unknown>>;
   abortController: AbortController;
@@ -140,6 +154,7 @@ class EnrichmentJobCoordinatorService {
       startedAt: job.startedAt,
       updatedAt: job.updatedAt,
       completedAt: job.completedAt,
+      ...(job.activeWave ? {activeWave: {...job.activeWave}} : {}),
       perBookStates: perBookRecord,
       providerTelemetry: globalProviderGovernor.getTelemetrySummary('BATCH'),
       results: [...job.accumulatedResults],
@@ -356,6 +371,7 @@ class EnrichmentJobCoordinatorService {
     if (job.status === 'running' || job.status === 'cancelling') {
       job.status = 'cancelled';
       job.pendingQueue = [];
+      job.activeWave = undefined;
       job.abortController.abort();
       job.updatedAt = Date.now();
       job.completedAt = job.updatedAt;
@@ -363,6 +379,7 @@ class EnrichmentJobCoordinatorService {
       for (const [bookId, entry] of job.perBookStates.entries()) {
         if (
           entry.stage === 'queued' ||
+          entry.stage === 'evaluating_decisions' ||
           entry.stage === 'fetching_catalog' ||
           entry.stage === 'fetching_ai'
         ) {
@@ -405,179 +422,277 @@ class EnrichmentJobCoordinatorService {
     });
 
     try {
-      const configuredBatchSize =
-        job.enrichmentType === 'embedding'
-          ? ENRICHMENT_CONSTANTS.EMBEDDING_MICRO_BATCH_COMMIT_SIZE
-          : job.enrichmentType === 'geo' ||
-              job.enrichmentType === 'temporal' ||
-              job.enrichmentType === 'genre'
-            ? ENRICHMENT_CONSTANTS.AI_MICRO_BATCH_COMMIT_SIZE
-            : ENRICHMENT_CONSTANTS.MICRO_BATCH_COMMIT_SIZE;
-
-      const batchSize = Math.max(
-        1,
-        configuredBatchSize || ENRICHMENT_CONSTANTS.SERVER_CHUNK_SIZE || 10,
+      const configuredStages = EnrichmentService.getPipelineStages(
+        job.enrichmentType,
       );
+      const stages =
+        Array.isArray(configuredStages) && configuredStages.length > 0
+          ? configuredStages
+          : [
+              {
+                stageIndex: 0,
+                id: `${job.enrichmentType}-default`,
+                tier: 'catalog' as const,
+                microBatchSize:
+                  ENRICHMENT_CONSTANTS.MICRO_BATCH_COMMIT_SIZE || 10,
+                progressStage: 'fetching_catalog' as const,
+              },
+            ];
 
       while (
         job.pendingQueue.length > 0 &&
         job.status === 'running' &&
         !job.abortController.signal.aborted
       ) {
-        const microBatch = job.pendingQueue.splice(0, batchSize);
-        if (microBatch.length === 0) {
+        const initialWaveIds = job.pendingQueue.splice(
+          0,
+          job.pendingQueue.length,
+        );
+        if (initialWaveIds.length === 0) {
           break;
         }
 
-        try {
-          const result = await EnrichmentService.triggerBatchEnrichment(
-            job.uid,
-            job.userEmail,
-            {
-              libraryId: job.libraryId,
-              enrichmentType: job.enrichmentType,
-              bookIds: microBatch,
-              overwrite: job.overwrite,
-              customGenres: job.customGenres,
-              allowAiFallback: job.allowAiFallback,
-            },
-            {
-              skipAccessCheck: true,
-              callbacks: {
-                signal: job.abortController.signal,
-                onBookProgress: (update: PerBookProgressUpdate) => {
-                  if (
-                    job.abortController.signal.aborted ||
-                    this.jobsByLibrary.get(job.libraryId) !== job
-                  ) {
-                    return;
-                  }
-                  const now = Date.now();
-                  const existing = job.perBookStates.get(update.bookId);
-                  const mergedProviders = {
-                    ...(existing?.winningProviders || {}),
-                    ...(update.winningProviders || {}),
-                  };
-                  const mergedFields = Array.from(
-                    new Set([
-                      ...(existing?.updatedFields || []),
-                      ...(update.updatedFields || []),
-                    ]),
-                  );
-                  const entry: BookJobTelemetryEntry = {
-                    bookId: update.bookId,
-                    stage: update.stage,
-                    winningProviders:
-                      Object.keys(mergedProviders).length > 0
-                        ? mergedProviders
-                        : undefined,
-                    updatedFields:
-                      mergedFields.length > 0 ? mergedFields : undefined,
-                    error: update.error,
-                    updatedAt: now,
-                  };
-                  job.perBookStates.set(update.bookId, entry);
-                  job.updatedAt = now;
+        let waveBookIds = initialWaveIds;
+        let waveEscalations = new Map<string, StageEscalationState<unknown>>();
 
-                  const snap = this.buildSnapshot(job);
-                  this.emitLibraryEvent(job.libraryId, {
-                    type: 'book:progress',
-                    payload: {
-                      jobId: job.jobId,
-                      libraryId: job.libraryId,
-                      book: entry,
-                      completedBooks: snap.completedBooks,
-                      failedBooks: snap.failedBooks,
-                      skippedBooks: snap.skippedBooks,
-                      totalBooks: snap.totalBooks,
-                    },
-                  });
-                },
-              },
-            },
-          );
-
+        for (let stageIdx = 0; stageIdx < stages.length; stageIdx++) {
           if (
-            job.abortController.signal.aborted ||
-            this.jobsByLibrary.get(job.libraryId) !== job
+            waveBookIds.length === 0 ||
+            job.status !== 'running' ||
+            job.abortController.signal.aborted
           ) {
             break;
           }
 
-          if (Array.isArray(result.results) && result.results.length > 0) {
-            job.accumulatedResults.push(...result.results);
-          }
+          const stage = stages[stageIdx];
+          const batchSize = Math.max(
+            1,
+            stage.microBatchSize ||
+              ENRICHMENT_CONSTANTS.SERVER_CHUNK_SIZE ||
+              10,
+          );
+          const nextWaveIds: string[] = [];
+          const nextWaveEscalations = new Map<
+            string,
+            StageEscalationState<unknown>
+          >();
 
-          const now = Date.now();
-          for (const bookId of microBatch) {
-            const current = job.perBookStates.get(bookId);
+          for (
+            let offset = 0;
+            offset < waveBookIds.length;
+            offset += batchSize
+          ) {
             if (
-              !current ||
-              current.stage === 'queued' ||
-              current.stage === 'fetching_catalog' ||
-              current.stage === 'fetching_ai'
+              job.status !== 'running' ||
+              job.abortController.signal.aborted ||
+              this.jobsByLibrary.get(job.libraryId) !== job
             ) {
-              job.perBookStates.set(bookId, {
-                bookId,
-                stage: 'skipped',
-                winningProviders: current?.winningProviders,
-                updatedFields: current?.updatedFields,
-                updatedAt: now,
+              break;
+            }
+
+            const microBatch = waveBookIds.slice(offset, offset + batchSize);
+            if (microBatch.length === 0) {
+              continue;
+            }
+
+            job.activeWave = {
+              waveNumber: stageIdx + 1,
+              totalWaves: stages.length,
+              tier: stage.tier,
+              remainingInWave: Math.max(0, waveBookIds.length - offset),
+            };
+
+            try {
+              const result = await EnrichmentService.triggerBatchEnrichment(
+                job.uid,
+                job.userEmail,
+                {
+                  libraryId: job.libraryId,
+                  enrichmentType: job.enrichmentType,
+                  bookIds: microBatch,
+                  overwrite: job.overwrite,
+                  customGenres: job.customGenres,
+                  allowAiFallback: job.allowAiFallback,
+                },
+                {
+                  skipAccessCheck: true,
+                  stageIndex: stage.stageIndex,
+                  priorEscalations: waveEscalations,
+                  callbacks: {
+                    signal: job.abortController.signal,
+                    onBookProgress: (update: PerBookProgressUpdate) => {
+                      if (
+                        job.abortController.signal.aborted ||
+                        this.jobsByLibrary.get(job.libraryId) !== job
+                      ) {
+                        return;
+                      }
+                      const now = Date.now();
+                      const existing = job.perBookStates.get(update.bookId);
+                      const mergedProviders = {
+                        ...(existing?.winningProviders || {}),
+                        ...(update.winningProviders || {}),
+                      };
+                      const mergedFields = Array.from(
+                        new Set([
+                          ...(existing?.updatedFields || []),
+                          ...(update.updatedFields || []),
+                        ]),
+                      );
+                      const entry: BookJobTelemetryEntry = {
+                        bookId: update.bookId,
+                        stage: update.stage,
+                        winningProviders:
+                          Object.keys(mergedProviders).length > 0
+                            ? mergedProviders
+                            : undefined,
+                        updatedFields:
+                          mergedFields.length > 0 ? mergedFields : undefined,
+                        error: update.error,
+                        updatedAt: now,
+                      };
+                      job.perBookStates.set(update.bookId, entry);
+                      job.updatedAt = now;
+
+                      const snap = this.buildSnapshot(job);
+                      this.emitLibraryEvent(job.libraryId, {
+                        type: 'book:progress',
+                        payload: {
+                          jobId: job.jobId,
+                          libraryId: job.libraryId,
+                          book: entry,
+                          completedBooks: snap.completedBooks,
+                          failedBooks: snap.failedBooks,
+                          skippedBooks: snap.skippedBooks,
+                          totalBooks: snap.totalBooks,
+                        },
+                      });
+                    },
+                  },
+                },
+              );
+
+              if (
+                job.abortController.signal.aborted ||
+                this.jobsByLibrary.get(job.libraryId) !== job
+              ) {
+                break;
+              }
+
+              if (Array.isArray(result.results) && result.results.length > 0) {
+                job.accumulatedResults.push(...result.results);
+              }
+
+              const escalatedSet = new Set<string>();
+              if (Array.isArray(result.escalatedBooks)) {
+                for (const esc of result.escalatedBooks) {
+                  escalatedSet.add(esc.bookId);
+                  nextWaveIds.push(esc.bookId);
+                  nextWaveEscalations.set(esc.bookId, esc.state);
+                }
+              }
+
+              const now = Date.now();
+              for (const bookId of microBatch) {
+                const current = job.perBookStates.get(bookId);
+                if (escalatedSet.has(bookId)) {
+                  job.perBookStates.set(bookId, {
+                    bookId,
+                    stage: 'queued',
+                    winningProviders: current?.winningProviders,
+                    updatedFields: current?.updatedFields,
+                    updatedAt: now,
+                  });
+                } else if (
+                  !current ||
+                  current.stage === 'queued' ||
+                  current.stage === 'evaluating_decisions' ||
+                  current.stage === 'fetching_catalog' ||
+                  current.stage === 'fetching_ai'
+                ) {
+                  job.perBookStates.set(bookId, {
+                    bookId,
+                    stage: 'skipped',
+                    winningProviders: current?.winningProviders,
+                    updatedFields: current?.updatedFields,
+                    updatedAt: now,
+                  });
+                }
+              }
+
+              job.activeWave = {
+                waveNumber: stageIdx + 1,
+                totalWaves: stages.length,
+                tier: stage.tier,
+                remainingInWave: Math.max(
+                  0,
+                  waveBookIds.length - (offset + microBatch.length),
+                ),
+              };
+              job.updatedAt = now;
+
+              const postBatchSnap = this.buildSnapshot(job);
+              this.emitLibraryEvent(job.libraryId, {
+                type: 'batch:committed',
+                payload: {
+                  jobId: job.jobId,
+                  libraryId: job.libraryId,
+                  enrichmentType: job.enrichmentType,
+                  results: result.results || [],
+                  completedBooks: postBatchSnap.completedBooks,
+                  failedBooks: postBatchSnap.failedBooks,
+                  skippedBooks: postBatchSnap.skippedBooks,
+                  totalBooks: postBatchSnap.totalBooks,
+                  ...(postBatchSnap.activeWave
+                    ? {activeWave: postBatchSnap.activeWave}
+                    : {}),
+                },
               });
+              this.emitLibraryEvent(job.libraryId, {
+                type: 'provider:telemetry',
+                payload: {
+                  jobId: job.jobId,
+                  libraryId: job.libraryId,
+                  telemetry:
+                    globalProviderGovernor.getTelemetrySummary('BATCH'),
+                },
+              });
+            } catch (chunkErr: unknown) {
+              if (
+                job.abortController.signal.aborted ||
+                this.jobsByLibrary.get(job.libraryId) !== job
+              ) {
+                break;
+              }
+              console.error(
+                `[EnrichmentJobCoordinator] Micro-batch error in job ${job.jobId}:`,
+                chunkErr,
+              );
+              const now = Date.now();
+              const errMsg =
+                chunkErr instanceof Error
+                  ? chunkErr.message
+                  : 'Batch enrichment failed';
+              for (const bookId of microBatch) {
+                const current = job.perBookStates.get(bookId);
+                job.perBookStates.set(bookId, {
+                  bookId,
+                  stage: 'failed',
+                  winningProviders: current?.winningProviders,
+                  updatedFields: current?.updatedFields,
+                  error: errMsg,
+                  updatedAt: now,
+                });
+              }
             }
           }
 
-          const postBatchSnap = this.buildSnapshot(job);
-          this.emitLibraryEvent(job.libraryId, {
-            type: 'batch:committed',
-            payload: {
-              jobId: job.jobId,
-              libraryId: job.libraryId,
-              enrichmentType: job.enrichmentType,
-              results: result.results || [],
-              completedBooks: postBatchSnap.completedBooks,
-              failedBooks: postBatchSnap.failedBooks,
-              skippedBooks: postBatchSnap.skippedBooks,
-              totalBooks: postBatchSnap.totalBooks,
-            },
-          });
-          this.emitLibraryEvent(job.libraryId, {
-            type: 'provider:telemetry',
-            payload: {
-              jobId: job.jobId,
-              libraryId: job.libraryId,
-              telemetry: globalProviderGovernor.getTelemetrySummary('BATCH'),
-            },
-          });
-        } catch (chunkErr: unknown) {
-          if (
-            job.abortController.signal.aborted ||
-            this.jobsByLibrary.get(job.libraryId) !== job
-          ) {
-            break;
-          }
-          console.error(
-            `[EnrichmentJobCoordinator] Micro-batch error in job ${job.jobId}:`,
-            chunkErr,
-          );
-          const now = Date.now();
-          const errMsg =
-            chunkErr instanceof Error
-              ? chunkErr.message
-              : 'Batch enrichment failed';
-          for (const bookId of microBatch) {
-            const current = job.perBookStates.get(bookId);
-            job.perBookStates.set(bookId, {
-              bookId,
-              stage: 'failed',
-              winningProviders: current?.winningProviders,
-              updatedFields: current?.updatedFields,
-              error: errMsg,
-              updatedAt: now,
-            });
-          }
+          waveBookIds = nextWaveIds;
+          waveEscalations = nextWaveEscalations;
         }
       }
+
+      job.activeWave = undefined;
 
       if (job.status === 'running') {
         job.status = job.abortController.signal.aborted

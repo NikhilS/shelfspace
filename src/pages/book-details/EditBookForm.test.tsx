@@ -78,7 +78,7 @@ describe('EditBookForm', () => {
     addedAt: {
       seconds: 1600000000,
       nanoseconds: 0,
-    } as unknown as Book['addedAt'],
+    },
   };
 
   const mockBookDetails: BookDetailsPayload = {

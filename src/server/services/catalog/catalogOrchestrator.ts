@@ -13,20 +13,16 @@ import type {
 import {globalProviderGovernor} from '../scheduler/globalProviderGovernor';
 import {
   type CatalogQuery,
-  type ICatalogSourceProvider,
+  type CatalogSourceProvider,
   type OrchestratorExecutionOptions,
   type OrchestratorSearchResult,
   type ProviderBookHit,
   fetchWithProviderTimeout,
 } from './types';
-import {AppleBooksProvider} from './providers/AppleBooksProvider';
-import {PenguinRandomHouseProvider} from './providers/PenguinRandomHouseProvider';
-import {HardcoverProvider} from './providers/HardcoverProvider';
-import {GoogleBooksProvider} from './providers/GoogleBooksProvider';
-import {OpenLibraryProvider} from './providers/OpenLibraryProvider';
-import {InventaireWikidataProvider} from './providers/InventaireWikidataProvider';
-import {LongitoodCoverProvider} from './providers/LongitoodCoverProvider';
-import {LibraryOfCongressProvider} from './providers/LibraryOfCongressProvider';
+import {
+  createDefaultCatalogProviders,
+  DEFAULT_WAVE_1_PROVIDER_IDS,
+} from './providerManifest';
 
 const INTERACTIVE_DEFAULT_MAX_WAIT_MS = 800;
 const BATCH_DEFAULT_MAX_WAIT_MS = 4500;
@@ -41,24 +37,25 @@ const COVER_TIER_SCORE: Record<'ultra' | 'high' | 'standard', number> = {
   standard: 100,
 };
 
-const SOURCE_COVER_AUTHORITY: Record<string, number> = {
-  'Apple Books': 95,
-  'Penguin Random House': 92,
-  Hardcover: 90,
-  Longitood: 84,
-  'Google Books': 78,
-  Inventaire: 72,
-  'Open Library': 68,
-  'Library of Congress': 60,
-};
-
-interface CacheEntry<T> {
-  value: T;
+interface CacheEntry<Value> {
+  value: Value;
   expiresAt: number;
 }
 
+function resolveProviderBatchWave(provider: CatalogSourceProvider): 1 | 2 {
+  if (provider.capabilities.batchWave) {
+    return provider.capabilities.batchWave;
+  }
+  return DEFAULT_WAVE_1_PROVIDER_IDS.has(provider.id) ? 1 : 2;
+}
+
 export class CatalogOrchestrator {
-  private readonly providers: ICatalogSourceProvider[];
+  private readonly providers: CatalogSourceProvider[];
+  private readonly coverAuthorityBySource = new Map<string, number>();
+  private readonly structuredSeriesProviderIds = new Set<string>([
+    'hardcover',
+    'inventaire-wikidata',
+  ]);
   private readonly searchCache = new Map<
     string,
     CacheEntry<OrchestratorSearchResult>
@@ -67,25 +64,27 @@ export class CatalogOrchestrator {
   private readonly searchCacheTtlMs = 15 * 60 * 1000;
   private readonly coverValidityTtlMs = 60 * 60 * 1000;
 
-  constructor(providers?: ICatalogSourceProvider[]) {
-    this.providers = providers ?? [
-      new AppleBooksProvider(),
-      new PenguinRandomHouseProvider(),
-      new HardcoverProvider(),
-      new GoogleBooksProvider(),
-      new OpenLibraryProvider(),
-      new InventaireWikidataProvider(),
-      new LongitoodCoverProvider(),
-      new LibraryOfCongressProvider(),
-    ];
+  constructor(providers?: CatalogSourceProvider[]) {
+    this.providers = providers ?? createDefaultCatalogProviders();
     for (const provider of this.providers) {
+      this.coverAuthorityBySource.set(provider.name, provider.authorityWeight);
+      this.coverAuthorityBySource.set(provider.id, provider.authorityWeight);
+      if (provider.capabilities.structuredSeries) {
+        this.structuredSeriesProviderIds.add(provider.id);
+      }
       if (provider?.scheduler) {
         globalProviderGovernor.registerProvider(provider.scheduler);
       }
     }
   }
 
-  getProviders(): readonly ICatalogSourceProvider[] {
+  private getCoverCandidateScore(candidate: CoverCandidate): number {
+    const tierScore = COVER_TIER_SCORE[candidate.resolutionTier ?? 'high'];
+    const authority = this.coverAuthorityBySource.get(candidate.source) ?? 50;
+    return tierScore + authority;
+  }
+
+  getProviders(): readonly CatalogSourceProvider[] {
     return this.providers;
   }
 
@@ -263,13 +262,13 @@ export class CatalogOrchestrator {
     }
   }
 
-  private async runProviderTask<T>(
-    provider: ICatalogSourceProvider,
+  private async runProviderTask<Result>(
+    provider: CatalogSourceProvider,
     options: OrchestratorExecutionOptions,
-    taskFn: (signal: AbortSignal) => Promise<T>,
+    taskFn: (signal: AbortSignal) => Promise<Result>,
     skippedProviders: string[],
     respondedProviders: string[],
-  ): Promise<T | null> {
+  ): Promise<Result | null> {
     if (!provider.isAvailable()) {
       return null;
     }
@@ -363,16 +362,12 @@ export class CatalogOrchestrator {
     let hits: ProviderBookHit[] = [];
 
     if (priority === 'BATCH') {
-      // Two-Wave Batch Strategy:
-      // Wave 1: High-capacity primary catalog providers
-      const wave1Ids = new Set([
-        'apple-books',
-        'penguin-random-house',
-        'google-books',
-        'open-library',
-      ]);
-      const wave1Providers = isbnProviders.filter(p => wave1Ids.has(p.id));
-      const wave2Providers = isbnProviders.filter(p => !wave1Ids.has(p.id));
+      const wave1Providers = isbnProviders.filter(
+        p => resolveProviderBatchWave(p) === 1,
+      );
+      const wave2Providers = isbnProviders.filter(
+        p => resolveProviderBatchWave(p) !== 1,
+      );
 
       const wave1Results = await Promise.all(
         wave1Providers.map(p =>
@@ -446,6 +441,30 @@ export class CatalogOrchestrator {
     return null;
   }
 
+  async searchByTitleAndAuthor(
+    title: string,
+    author: string,
+    isbn?: string,
+    options: OrchestratorExecutionOptions = {},
+  ): Promise<BookDetails | null> {
+    if (isbn) {
+      const byIsbn = await this.searchByIsbn(isbn, options);
+      if (byIsbn) {
+        return byIsbn;
+      }
+    }
+    const result = await this.searchByQuery(
+      {
+        title,
+        author,
+        rawQuery: `${title} ${author}`.trim(),
+        limit: 3,
+      },
+      options,
+    );
+    return result.books[0] ?? null;
+  }
+
   async searchByQuery(
     query: CatalogQuery | string,
     options: OrchestratorExecutionOptions = {},
@@ -491,14 +510,12 @@ export class CatalogOrchestrator {
     const hits: ProviderBookHit[] = [];
 
     if (priority === 'BATCH') {
-      const wave1Ids = new Set([
-        'apple-books',
-        'google-books',
-        'open-library',
-        'penguin-random-house',
-      ]);
-      const wave1Providers = queryProviders.filter(p => wave1Ids.has(p.id));
-      const wave2Providers = queryProviders.filter(p => !wave1Ids.has(p.id));
+      const wave1Providers = queryProviders.filter(
+        p => resolveProviderBatchWave(p) === 1,
+      );
+      const wave2Providers = queryProviders.filter(
+        p => resolveProviderBatchWave(p) !== 1,
+      );
 
       const wave1Lists = await Promise.all(
         wave1Providers.map(p =>
@@ -598,7 +615,7 @@ export class CatalogOrchestrator {
       p => p.isAvailable() && p.capabilities.coverResolution,
     );
 
-    const resolveFromProvider = (p: ICatalogSourceProvider) =>
+    const resolveFromProvider = (p: CatalogSourceProvider) =>
       this.runProviderTask(
         p,
         {
@@ -687,15 +704,10 @@ export class CatalogOrchestrator {
           ).filter((c): c is CoverCandidate => c !== null)
         : unique;
 
-      verified.sort((a, b) => {
-        const scoreA =
-          COVER_TIER_SCORE[a.resolutionTier ?? 'high'] +
-          (SOURCE_COVER_AUTHORITY[a.source] ?? 50);
-        const scoreB =
-          COVER_TIER_SCORE[b.resolutionTier ?? 'high'] +
-          (SOURCE_COVER_AUTHORITY[b.source] ?? 50);
-        return scoreB - scoreA;
-      });
+      verified.sort(
+        (a, b) =>
+          this.getCoverCandidateScore(b) - this.getCoverCandidateScore(a),
+      );
 
       return verified;
     };
@@ -703,17 +715,12 @@ export class CatalogOrchestrator {
     const seenUrls = new Set<string>();
 
     if (priority === 'BATCH') {
-      // Two-Wave Early-Exit Strategy for Batch Cover Resolution:
-      // Query high-capacity primary cover sources first; if a verified high/ultra
-      // cover is found, skip querying slower secondary providers.
-      const wave1Ids = new Set([
-        'apple-books',
-        'penguin-random-house',
-        'google-books',
-        'open-library',
-      ]);
-      const wave1Providers = coverProviders.filter(p => wave1Ids.has(p.id));
-      const wave2Providers = coverProviders.filter(p => !wave1Ids.has(p.id));
+      const wave1Providers = coverProviders.filter(
+        p => resolveProviderBatchWave(p) === 1,
+      );
+      const wave2Providers = coverProviders.filter(
+        p => resolveProviderBatchWave(p) !== 1,
+      );
 
       const wave1Lists = await Promise.all(
         wave1Providers.map(resolveFromProvider),
@@ -741,15 +748,10 @@ export class CatalogOrchestrator {
         wave2Lists,
         seenUrls,
       );
-      const combined = [...wave1Verified, ...wave2Verified].sort((a, b) => {
-        const scoreA =
-          COVER_TIER_SCORE[a.resolutionTier ?? 'high'] +
-          (SOURCE_COVER_AUTHORITY[a.source] ?? 50);
-        const scoreB =
-          COVER_TIER_SCORE[b.resolutionTier ?? 'high'] +
-          (SOURCE_COVER_AUTHORITY[b.source] ?? 50);
-        return scoreB - scoreA;
-      });
+      const combined = [...wave1Verified, ...wave2Verified].sort(
+        (a, b) =>
+          this.getCoverCandidateScore(b) - this.getCoverCandidateScore(a),
+      );
 
       return {
         candidates: combined,
@@ -875,15 +877,10 @@ export class CatalogOrchestrator {
         }
       }
 
-      let coverCandidates = Array.from(candidateMap.values()).sort((a, b) => {
-        const scoreA =
-          COVER_TIER_SCORE[a.resolutionTier ?? 'high'] +
-          (SOURCE_COVER_AUTHORITY[a.source] ?? 50);
-        const scoreB =
-          COVER_TIER_SCORE[b.resolutionTier ?? 'high'] +
-          (SOURCE_COVER_AUTHORITY[b.source] ?? 50);
-        return scoreB - scoreA;
-      });
+      let coverCandidates = Array.from(candidateMap.values()).sort(
+        (a, b) =>
+          this.getCoverCandidateScore(b) - this.getCoverCandidateScore(a),
+      );
 
       if (options.verifyCovers && coverCandidates.length > 0) {
         const verifiedResults = await Promise.all(
@@ -914,13 +911,12 @@ export class CatalogOrchestrator {
       const synopsis = synopsisEntries[0]?.text || undefined;
       const synopsisSource = synopsisEntries[0]?.source;
 
-      // Best series: prefer Hardcover or Inventaire/Wikidata structured series first
+      // Best series: prefer providers declaring structuredSeries capability first
       const seriesHit =
         sortedHits.find(
           h =>
-            (h.providerId === 'hardcover' ||
-              h.providerId === 'inventaire-wikidata') &&
-            h.series,
+            this.structuredSeriesProviderIds.has(h.providerId) &&
+            Boolean(h.series),
         ) || sortedHits.find(h => Boolean(h.series));
       const series = seriesHit?.series || undefined;
       const seriesSource = seriesHit?.providerName;

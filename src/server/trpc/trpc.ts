@@ -22,15 +22,15 @@ export type Context = SecurityContext;
 /**
  * Creates tRPC context by delegating to the unified SecurityContext builder.
  */
-export const createContext = async ({
+export async function createContext({
   req,
   res,
 }: Pick<
   trpcExpress.CreateExpressContextOptions,
   'req' | 'res'
->): Promise<SecurityContext> => {
+>): Promise<SecurityContext> {
   return createSecurityContext({req, res});
-};
+}
 
 export {
   router,

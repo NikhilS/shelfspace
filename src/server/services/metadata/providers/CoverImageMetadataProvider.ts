@@ -1,14 +1,111 @@
+import {z} from 'zod';
 import {
-  IMetadataProvider,
-  MetadataBulkFetchOptions,
+  type CoreBookData,
+  type EnrichmentPipelineStage,
+  type MetadataBulkFetchOptions,
   MetadataKey,
-  CoreBookData,
+  type MetadataPersistenceContext,
+  type MetadataPersistencePatch,
+  type MetadataPlugin,
+  type StageBookOutcome,
 } from '../../../../types/metadata';
 import {catalogOrchestrator} from '../../catalog';
+import {hydrateCatalogForResidualBooks} from '../bonusCatalogPatcher';
+import {runPluginStagesToRecord} from '../stageRunner';
 
-export class CoverImageMetadataProvider implements IMetadataProvider<
+const coverImagePluginOutputSchema: z.ZodType<string | null> = z
+  .string()
+  .nullable();
+
+export class CoverImageMetadataProvider implements MetadataPlugin<
   string | null
 > {
+  readonly statusKey = 'coverImage' as const;
+  readonly needsSynopsis = false;
+  readonly supportsHybridAiFallback = false;
+  readonly outputSchema = coverImagePluginOutputSchema;
+
+  readonly stages: ReadonlyArray<EnrichmentPipelineStage<string | null>> = [
+    {
+      id: 'cover-catalog',
+      tier: 'catalog',
+      execute: async ({books, options}) => {
+        const outcomes = new Map<string, StageBookOutcome<string | null>>();
+        if (books.length === 0 || options?.signal?.aborted) {
+          return outcomes;
+        }
+
+        const residualForDetails: CoreBookData[] = [];
+
+        await Promise.all(
+          books.map(async book => {
+            if (options?.signal?.aborted) {
+              return;
+            }
+            try {
+              if (book.isbn || book.title) {
+                const candidateRes =
+                  await catalogOrchestrator.fetchCoverCandidates(
+                    {
+                      isbn: book.isbn,
+                      title: book.title,
+                      author: book.author || undefined,
+                    },
+                    {
+                      priority: 'BATCH',
+                      verifyCovers: true,
+                      signal: options?.signal,
+                    },
+                  );
+                if (candidateRes.candidates.length > 0) {
+                  outcomes.set(book.id, {
+                    status: 'resolved',
+                    value: candidateRes.candidates[0].url,
+                    winningProvider: candidateRes.candidates[0].source,
+                  });
+                  return;
+                }
+              }
+              residualForDetails.push(book);
+            } catch (error) {
+              if ((error as Error)?.name !== 'AbortError') {
+                console.error(
+                  `CoverImageMetadataProvider failed for "${book.title}":`,
+                  error,
+                );
+              }
+            }
+          }),
+        );
+
+        if (residualForDetails.length > 0 && !options?.signal?.aborted) {
+          const catalogMap = await hydrateCatalogForResidualBooks(
+            residualForDetails,
+            {
+              signal: options?.signal,
+              verifyCovers: true,
+              preferField: 'coverUrl',
+            },
+          );
+
+          for (const book of residualForDetails) {
+            const hit = catalogMap.get(book.id);
+            if (hit?.details?.coverUrl) {
+              outcomes.set(book.id, {
+                status: 'resolved',
+                value: hit.details.coverUrl,
+                winningProvider: hit.bonusCatalog?.winningProvider,
+                ...(hit.bonusCatalog ? {bonusCatalog: hit.bonusCatalog} : {}),
+              });
+            }
+          }
+        }
+
+        return outcomes;
+      },
+    },
+  ];
+
   getKey(): MetadataKey {
     return MetadataKey.COVER_IMAGE;
   }
@@ -17,98 +114,38 @@ export class CoverImageMetadataProvider implements IMetadataProvider<
     book: CoreBookData,
     options?: MetadataBulkFetchOptions,
   ): Promise<string | null> {
-    if (options?.signal?.aborted) {
-      return null;
-    }
-    try {
-      // Query federated cover candidates across both ISBN and Title+Author providers
-      // (including Apple Books 1000x1000 Ultra-Res covers, PRH ISBN CDN, Hardcover, Longitood, etc.)
-      if (book.isbn || book.title) {
-        const candidateRes = await catalogOrchestrator.fetchCoverCandidates(
-          {
-            isbn: book.isbn,
-            title: book.title,
-            author: book.author || undefined,
-          },
-          {
-            priority: 'BATCH',
-            verifyCovers: true,
-            signal: options?.signal,
-          },
-        );
-        if (candidateRes.candidates.length > 0) {
-          return candidateRes.candidates[0].url;
-        }
-      }
-
-      if (options?.signal?.aborted) {
-        return null;
-      }
-
-      if (book.isbn) {
-        const details = await catalogOrchestrator.searchByIsbn(book.isbn, {
-          priority: 'BATCH',
-          verifyCovers: true,
-          signal: options?.signal,
-        });
-        if (details?.coverUrl) {
-          return details.coverUrl;
-        }
-      }
-
-      if (options?.signal?.aborted) {
-        return null;
-      }
-
-      if (book.title) {
-        const searchRes = await catalogOrchestrator.searchByQuery(
-          {
-            title: book.title,
-            author: book.author || '',
-            isbn: book.isbn,
-            limit: 3,
-          },
-          {
-            priority: 'BATCH',
-            verifyCovers: true,
-            signal: options?.signal,
-          },
-        );
-        const match = searchRes.books.find(b => Boolean(b.coverUrl));
-        if (match?.coverUrl) {
-          return match.coverUrl;
-        }
-      }
-
-      return null;
-    } catch (error) {
-      if ((error as Error)?.name !== 'AbortError') {
-        console.error(
-          `CoverImageMetadataProvider failed for "${book.title}":`,
-          error,
-        );
-      }
-      return null;
-    }
+    const batchRes = await this.bulkFetch([book], options);
+    return batchRes[book.id] ?? null;
   }
 
   async bulkFetch(
     books: CoreBookData[],
     options?: MetadataBulkFetchOptions,
   ): Promise<Record<string, string | null>> {
-    const results: Record<string, string | null> = {};
+    return runPluginStagesToRecord(this.stages, books, options, {
+      hasDefaultUnresolvedValue: true,
+      defaultUnresolvedValue: null,
+    });
+  }
 
-    await Promise.all(
-      books.map(async book => {
-        if (options?.signal?.aborted) {
-          results[book.id] = null;
-          return;
-        }
-        results[book.id] = await this.fetch(book, options);
-      }),
-    );
-
-    return results;
+  toPersistencePatch({
+    book,
+    value,
+    existingStatus,
+  }: MetadataPersistenceContext<string | null>): MetadataPersistencePatch {
+    return {
+      bookUpdate: {
+        coverUrl: value,
+        enrichmentStatus: {
+          ...existingStatus,
+          coverImage: 'completed',
+        },
+      },
+      resultPreview: {
+        id: book.id,
+        coverUrl: value,
+      },
+    };
   }
 
   shouldFetchOnCreate(): boolean {

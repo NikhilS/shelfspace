@@ -13,14 +13,12 @@ function normalizeLibraries(data: unknown): Library[] {
     return data as Library[];
   }
   if (data && typeof data === 'object') {
-    if (
-      'libraries' in data &&
-      Array.isArray((data as {libraries: unknown}).libraries)
-    ) {
-      return (data as {libraries: Library[]}).libraries;
+    const rec = data as Record<string, unknown>;
+    if (Array.isArray(rec.libraries)) {
+      return rec.libraries as Library[];
     }
-    if ('data' in data && Array.isArray((data as {data: unknown}).data)) {
-      return (data as {data: Library[]}).data;
+    if (Array.isArray(rec.data)) {
+      return rec.data as Library[];
     }
   }
   return [];
@@ -118,13 +116,14 @@ export function useLibraries(
             lib.ownershipType === 'owned' ||
             (Boolean(user?.uid) && lib.ownerId === user?.uid);
           const canEdit = isOwner || normalizedRole === 'editor';
-          currentUtils.library.get.setData({libraryId: lib.id}, {
-            ...lib,
-            isOwner,
-            canEdit,
-          } as unknown as NonNullable<
-            ReturnType<typeof currentUtils.library.get.getData>
-          >);
+          currentUtils.library.get.setData(
+            {libraryId: lib.id},
+            {
+              ...lib,
+              isOwner,
+              canEdit,
+            },
+          );
         }
       });
 

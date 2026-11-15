@@ -23,8 +23,8 @@ import {BookLoader} from '../components/book/BookLoader';
 import {trpc, trpcVanilla} from '../lib/trpc';
 import {
   applyOptimisticReadingStatusPatch,
-  invalidateReadingStatusQueries,
-  type ReadingStatusCacheUtils,
+  commitBookUpsertDelta,
+  commitReadingStatusDelta,
 } from '../lib/readingStatusCache';
 import {
   Select,
@@ -33,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import type {TrackedShelfStatus} from '../server/services/readingTracker';
+import type {TrackedShelfStatus} from '../types';
 
 import {BookSearch} from '../components/import/BookSearch';
 import {CsvImportTab} from '../components/import/CsvImportTab';
@@ -158,31 +158,39 @@ export function AddBookView() {
     const effectiveStatus: TrackedShelfStatus =
       targetStatus === 'unset' ? 'want_to_read' : targetStatus;
 
-    const rollback = applyOptimisticReadingStatusPatch(
-      utils as unknown as ReadingStatusCacheUtils,
-      {
-        libraryId: match.libraryId,
-        bookId: match.bookId,
-        status: effectiveStatus,
-        bookHint: {title: match.title},
-      },
-    );
+    const rollback = applyOptimisticReadingStatusPatch(utils, {
+      libraryId: match.libraryId,
+      bookId: match.bookId,
+      status: effectiveStatus,
+      bookHint: {title: match.title},
+    });
 
     try {
-      await trpcVanilla.readingTracker.trackBook.mutate({
+      const response = await trpcVanilla.readingTracker.trackBook.mutate({
         source: 'library',
         libraryId: match.libraryId,
         bookId: match.bookId,
         status: effectiveStatus,
       });
 
-      await invalidateReadingStatusQueries(
-        utils as unknown as ReadingStatusCacheUtils,
-        {
+      if (response?.book?.id && response.book.title) {
+        commitBookUpsertDelta(utils, {
+          libraryId: match.libraryId,
+          book: {
+            ...response.book,
+            readingStatus: response.status ?? effectiveStatus,
+          },
+          libraryName: response.book.libraryName,
+        });
+      } else {
+        commitReadingStatusDelta(utils, {
           libraryId: match.libraryId,
           bookId: match.bookId,
-        },
-      );
+          status: response?.status ?? effectiveStatus,
+          rating: response?.rating,
+          bookHint: {title: match.title},
+        });
+      }
 
       toast.success(
         `Tracked "${toTitleCase(match.title)}" on your reading list!`,

@@ -26,6 +26,7 @@ export interface BookSwipeDeckProps {
   activeIndex: number;
   onIndexPreview?: (previewIndex: number) => void;
   onIndexCommit: (committedIndex: number) => void;
+  onDragStateChange?: (isDragging: boolean) => void;
   renderSlide: (params: BookSwipeDeckSlotRenderParams) => React.ReactNode;
   className?: string;
   autoHeight?: boolean;
@@ -95,6 +96,7 @@ export const BookSwipeDeck = forwardRef<
       activeIndex,
       onIndexPreview,
       onIndexCommit,
+      onDragStateChange,
       renderSlide,
       className = '',
       autoHeight = false,
@@ -116,6 +118,17 @@ export const BookSwipeDeck = forwardRef<
     const gestureRef = useRef<TouchGestureState | null>(null);
     const mouseGestureRef = useRef<TouchGestureState | null>(null);
     const suppressNextClickRef = useRef(false);
+    const isDraggingRef = useRef(false);
+    const onDragStateChangeRef = useRef(onDragStateChange);
+    onDragStateChangeRef.current = onDragStateChange;
+
+    const notifyDragState = useCallback((nextDragging: boolean) => {
+      if (isDraggingRef.current === nextDragging) {
+        return;
+      }
+      isDraggingRef.current = nextDragging;
+      onDragStateChangeRef.current?.(nextDragging);
+    }, []);
 
     const stopActiveAnimation = useCallback(() => {
       if (activeAnimationRef.current) {
@@ -131,10 +144,17 @@ export const BookSwipeDeck = forwardRef<
         dragX.jump(0);
         deckIndexRef.current = nextIndex;
         setDeckIndex(nextIndex);
+        notifyDragState(false);
         onIndexPreview?.(nextIndex);
         onIndexCommit(nextIndex);
       },
-      [dragX, onIndexCommit, onIndexPreview, stopActiveAnimation],
+      [
+        dragX,
+        notifyDragState,
+        onIndexCommit,
+        onIndexPreview,
+        stopActiveAnimation,
+      ],
     );
 
     // Sync deckIndex if activeIndex changes externally (e.g. browser Back/Forward history)
@@ -149,15 +169,23 @@ export const BookSwipeDeck = forwardRef<
         dragX.jump(0);
         deckIndexRef.current = clamped;
         setDeckIndex(clamped);
+        notifyDragState(false);
       }
-    }, [activeIndex, bookIds.length, dragX, stopActiveAnimation]);
+    }, [
+      activeIndex,
+      bookIds.length,
+      dragX,
+      notifyDragState,
+      stopActiveAnimation,
+    ]);
 
     // Cleanup animation on unmount
     useEffect(() => {
       return () => {
         stopActiveAnimation();
+        notifyDragState(false);
       };
-    }, [stopActiveAnimation]);
+    }, [notifyDragState, stopActiveAnimation]);
 
     const getViewportWidth = useCallback((): number => {
       const width = containerRef.current?.clientWidth;
@@ -184,6 +212,10 @@ export const BookSwipeDeck = forwardRef<
           activeAnimationRef.current = animate(dragX, 0, {
             ...SNAP_BACK_SPRING_CONFIG,
             velocity: releaseVelocityPxPerSec,
+            onComplete: () => {
+              activeAnimationRef.current = null;
+              notifyDragState(false);
+            },
           });
           return;
         }
@@ -196,6 +228,7 @@ export const BookSwipeDeck = forwardRef<
           return;
         }
 
+        notifyDragState(true);
         const width = getViewportWidth();
         const targetX = delta === 1 ? -width : width;
 
@@ -207,6 +240,8 @@ export const BookSwipeDeck = forwardRef<
             activeAnimationRef.current = null;
             if (pendingTargetIndexRef.current === targetIdx) {
               commitIndexAtomically(targetIdx);
+            } else {
+              notifyDragState(false);
             }
           },
         });
@@ -216,6 +251,7 @@ export const BookSwipeDeck = forwardRef<
         commitIndexAtomically,
         dragX,
         getViewportWidth,
+        notifyDragState,
         onIndexPreview,
         stopActiveAnimation,
       ],
@@ -295,6 +331,7 @@ export const BookSwipeDeck = forwardRef<
         }
         if (Math.abs(dx) > Math.abs(dy) * DIRECTION_LOCK_RATIO) {
           gesture.axisLock = 'horizontal';
+          notifyDragState(true);
         } else {
           gesture.axisLock = 'vertical';
           return;
@@ -360,6 +397,10 @@ export const BookSwipeDeck = forwardRef<
         activeAnimationRef.current = animate(dragX, 0, {
           ...SNAP_BACK_SPRING_CONFIG,
           velocity: vx,
+          onComplete: () => {
+            activeAnimationRef.current = null;
+            notifyDragState(false);
+          },
         });
       }
     };

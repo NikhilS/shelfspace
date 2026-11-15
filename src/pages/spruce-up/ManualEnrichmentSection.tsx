@@ -17,6 +17,14 @@ import {
   Activity,
   Sparkles,
 } from 'lucide-react';
+import {
+  ENRICHMENT_DESCRIPTORS,
+  formatEnrichmentProviderList,
+  formatEnrichmentProviderName,
+  isEnrichmentMetadataPresent,
+  requiresAiPlanForEnrichment,
+} from '../../constants/enrichmentDescriptors';
+import type {EnrichmentTier} from '../../constants/enrichment';
 import {MetadataKey} from '../../types/metadata';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
 import {
@@ -39,136 +47,6 @@ interface ManualEnrichmentSectionProps {
   isAuditingCovers?: boolean;
 }
 
-const ALL_METADATA_KEYS = [
-  {id: MetadataKey.GEO, label: 'Settings & Places', aiOnly: true},
-  {id: MetadataKey.TEMPORAL, label: 'Historical Eras', aiOnly: true},
-  {id: MetadataKey.GENRE, label: 'Genres', aiOnly: true},
-  {id: MetadataKey.SERIES, label: 'Series', aiOnly: false},
-  {id: MetadataKey.SYNOPSIS, label: 'Summaries', aiOnly: false},
-  {id: MetadataKey.AUTHOR_BIO, label: 'Author Bios', aiOnly: false},
-  {id: MetadataKey.EMBEDDING, label: 'Embeddings', aiOnly: true},
-  {id: MetadataKey.COVER_IMAGE, label: 'Cover Art', aiOnly: false},
-];
-
-const PURE_AI_KEYS = new Set<MetadataKey>([
-  MetadataKey.GEO,
-  MetadataKey.TEMPORAL,
-  MetadataKey.GENRE,
-  MetadataKey.EMBEDDING,
-]);
-
-function isMetadataPresent(book: Book, key: MetadataKey): boolean {
-  const status = book.enrichmentStatus || {};
-  if (key === MetadataKey.SYNOPSIS) {
-    return Boolean(
-      book.bookDetailsMetadata?.hasSynopsis ||
-      status.synopsis === 'completed' ||
-      status.synopsis === 'unsupported',
-    );
-  }
-  if (key === MetadataKey.AUTHOR_BIO) {
-    return Boolean(
-      book.bookDetailsMetadata?.hasAuthorBio ||
-      status.authorBio === 'completed' ||
-      status.authorBio === 'unsupported',
-    );
-  }
-  if (key === MetadataKey.EMBEDDING) {
-    return Boolean(
-      book.embedding?.length ||
-      book.bookDetailsMetadata?.hasEmbedding ||
-      status.embedding === 'completed' ||
-      status.embedding === 'unsupported',
-    );
-  }
-  if (key === MetadataKey.GEO) {
-    return Boolean(
-      book.geoMetadata?.isNonEarth ||
-      (book.geoMetadata?.locations &&
-        Array.isArray(book.geoMetadata.locations) &&
-        book.geoMetadata.locations.length > 0) ||
-      status.geo === 'completed' ||
-      status.geo === 'unsupported',
-    );
-  }
-  if (key === MetadataKey.TEMPORAL) {
-    return Boolean(
-      (book.temporalMetadata &&
-        (book.temporalMetadata.isNonHistorical ||
-          book.temporalMetadata.startYear !== undefined ||
-          book.temporalMetadata.eraName ||
-          book.temporalMetadata.eraLabel ||
-          book.temporalMetadata.rationale)) ||
-      status.temporal === 'completed' ||
-      status.temporal === 'unsupported',
-    );
-  }
-  if (key === MetadataKey.GENRE) {
-    return Boolean(
-      (book.primaryGenre && book.primaryGenre.trim().length > 0) ||
-      status.genre === 'completed' ||
-      status.genre === 'unsupported',
-    );
-  }
-  if (key === MetadataKey.COVER_IMAGE) {
-    return Boolean(
-      book.coverUrl ||
-      book.coverUrlRaw ||
-      status.coverImage === 'completed' ||
-      status.coverImage === 'unsupported',
-    );
-  }
-  if (key === MetadataKey.SERIES) {
-    return Boolean(
-      (book.series && book.series.trim().length > 0) ||
-      status.series === 'completed' ||
-      status.series === 'unsupported',
-    );
-  }
-  const val = (book as unknown as Record<string, unknown>)[key];
-  if (Array.isArray(val)) {
-    return val.length > 0;
-  }
-  if (typeof val === 'object' && val !== null) {
-    return Object.keys(val).length > 0;
-  }
-  return Boolean(val);
-}
-
-const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-  open_library: 'Open Library',
-  google_books: 'Google Books',
-  isbn_db: 'ISBNdb',
-  library_of_congress: 'Library of Congress',
-  worldcat_classify: 'WorldCat',
-  wikidata: 'Wikidata',
-  wikipedia: 'Wikipedia',
-  hardcover: 'Hardcover',
-  crossref: 'Crossref',
-  gemini_structured: 'Gemini AI',
-  gemini_embedding: 'Gemini Embeddings',
-};
-
-function formatProviderName(rawId: string): string {
-  if (PROVIDER_DISPLAY_NAMES[rawId]) {
-    return PROVIDER_DISPLAY_NAMES[rawId];
-  }
-  return rawId
-    .split('_')
-    .filter(Boolean)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function formatProviderList(ids: string[], maxVisible = 2): string {
-  const formatted = ids.map(formatProviderName);
-  if (formatted.length <= maxVisible) {
-    return formatted.join(', ');
-  }
-  const visible = formatted.slice(0, maxVisible).join(', ');
-  return `${visible} +${formatted.length - maxVisible} more`;
-}
-
 function renderBookLiveTelemetryBadge(state?: BookJobTelemetry) {
   if (!state) {
     return <span className="text-xs text-outline">—</span>;
@@ -178,7 +56,9 @@ function renderBookLiveTelemetryBadge(state?: BookJobTelemetry) {
     ? Array.from(new Set(Object.values(state.winningProviders)))
     : [];
   const providerTag =
-    winningList.length > 0 ? formatProviderName(winningList[0]) : null;
+    winningList.length > 0
+      ? formatEnrichmentProviderName(winningList[0])
+      : null;
 
   switch (state.stage) {
     case 'queued':
@@ -186,6 +66,13 @@ function renderBookLiveTelemetryBadge(state?: BookJobTelemetry) {
         <span className="inline-flex items-center gap-1.5 text-xs text-on-surface-variant">
           <span className="w-1.5 h-1.5 rounded-full bg-outline/50" />
           Queued
+        </span>
+      );
+    case 'evaluating_decisions':
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-primary">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Quick Pass
         </span>
       );
     case 'fetching_catalog':
@@ -267,13 +154,13 @@ export function ManualEnrichmentSection({
   >({});
 
   const isTargetBlockedByAiPlan =
-    !hasAiPlan && PURE_AI_KEYS.has(targetMetadata);
+    !hasAiPlan && requiresAiPlanForEnrichment(targetMetadata);
 
   const filteredBooks = useMemo(() => {
     if (filterMissing === 'all') {
       return books;
     }
-    return books.filter(b => !isMetadataPresent(b, filterMissing));
+    return books.filter(b => !isEnrichmentMetadataPresent(b, filterMissing));
   }, [books, filterMissing]);
 
   const allFilteredSelected =
@@ -323,7 +210,7 @@ export function ManualEnrichmentSection({
     }
 
     const missingInSelection = selected.filter(
-      b => !isMetadataPresent(b, targetMetadata),
+      b => !isEnrichmentMetadataPresent(b, targetMetadata),
     );
     const shouldOverwriteAll = overwrite || missingInSelection.length === 0;
     const batchToRun = shouldOverwriteAll ? selected : missingInSelection;
@@ -409,11 +296,11 @@ export function ManualEnrichmentSection({
             },
           ]
         : []),
-      ...ALL_METADATA_KEYS.map(k => ({
-        id: k.id,
+      ...ENRICHMENT_DESCRIPTORS.map(descriptor => ({
+        id: descriptor.key,
         header: (
           <span className="block text-center leading-tight whitespace-normal">
-            {k.label}
+            {descriptor.label}
           </span>
         ),
         width: 104,
@@ -425,8 +312,12 @@ export function ManualEnrichmentSection({
         cellClassName: 'w-[104px] px-2 py-3 text-center',
         cell: (book: Book) => (
           <StatusDotCell
-            present={isMetadataPresent(book, k.id)}
-            title={isMetadataPresent(book, k.id) ? 'Present' : 'Missing'}
+            present={isEnrichmentMetadataPresent(book, descriptor.key)}
+            title={
+              isEnrichmentMetadataPresent(book, descriptor.key)
+                ? 'Present'
+                : 'Missing'
+            }
           />
         ),
       })),
@@ -479,7 +370,7 @@ export function ManualEnrichmentSection({
                 setFilterMissing(typedVal);
                 setSelectedBookIds(new Set());
                 if (typedVal !== 'all') {
-                  setTargetMetadata(typedVal as MetadataKey);
+                  setTargetMetadata(typedVal);
                 }
               }}
             >
@@ -488,9 +379,9 @@ export function ManualEnrichmentSection({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Show All Books</SelectItem>
-                {ALL_METADATA_KEYS.map(k => (
-                  <SelectItem key={k.id} value={k.id}>
-                    {k.label}
+                {ENRICHMENT_DESCRIPTORS.map(descriptor => (
+                  <SelectItem key={descriptor.key} value={descriptor.key}>
+                    {descriptor.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -524,10 +415,12 @@ export function ManualEnrichmentSection({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {ALL_METADATA_KEYS.map(k => (
-                  <SelectItem key={k.id} value={k.id}>
-                    {k.label}
-                    {!hasAiPlan && k.aiOnly ? ' (Requires AI Plan)' : ''}
+                {ENRICHMENT_DESCRIPTORS.map(descriptor => (
+                  <SelectItem key={descriptor.key} value={descriptor.key}>
+                    {descriptor.label}
+                    {!hasAiPlan && descriptor.requiresAiPlan
+                      ? ' (Requires AI Plan)'
+                      : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -621,6 +514,21 @@ export function ManualEnrichmentSection({
   );
 }
 
+function formatWaveTierLabel(tier: EnrichmentTier): string {
+  switch (tier) {
+    case 'decision':
+      return 'Quick pass';
+    case 'catalog':
+      return 'Catalog lookup';
+    case 'generative':
+      return 'AI pass';
+    case 'embedding':
+      return 'Indexing';
+    default:
+      return 'Enriching';
+  }
+}
+
 function EnrichmentRunner({
   books,
   libraryId,
@@ -637,7 +545,7 @@ function EnrichmentRunner({
   onComplete: () => void;
 }) {
   const metadataLabel =
-    ALL_METADATA_KEYS.find(k => k.id === targetMetadata)?.label ||
+    ENRICHMENT_DESCRIPTORS.find(d => d.key === targetMetadata)?.label ||
     targetMetadata;
 
   const alwaysIncludeSelected = React.useCallback(() => true, []);
@@ -647,6 +555,7 @@ function EnrichmentRunner({
     progress,
     inFlightCount,
     cancelEnrichment,
+    activeWave,
     perBookStates,
     providerTelemetry,
   } = useBulkEnrichment({
@@ -697,10 +606,24 @@ function EnrichmentRunner({
               'Enrichment Paused'
             )}
           </h4>
+          {isBackfilling && activeWave && activeWave.totalWaves > 1 && (
+            <>
+              <span aria-hidden="true" className="text-outline-variant">
+                ·
+              </span>
+              <span className="text-xs text-on-surface-variant font-sans tabular-nums">
+                Pass {activeWave.waveNumber} of {activeWave.totalWaves}:{' '}
+                {formatWaveTierLabel(activeWave.tier)}
+                {activeWave.remainingInWave > 0
+                  ? ` (${activeWave.remainingInWave} remaining)`
+                  : ''}
+              </span>
+            </>
+          )}
           <span aria-hidden="true" className="text-outline-variant">
             ·
           </span>
-          <span className="text-xs text-on-surface-variant font-mono">
+          <span className="text-xs text-on-surface-variant font-mono tabular-nums">
             {progress.completed} enriched
             {progress.failed > 0
               ? `, ${progress.failed} unchanged`
@@ -808,7 +731,8 @@ function ProviderTelemetryStrip({
                     </span>
                   )}
                   <span className="text-amber-700 dark:text-amber-300">
-                    Paced: {formatProviderList(telemetry.delayedProviders)}
+                    Paced:{' '}
+                    {formatEnrichmentProviderList(telemetry.delayedProviders)}
                   </span>
                 </>
               )}
@@ -828,7 +752,7 @@ function ProviderTelemetryStrip({
                           c.cooldownRemainingMs ??
                           (c as {remainingMs?: number}).remainingMs ??
                           0;
-                        return `${formatProviderName(c.providerId)} (${Math.ceil(ms / 1000)}s)`;
+                        return `${formatEnrichmentProviderName(c.providerId)} (${Math.ceil(ms / 1000)}s)`;
                       })
                       .join(', ')}
                     {cooldownCount > 2 ? ` +${cooldownCount - 2} more` : ''}
@@ -856,7 +780,7 @@ function ProviderTelemetryStrip({
             <div key={id} className="flex items-center gap-1.5 truncate">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shrink-0" />
               <span className="text-on-surface truncate">
-                {formatProviderName(id)}
+                {formatEnrichmentProviderName(id)}
               </span>
             </div>
           ))}
@@ -864,7 +788,7 @@ function ProviderTelemetryStrip({
             <div key={id} className="flex items-center gap-1.5 truncate">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
               <span className="text-amber-700 dark:text-amber-300 truncate">
-                {formatProviderName(id)} (paced)
+                {formatEnrichmentProviderName(id)} (paced)
               </span>
             </div>
           ))}
@@ -880,7 +804,8 @@ function ProviderTelemetryStrip({
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-error shrink-0" />
                 <span className="text-error truncate">
-                  {formatProviderName(c.providerId)} ({Math.ceil(ms / 1000)}s)
+                  {formatEnrichmentProviderName(c.providerId)} (
+                  {Math.ceil(ms / 1000)}s)
                 </span>
               </div>
             );

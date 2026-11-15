@@ -4,14 +4,14 @@ import {
   ProviderSkippedError,
 } from '../scheduler/providerQuotaScheduler';
 import {CatalogOrchestrator} from './catalogOrchestrator';
-import type {ICatalogSourceProvider, ProviderBookHit} from './types';
+import type {CatalogSourceProvider, ProviderBookHit} from './types';
 
 function createMockProvider(
-  overrides: Partial<ICatalogSourceProvider> & {
-    id: ICatalogSourceProvider['id'];
+  overrides: Partial<CatalogSourceProvider> & {
+    id: CatalogSourceProvider['id'];
     name: string;
   },
-): ICatalogSourceProvider {
+): CatalogSourceProvider {
   const scheduler =
     overrides.scheduler ??
     new ProviderQuotaScheduler({
@@ -406,9 +406,7 @@ describe('ProviderQuotaScheduler & CatalogOrchestrator', () => {
       const nullReturningProvider = createMockProvider({
         id: 'apple-books',
         name: 'Apple Books',
-        searchByQuery: vi
-          .fn()
-          .mockResolvedValue(null as unknown as ProviderBookHit[]),
+        searchByQuery: vi.fn().mockResolvedValue(null),
         resolveCovers: vi.fn().mockResolvedValue(null),
       });
 
@@ -416,11 +414,11 @@ describe('ProviderQuotaScheduler & CatalogOrchestrator', () => {
         id: 'google-books',
         name: 'Google Books',
         searchByQuery: vi.fn().mockResolvedValue([
-          null as unknown as ProviderBookHit,
+          null,
           {
             providerId: 'google-books',
             providerName: 'Google Books',
-          } as unknown as ProviderBookHit,
+          },
           {
             providerId: 'google-books',
             providerName: 'Google Books',
@@ -460,6 +458,66 @@ describe('ProviderQuotaScheduler & CatalogOrchestrator', () => {
         {priority: 'INTERACTIVE', verifyCovers: false},
       );
       expect(coverRes.candidates).toEqual([]);
+    });
+
+    it('ranks covers and batch waves dynamically from pluggable custom CatalogSourceProvider descriptors', async () => {
+      const customCuratedProvider = createMockProvider({
+        id: 'british-library-curated',
+        name: 'British Library Curated',
+        authorityWeight: 99,
+        capabilities: {
+          isbnSearch: true,
+          titleSearch: true,
+          coverResolution: true,
+          synopsis: true,
+          series: true,
+          genre: true,
+          batchWave: 1,
+          structuredSeries: true,
+        },
+        searchByIsbn: vi.fn().mockResolvedValue({
+          providerId: 'british-library-curated',
+          providerName: 'British Library Curated',
+          title: 'Middlemarch',
+          author: 'George Eliot',
+          isbn: '9780141439549',
+          coverUrl: 'https://bl.uk/covers/middlemarch-archival.jpg',
+          coverResolutionTier: 'high',
+          series: 'Chronicles of Carlingford #0',
+        } satisfies ProviderBookHit),
+      });
+
+      const googleProvider = createMockProvider({
+        id: 'google-books',
+        name: 'Google Books',
+        authorityWeight: 85,
+        searchByIsbn: vi.fn().mockResolvedValue({
+          providerId: 'google-books',
+          providerName: 'Google Books',
+          title: 'Middlemarch',
+          author: 'George Eliot',
+          isbn: '9780141439549',
+          coverUrl: 'https://books.google.com/middlemarch.jpg',
+          coverResolutionTier: 'high',
+          series: 'Unstructured Series',
+        } satisfies ProviderBookHit),
+      });
+
+      const orchestrator = new CatalogOrchestrator([
+        googleProvider,
+        customCuratedProvider,
+      ]);
+
+      const merged = await orchestrator.searchByIsbn('9780141439549', {
+        priority: 'BATCH',
+        verifyCovers: false,
+      });
+
+      expect(merged?.coverUrl).toBe(
+        'https://bl.uk/covers/middlemarch-archival.jpg',
+      );
+      expect(merged?.fieldSources?.coverImage).toBe('British Library Curated');
+      expect(merged?.series).toBe('Chronicles of Carlingford #0');
     });
   });
 });

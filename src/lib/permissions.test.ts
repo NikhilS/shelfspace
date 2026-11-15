@@ -2,14 +2,17 @@ import {describe, it, expect} from 'vitest';
 import {getAccessFromLibrary} from './permissions';
 import {Library} from '../types';
 
-const makeLibrary = (overrides: Partial<Library> = {}): Library => ({
-  id: 'lib-1',
-  name: 'Scholarly Archive',
-  ownerId: 'owner-1',
-  bookCount: 10,
-  createdAt: 1000,
-  ...overrides,
-});
+function makeLibrary(overrides: Partial<Library> = {}): Library {
+  return {
+    id: 'lib-1',
+    name: 'Scholarly Archive',
+    ownerId: 'owner-1',
+    ownerName: 'Scholar',
+    bookCount: 10,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
 describe('getAccessFromLibrary client RBAC helper suite', () => {
   it('returns null role and all false flags when library or userId is missing', () => {

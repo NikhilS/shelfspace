@@ -14,6 +14,8 @@ import {ArrowUp, ArrowDown, ArrowUpDown} from 'lucide-react';
 import {cn, toTitleCase, getFirestoreTime} from '../../lib/utils';
 import {FirestoreDate} from '../../types';
 import {MonographCoverFallback} from '../book/MonographCoverFallback';
+import {SharedCoverFrame} from '../book/SharedCoverFrame';
+import type {CoverSurfaceId} from '../../stores/coverTransitionStore';
 
 export interface DataTableColumn<T> {
   id: string;
@@ -58,6 +60,7 @@ export interface DataTableProps<T> {
   // Dual-mode pipeline configuration: default threshold is 50
   virtualizationThreshold?: number;
   mode?: 'auto' | 'static' | 'virtualized';
+  initialTopMostItemIndex?: number;
   // Styling
   className?: string;
   tableClassName?: string;
@@ -80,6 +83,7 @@ export function DataTable<T>({
   emptyPlaceholder,
   virtualizationThreshold = 50,
   mode = 'auto',
+  initialTopMostItemIndex,
   className,
   tableClassName,
   headerClassName,
@@ -222,6 +226,9 @@ export function DataTable<T>({
       <TableVirtuoso
         data={data}
         useWindowScroll={useWindowScroll}
+        {...(typeof initialTopMostItemIndex === 'number'
+          ? {initialTopMostItemIndex}
+          : {})}
         style={style}
         className={cn('w-full text-left border-collapse', className)}
         components={{
@@ -394,6 +401,12 @@ export function DataTableCheckboxCell({
   );
 }
 
+export interface BookTitleCellCoverTransition {
+  surface?: CoverSurfaceId;
+  libraryId: string;
+  bookId: string;
+}
+
 export interface BookTitleCellProps {
   title: string;
   author?: string;
@@ -403,6 +416,7 @@ export interface BookTitleCellProps {
   showCheckbox?: boolean;
   showCover?: boolean;
   onToggleSelect?: (e: React.MouseEvent) => void;
+  coverTransition?: BookTitleCellCoverTransition;
   className?: string;
   titleClassName?: string;
   authorClassName?: string;
@@ -421,6 +435,7 @@ export function BookTitleCell({
   showCheckbox = false,
   showCover = true,
   onToggleSelect,
+  coverTransition,
   className,
   titleClassName,
   authorClassName,
@@ -459,6 +474,65 @@ export function BookTitleCell({
       : {}),
   };
 
+  const coverClassName = cn(
+    coverSizes[size],
+    'flex-shrink-0 relative overflow-hidden cursor-pointer shadow-xs border border-outline-variant/50',
+  );
+
+  const handleCoverClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (onToggleSelect) {
+      e.stopPropagation();
+      onToggleSelect(e);
+    }
+  };
+
+  const coverInnerContent = (
+    <>
+      {showCheckbox && (
+        <div
+          className={cn(
+            'absolute inset-0 z-20 flex items-center justify-center transition-all',
+            isSelected
+              ? 'opacity-100 bg-transparent'
+              : 'opacity-0 group-hover/cover:opacity-100 hover:bg-surface-variant/30',
+          )}
+        >
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={() => {}}
+            className="pointer-events-none w-4 h-4 bg-surface"
+            aria-label={`Select ${title}`}
+          />
+        </div>
+      )}
+      <div
+        className={cn(
+          'absolute inset-0 bg-surface-variant transition-opacity',
+          showCheckbox && isSelected
+            ? 'opacity-0'
+            : 'opacity-100 group-hover/cover:opacity-0',
+        )}
+      >
+        {coverUrl ? (
+          <img
+            src={coverUrl}
+            alt={title}
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+            loading="lazy"
+          />
+        ) : (
+          <MonographCoverFallback
+            title={title}
+            author={author}
+            variant="micro"
+            className="absolute inset-0 border-0 p-1"
+          />
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div
       className={cn(
@@ -469,63 +543,22 @@ export function BookTitleCell({
       style={containerStyle}
       title={title}
     >
-      {showCover && (
-        <div
-          className={cn(
-            coverSizes[size],
-            'flex-shrink-0 relative overflow-hidden cursor-pointer shadow-xs border border-outline-variant/50',
-          )}
-          onClick={e => {
-            if (onToggleSelect) {
-              e.stopPropagation();
-              onToggleSelect(e);
-            }
-          }}
-        >
-          {showCheckbox && (
-            <div
-              className={cn(
-                'absolute inset-0 z-20 flex items-center justify-center transition-all',
-                isSelected
-                  ? 'opacity-100 bg-transparent'
-                  : 'opacity-0 group-hover/cover:opacity-100 hover:bg-surface-variant/30',
-              )}
-            >
-              <Checkbox
-                checked={isSelected}
-                onCheckedChange={() => {}}
-                className="pointer-events-none w-4 h-4 bg-surface"
-                aria-label={`Select ${title}`}
-              />
-            </div>
-          )}
-          <div
-            className={cn(
-              'absolute inset-0 bg-surface-variant transition-opacity',
-              showCheckbox && isSelected
-                ? 'opacity-0'
-                : 'opacity-100 group-hover/cover:opacity-0',
-            )}
+      {showCover &&
+        (coverTransition ? (
+          <SharedCoverFrame
+            surface={coverTransition.surface ?? 'library-table'}
+            libraryId={coverTransition.libraryId}
+            bookId={coverTransition.bookId}
+            className={coverClassName}
+            onClick={handleCoverClick}
           >
-            {coverUrl ? (
-              <img
-                src={coverUrl}
-                alt={title}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-                loading="lazy"
-              />
-            ) : (
-              <MonographCoverFallback
-                title={title}
-                author={author}
-                variant="micro"
-                className="absolute inset-0 border-0 p-1"
-              />
-            )}
+            {coverInnerContent}
+          </SharedCoverFrame>
+        ) : (
+          <div className={coverClassName} onClick={handleCoverClick}>
+            {coverInnerContent}
           </div>
-        </div>
-      )}
+        ))}
       <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
         <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 min-w-0 w-full">
           <span

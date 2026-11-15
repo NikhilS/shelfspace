@@ -532,7 +532,7 @@ export function LibraryCollection({
                 canEdit={canEdit}
                 libraryId={libraryId}
                 sortBy={sortBy}
-                sortOrder={sortOrder as 'asc' | 'desc'}
+                sortOrder={sortOrder}
                 handleSort={handleSort}
                 selectedBooks={selectedBooks}
                 toggleBookSelection={toggleBookSelection}

@@ -6,11 +6,23 @@ import {
   signOut,
 } from 'firebase/auth';
 import {auth} from '../firebase';
+import {
+  clearAuthShellSnapshot,
+  clearCachedIdToken,
+  createOptimisticShellUser,
+  readAuthShellSnapshot,
+} from '../lib/authTokenCache';
+import {
+  resetClientQueryCaches,
+  setActivePersistenceUid,
+} from '../lib/queryClient';
 
 export interface AuthState {
   user: User | null;
   isAdmin: boolean;
   isAuthReady: boolean;
+  isOptimisticShell: boolean;
+  isLiveAuthVerified: boolean;
   authError: string | null;
   setUser: (user: User | null) => void;
   setIsAdmin: (isAdmin: boolean) => void;
@@ -20,10 +32,17 @@ export interface AuthState {
   logOut: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>(set => ({
-  user: null,
+const initialShellSnapshot =
+  typeof window !== 'undefined' ? readAuthShellSnapshot() : null;
+
+export const useAuthStore = create<AuthState>((set, get) => ({
+  user: initialShellSnapshot
+    ? createOptimisticShellUser(initialShellSnapshot, () => auth?.currentUser)
+    : null,
   isAdmin: false,
-  isAuthReady: false,
+  isAuthReady: Boolean(initialShellSnapshot),
+  isOptimisticShell: Boolean(initialShellSnapshot),
+  isLiveAuthVerified: false,
   authError: null,
 
   setUser: user => set({user}),
@@ -60,9 +79,20 @@ export const useAuthStore = create<AuthState>(set => ({
   },
 
   logOut: async () => {
+    const previousUid = get().user?.uid;
     try {
       await signOut(auth);
-      set({user: null, isAdmin: false, authError: null});
+      clearAuthShellSnapshot();
+      clearCachedIdToken();
+      setActivePersistenceUid(null);
+      void resetClientQueryCaches(previousUid);
+      set({
+        user: null,
+        isAdmin: false,
+        authError: null,
+        isOptimisticShell: false,
+        isLiveAuthVerified: true,
+      });
     } catch (error) {
       console.error('Error signing out', error);
       throw error;

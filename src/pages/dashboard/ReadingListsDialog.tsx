@@ -17,7 +17,7 @@ import type {
   TrackedBookItem,
   TrackedShelfStatus,
   ReadingShelfSummary,
-} from '../../server/services/readingTracker';
+} from '../../types';
 
 interface ReadingListsDialogProps {
   isOpen: boolean;

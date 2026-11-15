@@ -94,4 +94,76 @@ describe('GlobalProviderGovernor concurrency & slot reservation suite', () => {
 
     unsub();
   });
+
+  it('isolates FAST_DECISION and GENERATIVE_AI pools so saturated EXTERNAL_CATALOG requests never starve Decisions', () => {
+    const governor = new GlobalProviderGovernor(4, 1, {
+      FAST_DECISION: {maxConcurrent: 3, reservedInteractiveSlots: 1},
+      GENERATIVE_AI: {maxConcurrent: 2, reservedInteractiveSlots: 1},
+    });
+
+    const drainCatalog = vi.fn();
+    const drainDecision = vi.fn();
+    governor.registerProvider({
+      providerId: 'apple-books',
+      executionPool: 'EXTERNAL_CATALOG',
+      drain: drainCatalog,
+      inspectCapacity: () => ({
+        providerId: 'apple-books',
+        status: 'DELAYED' as const,
+        availableTokens: 0,
+        activeCount: 4,
+        interactiveQueueDepth: 0,
+        batchQueueDepth: 5,
+        estimatedWaitMs: 3000,
+        cooldownRemainingMs: 0,
+      }),
+    } as unknown as ProviderQuotaScheduler);
+
+    governor.registerProvider({
+      providerId: 'gemini-decision',
+      executionPool: 'FAST_DECISION',
+      drain: drainDecision,
+      inspectCapacity: () => ({
+        providerId: 'gemini-decision',
+        status: 'READY' as const,
+        availableTokens: 10,
+        activeCount: 0,
+        interactiveQueueDepth: 0,
+        batchQueueDepth: 0,
+        estimatedWaitMs: 0,
+        cooldownRemainingMs: 0,
+      }),
+    } as unknown as ProviderQuotaScheduler);
+
+    // Completely saturate EXTERNAL_CATALOG (3 BATCH + 1 INTERACTIVE = 4/4)
+    governor.acquireSlot('BATCH', 'EXTERNAL_CATALOG');
+    governor.acquireSlot('BATCH', 'EXTERNAL_CATALOG');
+    governor.acquireSlot('BATCH', 'EXTERNAL_CATALOG');
+    governor.acquireSlot('INTERACTIVE', 'EXTERNAL_CATALOG');
+
+    expect(governor.canAcquireSlot('BATCH', 'EXTERNAL_CATALOG')).toBe(false);
+    expect(governor.canAcquireSlot('INTERACTIVE', 'EXTERNAL_CATALOG')).toBe(
+      false,
+    );
+
+    // FAST_DECISION and GENERATIVE_AI remain wide open!
+    expect(governor.canAcquireSlot('BATCH', 'FAST_DECISION')).toBe(true);
+    expect(governor.canAcquireSlot('INTERACTIVE', 'FAST_DECISION')).toBe(true);
+    expect(governor.canAcquireSlot('BATCH', 'GENERATIVE_AI')).toBe(true);
+
+    governor.acquireSlot('BATCH', 'FAST_DECISION');
+    governor.acquireSlot('BATCH', 'FAST_DECISION');
+    // 2/3 used in FAST_DECISION -> 1 slot reserved for INTERACTIVE
+    expect(governor.canAcquireSlot('BATCH', 'FAST_DECISION')).toBe(false);
+    expect(governor.canAcquireSlot('INTERACTIVE', 'FAST_DECISION')).toBe(true);
+
+    // Releasing a FAST_DECISION slot wakes ONLY the FAST_DECISION scheduler
+    governor.releaseSlot('BATCH', 'FAST_DECISION');
+    expect(drainDecision).toHaveBeenCalledTimes(1);
+    expect(drainCatalog).not.toHaveBeenCalled();
+
+    const snap = governor.getSnapshot('BATCH', 'FAST_DECISION');
+    expect(snap.activeBatch).toBe(1);
+    expect(snap.maxGlobalConcurrent).toBe(3);
+  });
 });

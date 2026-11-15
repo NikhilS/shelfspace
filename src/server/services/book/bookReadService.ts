@@ -1,10 +1,11 @@
+import * as firestoreAdmin from 'firebase-admin/firestore';
 import {getAdminDb} from '../firebaseAdmin';
 import {TRPCError} from '@trpc/server';
-import {LibraryService} from '../library';
+import {LibraryService, LibraryMetadataCache} from '../library';
 import type {
   Book,
   BookDetailsPayload,
-  BookDetailsMetadata,
+  ReadingStatusValue,
   StoredBookDetailsDoc,
 } from '../../../types';
 import {
@@ -32,6 +33,7 @@ export async function getBook(
   userId: string,
   libraryId: string,
   bookIdRaw: string,
+  options?: {cleanIsbn?: string},
 ): Promise<Book> {
   const db = getAdminDb();
   const {cleanBookId, isbnFromId} = parseBookOrStateIdentifier(bookIdRaw);
@@ -46,15 +48,36 @@ export async function getBook(
 
   let bookSnap: FirebaseFirestore.DocumentSnapshot | undefined;
   let detailSnap: FirebaseFirestore.DocumentSnapshot | undefined;
+  let prefetchedStateSnap: FirebaseFirestore.DocumentSnapshot | undefined;
+  let predictedStateKey: string | undefined;
 
   if (!bookIdRaw.startsWith('isbn:')) {
     const bookRef = booksCol.doc(cleanBookId);
     const detailRef = detailsCol.doc(cleanBookId);
+    const readingStatesCol = userId
+      ? getReadingStatesCollection(db, userId)
+      : undefined;
 
     if (typeof (db as {getAll?: unknown}).getAll === 'function') {
-      const [bSnap, dSnap] = await db.getAll(bookRef, detailRef);
-      bookSnap = bSnap;
-      detailSnap = dSnap;
+      if (readingStatesCol && typeof readingStatesCol.doc === 'function') {
+        predictedStateKey = computeReadingStateKey({
+          cleanIsbn: options?.cleanIsbn,
+          bookId: cleanBookId,
+        });
+        const predictedStateRef = readingStatesCol.doc(predictedStateKey);
+        const [bSnap, dSnap, sSnap] = await db.getAll(
+          bookRef,
+          detailRef,
+          predictedStateRef,
+        );
+        bookSnap = bSnap;
+        detailSnap = dSnap;
+        prefetchedStateSnap = sSnap;
+      } else {
+        const [bSnap, dSnap] = await db.getAll(bookRef, detailRef);
+        bookSnap = bSnap;
+        detailSnap = dSnap;
+      }
     } else {
       bookSnap = await bookRef.get();
       try {
@@ -101,11 +124,14 @@ export async function getBook(
           bookId: cleanBookId,
         });
         try {
-          const stateSnap = await readingStatesCol.doc(candidateKey).get();
+          const stateSnap =
+            predictedStateKey === candidateKey && prefetchedStateSnap
+              ? prefetchedStateSnap
+              : await readingStatesCol.doc(candidateKey).get();
           if (stateSnap?.exists) {
             const state = normalizeReadingStateDoc(
               stateSnap.id || candidateKey,
-              (stateSnap.data() || {}) as Record<string, unknown>,
+              stateSnap.data() || {},
               userId,
             );
             const snap = state.bookSnapshot;
@@ -170,7 +196,7 @@ export async function getBook(
     detailSnap && detailSnap.exists
       ? bookDetailsDocConverter.fromFirestore(
           bookSnap.id,
-          (detailSnap.data() || {}) as Record<string, unknown>,
+          detailSnap.data() || {},
           `/libraries/${libraryId}/bookDetails/${bookSnap.id}`,
         )
       : {};
@@ -180,8 +206,179 @@ export async function getBook(
     bookData,
     heavyData,
   );
+  const actualStateKey = computeReadingStateKey({
+    isbn: merged.isbn,
+    cleanIsbn: merged.cleanIsbn,
+    bookId: merged.id,
+  });
+  if (
+    predictedStateKey === actualStateKey &&
+    prefetchedStateSnap !== undefined
+  ) {
+    const prefetchedState = prefetchedStateSnap.exists
+      ? normalizeReadingStateDoc(
+          prefetchedStateSnap.id || actualStateKey,
+          prefetchedStateSnap.data() || {},
+          userId,
+        )
+      : undefined;
+    return overlayReadingStateOnBook(merged, prefetchedState);
+  }
   const state = await fetchUserReadingStateForBook(db, userId, merged);
   return overlayReadingStateOnBook(merged, state);
+}
+
+export interface ReadingStateSyncEntry {
+  stateKey: string;
+  bookId?: string;
+  cleanIsbn?: string;
+  status?: ReadingStatusValue;
+  rating?: number;
+  readStatusReviewedAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}
+
+export interface SyncBookChangesOptions {
+  sinceUpdatedAtMs: number;
+  knownCount?: number;
+  prefetchedLibraryData?: Record<string, unknown>;
+}
+
+export interface SyncBookChangesResult {
+  upsertedBooks: Book[];
+  deletedBookIds: string[];
+  activeBookIds?: string[];
+  readingStates: ReadingStateSyncEntry[];
+  syncCursorMs: number;
+  totalCount?: number;
+}
+
+/**
+ * Incrementally synchronizes warm client library caches by fetching only book documents
+ * modified after `sinceUpdatedAtMs`, overlaying the caller's personal reading states,
+ * and reconciling hard-deleted book IDs via L1 tombstones or zero-field ID projection.
+ */
+export async function syncChanges(
+  userId: string,
+  libraryId: string,
+  options: SyncBookChangesOptions,
+): Promise<SyncBookChangesResult> {
+  const db = getAdminDb();
+  const syncCursorMs = Date.now();
+  const effectiveSinceMs = Math.max(0, options.sinceUpdatedAtMs - 2000);
+  const booksCol = db
+    .collection('libraries')
+    .doc(libraryId)
+    .collection('books');
+
+  const timestampCtor = (
+    firestoreAdmin as {Timestamp?: {fromMillis?: (ms: number) => unknown}}
+  ).Timestamp;
+  const cutoffValue =
+    typeof timestampCtor?.fromMillis === 'function'
+      ? timestampCtor.fromMillis(effectiveSinceMs)
+      : new Date(effectiveSinceMs).toISOString();
+
+  const fetchChangedDocs = async (): Promise<
+    FirebaseFirestore.QueryDocumentSnapshot[]
+  > => {
+    if (typeof (booksCol as {where?: unknown}).where !== 'function') {
+      return [];
+    }
+    try {
+      let deltaQuery: FirebaseFirestore.Query = booksCol.where(
+        'updatedAt',
+        '>',
+        cutoffValue,
+      );
+      if (typeof (deltaQuery as {limit?: unknown}).limit === 'function') {
+        deltaQuery = deltaQuery.limit(500);
+      }
+      const snap = await deltaQuery.get();
+      return snap.docs || [];
+    } catch {
+      return [];
+    }
+  };
+
+  const [changedDocs, readingStatesMap] = await Promise.all([
+    fetchChangedDocs(),
+    fetchUserReadingStatesMap(db, userId),
+  ]);
+
+  const upsertedBooks: Book[] = changedDocs.map(doc => {
+    const raw = (doc.data() || {}) as Record<string, unknown>;
+    const data = bookDocConverter.fromFirestore(
+      doc.id,
+      raw,
+      `/libraries/${libraryId}/books/${doc.id}`,
+    );
+    const merged = BookPartitioner.mergeBookAndDetails(doc.id, data);
+    const stateKey = computeReadingStateKey({
+      isbn: merged.isbn,
+      cleanIsbn: merged.cleanIsbn,
+      bookId: merged.id,
+    });
+    return overlayReadingStateOnBook(merged, readingStatesMap.get(stateKey));
+  });
+
+  const readingStates: ReadingStateSyncEntry[] = [];
+  for (const [stateKey, state] of readingStatesMap.entries()) {
+    readingStates.push({
+      stateKey,
+      ...(state.bookId ? {bookId: state.bookId} : {}),
+      ...(state.cleanIsbn ? {cleanIsbn: state.cleanIsbn} : {}),
+      ...(state.status ? {status: state.status} : {}),
+      ...(typeof state.rating === 'number' ? {rating: state.rating} : {}),
+      ...(state.readStatusReviewedAt !== undefined
+        ? {readStatusReviewedAt: state.readStatusReviewedAt}
+        : {}),
+      ...(state.startedAt !== undefined ? {startedAt: state.startedAt} : {}),
+      ...(state.finishedAt !== undefined ? {finishedAt: state.finishedAt} : {}),
+    });
+  }
+
+  const deletedBookIds = LibraryMetadataCache.getDeletedBookIdsSince(
+    libraryId,
+    effectiveSinceMs,
+  );
+
+  const prefetchedCount =
+    typeof options.prefetchedLibraryData?.bookCount === 'number'
+      ? options.prefetchedLibraryData.bookCount
+      : undefined;
+
+  let activeBookIds: string[] | undefined;
+  if (
+    typeof options.knownCount === 'number' &&
+    typeof prefetchedCount === 'number' &&
+    options.knownCount + upsertedBooks.length - deletedBookIds.length !==
+      prefetchedCount
+  ) {
+    try {
+      const selectable = booksCol as unknown as {
+        select?: () => {get: () => Promise<FirebaseFirestore.QuerySnapshot>};
+      };
+      if (typeof selectable?.select === 'function') {
+        const idSnap = await selectable.select().get();
+        activeBookIds = (idSnap.docs || []).map(d => d.id);
+      }
+    } catch {
+      activeBookIds = undefined;
+    }
+  }
+
+  return {
+    upsertedBooks,
+    deletedBookIds,
+    ...(activeBookIds ? {activeBookIds} : {}),
+    readingStates,
+    syncCursorMs,
+    ...(typeof prefetchedCount === 'number'
+      ? {totalCount: activeBookIds ? activeBookIds.length : prefetchedCount}
+      : {}),
+  };
 }
 
 /**
@@ -373,25 +570,13 @@ export async function listBooks(
         return !b.primaryGenre;
       }
       if (missing === 'synopsis') {
-        return (
-          !b.synopsis &&
-          !(b.bookDetailsMetadata as BookDetailsMetadata | undefined)
-            ?.hasSynopsis
-        );
+        return !b.synopsis && !b.bookDetailsMetadata?.hasSynopsis;
       }
       if (missing === 'authorBio') {
-        return (
-          !b.authorBio &&
-          !(b.bookDetailsMetadata as BookDetailsMetadata | undefined)
-            ?.hasAuthorBio
-        );
+        return !b.authorBio && !b.bookDetailsMetadata?.hasAuthorBio;
       }
       if (missing === 'embedding' || missing === 'embeddings') {
-        return (
-          !b.embedding?.length &&
-          !(b.bookDetailsMetadata as BookDetailsMetadata | undefined)
-            ?.hasEmbedding
-        );
+        return !b.embedding?.length && !b.bookDetailsMetadata?.hasEmbedding;
       }
       if (missing === 'coverImage') {
         return !b.coverUrl;
@@ -506,7 +691,7 @@ export async function getBookDetailsChunk(
     if (snap.exists) {
       details[snap.id] = bookDetailsDocConverter.fromFirestore(
         snap.id,
-        (snap.data() || {}) as Record<string, unknown>,
+        snap.data() || {},
         `/libraries/${libraryId}/bookDetails/${snap.id}`,
       );
     }

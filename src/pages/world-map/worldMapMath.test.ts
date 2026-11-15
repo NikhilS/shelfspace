@@ -7,7 +7,7 @@ import {
 } from './worldMapMath';
 import {Book} from '../../types';
 
-const makeGeoBook = (
+function makeGeoBook(
   id: string,
   title: string,
   author: string,
@@ -20,19 +20,20 @@ const makeGeoBook = (
     rationale: string;
     coordinates?: {lat: number; lng: number};
   }>,
-): Book =>
-  ({
+): Book {
+  return {
     id,
     title,
     author,
     primaryGenre,
     subgenres,
-    createdAt: 1000,
+    addedAt: 1000,
     geoMetadata: {
       isNonEarth,
       locations,
     },
-  }) as Book;
+  };
+}
 
 describe('worldMapMath spatial engine', () => {
   const sampleBooks: Book[] = [

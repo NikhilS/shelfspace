@@ -8,6 +8,7 @@ export interface DuplicateGroupMetadata {
   books: Book[];
   confidence: number;
   reason: DuplicateMatchReason;
+  preferredSurvivorId?: string;
 }
 
 export function normalizeIsbnForDedupe(raw?: string): string {

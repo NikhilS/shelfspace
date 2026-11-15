@@ -358,13 +358,11 @@ export function LibraryView() {
       if (book.temporalMetadata) {
         const {isNonHistorical, eraName, startYear, endYear} =
           book.temporalMetadata;
+        const hasStart = typeof startYear === 'number';
+        const hasEnd = typeof endYear === 'number';
         if (isNonHistorical) {
           eraSetting = 'Non-Historical / Secondary World';
-        } else if (
-          eraName &&
-          startYear !== undefined &&
-          endYear !== undefined
-        ) {
+        } else if (eraName && hasStart && hasEnd) {
           const yearSpan =
             startYear === endYear
               ? formatYear(startYear)
@@ -372,12 +370,12 @@ export function LibraryView() {
           eraSetting = `${eraName} (${yearSpan})`;
         } else if (eraName) {
           eraSetting = eraName;
-        } else if (startYear !== undefined && endYear !== undefined) {
+        } else if (hasStart && hasEnd) {
           eraSetting =
             startYear === endYear
               ? formatYear(startYear)
               : `${formatYear(startYear)} – ${formatYear(endYear)}`;
-        } else if (startYear !== undefined) {
+        } else if (hasStart) {
           eraSetting = `Circa ${formatYear(startYear)}`;
         }
       }

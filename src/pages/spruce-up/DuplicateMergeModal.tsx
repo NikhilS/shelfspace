@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useMemo} from 'react';
-import {Book, BookDetails} from '../../types';
+import {Book, BookDetailsPayload} from '../../types';
 import {Button} from '@/components/ui/button';
 import {
   Dialog,
@@ -37,6 +37,7 @@ export interface DuplicateMergePayload {
 interface DuplicateMergeModalProps {
   libraryId: string;
   group: Book[] | null;
+  preferredSurvivorId?: string;
   open: boolean;
   onClose: () => void;
   onConfirmMerge: (payload: DuplicateMergePayload) => Promise<void>;
@@ -50,7 +51,6 @@ type MergeableFieldKey =
   | 'series'
   | 'primaryGenre'
   | 'publishedDate'
-  | 'pageCount'
   | 'format'
   | 'synopsis'
   | 'authorBio';
@@ -67,7 +67,6 @@ const FIELD_DEFINITIONS: Array<{
   {key: 'series', label: 'Series'},
   {key: 'primaryGenre', label: 'Genre & Subgenres'},
   {key: 'publishedDate', label: 'Published Date'},
-  {key: 'pageCount', label: 'Page Count'},
   {key: 'format', label: 'Format'},
   {key: 'synopsis', label: 'Synopsis', isHeavy: true},
   {key: 'authorBio', label: 'Author Bio', isHeavy: true},
@@ -76,13 +75,14 @@ const FIELD_DEFINITIONS: Array<{
 export function DuplicateMergeModal({
   libraryId,
   group,
+  preferredSurvivorId,
   open,
   onClose,
   onConfirmMerge,
 }: DuplicateMergeModalProps) {
   const [survivorId, setSurvivorId] = useState<string>('');
   const [heavyDetails, setHeavyDetails] = useState<
-    Record<string, Partial<BookDetails>>
+    Record<string, BookDetailsPayload>
   >({});
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,14 +99,17 @@ export function DuplicateMergeModal({
       return;
     }
 
-    const defaultSurvivor = books[0].id;
+    const defaultSurvivor =
+      preferredSurvivorId && books.some(b => b.id === preferredSurvivorId)
+        ? preferredSurvivorId
+        : books[0].id;
     setSurvivorId(defaultSurvivor);
 
     let cancelled = false;
     setLoadingDetails(true);
 
     void (async () => {
-      let loadedDetails: Record<string, Partial<BookDetails>> = {};
+      let loadedDetails: Record<string, BookDetailsPayload> = {};
       try {
         if (
           libraryId &&
@@ -150,7 +153,7 @@ export function DuplicateMergeModal({
     return () => {
       cancelled = true;
     };
-  }, [open, books, libraryId]);
+  }, [open, books, libraryId, preferredSurvivorId]);
 
   if (!group || group.length < 2) {
     return null;
@@ -192,7 +195,6 @@ export function DuplicateMergeModal({
           primaryGenre: genreSource.primaryGenre || undefined,
           subgenres: genreSource.subgenres || undefined,
           publishedDate: pickBook('publishedDate').publishedDate || undefined,
-          pageCount: pickBook('pageCount').pageCount || undefined,
           format:
             (pickBook('format').format as
               'physical' | 'ebook' | 'audiobook' | undefined) || 'physical',
@@ -427,7 +429,7 @@ export function DuplicateMergeModal({
 
 function getFieldValue(
   book: Book,
-  heavy: Partial<BookDetails> | undefined,
+  heavy: BookDetailsPayload | undefined,
   field: MergeableFieldKey,
 ): unknown {
   if (field === 'synopsis') {

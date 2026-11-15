@@ -62,11 +62,11 @@ function formatBytes(bytes: number): string {
 
 function formatQueryKey(queryKey: readonly unknown[]): string {
   try {
-    if (Array.isArray(queryKey) && Array.isArray(queryKey[0])) {
-      const path = (queryKey[0] as string[]).join('.');
+    if (queryKey.length > 0 && Array.isArray(queryKey[0])) {
+      const path = (queryKey[0] as unknown[]).map(String).join('.');
       const input = queryKey[1];
       if (input && typeof input === 'object' && 'input' in input) {
-        return `${path}(${JSON.stringify((input as {input: unknown}).input)})`;
+        return `${path}(${JSON.stringify(input.input)})`;
       }
       return path;
     }

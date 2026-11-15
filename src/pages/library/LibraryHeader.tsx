@@ -45,7 +45,8 @@ export function LibraryHeader({
         ? Math.max(books.length, library.bookCount)
         : books.length;
 
-  const showHeroImage = Boolean(library.heroImageUrl) && !heroError;
+  const heroImageUrl = library.heroImageUrl;
+  const showHeroImage = Boolean(heroImageUrl) && !heroError;
 
   return (
     <div
@@ -53,9 +54,9 @@ export function LibraryHeader({
         !showHeroImage ? 'bg-primary' : ''
       }`}
     >
-      {showHeroImage && (
+      {showHeroImage && heroImageUrl && (
         <img
-          src={library.heroImageUrl}
+          src={heroImageUrl}
           alt={library.name}
           onError={() => setHeroError(true)}
           className="w-full h-full object-cover absolute inset-0"

@@ -1,4 +1,11 @@
-import React, {useEffect, useRef, useState, useMemo, useCallback} from 'react';
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useMemo,
+  useCallback,
+} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {
   Layers,
@@ -10,8 +17,15 @@ import {
 import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
 import {BedsideStackIllustration} from '@/components/ui/empty-state-illustrations';
+import {ArchivalCoverImage} from '../../components/book/ArchivalCoverImage';
+import {SharedCoverFrame} from '../../components/book/SharedCoverFrame';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
-import type {TrackedBookItem} from '../../server/services/readingTracker';
+import {navigateWithCoverTransition} from '../../lib/bookCoverTransition';
+import {
+  useCoverTransitionStore,
+  useShelfCoverLayoutId,
+} from '../../stores/coverTransitionStore';
+import type {TrackedBookItem} from '../../types';
 
 interface ReadStackCanvasCardProps {
   finishedBooks: TrackedBookItem[];
@@ -137,8 +151,63 @@ export function ReadStackCanvasCard({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [imageTick, setImageTick] = useState(0);
 
-  const safeActiveIndex = activeIndex < stackBooks.length ? activeIndex : 0;
+  const returnMatchedIndex = useCoverTransitionStore(state => {
+    const active = state.activeTransition;
+    if (
+      !active ||
+      active.phase !== 'to-shelf' ||
+      active.originSurface !== 'bedside-stack'
+    ) {
+      return -1;
+    }
+    return stackBooks.findIndex(
+      b => b.libraryId === active.libraryId && b.id === active.bookId,
+    );
+  });
+
+  useLayoutEffect(() => {
+    if (returnMatchedIndex >= 0 && returnMatchedIndex !== activeIndex) {
+      setActiveIndex(returnMatchedIndex);
+    }
+  }, [returnMatchedIndex, activeIndex]);
+
+  const effectiveActiveIndex =
+    returnMatchedIndex >= 0 ? returnMatchedIndex : activeIndex;
+  const safeActiveIndex =
+    effectiveActiveIndex < stackBooks.length ? effectiveActiveIndex : 0;
   const activeBook = stackBooks[safeActiveIndex] || null;
+  const bedsideCoverLayoutId = useShelfCoverLayoutId(
+    'bedside-stack',
+    activeBook?.libraryId,
+    activeBook?.id,
+  );
+
+  const openStackBookDetails = useCallback(
+    (targetBook: TrackedBookItem) => {
+      navigateWithCoverTransition({
+        navigate,
+        libraryId: targetBook.libraryId,
+        bookId: targetBook.id,
+        originSurface: 'bedside-stack',
+        fromRouteKey: '/',
+        coverPreview: {
+          title: targetBook.title,
+          author: targetBook.author,
+          coverUrl: targetBook.coverUrl,
+          publishedDate: targetBook.publishedDate,
+          primaryGenre: targetBook.primaryGenre,
+          subgenres: targetBook.subgenres,
+          series: targetBook.series,
+          synopsis: targetBook.synopsis,
+          readingStatus: targetBook.readingStatus,
+          ownershipStatus: targetBook.ownershipStatus,
+          format: targetBook.format,
+          isbn: targetBook.isbn,
+        },
+      });
+    },
+    [navigate],
+  );
 
   // Draw order from bottom of pile (slot 0) to top of pile (slot N-1):
   // All non-active books sit underneath in chronological order, and safeActiveIndex sits on top!
@@ -707,10 +776,7 @@ export function ReadStackCanvasCard({
 
     const targetBook = activeBook || stackBooks[0];
     if (targetBook) {
-      void navigate(
-        `/library/${encodeURIComponent(targetBook.libraryId)}/book/${encodeURIComponent(targetBook.id)}`,
-        {state: {from: '/'}},
-      );
+      openStackBookDetails(targetBook);
     }
   };
 
@@ -798,6 +864,28 @@ export function ReadStackCanvasCard({
               className="w-full h-full block cursor-pointer touch-pan-y"
             />
 
+            {/* Shared-Element Cover Anchor for Top Book on Pile */}
+            {activeBook && (
+              <SharedCoverFrame
+                surface="bedside-stack"
+                libraryId={activeBook.libraryId}
+                bookId={activeBook.id}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[49%] -rotate-2 w-[100px] sm:w-[104px] aspect-[2/3] rounded-[5px] overflow-hidden"
+              >
+                {bedsideCoverLayoutId && (
+                  <ArchivalCoverImage
+                    src={activeBook.coverUrl}
+                    alt={activeBook.title}
+                    author={activeBook.author}
+                    variant="compact"
+                    showSpineHighlight={true}
+                    className="w-full h-full book-cover-shadow border border-outline-variant/60"
+                  />
+                )}
+              </SharedCoverFrame>
+            )}
+
             {/* Touch-Friendly Stack Shuffle Stepper (‹ 1 / 5 ›) */}
             {stackBooks.length > 1 && (
               <div
@@ -833,12 +921,7 @@ export function ReadStackCanvasCard({
           {/* Active Top-of-Stack Book Callout Footer */}
           {activeBook && (
             <div
-              onClick={() =>
-                void navigate(
-                  `/library/${encodeURIComponent(activeBook.libraryId)}/book/${encodeURIComponent(activeBook.id)}`,
-                  {state: {from: '/'}},
-                )
-              }
+              onClick={() => openStackBookDetails(activeBook)}
               className="mt-2 pt-3 border-t border-outline-variant/50 flex items-center justify-between gap-3 cursor-pointer group"
             >
               <div className="min-w-0 flex-1">

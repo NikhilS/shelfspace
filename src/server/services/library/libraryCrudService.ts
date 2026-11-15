@@ -16,6 +16,7 @@ import {WaitlistService} from '../../auth/waitlistService';
 import type {Library} from '../../../types';
 import {LibraryService} from './index';
 import {evaluateRoleFromLibraryData} from './libraryShareService';
+import {LibraryMetadataCache} from './libraryMetadataCache';
 import {normalizeFirestoreTimestamp} from '../book/bookPartitioner';
 
 export interface LibraryApiRecord {
@@ -58,10 +59,7 @@ export const libraryDocConverter = {
             ? 'Personal Reading Shelf'
             : 'Untitled Library',
       ownerId: resolvedOwnerId,
-      access:
-        raw.access && typeof raw.access === 'object'
-          ? (raw.access as Record<string, 'owner' | 'editor' | 'viewer'>)
-          : {},
+      access: raw.access && typeof raw.access === 'object' ? raw.access : {},
     };
 
     for (const legacyKey of IGNORED_LEGACY_LIBRARY_FIELDS) {
@@ -193,6 +191,7 @@ export async function getUserLibraries(
           rawData,
           userId,
         );
+        LibraryMetadataCache.set(docSnap.id, storedLib);
         const ownerId = storedLib.ownerId;
         const accessMap: Record<string, 'owner' | 'editor' | 'viewer'> =
           storedLib.access || {};
@@ -264,6 +263,7 @@ export async function getLibrary(
   },
 ): Promise<Library> {
   let data: Record<string, unknown>;
+  let fetchedFromFirestore = false;
 
   if (options?.prefetchedData) {
     data = options.prefetchedData;
@@ -277,29 +277,38 @@ export async function getLibrary(
       );
     }
 
-    const db = getAdminDb();
-    const libSnap = await db.collection('libraries').doc(libraryId).get();
-    if (!libSnap.exists) {
-      if (libraryId === `virtual_${userId}`) {
-        data = {
-          name: 'Personal Reading Shelf',
-          ownerId: userId,
-          ownerName: userEmail || 'Reader',
-          isVirtual: true,
-          bookCount: 0,
-        };
-      } else {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: `Library '${libraryId}' not found`,
-        });
-      }
+    const cachedLib = LibraryMetadataCache.get(libraryId);
+    if (cachedLib) {
+      data = cachedLib;
     } else {
-      data = (libSnap.data() || {}) as Record<string, unknown>;
+      const db = getAdminDb();
+      const libSnap = await db.collection('libraries').doc(libraryId).get();
+      if (!libSnap.exists) {
+        if (libraryId === `virtual_${userId}`) {
+          data = {
+            name: 'Personal Reading Shelf',
+            ownerId: userId,
+            ownerName: userEmail || 'Reader',
+            isVirtual: true,
+            bookCount: 0,
+          };
+        } else {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: `Library '${libraryId}' not found`,
+          });
+        }
+      } else {
+        data = libSnap.data() || {};
+        fetchedFromFirestore = true;
+      }
     }
   }
 
   const storedLib = libraryDocConverter.fromFirestore(libraryId, data, userId);
+  if (fetchedFromFirestore && !libraryId.startsWith('virtual_')) {
+    LibraryMetadataCache.set(libraryId, storedLib);
+  }
   const ownerId = storedLib.ownerId || userId;
   const accessMap: Record<string, 'owner' | 'editor' | 'viewer'> =
     storedLib.access || {};
@@ -375,6 +384,10 @@ export async function createLibrary(
       operation: 'create',
     });
     await libRef.set(firestorePayload);
+    LibraryMetadataCache.set(createdId, {
+      id: createdId,
+      ...payload,
+    });
 
     return {
       id: createdId,
@@ -491,6 +504,7 @@ export async function updateLibrary(
       },
     );
     await libRef.update(updatePayload);
+    LibraryMetadataCache.invalidate(libraryId);
     return {success: true};
   } catch (err: unknown) {
     const errMsg = formatFirestoreAdminError(err);
@@ -552,8 +566,9 @@ export async function deleteLibrary(
 
     // Pre-fetch reviews subcollections in bounded concurrency chunks of 25
     const REVIEW_FETCH_CONCURRENCY = 25;
-    const reviewSnaps: Array<FirebaseFirestore.QuerySnapshot | undefined> =
-      new Array(booksSnap.docs.length);
+    const reviewSnaps = new Array<FirebaseFirestore.QuerySnapshot | undefined>(
+      booksSnap.docs.length,
+    );
     for (
       let start = 0;
       start < booksSnap.docs.length;
@@ -638,6 +653,7 @@ export async function deleteLibrary(
     count++;
 
     await batch.commit();
+    LibraryMetadataCache.invalidate(libraryId);
     return {success: true};
   } catch (err: unknown) {
     const errMsg = formatFirestoreAdminError(err);

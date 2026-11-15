@@ -1,10 +1,5 @@
 import {initTRPC, TRPCError} from '@trpc/server';
-import type {
-  SecurityContext,
-  LibraryRole,
-  AuthUser,
-  CachedLibraryAccess,
-} from './types';
+import type {SecurityContext, LibraryRole, CachedLibraryAccess} from './types';
 import {PermissionService} from './permissions';
 import {captureLibraryAccess} from '../services/library/libraryShareService';
 import {safeIdSchema} from '../../schemas/common';
@@ -30,7 +25,7 @@ const enforceIsAuthenticated = t.middleware(({ctx, next}) => {
   return next({
     ctx: {
       ...ctx,
-      user: ctx.user as AuthUser,
+      user: ctx.user,
     },
   });
 });
@@ -56,7 +51,7 @@ const enforceUserIsAuthed = t.middleware(({ctx, next}) => {
   return next({
     ctx: {
       ...ctx,
-      user: ctx.user as AuthUser,
+      user: ctx.user,
     },
   });
 });
@@ -75,7 +70,7 @@ const enforceUserIsAdmin = enforceUserIsAuthed.unstable_pipe(({ctx, next}) => {
   return next({
     ctx: {
       ...ctx,
-      user: ctx.user as AuthUser,
+      user: ctx.user,
       isAdmin: true,
       hasAiPlan: true,
     },
@@ -98,7 +93,7 @@ const enforceUserHasAiPlan = enforceUserIsAuthed.unstable_pipe(
     return next({
       ctx: {
         ...ctx,
-        user: ctx.user as AuthUser,
+        user: ctx.user,
         hasAiPlan: true,
       },
     });
@@ -151,9 +146,15 @@ export function libraryProcedure(requiredRole: LibraryRole = 'viewer') {
           requiredRole,
         ),
       );
-      resultRole =
+      const candidateRole =
         typeof accessResult === 'object' && accessResult !== null
           ? accessResult.role
+          : undefined;
+      resultRole =
+        candidateRole === 'owner' ||
+        candidateRole === 'editor' ||
+        candidateRole === 'viewer'
+          ? candidateRole
           : requiredRole;
 
       cached = {
@@ -166,7 +167,7 @@ export function libraryProcedure(requiredRole: LibraryRole = 'viewer') {
     return next({
       ctx: {
         ...ctx,
-        user: ctx.user as AuthUser,
+        user: ctx.user,
         libraryId,
         callerRole: cached.role,
         libraryData: cached.libraryData,

@@ -4,6 +4,7 @@ import {Book} from '../types';
 import {trpc, trpcVanilla} from '../lib/trpc';
 import {useAuth} from '../stores/authStore';
 import {auth} from '../firebase';
+import type {EnrichmentTier} from '../constants/enrichment';
 import {CanonicalEnrichmentType} from '../schemas/libraryApi';
 import {createLogger, DebugTelemetryEngine} from '../lib/telemetry';
 
@@ -11,6 +12,7 @@ const enrichmentLogger = createLogger('Enrichment');
 
 export type PerBookJobStage =
   | 'queued'
+  | 'evaluating_decisions'
   | 'fetching_catalog'
   | 'fetching_ai'
   | 'completed'
@@ -35,10 +37,61 @@ export interface ProviderTelemetrySummary {
   maxGlobalConcurrent: number;
 }
 
+export interface ActiveEnrichmentWave {
+  waveNumber: number;
+  totalWaves: number;
+  tier: EnrichmentTier;
+  remainingInWave: number;
+}
+
 export interface BulkEnrichmentProgress {
   completed: number;
   failed: number;
   total: number;
+}
+
+interface SseJobSnapshotPayload {
+  jobId?: string;
+  status?: 'running' | 'completed' | 'cancelled' | 'failed';
+  totalBooks?: number;
+  completedBooks?: number;
+  failedBooks?: number;
+  skippedBooks?: number;
+  activeWave?: ActiveEnrichmentWave;
+  perBookStates?: Record<string, BookJobTelemetry>;
+  providerTelemetry?: ProviderTelemetrySummary;
+}
+
+interface SseBookProgressPayload {
+  jobId?: string;
+  book?: BookJobTelemetry;
+  totalBooks?: number;
+  completedBooks?: number;
+  failedBooks?: number;
+  skippedBooks?: number;
+}
+
+interface SseProviderTelemetryPayload {
+  telemetry?: ProviderTelemetrySummary;
+}
+
+interface SseBatchCommittedPayload {
+  jobId?: string;
+  results?: Array<Record<string, unknown> & {id: string}>;
+  completedBooks?: number;
+  totalBooks?: number;
+  activeWave?: ActiveEnrichmentWave;
+}
+
+function parseSseJson<Payload>(raw: unknown): Payload | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const parsed: unknown = JSON.parse(raw);
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    return parsed as Payload;
+  }
+  return null;
 }
 
 export interface UseBulkEnrichmentOptions {
@@ -161,6 +214,9 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
   >({});
   const [providerTelemetry, setProviderTelemetry] =
     useState<ProviderTelemetrySummary | null>(null);
+  const [activeWave, setActiveWave] = useState<ActiveEnrichmentWave | null>(
+    null,
+  );
 
   const isRunningRef = useRef(false);
   const cancelledRef = useRef(false);
@@ -224,11 +280,15 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
 
         es.addEventListener('job:snapshot', (evt: MessageEvent) => {
           try {
-            const snap = JSON.parse(evt.data);
+            const snap = parseSseJson<SseJobSnapshotPayload>(evt.data);
+            if (!snap) {
+              return;
+            }
             if (expectedJobId && snap.jobId && snap.jobId !== expectedJobId) {
               return;
             }
             setActiveJobId(snap.jobId || null);
+            setActiveWave(snap.activeWave ?? null);
             if (snap.perBookStates) {
               setPerBookStates(snap.perBookStates);
             }
@@ -254,6 +314,7 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
               isRunningRef.current = false;
               setIsBackfilling(false);
               setInFlightCount(0);
+              setActiveWave(null);
               void utilsRef.current?.book?.list?.invalidate({
                 libraryId: targetLibId,
               });
@@ -270,14 +331,18 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
 
         es.addEventListener('book:progress', (evt: MessageEvent) => {
           try {
-            const data = JSON.parse(evt.data);
+            const data = parseSseJson<SseBookProgressPayload>(evt.data);
+            if (!data) {
+              return;
+            }
             if (expectedJobId && data.jobId && data.jobId !== expectedJobId) {
               return;
             }
-            if (data.book?.bookId) {
+            const bookEntry = data.book;
+            if (bookEntry?.bookId) {
               setPerBookStates(prev => ({
                 ...prev,
-                [data.book.bookId]: data.book,
+                [bookEntry.bookId]: bookEntry,
               }));
             }
             if (typeof data.totalBooks === 'number') {
@@ -294,8 +359,8 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
 
         es.addEventListener('provider:telemetry', (evt: MessageEvent) => {
           try {
-            const data = JSON.parse(evt.data);
-            if (data.telemetry) {
+            const data = parseSseJson<SseProviderTelemetryPayload>(evt.data);
+            if (data?.telemetry) {
               setProviderTelemetry(data.telemetry);
               setInFlightCount(data.telemetry.totalInFlight || 0);
             }
@@ -307,13 +372,17 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
         es.addEventListener('batch:committed', (evt: MessageEvent) => {
           let patchedInPlace = false;
           try {
-            const data = JSON.parse(evt.data);
+            const data = parseSseJson<SseBatchCommittedPayload>(evt.data);
+            if (!data) {
+              return;
+            }
             if (expectedJobId && data.jobId && data.jobId !== expectedJobId) {
               return;
             }
-            const results = Array.isArray(data.results)
-              ? (data.results as Array<Record<string, unknown> & {id: string}>)
-              : [];
+            if (data.activeWave) {
+              setActiveWave(data.activeWave);
+            }
+            const results = Array.isArray(data.results) ? data.results : [];
             enrichmentLogger.info(
               `Micro-batch committed (${results.length} books patched in cache)`,
               {
@@ -328,20 +397,16 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
               utilsRef.current.book.list.setData(
                 {libraryId: targetLibId},
                 old => {
-                  if (!old) {
+                  if (!old || !Array.isArray(old.books)) {
                     return old;
-                  }
-                  if (Array.isArray(old)) {
-                    return (old as Book[]).map(b => {
-                      const patch = resultsById.get(b.id);
-                      return patch ? ({...b, ...patch} as Book) : b;
-                    }) as unknown as typeof old;
                   }
                   return {
                     ...old,
-                    books: (old.books || []).map(b => {
+                    books: old.books.map(b => {
                       const patch = resultsById.get(b.id);
-                      return patch ? ({...b, ...patch} as Book) : b;
+                      return patch
+                        ? {...b, ...(patch as Partial<typeof b>)}
+                        : b;
                     }),
                   };
                 },
@@ -360,31 +425,33 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
 
         es.addEventListener('job:completed', (evt: MessageEvent) => {
           try {
-            const snap = JSON.parse(evt.data);
-            if (expectedJobId && snap.jobId && snap.jobId !== expectedJobId) {
-              return;
-            }
-            enrichmentLogger.info(
-              `Job ${snap.jobId || ''} completed (${snap.completedBooks || 0}/${snap.totalBooks || 0} books)`,
-              {
-                jobId: snap.jobId,
-                completedBooks: snap.completedBooks,
-                failedBooks: snap.failedBooks,
-                skippedBooks: snap.skippedBooks,
-              },
-            );
-            if (snap.perBookStates) {
-              setPerBookStates(snap.perBookStates);
-            }
-            if (snap.providerTelemetry) {
-              setProviderTelemetry(snap.providerTelemetry);
-            }
-            if (typeof snap.totalBooks === 'number') {
-              setProgress({
-                completed: snap.completedBooks || 0,
-                failed: (snap.failedBooks || 0) + (snap.skippedBooks || 0),
-                total: snap.totalBooks,
-              });
+            const snap = parseSseJson<SseJobSnapshotPayload>(evt.data);
+            if (snap) {
+              if (expectedJobId && snap.jobId && snap.jobId !== expectedJobId) {
+                return;
+              }
+              enrichmentLogger.info(
+                `Job ${snap.jobId || ''} completed (${snap.completedBooks || 0}/${snap.totalBooks || 0} books)`,
+                {
+                  jobId: snap.jobId,
+                  completedBooks: snap.completedBooks,
+                  failedBooks: snap.failedBooks,
+                  skippedBooks: snap.skippedBooks,
+                },
+              );
+              if (snap.perBookStates) {
+                setPerBookStates(snap.perBookStates);
+              }
+              if (snap.providerTelemetry) {
+                setProviderTelemetry(snap.providerTelemetry);
+              }
+              if (typeof snap.totalBooks === 'number') {
+                setProgress({
+                  completed: snap.completedBooks || 0,
+                  failed: (snap.failedBooks || 0) + (snap.skippedBooks || 0),
+                  total: snap.totalBooks,
+                });
+              }
             }
           } catch {
             // Ignore parse error
@@ -392,6 +459,7 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
           isRunningRef.current = false;
           setIsBackfilling(false);
           setInFlightCount(0);
+          setActiveWave(null);
           void utilsRef.current?.book?.list?.invalidate({
             libraryId: targetLibId,
           });
@@ -421,20 +489,12 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
     isRunningRef.current = false;
     setIsBackfilling(false);
     setInFlightCount(0);
+    setActiveWave(null);
     closeEventSource();
 
-    const enrichmentClient = trpcVanilla.enrichment as unknown as {
-      cancelJob?: {
-        mutate: (input: {
-          libraryId: string;
-          jobId?: string;
-        }) => Promise<unknown>;
-      };
-    };
-
-    if (libraryId && enrichmentClient?.cancelJob?.mutate) {
+    if (libraryId && trpcVanilla.enrichment?.cancelJob?.mutate) {
       try {
-        await enrichmentClient.cancelJob.mutate({
+        await trpcVanilla.enrichment.cancelJob.mutate({
           libraryId,
           jobId: activeJobId || undefined,
         });
@@ -483,40 +543,7 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
     }
     setPerBookStates(prev => ({...prev, ...initialStates}));
 
-    const enrichmentClient = trpcVanilla.enrichment as unknown as {
-      startJob?: {
-        mutate: (input: {
-          libraryId: string;
-          enrichmentType: CanonicalEnrichmentType;
-          bookIds: string[];
-          overwrite?: boolean;
-          customGenres?: string[];
-        }) => Promise<{
-          jobId: string;
-          status: string;
-          totalBooks: number;
-          completedBooks: number;
-          failedBooks: number;
-          skippedBooks: number;
-          perBookStates?: Record<string, BookJobTelemetry>;
-          providerTelemetry?: ProviderTelemetrySummary;
-        }>;
-      };
-      trigger?: {
-        mutate: (input: {
-          libraryId: string;
-          enrichmentType: CanonicalEnrichmentType;
-          bookIds: string[];
-          overwrite?: boolean;
-          customGenres?: string[];
-        }) => Promise<{
-          status: string;
-          enrichmentType: string;
-          processedCount: number;
-          results?: Array<Record<string, unknown> & {id: string}>;
-        }>;
-      };
-    };
+    const enrichmentClient = trpcVanilla.enrichment;
 
     try {
       const canUseSseJob =
@@ -527,7 +554,7 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
             ?.currentUser?.getIdToken,
         );
 
-      if (canUseSseJob && enrichmentClient.startJob) {
+      if (canUseSseJob && enrichmentClient?.startJob) {
         const snap = await enrichmentClient.startJob.mutate({
           libraryId,
           enrichmentType: canonicalType,
@@ -543,17 +570,13 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
         isRunningRef.current = true;
         setIsBackfilling(true);
         setActiveJobId(snap.jobId);
+        setActiveWave(snap.activeWave ?? null);
         if (snap.perBookStates) {
           setPerBookStates(prev => ({...prev, ...snap.perBookStates}));
         }
         if (snap.providerTelemetry) {
           setProviderTelemetry(snap.providerTelemetry);
-          setInFlightCount(
-            snap.providerTelemetry.totalInFlight ??
-              (snap.providerTelemetry as {totalActiveRequests?: number})
-                .totalActiveRequests ??
-              0,
-          );
+          setInFlightCount(snap.providerTelemetry.totalInFlight ?? 0);
         }
         if (typeof snap.totalBooks === 'number' && snap.totalBooks > 0) {
           setProgress({
@@ -572,6 +595,7 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
           isRunningRef.current = false;
           setIsBackfilling(false);
           setInFlightCount(0);
+          setActiveWave(null);
           await utilsRef.current?.book?.list?.invalidate({libraryId});
           if (successToastRef.current) {
             toast.success(successToastRef.current);
@@ -594,25 +618,21 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
           return;
         }
 
-        const results = response?.results || [];
+        const results = (response?.results || []) as Array<
+          Record<string, unknown> & {id: string}
+        >;
         const resultsById = new Map(results.map(r => [r.id, r]));
 
         if (results.length > 0 && utilsRef.current?.book?.list?.setData) {
           utilsRef.current.book.list.setData({libraryId}, old => {
-            if (!old) {
+            if (!old || !Array.isArray(old.books)) {
               return old;
-            }
-            if (Array.isArray(old)) {
-              return (old as Book[]).map(b => {
-                const patch = resultsById.get(b.id);
-                return patch ? ({...b, ...patch} as Book) : b;
-              }) as unknown as typeof old;
             }
             return {
               ...old,
-              books: (old.books || []).map(b => {
+              books: old.books.map(b => {
                 const patch = resultsById.get(b.id);
-                return patch ? ({...b, ...patch} as Book) : b;
+                return patch ? {...b, ...(patch as Partial<typeof b>)} : b;
               }),
             };
           });
@@ -678,76 +698,61 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
       return;
     }
 
-    const enrichmentClient = trpcVanilla.enrichment as unknown as {
-      getJobStatus?: {
-        query: (input: {libraryId: string}) => Promise<{
-          jobId: string;
-          status: string;
-          totalBooks: number;
-          completedBooks: number;
-          failedBooks: number;
-          skippedBooks: number;
-          perBookStates?: Record<string, BookJobTelemetry>;
-          providerTelemetry?: ProviderTelemetrySummary;
-        } | null>;
-      };
-    };
-
+    const enrichmentClient = trpcVanilla.enrichment;
     if (!enrichmentClient?.getJobStatus?.query) {
       return;
     }
 
-    const interval = setInterval(async () => {
-      if (
-        cancelledRef.current ||
-        !isRunningRef.current ||
-        isSseConnectedRef.current
-      ) {
-        return;
-      }
-      try {
-        const snap = await enrichmentClient.getJobStatus!.query({libraryId});
-        if (!snap || (activeJobId && snap.jobId !== activeJobId)) {
+    const interval = setInterval(() => {
+      void (async () => {
+        if (
+          cancelledRef.current ||
+          !isRunningRef.current ||
+          isSseConnectedRef.current
+        ) {
           return;
         }
-
-        if (snap.perBookStates) {
-          setPerBookStates(snap.perBookStates);
-        }
-        if (snap.providerTelemetry) {
-          setProviderTelemetry(snap.providerTelemetry);
-          setInFlightCount(
-            snap.providerTelemetry.totalInFlight ??
-              (snap.providerTelemetry as {totalActiveRequests?: number})
-                .totalActiveRequests ??
-              0,
-          );
-        }
-        if (typeof snap.totalBooks === 'number' && snap.totalBooks > 0) {
-          setProgress({
-            completed: snap.completedBooks || 0,
-            failed: (snap.failedBooks || 0) + (snap.skippedBooks || 0),
-            total: snap.totalBooks,
-          });
-        }
-        if (
-          snap.status === 'completed' ||
-          snap.status === 'cancelled' ||
-          snap.status === 'failed'
-        ) {
-          isRunningRef.current = false;
-          setIsBackfilling(false);
-          setInFlightCount(0);
-          closeEventSource();
-          void utilsRef.current?.book?.list?.invalidate({libraryId});
-          if (snap.status === 'completed' && successToastRef.current) {
-            toast.success(successToastRef.current);
+        try {
+          const snap = await enrichmentClient.getJobStatus.query({libraryId});
+          if (!snap || (activeJobId && snap.jobId !== activeJobId)) {
+            return;
           }
-          onCompleteRef.current?.();
+
+          setActiveWave(snap.activeWave ?? null);
+          if (snap.perBookStates) {
+            setPerBookStates(snap.perBookStates);
+          }
+          if (snap.providerTelemetry) {
+            setProviderTelemetry(snap.providerTelemetry);
+            setInFlightCount(snap.providerTelemetry.totalInFlight ?? 0);
+          }
+          if (typeof snap.totalBooks === 'number' && snap.totalBooks > 0) {
+            setProgress({
+              completed: snap.completedBooks || 0,
+              failed: (snap.failedBooks || 0) + (snap.skippedBooks || 0),
+              total: snap.totalBooks,
+            });
+          }
+          if (
+            snap.status === 'completed' ||
+            snap.status === 'cancelled' ||
+            snap.status === 'failed'
+          ) {
+            isRunningRef.current = false;
+            setIsBackfilling(false);
+            setInFlightCount(0);
+            setActiveWave(null);
+            closeEventSource();
+            void utilsRef.current?.book?.list?.invalidate({libraryId});
+            if (snap.status === 'completed' && successToastRef.current) {
+              toast.success(successToastRef.current);
+            }
+            onCompleteRef.current?.();
+          }
+        } catch {
+          // Ignore transient poll errors
         }
-      } catch {
-        // Ignore transient poll errors
-      }
+      })();
     }, 1500);
 
     return () => clearInterval(interval);
@@ -800,6 +805,7 @@ export function useBulkEnrichment(options: UseBulkEnrichmentOptions) {
     triggerBackfill,
     cancelEnrichment,
     activeJobId,
+    activeWave,
     perBookStates,
     providerTelemetry,
   };

@@ -1,24 +1,22 @@
+import {
+  VISUALIZER_DESCRIPTORS,
+  type VisualizerId,
+} from '../constants/visualizerDescriptors';
+
 export type PreloadableRouteKey =
-  | 'library'
-  | 'bookDetails'
-  | 'addBook'
-  | 'constellation'
-  | 'worldMap'
-  | 'spruceUp'
-  | 'timeline'
-  | 'readSwipe'
-  | 'admin';
+  'library' | 'bookDetails' | 'addBook' | 'spruceUp' | 'admin' | VisualizerId;
+
+const visualizerImporters = Object.fromEntries(
+  VISUALIZER_DESCRIPTORS.map(d => [d.preloadKey, d.loadComponent]),
+) as Record<VisualizerId, () => Promise<unknown>>;
 
 const routeImporters: Record<PreloadableRouteKey, () => Promise<unknown>> = {
   library: () => import('../pages/LibraryView'),
   bookDetails: () => import('../pages/BookDetailsView'),
   addBook: () => import('../pages/AddBookView'),
-  constellation: () => import('../pages/ConstellationMap'),
-  worldMap: () => import('../pages/WorldMap'),
   spruceUp: () => import('../pages/SpruceUpView'),
-  timeline: () => import('../pages/TimelineView'),
-  readSwipe: () => import('../pages/ReadSwipeView'),
   admin: () => import('../pages/AdminDashboard'),
+  ...visualizerImporters,
 };
 
 const preloadedRoutes = new Set<PreloadableRouteKey>();
@@ -36,21 +34,27 @@ export function preloadRouteChunk(key: PreloadableRouteKey): void {
 export function preloadRouteByPathname(pathname: string): void {
   if (pathname.startsWith('/admin')) {
     preloadRouteChunk('admin');
-  } else if (pathname.includes('/book/')) {
+    return;
+  }
+  if (pathname.includes('/book/')) {
     preloadRouteChunk('bookDetails');
-  } else if (pathname.endsWith('/add')) {
+    return;
+  }
+  if (pathname.endsWith('/add')) {
     preloadRouteChunk('addBook');
-  } else if (pathname.endsWith('/constellation')) {
-    preloadRouteChunk('constellation');
-  } else if (pathname.endsWith('/map')) {
-    preloadRouteChunk('worldMap');
-  } else if (pathname.endsWith('/spruce-up')) {
+    return;
+  }
+  if (pathname.endsWith('/spruce-up')) {
     preloadRouteChunk('spruceUp');
-  } else if (pathname.endsWith('/timeline')) {
-    preloadRouteChunk('timeline');
-  } else if (pathname.endsWith('/swipe')) {
-    preloadRouteChunk('readSwipe');
-  } else if (pathname.startsWith('/library/')) {
+    return;
+  }
+  for (const descriptor of VISUALIZER_DESCRIPTORS) {
+    if (pathname.endsWith(descriptor.routeSuffix)) {
+      preloadRouteChunk(descriptor.preloadKey);
+      return;
+    }
+  }
+  if (pathname.startsWith('/library/')) {
     preloadRouteChunk('library');
   }
 }
@@ -62,10 +66,7 @@ export function preloadAllRouteChunks(): void {
   const keys: PreloadableRouteKey[] = [
     'library',
     'bookDetails',
-    'constellation',
-    'worldMap',
-    'timeline',
-    'readSwipe',
+    ...VISUALIZER_DESCRIPTORS.map(d => d.preloadKey),
     'spruceUp',
     'addBook',
   ];

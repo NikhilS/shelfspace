@@ -19,15 +19,12 @@ describe('PermissionService server RBAC unit suite', () => {
     ).rejects.toMatchObject({code: 'UNAUTHORIZED'});
 
     await expect(
-      PermissionService.verifyLibraryAccess({uid: ''}, 'lib-1'),
+      PermissionService.verifyLibraryAccess({uid: '', email: ''}, 'lib-1'),
     ).rejects.toMatchObject({code: 'UNAUTHORIZED'});
   });
 
   it('delegates verifyLibraryAccess, verifyLibraryWriteAccess, and verifyLibraryReadAccess with required roles', async () => {
-    vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue({
-      role: 'editor',
-      userId: 'u-1',
-    });
+    vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue(true);
 
     const user = {uid: 'u-1', email: 'editor@example.com'};
 

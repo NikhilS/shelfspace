@@ -11,21 +11,21 @@ const mockBooks: Book[] = [
     author: 'Author Z',
     addedAt: {toMillis: () => 100},
     addedBy: 'test-user',
-  } as unknown as Book,
+  },
   {
     id: '2',
     title: 'Apple',
     author: 'Author A',
     addedAt: {toMillis: () => 200},
     addedBy: 'test-user',
-  } as unknown as Book,
+  },
   {
     id: '3',
     title: 'Banana',
     author: 'Author B',
     addedAt: {toMillis: () => 300},
     addedBy: 'test-user',
-  } as unknown as Book,
+  },
 ];
 
 describe('useBookFilters', () => {
@@ -101,7 +101,7 @@ describe('useBookFilters', () => {
         primaryGenre: 'Science Fiction',
         subgenres: ['Space Opera'],
         addedAt: 100,
-      } as Book,
+      },
       {
         id: '11',
         title: 'Neuromancer',
@@ -109,7 +109,7 @@ describe('useBookFilters', () => {
         primaryGenre: 'Science Fiction',
         subgenres: ['Cyberpunk'],
         addedAt: 200,
-      } as Book,
+      },
       {
         id: '12',
         title: 'Pride and Prejudice',
@@ -117,7 +117,7 @@ describe('useBookFilters', () => {
         primaryGenre: 'Romance',
         subgenres: ['Historical Romance', 'Regency Romance'],
         addedAt: 300,
-      } as Book,
+      },
       {
         id: '13',
         title: 'Unusual Custom Tome',
@@ -126,7 +126,7 @@ describe('useBookFilters', () => {
         isCustomPrimary: true,
         subgenres: ['Grimdark'],
         addedAt: 400,
-      } as Book,
+      },
     ];
 
     it('computes availableGenres sorted by frequency with Other for custom genres', () => {

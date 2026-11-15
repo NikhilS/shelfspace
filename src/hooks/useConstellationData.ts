@@ -28,6 +28,7 @@ export interface BookDoc extends Omit<
   isbn?: string;
   coverUrl?: string;
   publishedDate?: string;
+  description?: string;
   pageCount?: number;
   embedding?: number[];
   clusterCoordinates?: {
@@ -349,7 +350,7 @@ export function useConstellationData(libraryId: string | undefined) {
             worker.onerror = err => {
               worker.terminate();
               activeWorkerRef.current = null;
-              reject(err);
+              reject(new Error(err.message || 'UMAP geometry worker failed'));
             };
             worker.postMessage({
               mode: 'geometryOnly',
@@ -479,7 +480,7 @@ export function useConstellationData(libraryId: string | undefined) {
             id: b.id,
             libraryId: targetLibId || b.libraryId,
           };
-          allBooks.push(merged as BookDoc);
+          allBooks.push(merged);
         });
 
         if (!isMounted) {
@@ -743,7 +744,7 @@ export function useConstellationData(libraryId: string | undefined) {
                       {scope: 'Constellation', status: 'error'},
                     );
                   }
-                  reject(err);
+                  reject(new Error(err.message || 'UMAP Web Worker error'));
                 };
                 worker.postMessage({
                   mode: 'full',

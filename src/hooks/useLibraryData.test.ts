@@ -22,22 +22,46 @@ vi.mock('sonner', () => ({
 const mockTrpcLibraryQuery = vi.fn();
 const mockTrpcBooksQuery = vi.fn();
 
+const mockSetBookListData = vi.fn();
+const mockSetLibraryGetData = vi.fn();
+
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    useUtils: () => ({
+      book: {
+        list: {
+          getData: vi.fn(),
+          setData: mockSetBookListData,
+        },
+      },
+      library: {
+        get: {
+          getData: vi.fn(),
+          setData: mockSetLibraryGetData,
+        },
+        list: {
+          getData: vi.fn(),
+        },
+      },
+    }),
     library: {
       get: {
-        useQuery: (...args: unknown[]) => mockTrpcLibraryQuery(...args),
+        useQuery: (...args: unknown[]): unknown =>
+          mockTrpcLibraryQuery(...args),
       },
     },
     book: {
       list: {
-        useQuery: (...args: unknown[]) => mockTrpcBooksQuery(...args),
+        useQuery: (...args: unknown[]): unknown => mockTrpcBooksQuery(...args),
       },
     },
   },
   trpcVanilla: {
     book: {
       list: {
+        query: vi.fn(),
+      },
+      syncChanges: {
         query: vi.fn(),
       },
     },
@@ -400,6 +424,89 @@ describe('Declarative TanStack React Query (useLibraryData)', () => {
       });
 
       expect(mockVanillaList).toHaveBeenCalledTimes(1);
+    });
+
+    it('reconciles warm cached libraries via incremental book.syncChanges deltas', async () => {
+      const {resetWarmSyncStateForTests} = await import('./useLibraryData');
+      resetWarmSyncStateForTests();
+      const {trpcVanilla} = await import('../lib/trpc');
+      const mockSyncChanges = vi.mocked(trpcVanilla.book.syncChanges.query);
+
+      const initialBookList = {
+        books: [
+          {
+            id: 'book-1',
+            title: 'Dune',
+            author: 'Frank Herbert',
+            isbn: '9780441172719',
+            updatedAt: '2026-11-15T10:00:00.000Z',
+            readingStatus: 'unset',
+          },
+          {
+            id: 'book-deleted',
+            title: 'Old Volume',
+            author: 'Anon',
+            updatedAt: '2026-11-14T10:00:00.000Z',
+          },
+        ],
+        totalCount: 2,
+      };
+
+      mockTrpcBooksQuery.mockReturnValue({
+        data: initialBookList,
+        isLoading: false,
+        isFetching: false,
+        isStale: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      mockSyncChanges.mockResolvedValueOnce({
+        upsertedBooks: [
+          {
+            id: 'book-new',
+            title: 'Children of Dune',
+            author: 'Frank Herbert',
+            updatedAt: '2026-11-15T11:00:00.000Z',
+          },
+        ],
+        deletedBookIds: ['book-deleted'],
+        readingStates: {
+          'isbn:9780441172719': {
+            status: 'reading',
+            rating: 5,
+          },
+        },
+        syncCursorMs: Date.parse('2026-11-15T11:00:00.000Z'),
+        totalCount: 2,
+      } as unknown as Awaited<
+        ReturnType<typeof trpcVanilla.book.syncChanges.query>
+      >);
+
+      renderHook(() => useLibraryData('lib-warm', 'user123', navigate), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(mockSyncChanges).toHaveBeenCalledWith({
+          libraryId: 'lib-warm',
+          sinceUpdatedAtMs: Date.parse('2026-11-15T10:00:00.000Z'),
+          knownCount: 2,
+        });
+        expect(mockSetBookListData).toHaveBeenCalled();
+      });
+
+      const updater = mockSetBookListData.mock.calls[0]?.[1] as (
+        old: typeof initialBookList,
+      ) => typeof initialBookList;
+      const reconciled = updater(initialBookList);
+      expect(reconciled.books.map(b => b.id)).toEqual(['book-new', 'book-1']);
+      expect(reconciled.books[1]).toMatchObject({
+        id: 'book-1',
+        readingStatus: 'reading',
+        userRating: 5,
+      });
     });
   });
 });

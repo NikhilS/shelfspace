@@ -32,8 +32,9 @@ import {WorldMapCanvas} from './world-map/WorldMapCanvas';
 import {WorldMapInspector} from './world-map/WorldMapInspector';
 
 // Read API keys from the environment securely
-const GOOGLE_MAPS_KEY =
-  (import.meta.env && import.meta.env.VITE_GOOGLE_MAPS_API_KEY) || '';
+function resolveGoogleMapsKey(): string {
+  return (import.meta.env && import.meta.env.VITE_GOOGLE_MAPS_API_KEY) || '';
+}
 
 export function WorldMap() {
   const {id: libraryId} = useParams<{id: string}>();
@@ -191,8 +192,9 @@ export function WorldMap() {
     setSelectedSinglePin(null);
   };
 
+  const googleMapsKey = resolveGoogleMapsKey();
   const hasMapsApiKey = Boolean(
-    GOOGLE_MAPS_KEY && GOOGLE_MAPS_KEY !== 'YOUR_API_KEY',
+    googleMapsKey && googleMapsKey !== 'YOUR_API_KEY',
   );
 
   return (
@@ -309,7 +311,7 @@ export function WorldMap() {
         <WorldMapCanvas
           isBooksLoading={isBooksLoading}
           hasMapsApiKey={hasMapsApiKey}
-          googleMapsKey={GOOGLE_MAPS_KEY}
+          googleMapsKey={googleMapsKey}
           filteredPins={filteredPins}
           scaleClusters={scaleClusters}
           selectedSinglePin={selectedSinglePin}

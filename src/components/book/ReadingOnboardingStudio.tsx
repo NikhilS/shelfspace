@@ -23,10 +23,8 @@ import {
 } from '@/components/ui/empty-state-illustrations';
 import {ArchivalCoverImage} from './ArchivalCoverImage';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
-import type {
-  TrackedShelfStatus,
-  UnreadLibraryBookItem,
-} from '../../server/services/readingTracker';
+import {CONSTELLATION_MIN_BOOKS} from '../../constants/visualizerDescriptors';
+import type {TrackedShelfStatus, UnreadLibraryBookItem} from '../../types';
 
 export interface ReadingOnboardingStudioProps {
   unreadLibraryBooks?: UnreadLibraryBookItem[];
@@ -214,7 +212,7 @@ export function ReadingOnboardingStudio({
                       src={featuredUnreadBook.coverUrl}
                       alt={featuredUnreadBook.title}
                       author={featuredUnreadBook.author}
-                      variant="thumb"
+                      variant="micro"
                       className="w-full h-full"
                     />
                   </div>
@@ -445,7 +443,7 @@ export function ReadingOnboardingStudio({
 
           <div className="p-3.5 rounded-lg bg-surface-container-low/80 border border-outline-variant/40 flex items-start gap-3">
             <span className="font-mono tabular-nums text-xs font-semibold text-primary px-2 py-0.5 rounded bg-primary/10 border border-primary/20 shrink-0">
-              3+ Books
+              {CONSTELLATION_MIN_BOOKS}+ Books
             </span>
             <div className="min-w-0">
               <h4 className="font-serif text-xs sm:text-sm font-semibold text-on-surface">
@@ -499,7 +497,8 @@ export function ReadingOnboardingBanner({
 
   const hasStartedShelf = totalTrackedCount >= 1;
   const hasFinishedBook = finishedCount >= 1;
-  const hasUnlockedConstellations = totalTrackedCount >= 3;
+  const hasUnlockedConstellations =
+    totalTrackedCount >= CONSTELLATION_MIN_BOOKS;
 
   const completedSteps =
     (hasStartedShelf ? 1 : 0) +
@@ -510,7 +509,10 @@ export function ReadingOnboardingBanner({
     return null;
   }
 
-  const remainingForConstellations = Math.max(0, 3 - totalTrackedCount);
+  const remainingForConstellations = Math.max(
+    0,
+    CONSTELLATION_MIN_BOOKS - totalTrackedCount,
+  );
 
   const handleDismiss = () => {
     setIsDismissed(true);
@@ -597,7 +599,8 @@ export function ReadingOnboardingBanner({
               <Plus className="w-3 h-3 text-primary" />
               <span className="tabular-nums">
                 Add {remainingForConstellations} More for 3D Galaxy (
-                {Math.min(totalTrackedCount, 3)}/3)
+                {Math.min(totalTrackedCount, CONSTELLATION_MIN_BOOKS)}/
+                {CONSTELLATION_MIN_BOOKS})
               </span>
             </Button>
           )}

@@ -176,7 +176,10 @@ async function startServer() {
   app.use(
     compression({
       filter: (req, res) => {
-        if (req.path.startsWith('/api/enrichment/stream')) {
+        if (
+          req.path.startsWith('/api/enrichment/stream') ||
+          String(req.headers['trpc-accept'] || '').includes('jsonl')
+        ) {
           return false;
         }
         return compression.filter(req, res);
@@ -290,112 +293,115 @@ async function startServer() {
   });
 
   // Mount tRPC adapter with rate limiting and structured error logging
-  app.use('/trpc', trpcRateLimiter, async (req, res, next) => {
-    try {
-      const {trpcMiddleware} = await getBackendModules();
-      trpcMiddleware(req, res, next);
-    } catch (err) {
-      next(err);
-    }
+  app.use('/trpc', trpcRateLimiter, (req, res, next) => {
+    void getBackendModules()
+      .then(({trpcMiddleware}) => {
+        trpcMiddleware(req, res, next);
+      })
+      .catch(next);
   });
 
   // Server-Sent Events (SSE) live stream for background bulk enrichment jobs
-  app.get('/api/enrichment/stream', sseRateLimiter, async (req, res) => {
-    const {
-      TokenVerifier,
-      AllowlistService,
-      LibraryService,
-      enrichmentJobCoordinator,
-    } = await getBackendModules();
+  app.get('/api/enrichment/stream', sseRateLimiter, (req, res, next) => {
+    void (async () => {
+      const {
+        TokenVerifier,
+        AllowlistService,
+        LibraryService,
+        enrichmentJobCoordinator,
+      } = await getBackendModules();
 
-    const rawLibraryId =
-      typeof req.query.libraryId === 'string' ? req.query.libraryId.trim() : '';
-    const queryToken =
-      typeof req.query.token === 'string' ? req.query.token.trim() : '';
-    const headerToken = TokenVerifier.extractTokenFromHeader(
-      req.headers.authorization,
-    );
-    const token = queryToken || headerToken || '';
-
-    const parsedLibId = safeIdSchema.safeParse(rawLibraryId);
-    if (!parsedLibId.success) {
-      res.status(400).json({error: 'Missing or invalid libraryId parameter'});
-      return;
-    }
-    const libraryId = parsedLibId.data;
-
-    const user = await TokenVerifier.verify(token);
-    if (!user) {
-      res.status(401).json({error: 'Unauthorized'});
-      return;
-    }
-
-    const perms = await AllowlistService.getPermissions(user.email);
-    if (!perms.isAppAllowed) {
-      res.status(403).json({error: 'Forbidden: User not on allowlist'});
-      return;
-    }
-
-    try {
-      await LibraryService.verifyLibraryAccess(
-        user.uid,
-        user.email,
-        libraryId,
-        'viewer',
+      const rawLibraryId =
+        typeof req.query.libraryId === 'string'
+          ? req.query.libraryId.trim()
+          : '';
+      const queryToken =
+        typeof req.query.token === 'string' ? req.query.token.trim() : '';
+      const headerToken = TokenVerifier.extractTokenFromHeader(
+        req.headers.authorization,
       );
-    } catch {
-      res.status(403).json({error: 'Forbidden'});
-      return;
-    }
+      const token = queryToken || headerToken || '';
 
-    const releaseSseSlot = sseConcurrencyTracker.tryAcquire(user.uid);
-    if (!releaseSseSlot) {
-      res.status(429).json({
-        error: 'Too many concurrent enrichment stream connections',
+      const parsedLibId = safeIdSchema.safeParse(rawLibraryId);
+      if (!parsedLibId.success) {
+        res.status(400).json({error: 'Missing or invalid libraryId parameter'});
+        return;
+      }
+      const libraryId = parsedLibId.data;
+
+      const user = await TokenVerifier.verify(token);
+      if (!user) {
+        res.status(401).json({error: 'Unauthorized'});
+        return;
+      }
+
+      const perms = await AllowlistService.getPermissions(user.email);
+      if (!perms.isAppAllowed) {
+        res.status(403).json({error: 'Forbidden: User not on allowlist'});
+        return;
+      }
+
+      try {
+        await LibraryService.verifyLibraryAccess(
+          user.uid,
+          user.email,
+          libraryId,
+          'viewer',
+        );
+      } catch {
+        res.status(403).json({error: 'Forbidden'});
+        return;
+      }
+
+      const releaseSseSlot = sseConcurrencyTracker.tryAcquire(user.uid);
+      if (!releaseSseSlot) {
+        res.status(429).json({
+          error: 'Too many concurrent enrichment stream connections',
+        });
+        return;
+      }
+
+      res.status(200).set({
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
       });
-      return;
-    }
+      res.flushHeaders?.();
 
-    res.status(200).set({
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
-    res.flushHeaders?.();
+      const writeEvent = (eventType: string, payload: unknown) => {
+        if (res.writableEnded) {
+          return;
+        }
+        res.write(`event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`);
+      };
 
-    const writeEvent = (eventType: string, payload: unknown) => {
-      if (res.writableEnded) {
-        return;
+      // Immediately emit current job snapshot if one exists
+      const initialSnapshot = enrichmentJobCoordinator.getJobStatus(libraryId);
+      if (initialSnapshot) {
+        writeEvent('job:snapshot', initialSnapshot);
       }
-      res.write(`event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`);
-    };
 
-    // Immediately emit current job snapshot if one exists
-    const initialSnapshot = enrichmentJobCoordinator.getJobStatus(libraryId);
-    if (initialSnapshot) {
-      writeEvent('job:snapshot', initialSnapshot);
-    }
+      const unsubscribe = enrichmentJobCoordinator.subscribeToLibrary(
+        libraryId,
+        event => {
+          writeEvent(event.type, event.payload);
+        },
+      );
 
-    const unsubscribe = enrichmentJobCoordinator.subscribeToLibrary(
-      libraryId,
-      event => {
-        writeEvent(event.type, event.payload);
-      },
-    );
+      const heartbeat = setInterval(() => {
+        if (res.writableEnded) {
+          return;
+        }
+        res.write(': heartbeat\n\n');
+      }, 15_000);
 
-    const heartbeat = setInterval(() => {
-      if (res.writableEnded) {
-        return;
-      }
-      res.write(': heartbeat\n\n');
-    }, 15_000);
-
-    req.on('close', () => {
-      clearInterval(heartbeat);
-      unsubscribe();
-      releaseSseSlot();
-    });
+      req.on('close', () => {
+        clearInterval(heartbeat);
+        unsubscribe();
+        releaseSseSlot();
+      });
+    })().catch(next);
   });
 
   // Dedicated API 404 handler
@@ -422,85 +428,92 @@ async function startServer() {
         }),
     );
 
-    app.use(async (req, res, next) => {
-      try {
-        const vite = await vitePromise;
-        vite.middlewares(req, res, next);
-      } catch (e) {
-        next(e);
-      }
+    app.use((req, res, next) => {
+      void vitePromise
+        .then(vite => {
+          vite.middlewares(req, res, next);
+        })
+        .catch(next);
     });
 
     // If a browser with a stale cached index.html requests a missing JS bundle (e.g. /assets/index-OLDHASH.js),
     // never return a 404 or index.html (text/html) response (which triggers a strict MIME type error on <script type="module">).
     // Instead, return a valid application/javascript module that purges stale Service Workers and CacheStorage and reloads.
-    app.use('*', async (req, res, next) => {
-      const url = req.originalUrl || req.url;
-      const parsedPath = url.split('?')[0];
-      const ext = path.extname(parsedPath);
+    app.use('*', (req, res, next) => {
+      void (async () => {
+        const url = req.originalUrl || req.url;
+        const parsedPath = url.split('?')[0];
+        const ext = path.extname(parsedPath);
 
-      if (
-        req.method === 'GET' &&
-        (ext === '.js' || ext === '.mjs' || ext === '.ts' || ext === '.tsx') &&
-        !parsedPath.startsWith('/api/') &&
-        !parsedPath.startsWith('/trpc')
-      ) {
-        console.warn(
-          `[server] Missing module script requested (${url}); serving cache-purge & reload recovery script`,
-        );
-        res
-          .status(200)
-          .set({
-            'Content-Type': 'application/javascript; charset=utf-8',
-            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-          })
-          .send(
-            '(async function(){try{if("serviceWorker"in navigator){var r=await navigator.serviceWorker.getRegistrations();await Promise.all(r.map(function(x){return x.unregister()}))}if("caches"in window){var k=await caches.keys();await Promise.all(k.map(function(x){return caches.delete(x)}))}}catch(e){}if(!sessionStorage.getItem("__bookish_stale_asset_reload")){sessionStorage.setItem("__bookish_stale_asset_reload","1");window.location.reload()}})();',
+        if (
+          req.method === 'GET' &&
+          (ext === '.js' ||
+            ext === '.mjs' ||
+            ext === '.ts' ||
+            ext === '.tsx') &&
+          !parsedPath.startsWith('/api/') &&
+          !parsedPath.startsWith('/trpc')
+        ) {
+          console.warn(
+            `[server] Missing module script requested (${url}); serving cache-purge & reload recovery script`,
           );
-        return;
-      }
+          res
+            .status(200)
+            .set({
+              'Content-Type': 'application/javascript; charset=utf-8',
+              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            })
+            .send(
+              '(async function(){try{if("serviceWorker"in navigator){var r=await navigator.serviceWorker.getRegistrations();await Promise.all(r.map(function(x){return x.unregister()}))}if("caches"in window){var k=await caches.keys();await Promise.all(k.map(function(x){return caches.delete(x)}))}}catch(e){}if(!sessionStorage.getItem("__bookish_stale_asset_reload")){sessionStorage.setItem("__bookish_stale_asset_reload","1");window.location.reload()}})();',
+            );
+          return;
+        }
 
-      if (
-        (req.method !== 'GET' && req.method !== 'HEAD') ||
-        parsedPath.startsWith('/api/') ||
-        parsedPath.startsWith('/trpc') ||
-        parsedPath.startsWith('/@') ||
-        parsedPath.startsWith('/node_modules/') ||
-        (ext && ext !== '.html')
-      ) {
-        res.status(404).type('text/plain').send(`Not Found: ${parsedPath}`);
-        return;
-      }
-      if (req.method === 'HEAD') {
-        res
-          .status(200)
-          .set({
-            'Content-Type': 'text/html',
-            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-          })
-          .end();
-        return;
-      }
-      try {
-        const vite = await vitePromise;
-        let template = fs.readFileSync(
-          path.resolve(process.cwd(), 'index.html'),
-          'utf-8',
-        );
-        template = await vite.transformIndexHtml(url, template);
-        res
-          .status(200)
-          .set({
-            'Content-Type': 'text/html',
-            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-          })
-          .end(template);
-      } catch (e) {
-        const vite = await vitePromise.catch(() => null);
-        vite?.ssrFixStacktrace(e as Error);
-        console.error(`[server] Error transforming index.html for ${url}:`, e);
-        next(e);
-      }
+        if (
+          (req.method !== 'GET' && req.method !== 'HEAD') ||
+          parsedPath.startsWith('/api/') ||
+          parsedPath.startsWith('/trpc') ||
+          parsedPath.startsWith('/@') ||
+          parsedPath.startsWith('/node_modules/') ||
+          (ext && ext !== '.html')
+        ) {
+          res.status(404).type('text/plain').send(`Not Found: ${parsedPath}`);
+          return;
+        }
+        if (req.method === 'HEAD') {
+          res
+            .status(200)
+            .set({
+              'Content-Type': 'text/html',
+              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            })
+            .end();
+          return;
+        }
+        try {
+          const vite = await vitePromise;
+          let template = fs.readFileSync(
+            path.resolve(process.cwd(), 'index.html'),
+            'utf-8',
+          );
+          template = await vite.transformIndexHtml(url, template);
+          res
+            .status(200)
+            .set({
+              'Content-Type': 'text/html',
+              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            })
+            .end(template);
+        } catch (e) {
+          const vite = await vitePromise.catch(() => null);
+          vite?.ssrFixStacktrace(e as Error);
+          console.error(
+            `[server] Error transforming index.html for ${url}:`,
+            e,
+          );
+          next(e);
+        }
+      })().catch(next);
     });
   } else {
     const distPath = path.join(process.cwd(), 'dist');

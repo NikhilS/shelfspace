@@ -4,16 +4,18 @@ import {trpc, trpcVanilla} from '../../lib/trpc';
 import {toast} from 'sonner';
 import {
   applyOptimisticReadingStatusPatch,
-  invalidateReadingStatusQueries,
-  type ReadingStatusCacheUtils,
+  buildBookSnapshotHint,
+  commitBookUpsertDelta,
+  commitReadingStatusDelta,
 } from '../../lib/readingStatusCache';
 import type {
+  Book,
   TrackedBookItem,
   TrackedShelfStatus,
   ReadingShelfSummary,
   UnreadLibraryBookItem,
   TrackBookInput,
-} from '../../server/services/readingTracker';
+} from '../../types';
 
 export type ShelfFilterTab = 'all' | TrackedShelfStatus;
 
@@ -56,7 +58,7 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
         {shelf: 'all'},
         {
           enabled: Boolean(user) && isEnabled,
-          staleTime: 1000 * 60 * 2,
+          staleTime: 1000 * 60 * 5,
         },
       );
     }
@@ -77,7 +79,7 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
         undefined,
         {
           enabled: Boolean(user) && isEnabled,
-          staleTime: 1000 * 60 * 2,
+          staleTime: 1000 * 60 * 5,
         },
       );
     }
@@ -111,25 +113,6 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
     return summary.items.filter(item => item.readingStatus === activeShelf);
   }, [summary.items, activeShelf]);
 
-  const invalidateAll = useCallback(
-    async (target?: {libraryId?: string; bookId?: string}) => {
-      try {
-        await invalidateReadingStatusQueries(
-          utils as unknown as ReadingStatusCacheUtils | undefined,
-          {
-            libraryId: target?.libraryId,
-            bookId: target?.bookId,
-            includeLibraries: true,
-          },
-        );
-      } catch {
-        void shelfQuery?.refetch?.();
-        void unreadQuery?.refetch?.();
-      }
-    },
-    [utils, shelfQuery, unreadQuery],
-  );
-
   const updateItemStatus = useCallback(
     async (
       libraryId: string,
@@ -139,31 +122,57 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
       if (!user) {
         return;
       }
-      const existingItem = summary.items.find(
-        item => item.id === bookId && item.libraryId === libraryId,
-      );
-      const rollback = applyOptimisticReadingStatusPatch(
-        utils as unknown as ReadingStatusCacheUtils | undefined,
-        {
-          libraryId,
-          bookId,
-          status: nextStatus,
-          bookHint: existingItem,
-        },
-      );
+      const existingItem =
+        summary.items.find(
+          item => item.id === bookId && item.libraryId === libraryId,
+        ) ??
+        unreadLibraryBooks.find(
+          item => item.id === bookId && item.libraryId === libraryId,
+        );
+      const snapshotHint = buildBookSnapshotHint(existingItem, {
+        libraryId,
+        bookId,
+        libraryName: existingItem?.libraryName,
+      });
+
+      const rollback = applyOptimisticReadingStatusPatch(utils, {
+        libraryId,
+        bookId,
+        status: nextStatus,
+        bookHint: existingItem,
+      });
       try {
         if (trpcVanilla?.book?.updateStatus?.mutate) {
-          await trpcVanilla.book.updateStatus.mutate({
+          const response = await trpcVanilla.book.updateStatus.mutate({
             libraryId,
             bookId,
             status: nextStatus,
+            ...(snapshotHint ? {bookSnapshot: snapshotHint} : {}),
+          });
+          commitReadingStatusDelta(utils, {
+            libraryId,
+            bookId,
+            status: response?.status ?? nextStatus,
+            reviewedAt: response?.reviewedAt,
+            rating: response?.rating,
+            startedAt: response?.startedAt,
+            finishedAt: response?.finishedAt,
+            bookSnapshot: response?.bookSnapshot,
+            bookHint: existingItem,
           });
         } else if (trpcVanilla?.readingTracker?.trackBook?.mutate) {
-          await trpcVanilla.readingTracker.trackBook.mutate({
+          const response = await trpcVanilla.readingTracker.trackBook.mutate({
             source: 'library',
             libraryId,
             bookId,
             status: nextStatus,
+          });
+          commitReadingStatusDelta(utils, {
+            libraryId,
+            bookId,
+            status: response?.status ?? nextStatus,
+            rating: response?.rating,
+            bookHint: existingItem,
           });
         }
         toast.success(
@@ -171,14 +180,13 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
             ? 'Removed from reading list'
             : 'Reading status updated',
         );
-        await invalidateAll({libraryId, bookId});
       } catch (err) {
         rollback();
         console.error('Failed to update reading status:', err);
         toast.error('Failed to update reading status');
       }
     },
-    [user, summary.items, utils, invalidateAll],
+    [user, summary.items, unreadLibraryBooks, utils],
   );
 
   const trackBookItem = useCallback(
@@ -187,15 +195,12 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
         return undefined;
       }
       const rollback =
-        input.source === 'library'
-          ? applyOptimisticReadingStatusPatch(
-              utils as unknown as ReadingStatusCacheUtils | undefined,
-              {
-                libraryId: input.libraryId,
-                bookId: input.bookId,
-                status: input.status,
-              },
-            )
+        input.source === 'library' && input.libraryId && input.bookId
+          ? applyOptimisticReadingStatusPatch(utils, {
+              libraryId: input.libraryId,
+              bookId: input.bookId,
+              status: input.status,
+            })
           : () => {};
       try {
         const result = await trpcVanilla.readingTracker.trackBook.mutate(input);
@@ -207,17 +212,43 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
           input.source === 'library'
             ? input.bookId
             : (result as {bookId?: string} | undefined)?.bookId;
-        await invalidateAll({
-          libraryId: resolvedLibraryId,
-          bookId: resolvedBookId,
-        });
+
+        if (resolvedLibraryId && resolvedBookId) {
+          const returnedBook = (
+            result as {
+              book?: Partial<Book> & {
+                id: string;
+                title: string;
+                author: string;
+                libraryName?: string;
+              };
+            }
+          )?.book;
+          if (returnedBook?.id && returnedBook.title) {
+            commitBookUpsertDelta(utils, {
+              libraryId: resolvedLibraryId,
+              book: {
+                ...returnedBook,
+                readingStatus: result?.status ?? input.status,
+              },
+              libraryName: returnedBook.libraryName,
+            });
+          } else {
+            commitReadingStatusDelta(utils, {
+              libraryId: resolvedLibraryId,
+              bookId: resolvedBookId,
+              status: result?.status ?? input.status,
+              rating: result?.rating,
+            });
+          }
+        }
         return result;
       } catch (err) {
         rollback();
         throw err;
       }
     },
-    [user, utils, invalidateAll],
+    [user, utils],
   );
 
   return {

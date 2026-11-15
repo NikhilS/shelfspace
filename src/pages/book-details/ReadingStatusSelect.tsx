@@ -2,7 +2,7 @@ import React, {memo} from 'react';
 import {toast} from 'sonner';
 import {useAuth} from '../../stores/authStore';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
-import {Book, BookDetailsPayload} from './useBook';
+import {Book, BookDetailsPayload, type OptimisticBookPatch} from './useBook';
 import {
   Select,
   SelectContent,
@@ -18,9 +18,7 @@ interface ReadingStatusSelectProps {
   bookBase: Book | null;
   bookDetails: BookDetailsPayload | null;
   canEdit: boolean;
-  updateBookOptimistically: (
-    partialBook: Partial<Book & BookDetailsPayload>,
-  ) => void;
+  updateBookOptimistically: (partialBook: OptimisticBookPatch) => void;
   updateReadingStatus: (
     status: 'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned',
   ) => Promise<void>;

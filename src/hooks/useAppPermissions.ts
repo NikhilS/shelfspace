@@ -85,12 +85,15 @@ export function useAppPermissions() {
       const queryResult = usePermissionsQuery(undefined, {
         enabled: Boolean(isAuthReady && email && !isSuperAdmin),
         initialData: () =>
-          cached?.isAppAllowed
+          cached?.isAppAllowed && user?.uid && email
             ? {
                 isAppAllowed: cached.isAppAllowed,
                 isAdmin: cached.isAdmin,
                 hasAiPlan: Boolean(cached.isAdmin || cached.hasAiPlan),
-                user: null,
+                user: {
+                  uid: user.uid,
+                  email,
+                },
               }
             : undefined,
         staleTime: 1000 * 60 * 5,

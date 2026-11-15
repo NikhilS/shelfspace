@@ -168,7 +168,9 @@
   --color-surface-container-low: var(--color-surface-container-low-base);
   --color-surface-container: var(--color-surface-container-base);
   --color-surface-container-high: var(--color-surface-container-high-base);
-  --color-surface-container-highest: var(--color-surface-container-highest-base);
+  --color-surface-container-highest: var(
+    --color-surface-container-highest-base
+  );
 
   --color-outline: var(--color-outline-base);
   --color-outline-variant: var(--color-outline-variant-base);
@@ -178,9 +180,14 @@
   --color-auth-card: var(--color-auth-card-bg);
 
   /* Warm Archival Multi-stop Ambient Diffusion Shadows */
-  --shadow-elevation-1: 0 1px 3px rgba(28, 25, 23, 0.05), 0 1px 2px rgba(28, 25, 23, 0.03);
-  --shadow-elevation-2: 0 6px 16px -3px rgba(28, 25, 23, 0.07), 0 2px 6px -1px rgba(28, 25, 23, 0.04);
-  --shadow-elevation-3: 0 14px 32px -6px rgba(28, 25, 23, 0.1), 0 4px 12px -2px rgba(28, 25, 23, 0.05);
+  --shadow-elevation-1:
+    0 1px 3px rgba(28, 25, 23, 0.05), 0 1px 2px rgba(28, 25, 23, 0.03);
+  --shadow-elevation-2:
+    0 6px 16px -3px rgba(28, 25, 23, 0.07),
+    0 2px 6px -1px rgba(28, 25, 23, 0.04);
+  --shadow-elevation-3:
+    0 14px 32px -6px rgba(28, 25, 23, 0.1),
+    0 4px 12px -2px rgba(28, 25, 23, 0.05);
 
   /* Legacy Mappings */
   --color-paper: var(--color-background-base);

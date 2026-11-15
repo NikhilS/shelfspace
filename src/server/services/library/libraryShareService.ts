@@ -17,6 +17,7 @@ import {
 } from '../../../schemas/common';
 import {storedLibraryDocSchema} from '../../../schemas/libraryApi';
 import {libraryDocConverter} from './libraryCrudService';
+import {LibraryMetadataCache} from './libraryMetadataCache';
 
 export interface ResolvedLibraryAccess {
   role: LibraryRole;
@@ -143,9 +144,9 @@ export async function resolveLibraryAccess(
       if (libSnap?.exists) {
         virtualData = libraryDocConverter.fromFirestore(
           cleanLibraryId,
-          (libSnap.data() || virtualData) as Record<string, unknown>,
+          libSnap.data() || virtualData,
           userId,
-        ) as unknown as Record<string, unknown>;
+        );
       } else if (typeof libRef?.set === 'function') {
         const virtualSetPayload = {
           ...virtualData,
@@ -190,33 +191,41 @@ export async function resolveLibraryAccess(
     return resolved;
   }
 
-  let libData: Record<string, unknown> | undefined;
-  try {
-    const db = getAdminDb();
-    const libSnap = await db.collection('libraries').doc(cleanLibraryId).get();
+  let libData: Record<string, unknown> | undefined =
+    LibraryMetadataCache.get(cleanLibraryId);
+  if (!libData) {
+    try {
+      const db = getAdminDb();
+      const libSnap = await db
+        .collection('libraries')
+        .doc(cleanLibraryId)
+        .get();
 
-    if (!libSnap.exists) {
+      if (!libSnap.exists) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Library '${cleanLibraryId}' not found`,
+        });
+      }
+
+      const parsedLib = libraryDocConverter.fromFirestore(
+        cleanLibraryId,
+        libSnap.data() || {},
+        userId,
+      );
+      LibraryMetadataCache.set(cleanLibraryId, parsedLib);
+      libData = parsedLib;
+    } catch (err: unknown) {
+      if (err instanceof TRPCError || err instanceof SchemaValidationError) {
+        throw err;
+      }
+      const errMsg = formatFirestoreAdminError(err);
+      console.error('[LibraryService] Error verifying library access:', errMsg);
       throw new TRPCError({
-        code: 'NOT_FOUND',
-        message: `Library '${cleanLibraryId}' not found`,
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Failed to verify library access: ${errMsg}`,
       });
     }
-
-    libData = libraryDocConverter.fromFirestore(
-      cleanLibraryId,
-      (libSnap.data() || {}) as Record<string, unknown>,
-      userId,
-    ) as unknown as Record<string, unknown>;
-  } catch (err: unknown) {
-    if (err instanceof TRPCError || err instanceof SchemaValidationError) {
-      throw err;
-    }
-    const errMsg = formatFirestoreAdminError(err);
-    console.error('[LibraryService] Error verifying library access:', errMsg);
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: `Failed to verify library access: ${errMsg}`,
-    });
   }
 
   let userRole = evaluateRoleFromLibraryData(userId, userEmail, libData);
@@ -305,24 +314,30 @@ export async function getUserRole(
     return {role: 'owner', isOwner: true, canEdit: true};
   }
 
-  let libData: Record<string, unknown> | undefined;
-  try {
-    const db = getAdminDb();
-    const libSnap = await db.collection('libraries').doc(parsedId.data).get();
-    if (!libSnap.exists) {
+  let libData: Record<string, unknown> | undefined = LibraryMetadataCache.get(
+    parsedId.data,
+  );
+  if (!libData) {
+    try {
+      const db = getAdminDb();
+      const libSnap = await db.collection('libraries').doc(parsedId.data).get();
+      if (!libSnap.exists) {
+        return {role: null, isOwner: false, canEdit: false};
+      }
+
+      const parsedLib = libraryDocConverter.fromFirestore(
+        parsedId.data,
+        libSnap.data() || {},
+        userId,
+      );
+      LibraryMetadataCache.set(parsedId.data, parsedLib);
+      libData = parsedLib;
+    } catch (err) {
+      if (err instanceof SchemaValidationError) {
+        throw err;
+      }
       return {role: null, isOwner: false, canEdit: false};
     }
-
-    libData = libraryDocConverter.fromFirestore(
-      parsedId.data,
-      (libSnap.data() || {}) as Record<string, unknown>,
-      userId,
-    ) as unknown as Record<string, unknown>;
-  } catch (err) {
-    if (err instanceof SchemaValidationError) {
-      throw err;
-    }
-    return {role: null, isOwner: false, canEdit: false};
   }
 
   let role = evaluateRoleFromLibraryData(userId, userEmail, libData);
@@ -395,12 +410,11 @@ export async function upsertCollaborator(
       }
       const data = libraryDocConverter.fromFirestore(
         cleanLibraryId,
-        (snap.data() || {}) as Record<string, unknown>,
+        snap.data() || {},
         userId,
       );
       libraryName = data.name || 'Shared Library';
-      const rawAccess =
-        (data.access as Record<string, LibraryRole> | undefined) || {};
+      const rawAccess = data.access || {};
 
       const nextAccess: Record<string, LibraryRole> = {};
       for (const [k, v] of Object.entries(rawAccess)) {
@@ -466,6 +480,7 @@ export async function upsertCollaborator(
         },
       );
     }
+    LibraryMetadataCache.invalidate(cleanLibraryId);
   } catch (err: unknown) {
     if (err instanceof TRPCError || err instanceof SchemaValidationError) {
       throw err;
@@ -550,11 +565,10 @@ export async function removeCollaborator(
       }
       const data = libraryDocConverter.fromFirestore(
         cleanLibraryId,
-        (snap.data() || {}) as Record<string, unknown>,
+        snap.data() || {},
         userId,
       );
-      const rawAccess =
-        (data.access as Record<string, LibraryRole> | undefined) || {};
+      const rawAccess = data.access || {};
 
       const nextAccess: Record<string, LibraryRole> = {};
       for (const [k, v] of Object.entries(rawAccess)) {
@@ -620,6 +634,7 @@ export async function removeCollaborator(
         },
       );
     }
+    LibraryMetadataCache.invalidate(cleanLibraryId);
 
     return {
       success: true,
@@ -672,7 +687,7 @@ export async function getCollaboratorStatuses(
         message: `Library '${cleanLibraryId}' not found`,
       });
     }
-    rawData = (snap.data() || {}) as Record<string, unknown>;
+    rawData = snap.data() || {};
   }
 
   const storedLib = libraryDocConverter.fromFirestore(
@@ -680,8 +695,7 @@ export async function getCollaboratorStatuses(
     rawData,
     userId,
   );
-  const accessMap =
-    (storedLib.access as Record<string, LibraryRole> | undefined) || {};
+  const accessMap = storedLib.access || {};
   const entries = Object.entries(accessMap);
 
   const nonOwnerEmails = entries
@@ -701,11 +715,13 @@ export async function getCollaboratorStatuses(
     const email = rawEmail.trim().toLowerCase();
     const isAppAllowed =
       role === 'owner' || Boolean(permsMap.get(email)?.isAppAllowed);
+    const allowlistStatus: 'approved' | 'pending_approval' = isAppAllowed
+      ? 'approved'
+      : 'pending_approval';
     return {
       email,
       role,
-      allowlistStatus: (isAppAllowed ? 'approved' : 'pending_approval') as
-        'approved' | 'pending_approval',
+      allowlistStatus,
     };
   });
 

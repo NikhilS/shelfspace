@@ -126,19 +126,29 @@ describe('gemini service unit suite', () => {
     expect(progressCalls).toHaveLength(2);
   });
 
-  it('sanitizes taxonomy genres in classifyBooks and populates default endYear in extractBookTemporalMetadataBatch', async () => {
-    vi.spyOn(
-      clientMod.geminiStructuredProvider,
-      'generateContent',
-    ).mockResolvedValueOnce({
-      text: JSON.stringify([
-        {
-          id: 'b1',
-          primaryGenre: 'Science Fiction',
-          subgenres: ['Cyberpunk', 'NonExistentSubgenre'],
+  it('sanitizes taxonomy genres in classifyBooks and resolves decade spans in extractBookTemporalMetadataBatch via Decisions', async () => {
+    vi.spyOn(clientMod.geminiDecisionProvider, 'decide').mockResolvedValueOnce({
+      b0_primary: {
+        type: 'choice',
+        choice: 'Science Fiction',
+        confidence: 0.94,
+        probabilities: {'Science Fiction': 0.94, Fantasy: 0.06},
+      },
+      b0_has_sub: {
+        type: 'noul',
+        noul: 0.92,
+      },
+      b0_sub: {
+        type: 'choice',
+        choice: 'Cyberpunk',
+        confidence: 0.91,
+        probabilities: {
+          Cyberpunk: 0.91,
+          // Belongs to Fantasy, must be filtered out for Science Fiction
+          'Epic Fantasy': 0.45,
         },
-      ]),
-    } as never);
+      },
+    });
 
     const classified = await classifyBooks([
       {id: 'b1', title: 'Neuromancer', author: 'William Gibson'},
@@ -152,62 +162,74 @@ describe('gemini service unit suite', () => {
       },
     ]);
 
-    vi.spyOn(
-      clientMod.geminiStructuredProvider,
-      'generateContent',
-    ).mockResolvedValueOnce({
-      text: JSON.stringify({
-        enrichment: [
-          {
-            id: 'b1',
-            isNonHistorical: false,
-            startYear: 1922,
-            eraName: 'Jazz Age',
-          },
-        ],
-      }),
-    } as never);
+    vi.spyOn(clientMod.geminiDecisionProvider, 'decide').mockResolvedValueOnce({
+      b0_non_hist: {
+        type: 'noul',
+        noul: 0.04,
+      },
+      b0_era: {
+        type: 'choice',
+        choice: 'jazz_age_roaring_twenties',
+        confidence: 0.95,
+        probabilities: {jazz_age_roaring_twenties: 0.95},
+      },
+      b0_start: {
+        type: 'choice',
+        choice: 'decade_1920s',
+        confidence: 0.93,
+        probabilities: {decade_1920s: 0.93},
+      },
+      b0_end: {
+        type: 'choice',
+        choice: 'decade_1920s',
+        confidence: 0.93,
+        probabilities: {decade_1920s: 0.93},
+      },
+    });
 
     const temporal = await extractBookTemporalMetadataBatch([
       {id: 'b1', title: 'The Great Gatsby', author: 'F. Scott Fitzgerald'},
     ]);
-    expect(temporal?.enrichment[0].endYear).toBe(1922);
+    expect(temporal?.enrichment[0]).toMatchObject({
+      id: 'b1',
+      isNonHistorical: false,
+      startYear: 1920,
+      endYear: 1929,
+      eraName: 'Jazz Age & Roaring Twenties',
+    });
   });
 
-  it('extracts geo metadata, series batch, and pick of the day', async () => {
-    vi.spyOn(
-      clientMod.geminiStructuredProvider,
-      'generateContent',
-    ).mockResolvedValueOnce({
-      text: JSON.stringify({
-        enrichment: [
-          {
-            id: 'b1',
-            isNonEarth: false,
-            locations: [
-              {
-                name: 'Dublin, Ireland',
-                adminLevel: 'city',
-                rationale: 'Setting of Ulysses',
-              },
-            ],
-          },
-        ],
-      }),
-    } as never);
+  it('extracts geo metadata, series batch with standalone gate, and pick of the day', async () => {
+    vi.spyOn(clientMod.geminiDecisionProvider, 'decide').mockResolvedValueOnce({
+      b0_non_earth: {type: 'noul', noul: 0.02},
+      b0_z_western_northern_europe_active: {type: 'noul', noul: 0.98},
+      b0_z_western_northern_europe_place: {
+        type: 'choice',
+        choice: 'city_dublin',
+        confidence: 0.97,
+        probabilities: {city_dublin: 0.97},
+      },
+    });
 
     const geo = await extractBookGeoMetadataBatch([
       {id: 'b1', title: 'Ulysses', author: 'James Joyce'},
     ]);
     expect(geo?.enrichment[0].locations[0].name).toBe('Dublin, Ireland');
+    expect(geo?.enrichment[0].locations[0].coordinates).toEqual({
+      lat: 53.3498,
+      lng: -6.2603,
+    });
 
+    vi.spyOn(clientMod.geminiDecisionProvider, 'decide').mockResolvedValueOnce({
+      b0_is_series: {type: 'noul', noul: 0.96},
+      b1_is_series: {type: 'noul', noul: 0.05},
+    });
     vi.spyOn(
       clientMod.geminiStructuredProvider,
       'generateContent',
     ).mockResolvedValueOnce({
       text: JSON.stringify([
         {id: 'b1', isPartOfSeries: true, series: 'Dune Chronicles #1'},
-        {id: 'b2', isPartOfSeries: false, series: ''},
       ]),
     } as never);
 
@@ -303,6 +325,22 @@ describe('gemini service unit suite', () => {
       },
     ]);
 
+    vi.spyOn(clientMod.geminiDecisionProvider, 'decide').mockResolvedValueOnce({
+      has_books: {type: 'noul', noul: 0.96, confidence: 0.96},
+      legibility: {
+        type: 'score',
+        score: 2.8,
+        probabilities: {'0': 0.01, '1': 0.04, '2': 0.1, '3': 0.85},
+        legend: {},
+        confidence: 0.85,
+      },
+      primary_issue: {
+        type: 'choice',
+        choice: 'none',
+        confidence: 0.94,
+        probabilities: {none: 0.94},
+      },
+    });
     vi.spyOn(
       clientMod.geminiStructuredProvider,
       'generateContent',

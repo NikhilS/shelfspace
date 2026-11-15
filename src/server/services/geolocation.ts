@@ -200,7 +200,7 @@ export async function getCachedGeocode(
       if (docSnap.exists) {
         const parsed = geolocationCacheConverter.fromFirestore(
           slug,
-          (docSnap.data() || {}) as Record<string, unknown>,
+          docSnap.data() || {},
         );
         const coords = {lat: parsed.lat, lng: parsed.lng};
         cache.set(slug, coords);
@@ -258,7 +258,7 @@ export async function warmGeocodeCacheBulk(names: string[]): Promise<void> {
       if (docSnap?.exists) {
         const parsed = geolocationCacheConverter.fromFirestore(
           slug,
-          (docSnap.data() || {}) as Record<string, unknown>,
+          docSnap.data() || {},
         );
         cache.set(slug, {lat: parsed.lat, lng: parsed.lng});
         updatedDisk = true;

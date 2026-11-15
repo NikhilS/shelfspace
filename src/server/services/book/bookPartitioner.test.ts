@@ -10,7 +10,7 @@ import {authRouter} from '../../trpc/routers/auth';
 import {SUPERADMIN_EMAIL} from '../../../constants/auth';
 import type {SecurityContext} from '../../auth/types';
 
-const mockLibGet = vi.fn();
+const mockLibGet = vi.fn<(libId: string) => Promise<unknown>>();
 const mockAllowlistDocGet = vi.fn();
 const mockAllowlistDocSet = vi.fn();
 const mockAllowlistDocDelete = vi.fn();

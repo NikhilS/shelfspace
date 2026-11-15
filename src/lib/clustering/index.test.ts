@@ -14,8 +14,8 @@ import {
   computePaddedConvexHull,
   computeSemanticNeighbors,
   computeCrossClusterBridges,
-  Point2D,
-} from './clustering';
+  type Point2D,
+} from './index';
 
 describe('clustering & constellation geometry engine', () => {
   describe('createSeededRng & euclideanDistance', () => {
@@ -173,7 +173,6 @@ describe('clustering & constellation geometry engine', () => {
         ]).k,
       ).toBe(2);
 
-      // 3 well-separated clusters of 5 points each (15 points total)
       const clusterCenters = [
         [-80, -80],
         [0, 80],
@@ -253,7 +252,6 @@ describe('clustering & constellation geometry engine', () => {
     });
 
     it('unstacks degenerate centroids while preserving continuous manifold proximity within [-range, range]', () => {
-      // Three clusters initially stacked right on top of each other at (0, 0)
       const rawPoints: Point2D[] = [];
       const clusterIds: number[] = [];
       for (let c = 0; c < 3; c++) {
@@ -265,7 +263,6 @@ describe('clustering & constellation geometry engine', () => {
           clusterIds.push(c);
         }
       }
-      // Also include an unclustered (-1) node
       rawPoints.push({x: 0, y: 0});
       clusterIds.push(-1);
 
@@ -282,7 +279,6 @@ describe('clustering & constellation geometry engine', () => {
         expect(Math.abs(pt.y)).toBeLessThanOrEqual(range + 1e-4);
       }
 
-      // Compute centroids of clusters 0, 1, 2 and verify they unstacked cleanly
       const getCentroid = (cid: number): Point2D => {
         const pts = relaxed.filter((_, idx) => clusterIds[idx] === cid);
         return {
@@ -308,12 +304,10 @@ describe('clustering & constellation geometry engine', () => {
       for (let i = 0; i < 12; i++) {
         const cid = i < 6 ? 0 : 1;
         cids.push(cid);
-        // Island layout: cluster 0 tightly around (-60, 0), cluster 1 tightly around (60, 0)
         islandPts.push({
           x: (cid === 0 ? -60 : 60) + (i % 3) * 1.2,
           y: Math.floor(i / 3) * 1.2,
         });
-        // Continuous manifold: stars span smoothly from x = -30 to x = +30
         continuousPts.push({
           x: -30 + i * 5.5,
           y: (i % 2) * 3,
@@ -328,17 +322,17 @@ describe('clustering & constellation geometry engine', () => {
   describe('computeSoftClusterMemberships & computeUnifiedSemanticWeb', () => {
     it('assigns higher secondaryWeight to transitional boundary books than deep core books', () => {
       const points: Point2D[] = [
-        {x: -40, y: 0}, // deep in cluster 0
-        {x: -36, y: 2}, // deep in cluster 0
-        {x: -2, y: 0}, // transitional book right on the border between cluster 0 and 1
-        {x: 36, y: -2}, // deep in cluster 1
-        {x: 40, y: 0}, // deep in cluster 1
+        {x: -40, y: 0},
+        {x: -36, y: 2},
+        {x: -2, y: 0},
+        {x: 36, y: -2},
+        {x: 40, y: 0},
       ];
       const clusterIds = [0, 0, 0, 1, 1];
       const embeddings = [
         [1, 0],
         [0.98, 0.05],
-        [0.72, 0.69], // blended embedding bridging cluster 0 and cluster 1
+        [0.72, 0.69],
         [0.05, 0.98],
         [0, 1],
       ];
@@ -349,7 +343,6 @@ describe('clustering & constellation geometry engine', () => {
         embeddings,
       );
       expect(memberships).toHaveLength(5);
-      // Transitional border book (index 2) has strong secondary affinity to cluster 1
       expect(memberships[2].secondaryClusterId).toBe(1);
       expect(memberships[2].secondaryWeight).toBeGreaterThan(0.25);
       expect(memberships[2].secondaryWeight).toBeGreaterThan(
@@ -387,7 +380,7 @@ describe('clustering & constellation geometry engine', () => {
         {x: 2, y: 0},
         {x: 4, y: 0},
         {x: 6, y: 0},
-        {x: 500, y: 500}, // extreme outlier star
+        {x: 500, y: 500},
       ];
 
       expect(computeClusterMST(pts, [])).toEqual([]);
@@ -395,7 +388,6 @@ describe('clustering & constellation geometry engine', () => {
       expect(computeClusterMST(pts, [0, 1])).toEqual([[0, 1]]);
 
       const edges = computeClusterMST(pts, [0, 1, 2, 3, 4]);
-      // The 3 short edges (length 2) are preserved; the 4th bridge edge (~700 length) exceeds max(38, median * 2.6) and is pruned
       expect(edges).toHaveLength(3);
       for (const [u, v] of edges) {
         expect(u).not.toBe(4);
@@ -423,7 +415,6 @@ describe('clustering & constellation geometry engine', () => {
       );
       expect(capsule).toHaveLength(6);
 
-      // Collinear 3 stars still produce a non-degenerate > 4 vertex hull due to hexagonal support points
       const collinearHull = computePaddedConvexHull(
         [
           {x: 0, y: 0},
@@ -449,14 +440,13 @@ describe('clustering & constellation geometry engine', () => {
       ];
       const embeddings = [
         [1, 0, 0],
-        [0, 1, 0], // orthogonal embedding, though close spatially
-        [0.99, 0.01, 0], // nearly identical embedding to index 0
+        [0, 1, 0],
+        [0.99, 0.01, 0],
       ];
 
       const neighbors = computeSemanticNeighbors(points, embeddings, 2);
       expect(neighbors).toHaveLength(3);
       expect(neighbors[0]).toHaveLength(2);
-      // Point 2 has much higher embedding cosine similarity to Point 0 than Point 1
       expect(neighbors[0][0].index).toBe(2);
       expect(neighbors[0][0].similarity).toBeGreaterThan(
         neighbors[0][1].similarity,
@@ -467,13 +457,13 @@ describe('clustering & constellation geometry engine', () => {
       const clusterIds = [0, 0, 1, 1, 2];
       const neighborIndexLists = [
         [
-          {index: 1, similarity: 0.92}, // same cluster (ignored)
-          {index: 2, similarity: 0.81}, // cross-cluster 0 -> 1
+          {index: 1, similarity: 0.92},
+          {index: 2, similarity: 0.81},
         ],
         [{index: 0, similarity: 0.92}],
         [
-          {index: 0, similarity: 0.81}, // duplicate of 0 -> 2
-          {index: 4, similarity: 0.79}, // cross-cluster 1 -> 2
+          {index: 0, similarity: 0.81},
+          {index: 4, similarity: 0.79},
         ],
         [{index: 2, similarity: 0.88}],
         [{index: 2, similarity: 0.79}],

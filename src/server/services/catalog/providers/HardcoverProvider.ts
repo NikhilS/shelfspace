@@ -8,7 +8,7 @@ import {mapLegacyGenreToTaxonomy} from '../../../../constants/taxonomy';
 import {ProviderQuotaScheduler} from '../../scheduler/providerQuotaScheduler';
 import {
   CatalogQuery,
-  ICatalogSourceProvider,
+  CatalogSourceProvider,
   ProviderBookHit,
   ProviderCapabilities,
   fetchWithProviderTimeout,
@@ -34,7 +34,7 @@ interface HardcoverBookNode {
   cached_tags?: {Genre?: Array<{tag?: string}>};
 }
 
-export class HardcoverProvider implements ICatalogSourceProvider {
+export class HardcoverProvider implements CatalogSourceProvider {
   readonly id = 'hardcover' as const;
   readonly name = 'Hardcover';
   readonly authorityWeight = 90;
@@ -45,6 +45,8 @@ export class HardcoverProvider implements ICatalogSourceProvider {
     synopsis: true,
     series: true,
     genre: true,
+    batchWave: 2,
+    structuredSeries: true,
   };
 
   readonly scheduler = new ProviderQuotaScheduler({

@@ -46,15 +46,18 @@ import {applyNanobananaFlash} from '../../lib/nanobanana';
 import {GenreSelect} from '../../components/book/GenreSelect';
 import {CoverGalleryPicker} from '../../components/book/CoverGalleryPicker';
 
+type OptimisticBookPatch = Partial<
+  Omit<Book, keyof BookDetailsPayload> &
+    Omit<BookDetailsPayload, 'updatedAt'> & {updatedAt?: Book['updatedAt']}
+>;
+
 interface EditBookFormProps {
   libraryId: string;
   book: Book;
   bookBase: Book | null;
   bookDetails: BookDetailsPayload | null;
   updateBook: (cleanForm: Partial<Book & BookDetailsPayload>) => Promise<void>;
-  updateBookOptimistically: (
-    partialBook: Partial<Book & BookDetailsPayload>,
-  ) => void;
+  updateBookOptimistically: (partialBook: OptimisticBookPatch) => void;
   onClose: () => void;
   onDelete?: () => Promise<void>;
 }

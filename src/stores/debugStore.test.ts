@@ -5,7 +5,7 @@ describe('useDebugStore Zustand store unit suite', () => {
   beforeEach(() => {
     useDebugStore.setState({
       isDebugMode: false,
-      profilingLevel: 'normal',
+      profilingLevel: 'basic',
       logs: [],
       debugData: null,
       debugTitle: 'Debug Data',
@@ -18,8 +18,8 @@ describe('useDebugStore Zustand store unit suite', () => {
     useDebugStore.getState().toggleDebugMode();
     expect(useDebugStore.getState().isDebugMode).toBe(true);
 
-    useDebugStore.getState().setProfilingLevel('verbose');
-    expect(useDebugStore.getState().profilingLevel).toBe('verbose');
+    useDebugStore.getState().setProfilingLevel('high_fidelity');
+    expect(useDebugStore.getState().profilingLevel).toBe('high_fidelity');
 
     useDebugStore.getState().setDebugData({count: 5}, 'Custom Inspector');
     expect(useDebugStore.getState().debugData).toEqual({count: 5});

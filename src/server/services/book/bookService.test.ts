@@ -51,54 +51,52 @@ const mockDetailDoc = {
   get: mockDetailGet,
 };
 
-const mockDoc: (docId?: string) => Record<string, unknown> = vi.fn(
-  (docId?: string) => {
-    const effectiveId = docId || 'generated-id-123';
-    return {
-      id: effectiveId,
-      get: mockBookGet,
-      set: mockReadingStateDocSet,
-      collection: vi.fn((sub: string) => {
-        if (sub === 'books') {
-          const queryObj = {
-            doc: vi.fn((id?: string): unknown =>
-              id === 'book-1' ? mockBookDoc : mockDoc(id),
-            ),
-            where: mockWhere,
-            orderBy: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            get: mockBooksQueryGet,
-          };
-          return queryObj;
-        }
-        if (sub === 'bookDetails') {
-          return {
-            doc: vi.fn((id?: string) =>
-              id === 'book-1' ? mockDetailDoc : mockDoc(id),
-            ),
-          };
-        }
-        if (sub === 'reviews') {
-          return {
-            get: mockReviewsGet,
-            doc: vi.fn((id?: string) => ({id: id || 'rev-1'})),
-          };
-        }
-        if (sub === 'readingStates') {
-          return {
-            get: mockReadingStatesQueryGet,
-            doc: vi.fn((stateKey?: string) => ({
-              id: stateKey || 'bookid:book-1',
-              get: mockReadingStateDocGet,
-              set: mockReadingStateDocSet,
-            })),
-          };
-        }
-        return {doc: mockDoc};
-      }),
-    };
-  },
-);
+const mockDoc = vi.fn((docId?: string): Record<string, unknown> => {
+  const effectiveId = docId || 'generated-id-123';
+  return {
+    id: effectiveId,
+    get: mockBookGet,
+    set: mockReadingStateDocSet,
+    collection: vi.fn((sub: string) => {
+      if (sub === 'books') {
+        const queryObj = {
+          doc: vi.fn((id?: string): unknown =>
+            id === 'book-1' ? mockBookDoc : mockDoc(id),
+          ),
+          where: mockWhere,
+          orderBy: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          get: mockBooksQueryGet,
+        };
+        return queryObj;
+      }
+      if (sub === 'bookDetails') {
+        return {
+          doc: vi.fn((id?: string) =>
+            id === 'book-1' ? mockDetailDoc : mockDoc(id),
+          ),
+        };
+      }
+      if (sub === 'reviews') {
+        return {
+          get: mockReviewsGet,
+          doc: vi.fn((id?: string) => ({id: id || 'rev-1'})),
+        };
+      }
+      if (sub === 'readingStates') {
+        return {
+          get: mockReadingStatesQueryGet,
+          doc: vi.fn((stateKey?: string) => ({
+            id: stateKey || 'bookid:book-1',
+            get: mockReadingStateDocGet,
+            set: mockReadingStateDocSet,
+          })),
+        };
+      }
+      return {doc: mockDoc};
+    }),
+  };
+});
 
 const mockCollection = vi.fn(() => ({
   doc: mockDoc,
@@ -164,7 +162,11 @@ describe('BookService - Unified Write Layer', () => {
           author: 'Frank Herbert',
           cleanIsbn: '9780441172719',
           dedupeKey: 'dune::frank herbert',
-          searchTokens: expect.arrayContaining(['dune', 'frank', 'herbert']),
+          searchTokens: expect.arrayContaining([
+            'dune',
+            'frank',
+            'herbert',
+          ]) as unknown,
           bookDetailsMetadata: {
             hasSynopsis: true,
             hasAuthorBio: true,
@@ -396,7 +398,7 @@ describe('BookService - Unified Write Layer', () => {
             cleanIsbn: '9780553575637',
             series: 'Liveship Traders',
             synopsis: 'First book of the Liveship Traders trilogy.',
-          }),
+          }) as unknown,
         }),
         {merge: true},
       );
@@ -661,7 +663,11 @@ describe('BookService - Unified Write Layer', () => {
         expect.objectContaining({
           title: 'Dune (Definitive Edition)',
           dedupeKey: 'dune::frank herbert',
-          searchTokens: expect.arrayContaining(['dune', 'frank', 'herbert']),
+          searchTokens: expect.arrayContaining([
+            'dune',
+            'frank',
+            'herbert',
+          ]) as unknown,
         }),
         {merge: true},
       );
@@ -701,7 +707,7 @@ describe('BookService - Unified Write Layer', () => {
             'guin',
             'hainish',
             'cycle',
-          ]),
+          ]) as unknown,
         }),
       );
     });
@@ -839,7 +845,7 @@ describe('BookService - Unified Write Layer', () => {
           bookSnapshot: expect.objectContaining({
             title: "Assassin's Apprentice",
             author: 'Robin Hobb',
-          }),
+          }) as unknown,
         }),
         {merge: true},
       );
@@ -894,7 +900,7 @@ describe('BookService - Unified Write Layer', () => {
             title: 'Royal Assassin',
             author: 'Robin Hobb',
             cleanIsbn: '9780553573404',
-          }),
+          }) as unknown,
         }),
         {merge: true},
       );

@@ -25,15 +25,15 @@ describe('duplicateDetection.worker message protocol', () => {
         title: 'The Left Hand of Darkness',
         author: 'Ursula K. Le Guin',
         isbn: '9780441478125',
-        createdAt: 1000,
-      } as Book,
+        addedAt: 1000,
+      },
       {
         id: '2',
         title: 'The Left Hand of Darkness',
         author: 'Ursula K. Le Guin',
         isbn: '9780441478125',
-        createdAt: 2000,
-      } as Book,
+        addedAt: 2000,
+      },
     ];
 
     const handler = (
@@ -41,7 +41,9 @@ describe('duplicateDetection.worker message protocol', () => {
         onmessage: (e: MessageEvent<DuplicateWorkerRequest>) => void;
       }
     ).onmessage;
-    handler({data: {books}} as MessageEvent<DuplicateWorkerRequest>);
+    handler({
+      data: {books},
+    } as unknown as MessageEvent<DuplicateWorkerRequest>);
 
     expect(postMessageMock).toHaveBeenCalledTimes(1);
     const response = postMessageMock.mock
@@ -60,7 +62,7 @@ describe('duplicateDetection.worker message protocol', () => {
     // Pass malformed non-iterable books array to trigger catch block
     handler({
       data: {books: {} as unknown as Book[]},
-    } as MessageEvent<DuplicateWorkerRequest>);
+    } as unknown as MessageEvent<DuplicateWorkerRequest>);
 
     expect(postMessageMock).toHaveBeenCalledTimes(1);
     const response = postMessageMock.mock

@@ -8,7 +8,7 @@ import {mapLegacyGenreToTaxonomy} from '../../../../constants/taxonomy';
 import {ProviderQuotaScheduler} from '../../scheduler/providerQuotaScheduler';
 import {
   CatalogQuery,
-  ICatalogSourceProvider,
+  CatalogSourceProvider,
   ProviderBookHit,
   ProviderCapabilities,
   fetchWithProviderTimeout,
@@ -28,7 +28,7 @@ interface PrhTitleRecord {
   subjectcategorydescription1?: string;
 }
 
-export class PenguinRandomHouseProvider implements ICatalogSourceProvider {
+export class PenguinRandomHouseProvider implements CatalogSourceProvider {
   readonly id = 'penguin-random-house' as const;
   readonly name = 'Penguin Random House';
   readonly authorityWeight = 92;
@@ -39,6 +39,7 @@ export class PenguinRandomHouseProvider implements ICatalogSourceProvider {
     synopsis: true,
     series: true,
     genre: true,
+    batchWave: 1,
   };
 
   readonly scheduler = new ProviderQuotaScheduler({
@@ -135,7 +136,7 @@ export class PenguinRandomHouseProvider implements ICatalogSourceProvider {
             data?: {titles?: PrhTitleRecord[]};
             titleweb?: string;
           };
-          const record = data?.data?.titles?.[0] || (data as PrhTitleRecord);
+          const record = data?.data?.titles?.[0] || data;
           if (record && record.titleweb) {
             return this.mapPrhRecordToHit(record, cleanIsbn);
           }

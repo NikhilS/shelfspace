@@ -4,6 +4,7 @@ import {toTitleCase} from '../../lib/utils';
 import {Button} from '@/components/ui/button';
 import {BookLoader} from './BookLoader';
 import {MonographCoverFallback} from './MonographCoverFallback';
+import {SharedCoverFrame} from './SharedCoverFrame';
 import {ExLibrisStampIllustration} from '@/components/ui/empty-state-illustrations';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
@@ -99,16 +100,19 @@ export function CuratorPickCard({
         </div>
       ) : pickOfTheDay ? (
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 w-full z-10 relative items-center sm:items-start pt-6 sm:pt-0">
-          <div
+          <SharedCoverFrame
+            surface="curator-pick"
+            libraryId={onOpenBook ? pickOfTheDay.libraryId : undefined}
+            bookId={onOpenBook ? pickOfTheDay.bookId : undefined}
             onClick={onOpenBook ? () => onOpenBook(pickOfTheDay) : undefined}
-            className={`w-20 sm:w-24 mx-auto sm:mx-0 flex-shrink-0 mt-1 ${
+            className={`w-20 sm:w-24 mx-auto sm:mx-0 flex-shrink-0 mt-1 aspect-[2/3] rounded-lg overflow-hidden book-cover-shadow border border-outline-variant/50 relative ${
               onOpenBook ? 'cursor-pointer' : ''
             }`}
           >
             {pickOfTheDay.coverUrl && !coverError ? (
               <img
                 alt="Book Cover"
-                className="w-full h-auto object-cover rounded-lg book-cover-shadow border border-outline-variant/50 aspect-[2/3]"
+                className="w-full h-full object-cover"
                 src={pickOfTheDay.coverUrl}
                 onError={() => setCoverError(true)}
                 referrerPolicy="no-referrer"
@@ -119,10 +123,10 @@ export function CuratorPickCard({
                 title={pickOfTheDay.title}
                 author={pickOfTheDay.author}
                 variant="compact"
-                className="w-full aspect-[2/3] rounded-lg"
+                className="w-full h-full"
               />
             )}
-          </div>
+          </SharedCoverFrame>
           <div className="flex flex-col justify-center flex-1 min-w-0 text-center sm:text-left break-words">
             <span className="metadata-eyebrow flex items-center justify-center sm:justify-start gap-1.5 mb-1">
               <span

@@ -27,8 +27,8 @@ describe('EnrichmentJobCoordinatorService', () => {
           });
         }
         return {
-          status: 'ok',
-          enrichmentType: input.enrichmentType,
+          status: 'success',
+          enrichmentType: input.enrichmentType ?? 'coverImage',
           processedCount: input.bookIds.filter(id => id !== 'b3').length,
           results: input.bookIds
             .filter(id => id !== 'b3')
@@ -107,8 +107,8 @@ describe('EnrichmentJobCoordinatorService', () => {
           });
         }
         return {
-          status: 'ok',
-          enrichmentType: input.enrichmentType,
+          status: 'success',
+          enrichmentType: input.enrichmentType ?? 'geo',
           processedCount: input.bookIds.length,
           results: input.bookIds.map(id => ({id})),
         };
@@ -229,5 +229,168 @@ describe('EnrichmentJobCoordinatorService', () => {
     expect(finalSnap?.enrichmentType).toBe('genre');
     expect(finalSnap?.status).toBe('completed');
     expect(finalSnap?.completedBooks).toBe(3);
+  });
+
+  it('runs a multi-tier Horizontal Wave Sieve (Decision -> Catalog -> Generative) and creates downstream batches strictly from escalated residuals', async () => {
+    const escalatedFromWave0 = new Set(
+      Array.from({length: 12}, (_, i) => `s_book_${i + 1}`),
+    );
+    const escalatedFromWave1 = new Set(['s_book_1', 's_book_2', 's_book_3']);
+
+    const triggerSpy = vi
+      .spyOn(EnrichmentService, 'triggerBatchEnrichment')
+      .mockImplementation(async (_uid, _email, input, options) => {
+        const stageIdx = options?.stageIndex ?? 0;
+
+        if (stageIdx === 0) {
+          const escalatedBooks = input.bookIds
+            .filter(id => escalatedFromWave0.has(id))
+            .map(bookId => ({
+              bookId,
+              state: {enrichedBook: {title: `Title ${bookId}`}},
+            }));
+          for (const id of input.bookIds) {
+            if (escalatedFromWave0.has(id)) {
+              options?.callbacks?.onBookProgress?.({
+                bookId: id,
+                stage: 'evaluating_decisions',
+              });
+            } else {
+              // Pruned standalone book in Wave 0
+              options?.callbacks?.onBookProgress?.({
+                bookId: id,
+                stage: 'skipped',
+              });
+            }
+          }
+          return {
+            status: 'success',
+            enrichmentType: 'series',
+            processedCount: 0,
+            results: [],
+            escalatedBooks,
+            prunedCount: input.bookIds.length - escalatedBooks.length,
+          };
+        }
+
+        if (stageIdx === 1) {
+          const escalatedBooks = input.bookIds
+            .filter(id => escalatedFromWave1.has(id))
+            .map(bookId => ({
+              bookId,
+              state: {bonusCatalog: {publishedDate: '2020'}},
+            }));
+          const resolvedIds = input.bookIds.filter(
+            id => !escalatedFromWave1.has(id),
+          );
+          for (const id of input.bookIds) {
+            if (escalatedFromWave1.has(id)) {
+              options?.callbacks?.onBookProgress?.({
+                bookId: id,
+                stage: 'fetching_catalog',
+              });
+            } else {
+              options?.callbacks?.onBookProgress?.({
+                bookId: id,
+                stage: 'completed',
+                winningProviders: {series: 'open_library'},
+                updatedFields: ['series'],
+              });
+            }
+          }
+          return {
+            status: 'success',
+            enrichmentType: 'series',
+            processedCount: resolvedIds.length,
+            results: resolvedIds.map(id => ({id, series: 'Culture #1'})),
+            escalatedBooks,
+          };
+        }
+
+        for (const id of input.bookIds) {
+          options?.callbacks?.onBookProgress?.({
+            bookId: id,
+            stage: 'completed',
+            winningProviders: {series: 'gemini_generative'},
+            updatedFields: ['series'],
+          });
+        }
+        return {
+          status: 'success',
+          enrichmentType: 'series',
+          processedCount: input.bookIds.length,
+          results: input.bookIds.map(id => ({id, series: 'hainish #1'})),
+          escalatedBooks: [],
+        };
+      });
+
+    const committedWaves: Array<{
+      waveNumber?: number;
+      tier?: string;
+      skippedBooks: number;
+      completedBooks: number;
+    }> = [];
+
+    const completedPromise = new Promise<void>(resolve => {
+      const unsub = enrichmentJobCoordinator.subscribeToLibrary(
+        'lib_sieve',
+        evt => {
+          if (evt.type === 'batch:committed') {
+            committedWaves.push({
+              waveNumber: evt.payload.activeWave?.waveNumber,
+              tier: evt.payload.activeWave?.tier,
+              skippedBooks: evt.payload.skippedBooks,
+              completedBooks: evt.payload.completedBooks,
+            });
+          } else if (evt.type === 'job:completed') {
+            unsub();
+            resolve();
+          }
+        },
+      );
+    });
+
+    const bookIds = Array.from({length: 35}, (_, i) => `s_book_${i + 1}`);
+    await enrichmentJobCoordinator.startJob(
+      'uid_1',
+      'user@example.com',
+      {
+        libraryId: 'lib_sieve',
+        enrichmentType: 'series',
+        bookIds,
+        overwrite: false,
+      },
+      {skipAccessCheck: true},
+    );
+
+    await completedPromise;
+
+    // Wave 0 (decision, batch 30): 30 + 5 = 2 calls
+    // Wave 1 (catalog, batch 10): 12 residuals -> 10 + 2 = 2 calls
+    // Wave 2 (generative, batch 20): 3 residuals -> 3 = 1 call
+    // Total = 5 calls across 3 horizontal waves
+    expect(triggerSpy).toHaveBeenCalledTimes(5);
+    expect(triggerSpy.mock.calls[0][2].bookIds).toHaveLength(30);
+    expect(triggerSpy.mock.calls[0][3]?.stageIndex).toBe(0);
+    expect(triggerSpy.mock.calls[1][2].bookIds).toHaveLength(5);
+    expect(triggerSpy.mock.calls[1][3]?.stageIndex).toBe(0);
+    expect(triggerSpy.mock.calls[2][2].bookIds).toHaveLength(10);
+    expect(triggerSpy.mock.calls[2][3]?.stageIndex).toBe(1);
+    expect(triggerSpy.mock.calls[3][2].bookIds).toHaveLength(2);
+    expect(triggerSpy.mock.calls[3][3]?.stageIndex).toBe(1);
+    expect(triggerSpy.mock.calls[4][2].bookIds).toHaveLength(3);
+    expect(triggerSpy.mock.calls[4][3]?.stageIndex).toBe(2);
+
+    // After Wave 0 finishes (committedWaves[1]), only the 23 pruned standalone books
+    // should be counted as skipped; the 12 escalated books must NOT be marked skipped
+    expect(committedWaves[1]?.waveNumber).toBe(1);
+    expect(committedWaves[1]?.tier).toBe('decision');
+    expect(committedWaves[1]?.skippedBooks).toBe(23);
+
+    const finalSnap = enrichmentJobCoordinator.getJobStatus('lib_sieve');
+    expect(finalSnap?.status).toBe('completed');
+    expect(finalSnap?.completedBooks).toBe(12); // 9 catalog + 3 generative
+    expect(finalSnap?.skippedBooks).toBe(23); // 23 standalone pruned in Wave 0
+    expect(finalSnap?.activeWave).toBeUndefined();
   });
 });

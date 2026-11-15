@@ -72,7 +72,7 @@ vi.mock('../hooks/useLibraryData', () => ({
 describe('WorldMap Component Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    import.meta.env.VITE_GOOGLE_MAPS_API_KEY = 'mock-google-key';
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'mock-google-key');
     mockUseLibraryData.mockReturnValue({
       books: mockBooks,
       isBooksLoading: false,

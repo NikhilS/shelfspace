@@ -41,7 +41,7 @@ describe('RequireLibraryPermission', () => {
     vi.clearAllMocks();
     vi.mocked(useAuth).mockReturnValue({
       user: {uid: 'user-1', email: 'reader@example.com'},
-    } as unknown as ReturnType<typeof useAuth>);
+    });
     vi.mocked(useAppPermissions).mockReturnValue({
       isAppAllowed: true,
       isAdmin: false,
@@ -57,10 +57,10 @@ describe('RequireLibraryPermission', () => {
       role: 'viewer',
       isOwner: false,
       canEdit: false,
+      canDelete: false,
       canView: true,
       loading: false,
       isError: false,
-      refetch: vi.fn(),
     });
 
     render(
@@ -87,10 +87,10 @@ describe('RequireLibraryPermission', () => {
       role: 'owner',
       isOwner: true,
       canEdit: true,
+      canDelete: true,
       canView: true,
       loading: false,
       isError: false,
-      refetch: vi.fn(),
     });
 
     render(
@@ -130,10 +130,10 @@ describe('RequireLibraryPermission', () => {
       role: 'owner',
       isOwner: true,
       canEdit: true,
+      canDelete: true,
       canView: true,
       loading: false,
       isError: false,
-      refetch: vi.fn(),
     });
 
     render(
@@ -160,10 +160,10 @@ describe('RequireLibraryPermission', () => {
       role: 'owner',
       isOwner: true,
       canEdit: true,
+      canDelete: true,
       canView: true,
       loading: false,
       isError: false,
-      refetch: vi.fn(),
     });
 
     render(
@@ -194,10 +194,10 @@ describe('RequireLibraryPermission', () => {
       role: null,
       isOwner: false,
       canEdit: false,
+      canDelete: false,
       canView: false,
       loading: false,
       isError: true,
-      refetch: vi.fn(),
     });
 
     render(

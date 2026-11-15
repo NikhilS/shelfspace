@@ -24,14 +24,16 @@ import {usePickOfTheDay} from '../../hooks/usePickOfTheDay';
 import {useBookRecommendations} from '../../hooks/useBookRecommendations';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {MonographCoverFallback} from './MonographCoverFallback';
+import {SharedCoverFrame} from './SharedCoverFrame';
+import {navigateWithCoverTransition} from '../../lib/bookCoverTransition';
 import {Button} from '@/components/ui/button';
-import type {Book} from '../../types';
-import type {BookRecommendationItem} from '../../schemas/recommendation';
 import type {
+  Book,
   TrackedBookItem,
   TrackedShelfStatus,
   UnreadLibraryBookItem,
-} from '../../server/services/readingTracker';
+} from '../../types';
+import type {BookRecommendationItem} from '../../schemas/recommendation';
 
 export interface ReadingBentoProps {
   /**
@@ -245,6 +247,7 @@ export function ReadingBento({
       }
 
       rawCandidates.push({
+        ...item,
         id: item.id,
         libraryId: resolvedLibId,
         libraryName: ('libraryName' in item && item.libraryName) || 'Library',
@@ -708,21 +711,39 @@ export function ReadingBento({
             <div
               key={`${item.libraryId}-${item.id}`}
               onClick={() =>
-                void navigate(
-                  `/library/${encodeURIComponent(item.libraryId)}/book/${encodeURIComponent(item.id)}`,
-                  {
-                    state: {
-                      from:
-                        isLibraryScoped && libraryId
-                          ? `/library/${libraryId}`
-                          : '/',
-                    },
+                navigateWithCoverTransition({
+                  navigate,
+                  libraryId: item.libraryId,
+                  bookId: item.id,
+                  originSurface: 'want-to-read',
+                  fromRouteKey:
+                    isLibraryScoped && libraryId
+                      ? `/library/${libraryId}`
+                      : '/',
+                  coverPreview: {
+                    title: item.title,
+                    author: item.author,
+                    coverUrl: item.coverUrl,
+                    publishedDate: item.publishedDate,
+                    primaryGenre: item.primaryGenre,
+                    subgenres: item.subgenres,
+                    series: item.series,
+                    synopsis: item.synopsis,
+                    readingStatus: item.readingStatus,
+                    ownershipStatus: item.ownershipStatus,
+                    format: item.format,
+                    isbn: item.isbn,
                   },
-                )
+                })
               }
               className="group flex flex-col p-2.5 rounded-lg bg-surface hover:bg-surface-container-low border border-outline-variant/40 transition-colors cursor-pointer"
             >
-              <div className="relative aspect-[2/3] w-full rounded overflow-hidden bg-surface-container mb-2 border border-outline-variant/40 book-cover-shadow">
+              <SharedCoverFrame
+                surface="want-to-read"
+                libraryId={item.libraryId}
+                bookId={item.id}
+                className="relative aspect-[2/3] w-full rounded overflow-hidden bg-surface-container mb-2 border border-outline-variant/40 book-cover-shadow"
+              >
                 {item.coverUrl && !failedCovers.has(item.id) ? (
                   <img
                     src={item.coverUrl}
@@ -760,7 +781,7 @@ export function ReadingBento({
                   <Play className="w-2.5 h-2.5 fill-current" />
                   <span>Read</span>
                 </button>
-              </div>
+              </SharedCoverFrame>
               <h4 className="font-serif text-xs font-semibold text-on-surface group-hover:text-primary truncate">
                 {toTitleCase(item.title)}
               </h4>
@@ -899,10 +920,21 @@ export function ReadingBento({
                   isAddedToWantToRead={isUnreadPickWantToRead}
                   isAddingToWantToRead={isSavingUnreadPick}
                   onOpenBook={() =>
-                    void navigate(
-                      `/library/${encodeURIComponent(activeUnreadLibraryBook.libraryId)}/book/${encodeURIComponent(activeUnreadLibraryBook.id)}`,
-                      {state: {from: '/'}},
-                    )
+                    navigateWithCoverTransition({
+                      navigate,
+                      libraryId: activeUnreadLibraryBook.libraryId,
+                      bookId: activeUnreadLibraryBook.id,
+                      originSurface: 'curator-pick',
+                      fromRouteKey: '/',
+                      coverPreview: {
+                        title: activeUnreadLibraryBook.title,
+                        author: activeUnreadLibraryBook.author,
+                        coverUrl: activeUnreadLibraryBook.coverUrl,
+                        primaryGenre: activeUnreadLibraryBook.primaryGenre,
+                        synopsis: activeUnreadLibraryBook.synopsis,
+                        readingStatus: activeUnreadLibraryBook.readingStatus,
+                      },
+                    })
                   }
                   className="w-full h-full"
                 />

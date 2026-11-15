@@ -186,12 +186,29 @@ export function CameraScanner({
     if (!file) {
       return;
     }
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please upload a valid image file.');
+    const allowedMimeTypes = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+      'image/heic',
+      'image/heif',
+    ]);
+    if (!allowedMimeTypes.has(file.type)) {
+      toast.error(
+        'Please upload a supported image file (JPEG, PNG, WebP, or HEIC).',
+      );
       return;
     }
+    const mimeType = file.type as
+      | 'image/jpeg'
+      | 'image/jpg'
+      | 'image/png'
+      | 'image/webp'
+      | 'image/heic'
+      | 'image/heif';
     logger.info(
-      `Uploading image: ${file.name} (${Math.round(file.size / 1024)} KB, type: ${file.type})`,
+      `Uploading image: ${file.name} (${Math.round(file.size / 1024)} KB, type: ${mimeType})`,
     );
     setIsExtracting(true);
     stopCamera();
@@ -202,7 +219,7 @@ export function CameraScanner({
         try {
           const books = await extractBooksFromImageMutation.mutateAsync({
             base64Image,
-            mimeType: file.type,
+            mimeType,
           });
           setIsExtracting(false);
           onBooksExtracted(books);

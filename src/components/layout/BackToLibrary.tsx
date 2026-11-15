@@ -5,6 +5,7 @@ import {Button} from '@/components/ui/button';
 
 export interface BackToLibraryProps {
   libraryId?: string;
+  mode?: 'library' | 'reading';
   customTo?: string;
   label?: string;
   className?: string;
@@ -19,13 +20,15 @@ export interface BackToLibraryProps {
  */
 export function BackToLibrary({
   libraryId,
+  mode,
   customTo,
   label,
   className = '',
   onClick,
   'aria-label': ariaLabel,
 }: BackToLibraryProps) {
-  const isVirtual = Boolean(libraryId?.startsWith('virtual_'));
+  const isVirtual =
+    mode === 'reading' || Boolean(libraryId?.startsWith('virtual_'));
   const targetUrl =
     customTo || (libraryId && !isVirtual ? `/library/${libraryId}` : '/');
   const resolvedLabel =

@@ -1,5 +1,8 @@
 export type SchedulePriority = 'INTERACTIVE' | 'BATCH';
 
+export type ExecutionPool =
+  'FAST_DECISION' | 'EXTERNAL_CATALOG' | 'GENERATIVE_AI';
+
 export type ProviderCapacityStatus =
   'READY' | 'DELAYED' | 'EXHAUSTED' | 'COOLDOWN';
 
@@ -11,6 +14,7 @@ export interface QuotaConfig {
   burstCapacity?: number;
   defaultCooldownMs?: number;
   maxRetries?: number;
+  executionPool?: ExecutionPool;
 }
 
 export interface CapacitySnapshot {
@@ -63,11 +67,11 @@ export class ProviderSkippedError extends Error {
   }
 }
 
-export interface IGlobalConcurrencyGovernor {
+export interface GlobalConcurrencyGovernor {
   registerScheduler(scheduler: ProviderQuotaScheduler): void;
-  canAcquireSlot(priority: SchedulePriority): boolean;
-  acquireSlot(priority: SchedulePriority): void;
-  releaseSlot(priority: SchedulePriority): void;
+  canAcquireSlot(priority: SchedulePriority, pool?: ExecutionPool): boolean;
+  acquireSlot(priority: SchedulePriority, pool?: ExecutionPool): void;
+  releaseSlot(priority: SchedulePriority, pool?: ExecutionPool): void;
   recordSkippedProvider(providerId: string): void;
 }
 
@@ -83,12 +87,12 @@ export interface SchedulerTelemetryEvent {
   error?: string;
 }
 
-let attachedGlobalGovernor: IGlobalConcurrencyGovernor | null = null;
+let attachedGlobalGovernor: GlobalConcurrencyGovernor | null = null;
 let attachedTelemetryRecorder:
   ((event: SchedulerTelemetryEvent) => void) | null = null;
 
 export function attachGlobalProviderGovernor(
-  governor: IGlobalConcurrencyGovernor,
+  governor: GlobalConcurrencyGovernor,
 ): void {
   attachedGlobalGovernor = governor;
 }
@@ -107,6 +111,7 @@ export function attachSchedulerTelemetryRecorder(
  */
 export class ProviderQuotaScheduler {
   readonly providerId: string;
+  readonly executionPool: ExecutionPool;
   private readonly maxConcurrent: number;
   private readonly minSpacingMs: number;
   private readonly maxRequestsPerMinute: number;
@@ -129,6 +134,7 @@ export class ProviderQuotaScheduler {
 
   constructor(config: QuotaConfig) {
     this.providerId = config.providerId;
+    this.executionPool = config.executionPool ?? 'EXTERNAL_CATALOG';
     this.maxConcurrent = Math.max(1, config.maxConcurrent);
     this.minSpacingMs = Math.max(0, config.minSpacingMs);
     this.maxRequestsPerMinute = Math.max(1, config.maxRequestsPerMinute);
@@ -302,7 +308,7 @@ export class ProviderQuotaScheduler {
 
     return new Promise<T>((resolve, reject) => {
       const job: QueuedJob<unknown> = {
-        fn: fn as () => Promise<unknown>,
+        fn: fn,
         options: {
           ...rawOptions,
           priority,
@@ -425,7 +431,10 @@ export class ProviderQuotaScheduler {
       // Check global outbound concurrency gate if governor is attached
       if (
         attachedGlobalGovernor &&
-        !attachedGlobalGovernor.canAcquireSlot(candidatePriority)
+        !attachedGlobalGovernor.canAcquireSlot(
+          candidatePriority,
+          this.executionPool,
+        )
       ) {
         this.scheduleDrainTimer(50);
         return;
@@ -441,7 +450,10 @@ export class ProviderQuotaScheduler {
       this.cleanupJobListeners(nextJob);
       this.tokens = Math.max(0, this.tokens - 1);
       this.activeCount++;
-      attachedGlobalGovernor?.acquireSlot(nextJob.options.priority);
+      attachedGlobalGovernor?.acquireSlot(
+        nextJob.options.priority,
+        this.executionPool,
+      );
       this.nextSpacingAvailableAt = Date.now() + this.minSpacingMs;
 
       void this.executeJob(nextJob);
@@ -538,7 +550,10 @@ export class ProviderQuotaScheduler {
       const result = await job.fn();
       const durationMs = Math.max(1, Date.now() - execStart);
       this.activeCount = Math.max(0, this.activeCount - 1);
-      attachedGlobalGovernor?.releaseSlot(job.options.priority);
+      attachedGlobalGovernor?.releaseSlot(
+        job.options.priority,
+        this.executionPool,
+      );
       this.consecutiveRateLimits = 0;
 
       if (attachedTelemetryRecorder) {
@@ -563,7 +578,10 @@ export class ProviderQuotaScheduler {
     } catch (error) {
       const durationMs = Math.max(1, Date.now() - execStart);
       this.activeCount = Math.max(0, this.activeCount - 1);
-      attachedGlobalGovernor?.releaseSlot(job.options.priority);
+      attachedGlobalGovernor?.releaseSlot(
+        job.options.priority,
+        this.executionPool,
+      );
 
       const cooldownMs = this.extractRateLimitCooldownMs(error);
       if (cooldownMs !== null) {

@@ -30,6 +30,9 @@ vi.mock('../readingTracker', () => ({
 
 vi.mock('../gemini/recommendations', () => ({
   generateStructuredTasteRecommendations: vi.fn(),
+  rerankCandidatesWithDecisions: vi.fn(
+    async <T>(candidates: T): Promise<T> => candidates,
+  ),
 }));
 
 const sampleShelfSummary: ReadingShelfSummary = {
@@ -214,8 +217,10 @@ describe('RecommendationService', () => {
             isbn: '9780553283686',
             coverUrl:
               'https://covers.openlibrary.org/b/isbn/9780553283686-L.jpg',
+            publishedDate: '1989',
             primaryGenre: 'Science Fiction',
             synopsis: 'Seven pilgrims travel to the time tombs on Hyperion.',
+            sources: ['Open Library'],
           };
         }
         return null;
@@ -232,15 +237,18 @@ describe('RecommendationService', () => {
                 title: 'The Ladies of Grace Adieu',
                 author: 'Susanna Clarke',
                 isbn: '9781596912519',
+                coverUrl: '',
+                publishedDate: '2006',
                 primaryGenre: 'Fantasy',
                 synopsis: 'Eight fairy stories set in an alternate England.',
+                sources: ['Open Library'],
               },
             ],
-            providersQueried: ['openLibrary'],
-            fromCache: false,
+            skippedProviders: [],
+            respondedProviders: ['Open Library'],
           };
         }
-        return {books: [], providersQueried: [], fromCache: false};
+        return {books: [], skippedProviders: [], respondedProviders: []};
       },
     );
 

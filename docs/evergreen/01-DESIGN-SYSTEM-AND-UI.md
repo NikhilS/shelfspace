@@ -50,6 +50,9 @@ All interactive and structural elements MUST use the centralized primitives in `
    * Consolidates workspace mode tabs (*Overview · All Books · Shelf Care*), live search, filter/sort triggers, and *Grid / Table* view toggles into a coordinated sticky header system respecting the 15% mobile sticky height cap.
 3. **Magazine-Style Book Details Spread (`BookDetailsView` & `BookContent`):**
    * A 12-column asymmetric exhibition layout (4-column sticky edition showcase + `dl` Accession Metadata Ledger on the left; 8-column editorial serif header, drop-cap synopsis, narrative Where/When setting cards, author bio, and reviews on the right).
+4. **Shared-Element Archival Cover Transitions (`SharedCoverFrame` & `BookContent`):**
+   * Opening a book from any shelf surface (Library Grid, Library Table thumbnails, Library Overview Recent Additions, `CurrentlyReadingCard`, `ReadStackCanvasCard`, `SuggestedNextReadsCard`, Want-to-Read strip, Unread Library Pick, or `ReadingShelfCard`) physically lifts the `2:3` cover or `<MonographCoverFallback />` bookplate via a damped Framer Motion FLIP spring (`ARCHIVAL_COVER_SPRING`: `stiffness: 380, damping: 36, mass: 0.85`) while the Accession Ledger and Magazine Literary Spread settle in via a compositor-only `opacity` + `translateY` reveal (`<= 200ms`).
+   * Returning via `BackToLibrary` or browser Back restores the originating route's exact `scrollY` pre-paint and reverses the cover flight to the currently active book—automatically respecting `prefers-reduced-motion`.
 
 ---
 

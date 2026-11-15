@@ -1,33 +1,56 @@
 import {describe, it, expect, vi} from 'vitest';
 import {
   applyOptimisticReadingStatusPatch,
+  buildBookSnapshotHint,
+  commitBookDeleteDelta,
+  commitBookReviewDelta,
+  commitBookUpsertDelta,
+  commitReadingStatusDelta,
   invalidateReadingStatusQueries,
   normalizeReadingStatus,
   recalculateShelfCounts,
   removeBookFromReadingCaches,
   type ReadingStatusCacheUtils,
 } from './readingStatusCache';
-import type {Book} from '../types';
 import type {
+  Book,
+  Library,
   ReadingShelfSummary,
   TrackedBookItem,
   UnreadLibraryBookItem,
-} from '../server/services/readingTracker';
+} from '../types';
 
 function createMockCacheUtils(initialState?: {
   bookGet?: Book;
-  bookList?: {books: Book[]};
+  bookList?: {books: Book[]; totalCount?: number};
+  reviews?: {
+    reviews: Array<{
+      id: string;
+      userId: string;
+      userName: string;
+      rating: number;
+      text: string;
+      createdAt: string;
+    }>;
+  };
   shelfAll?: ReadingShelfSummary;
   unread?: UnreadLibraryBookItem[];
   libraryName?: string;
+  libraryBookCount?: number;
 }) {
   const store = {
     bookGet: initialState?.bookGet,
     bookList: initialState?.bookList,
+    reviews: initialState?.reviews,
     shelfAll: initialState?.shelfAll,
     unread: initialState?.unread,
     libraryGet: initialState?.libraryName
-      ? {id: 'lib-1', name: initialState.libraryName}
+      ? ({
+          id: 'lib-1',
+          name: initialState.libraryName,
+          ownerId: 'u-1',
+          bookCount: initialState.libraryBookCount ?? 1,
+        } as Library)
       : undefined,
   };
 
@@ -47,7 +70,8 @@ function createMockCacheUtils(initialState?: {
         setData: (_input, updater) => {
           store.bookGet =
             typeof updater === 'function'
-              ? (updater(store.bookGet) as Book | undefined)
+              ? ((updater as (old: unknown) => unknown)(store.bookGet) as
+                  Book | undefined)
               : (updater as Book | undefined);
         },
         invalidate: invalidations.bookGet,
@@ -57,10 +81,21 @@ function createMockCacheUtils(initialState?: {
         setData: (_input, updater) => {
           store.bookList =
             typeof updater === 'function'
-              ? (updater(store.bookList) as {books: Book[]} | undefined)
-              : (updater as {books: Book[]} | undefined);
+              ? ((updater as (old: unknown) => unknown)(store.bookList) as
+                  {books: Book[]; totalCount?: number} | undefined)
+              : (updater as {books: Book[]; totalCount?: number} | undefined);
         },
         invalidate: invalidations.bookList,
+      },
+      listReviews: {
+        getData: () => store.reviews,
+        setData: (_input, updater) => {
+          store.reviews =
+            typeof updater === 'function'
+              ? ((updater as (old: unknown) => unknown)(store.reviews) as
+                  typeof store.reviews | undefined)
+              : (updater as typeof store.reviews | undefined);
+        },
       },
     },
     readingTracker: {
@@ -69,7 +104,8 @@ function createMockCacheUtils(initialState?: {
         setData: (_input, updater) => {
           store.shelfAll =
             typeof updater === 'function'
-              ? (updater(store.shelfAll) as ReadingShelfSummary | undefined)
+              ? ((updater as (old: unknown) => unknown)(store.shelfAll) as
+                  ReadingShelfSummary | undefined)
               : (updater as ReadingShelfSummary | undefined);
         },
         invalidate: invalidations.shelf,
@@ -79,7 +115,8 @@ function createMockCacheUtils(initialState?: {
         setData: (_input, updater) => {
           store.unread =
             typeof updater === 'function'
-              ? (updater(store.unread) as UnreadLibraryBookItem[] | undefined)
+              ? ((updater as (old: unknown) => unknown)(store.unread) as
+                  UnreadLibraryBookItem[] | undefined)
               : (updater as UnreadLibraryBookItem[] | undefined);
         },
         invalidate: invalidations.unread,
@@ -88,10 +125,18 @@ function createMockCacheUtils(initialState?: {
     library: {
       get: {
         getData: () => store.libraryGet,
+        setData: (_input, updater) => {
+          store.libraryGet =
+            typeof updater === 'function'
+              ? ((updater as (old: unknown) => unknown)(store.libraryGet) as
+                  Library | undefined)
+              : (updater as Library | undefined);
+        },
         invalidate: invalidations.libraryGet,
       },
       list: {
         getData: () => (store.libraryGet ? [store.libraryGet] : []),
+        setData: () => {},
         invalidate: invalidations.libraryList,
       },
     },
@@ -111,12 +156,40 @@ describe('readingStatusCache', () => {
     expect(normalizeReadingStatus(undefined)).toBe('unset');
   });
 
+  it('builds strict-schema-validated bookSnapshot hints for 0-read server status writes', () => {
+    const snapshot = buildBookSnapshotHint(
+      {
+        id: 'book-42',
+        title: 'Piranesi',
+        author: 'Susanna Clarke',
+        isbn: '978-1-63557-563-7',
+        coverUrl: 'https://covers.openlibrary.org/b/id/123-L.jpg',
+        format: 'physical',
+      },
+      {libraryId: 'lib-1', libraryName: 'Home Study'},
+    );
+
+    expect(snapshot).toEqual({
+      title: 'Piranesi',
+      author: 'Susanna Clarke',
+      isbn: '978-1-63557-563-7',
+      cleanIsbn: '9781635575637',
+      coverUrl: 'https://covers.openlibrary.org/b/id/123-L.jpg',
+      format: 'physical',
+      libraryId: 'lib-1',
+      libraryName: 'Home Study',
+      bookId: 'book-42',
+    });
+  });
+
   it('inserts an untracked library book into readingTracker.getShelf immediately when marked as reading', () => {
     const sampleBook: Book = {
       id: 'book-1',
       libraryId: 'lib-1',
       title: 'Piranesi',
       author: 'Susanna Clarke',
+      format: 'physical',
+      addedAt: '2026-01-01T00:00:00.000Z',
       readingStatus: 'unset',
       coverUrl: 'https://example.com/piranesi.jpg',
     };
@@ -151,11 +224,8 @@ describe('readingStatusCache', () => {
       status: 'reading',
     });
 
-    // 1. book.get updated immediately
     expect(store.bookGet?.readingStatus).toBe('reading');
-    // 2. book.list updated immediately
     expect(store.bookList?.books[0]?.readingStatus).toBe('reading');
-    // 3. readingTracker.getShelf has the newly tracked book with updated counts
     expect(store.shelfAll?.items).toHaveLength(1);
     expect(store.shelfAll?.items[0]?.id).toBe('book-1');
     expect(store.shelfAll?.items[0]?.readingStatus).toBe('reading');
@@ -167,15 +237,101 @@ describe('readingStatusCache', () => {
       finished: 0,
       abandoned: 0,
     });
-    // 4. Removed from unread library books
     expect(store.unread).toHaveLength(0);
 
-    // 5. Rollback restores all four caches on error
     rollback();
     expect(store.bookGet?.readingStatus).toBe('unset');
     expect(store.bookList?.books[0]?.readingStatus).toBe('unset');
     expect(store.shelfAll?.items).toHaveLength(0);
     expect(store.unread).toHaveLength(1);
+  });
+
+  it('commits authoritative status, book upsert, review, and delete deltas with zero invalidations', () => {
+    const {store, utils, invalidations} = createMockCacheUtils({
+      bookList: {books: [], totalCount: 0},
+      reviews: {
+        reviews: [
+          {
+            id: 'temp-1',
+            userId: 'u-1',
+            userName: 'Reader',
+            rating: 5,
+            text: 'Draft',
+            createdAt: '2026-11-15T00:00:00.000Z',
+          },
+        ],
+      },
+      shelfAll: {
+        items: [],
+        counts: {
+          all: 0,
+          want_to_read: 0,
+          reading: 0,
+          finished: 0,
+          abandoned: 0,
+        },
+      },
+      unread: [],
+      libraryName: 'Main Study',
+      libraryBookCount: 0,
+    });
+
+    commitBookUpsertDelta(utils, {
+      libraryId: 'lib-1',
+      book: {
+        id: 'book-10',
+        title: 'Exhalation',
+        author: 'Ted Chiang',
+        readingStatus: 'reading',
+      },
+      libraryName: 'Main Study',
+      bookCountDelta: 1,
+    });
+
+    expect(store.bookList?.books).toHaveLength(1);
+    expect(store.bookList?.totalCount).toBe(1);
+    expect(store.libraryGet?.bookCount).toBe(1);
+    expect(store.shelfAll?.counts.reading).toBe(1);
+
+    commitReadingStatusDelta(utils, {
+      libraryId: 'lib-1',
+      bookId: 'book-10',
+      status: 'finished',
+      finishedAt: '2026-11-15T12:00:00.000Z',
+    });
+    expect(store.shelfAll?.counts.finished).toBe(1);
+    expect(store.shelfAll?.items[0]?.finishedAt).toBe(
+      '2026-11-15T12:00:00.000Z',
+    );
+
+    commitBookReviewDelta(utils, {
+      libraryId: 'lib-1',
+      bookId: 'book-10',
+      review: {
+        id: 'u-1',
+        userId: 'u-1',
+        userName: 'Reader',
+        rating: 5,
+        text: 'Masterpiece.',
+        createdAt: '2026-11-15T12:05:00.000Z',
+      },
+    });
+    expect(store.reviews?.reviews).toHaveLength(1);
+    expect(store.reviews?.reviews[0]?.id).toBe('u-1');
+    expect(store.bookList?.books[0]?.userRating).toBe(5);
+    expect(store.shelfAll?.items[0]?.userRating).toBe(5);
+
+    commitBookDeleteDelta(utils, {
+      libraryId: 'lib-1',
+      bookId: 'book-10',
+    });
+    expect(store.bookList?.books).toHaveLength(0);
+    expect(store.bookList?.totalCount).toBe(0);
+    expect(store.libraryGet?.bookCount).toBe(0);
+    expect(store.shelfAll?.items).toHaveLength(0);
+
+    expect(invalidations.bookList).not.toHaveBeenCalled();
+    expect(invalidations.shelf).not.toHaveBeenCalled();
   });
 
   it('updates an existing shelf book from reading to finished and recalculates counts', () => {
@@ -187,6 +343,8 @@ describe('readingStatusCache', () => {
       ownershipStatus: 'owned',
       title: 'The Left Hand of Darkness',
       author: 'Ursula K. Le Guin',
+      format: 'physical',
+      addedAt: '2026-01-01T00:00:00.000Z',
       readingStatus: 'reading',
     };
 
@@ -219,6 +377,8 @@ describe('readingStatusCache', () => {
       ownershipStatus: 'owned',
       title: 'Invisible Cities',
       author: 'Italo Calvino',
+      format: 'physical',
+      addedAt: '2026-01-01T00:00:00.000Z',
       readingStatus: 'want_to_read',
     };
 
@@ -249,6 +409,8 @@ describe('readingStatusCache', () => {
       ownershipStatus: 'owned',
       title: 'Ficciones',
       author: 'Jorge Luis Borges',
+      format: 'physical',
+      addedAt: '2026-01-01T00:00:00.000Z',
       readingStatus: 'reading',
     };
 

@@ -1,4 +1,5 @@
 import {FieldValue} from 'firebase-admin/firestore';
+import {getAdminDb} from '../firebaseAdmin';
 import {
   SchemaValidationError,
   safeIdSchema,
@@ -175,15 +176,13 @@ export function buildBookSnapshotFromData(
       : {}),
     ...(bookData.geoMetadata && typeof bookData.geoMetadata === 'object'
       ? {
-          geoMetadata:
-            bookData.geoMetadata as UserReadingStateBookSnapshot['geoMetadata'],
+          geoMetadata: bookData.geoMetadata,
         }
       : {}),
     ...(bookData.temporalMetadata &&
     typeof bookData.temporalMetadata === 'object'
       ? {
-          temporalMetadata:
-            bookData.temporalMetadata as UserReadingStateBookSnapshot['temporalMetadata'],
+          temporalMetadata: bookData.temporalMetadata,
         }
       : {}),
     ...(bookData.clusterCoordinates &&
@@ -515,7 +514,7 @@ export async function fetchUserReadingStateForBook(
     }
     return normalizeReadingStateDoc(
       snap.id || stateKey,
-      (snap.data() || {}) as Record<string, unknown>,
+      snap.data() || {},
       userId,
     );
   } catch (err) {
@@ -545,7 +544,7 @@ export async function fetchUserReadingStatesMap(
     for (const doc of snap?.docs || []) {
       const normalized = normalizeReadingStateDoc(
         doc.id,
-        (doc.data() || {}) as Record<string, unknown>,
+        doc.data() || {},
         userId,
       );
       map.set(doc.id, normalized);
@@ -558,6 +557,15 @@ export async function fetchUserReadingStatesMap(
   }
 
   return map;
+}
+
+/**
+ * Convenience wrapper that loads a user's reading states Map from the canonical Admin DB.
+ */
+export async function loadUserReadingStatesMap(
+  userId: string,
+): Promise<Map<string, Partial<UserReadingState>>> {
+  return fetchUserReadingStatesMap(getAdminDb(), userId);
 }
 
 /**

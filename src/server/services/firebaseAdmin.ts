@@ -1,5 +1,5 @@
 /* firebaseAdmin.ts */
-import admin from 'firebase-admin';
+import admin, {type ServiceAccount} from 'firebase-admin';
 import {
   getFirestore,
   FieldValue,
@@ -9,14 +9,37 @@ import {
 import fs from 'fs';
 import path from 'path';
 
-let configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-if (!fs.existsSync(configPath)) {
-  configPath = path.join(process.cwd(), '..', 'firebase-applet-config.json');
+export interface FirebaseAppletConfig {
+  projectId?: string;
+  storageBucket?: string;
+  firestoreDatabaseId?: string;
+  apiKey?: string;
+  authDomain?: string;
+  appId?: string;
+  messagingSenderId?: string;
 }
 
-export const firebaseConfig = fs.existsSync(configPath)
-  ? JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-  : null;
+interface RawServiceAccountJson extends ServiceAccount {
+  project_id?: string;
+}
+
+function loadFirebaseAppletConfig(): FirebaseAppletConfig | null {
+  let configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (!fs.existsSync(configPath)) {
+    configPath = path.join(process.cwd(), '..', 'firebase-applet-config.json');
+  }
+  if (!fs.existsSync(configPath)) {
+    return null;
+  }
+  const parsed: unknown = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    return parsed;
+  }
+  return null;
+}
+
+export const firebaseConfig: FirebaseAppletConfig | null =
+  loadFirebaseAppletConfig();
 
 let adminApp: admin.app.App | null = null;
 let adminDb: Firestore | null = null;
@@ -30,15 +53,22 @@ export function getAdminApp(): admin.app.App {
         process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
       if (rawServiceAccount) {
         try {
-          const serviceAccount = JSON.parse(rawServiceAccount);
-          adminApp = admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            projectId:
-              firebaseConfig?.projectId ||
-              serviceAccount.project_id ||
-              serviceAccount.projectId,
-            storageBucket: firebaseConfig?.storageBucket,
-          });
+          const parsedSa: unknown = JSON.parse(rawServiceAccount);
+          if (
+            parsedSa &&
+            typeof parsedSa === 'object' &&
+            !Array.isArray(parsedSa)
+          ) {
+            const serviceAccount = parsedSa as RawServiceAccountJson;
+            adminApp = admin.initializeApp({
+              credential: admin.credential.cert(serviceAccount),
+              projectId:
+                firebaseConfig?.projectId ||
+                serviceAccount.project_id ||
+                serviceAccount.projectId,
+              storageBucket: firebaseConfig?.storageBucket,
+            });
+          }
         } catch (err) {
           console.error(
             '[firebaseAdmin] Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY JSON:',

@@ -8,7 +8,7 @@ import {mapLegacyGenreToTaxonomy} from '../../../../constants/taxonomy';
 import {ProviderQuotaScheduler} from '../../scheduler/providerQuotaScheduler';
 import {
   CatalogQuery,
-  ICatalogSourceProvider,
+  CatalogSourceProvider,
   ProviderBookHit,
   ProviderCapabilities,
   fetchWithProviderTimeout,
@@ -65,7 +65,7 @@ function extractSeriesFromTitle(rawTitle?: string): {
   return {cleanTitle: rawTitle.trim()};
 }
 
-export class AppleBooksProvider implements ICatalogSourceProvider {
+export class AppleBooksProvider implements CatalogSourceProvider {
   readonly id = 'apple-books' as const;
   readonly name = 'Apple Books';
   readonly authorityWeight = 95;
@@ -76,6 +76,7 @@ export class AppleBooksProvider implements ICatalogSourceProvider {
     synopsis: true,
     series: true,
     genre: true,
+    batchWave: 1,
   };
 
   readonly scheduler = new ProviderQuotaScheduler({

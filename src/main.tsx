@@ -11,10 +11,8 @@ interceptConsoleLogs();
 
 const bootStart =
   typeof window !== 'undefined' &&
-  typeof (window as unknown as {__BOOKISH_BOOT_START__?: number})
-    .__BOOKISH_BOOT_START__ === 'number'
-    ? (window as unknown as {__BOOKISH_BOOT_START__: number})
-        .__BOOKISH_BOOT_START__
+  typeof window.__BOOKISH_BOOT_START__ === 'number'
+    ? window.__BOOKISH_BOOT_START__
     : Date.now();
 
 console.info(
@@ -60,8 +58,7 @@ if (!rootElement) {
   console.error('[boot] Fatal: #root element not found in document!');
 } else {
   if (typeof window !== 'undefined') {
-    (window as unknown as {__BOOKISH_BOOTED__?: boolean}).__BOOKISH_BOOTED__ =
-      true;
+    window.__BOOKISH_BOOTED__ = true;
   }
   createRoot(rootElement).render(
     <StrictMode>

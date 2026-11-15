@@ -2,6 +2,7 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {libraryApiRouter} from './libraryApi';
 import {LibraryService} from '../../services/library';
 import {PermissionService} from '../../auth/permissions';
+import type {SecurityContext} from '../../auth/types';
 import {SUPERADMIN_EMAIL} from '../../../constants/auth';
 
 vi.mock('../../services/library', () => ({
@@ -29,14 +30,16 @@ vi.mock('../../services/enrichmentService', () => ({
 }));
 
 describe('libraryApiRouter', () => {
-  const mockCtx = {
+  const mockCtx: SecurityContext = {
+    req: {} as SecurityContext['req'],
+    res: {} as SecurityContext['res'],
     user: {
       uid: 'user-123',
       email: SUPERADMIN_EMAIL,
     },
     isAppAllowed: true,
     isAdmin: true,
-  } as unknown as Parameters<typeof libraryApiRouter.createCaller>[0];
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,9 +55,7 @@ describe('libraryApiRouter', () => {
       },
     ];
     vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
-      libraries: mockLibraries as unknown as Awaited<
-        ReturnType<typeof LibraryService.getUserLibraries>
-      >['libraries'],
+      libraries: mockLibraries,
     });
 
     const caller = libraryApiRouter.createCaller(mockCtx);
@@ -126,7 +127,7 @@ describe('libraryApiRouter', () => {
       userId: 'user-123',
     });
     vi.mocked(LibraryService.listAllowedDuplicates).mockResolvedValueOnce({
-      groups: [],
+      allowedDuplicateGroups: [],
     });
     vi.mocked(LibraryService.allowDuplicateGroup).mockResolvedValueOnce({
       success: true,

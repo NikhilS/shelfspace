@@ -1,12 +1,62 @@
+import {z} from 'zod';
 import {
-  IMetadataProvider,
-  MetadataBulkFetchOptions,
+  type CoreBookData,
+  type EnrichmentPipelineStage,
+  type MetadataBulkFetchOptions,
   MetadataKey,
-  CoreBookData,
+  type MetadataPersistenceContext,
+  type MetadataPersistencePatch,
+  type MetadataPlugin,
+  type StageBookOutcome,
 } from '../../../../types/metadata';
 import {generateBookEmbeddings} from '../../gemini';
+import {runPluginStagesToRecord} from '../stageRunner';
 
-export class EmbeddingMetadataProvider implements IMetadataProvider<number[]> {
+const embeddingPluginOutputSchema: z.ZodType<number[]> = z.array(z.number());
+
+export class EmbeddingMetadataProvider implements MetadataPlugin<number[]> {
+  readonly statusKey = 'embedding' as const;
+  readonly needsSynopsis = true;
+  readonly supportsHybridAiFallback = false;
+  readonly outputSchema = embeddingPluginOutputSchema;
+
+  readonly stages: ReadonlyArray<EnrichmentPipelineStage<number[]>> = [
+    {
+      id: 'embedding-vector',
+      tier: 'embedding',
+      execute: async ({books, options}) => {
+        const outcomes = new Map<string, StageBookOutcome<number[]>>();
+        if (
+          books.length === 0 ||
+          options?.signal?.aborted ||
+          options?.allowAiFallback === false
+        ) {
+          return outcomes;
+        }
+
+        const texts = books.map(b => this.buildEmbeddingText(b));
+        const embeddings = await generateBookEmbeddings(texts, undefined, {
+          priority: 'BATCH',
+          signal: options?.signal,
+        });
+
+        if (embeddings && Array.isArray(embeddings)) {
+          books.forEach((b, idx) => {
+            if (embeddings[idx] && embeddings[idx].length > 0) {
+              outcomes.set(b.id, {
+                status: 'resolved',
+                value: embeddings[idx],
+                winningProvider: 'gemini_embedding',
+              });
+            }
+          });
+        }
+
+        return outcomes;
+      },
+    },
+  ];
+
   getKey(): MetadataKey {
     return MetadataKey.EMBEDDING;
   }
@@ -42,30 +92,37 @@ export class EmbeddingMetadataProvider implements IMetadataProvider<number[]> {
     books: CoreBookData[],
     options?: MetadataBulkFetchOptions,
   ): Promise<Record<string, number[]>> {
-    const results: Record<string, number[]> = {};
-    if (
-      books.length === 0 ||
-      options?.signal?.aborted ||
-      options?.allowAiFallback === false
-    ) {
-      return results;
-    }
+    return runPluginStagesToRecord(this.stages, books, options);
+  }
 
-    const texts = books.map(b => this.buildEmbeddingText(b));
-    const embeddings = await generateBookEmbeddings(texts, undefined, {
-      priority: 'BATCH',
-      signal: options?.signal,
-    });
-
-    if (embeddings && Array.isArray(embeddings)) {
-      books.forEach((b, idx) => {
-        if (embeddings[idx] && embeddings[idx].length > 0) {
-          results[b.id] = embeddings[idx];
-        }
-      });
-    }
-
-    return results;
+  toPersistencePatch({
+    book,
+    value,
+    existingStatus,
+    existingDetailsMeta,
+    nowIso,
+  }: MetadataPersistenceContext<number[]>): MetadataPersistencePatch {
+    const nextDetailsMeta = {
+      ...existingDetailsMeta,
+      hasEmbedding: true,
+    };
+    return {
+      bookUpdate: {
+        bookDetailsMetadata: nextDetailsMeta,
+        enrichmentStatus: {
+          ...existingStatus,
+          embedding: 'completed',
+        },
+      },
+      detailsUpdate: {
+        embedding: value,
+        updatedAt: nowIso,
+      },
+      resultPreview: {
+        id: book.id,
+        bookDetailsMetadata: nextDetailsMeta,
+      },
+    };
   }
 
   shouldFetchOnCreate(): boolean {
@@ -73,6 +130,6 @@ export class EmbeddingMetadataProvider implements IMetadataProvider<number[]> {
   }
 
   isAvailable(): boolean {
-    return !!process.env.GEMINI_API_KEY;
+    return Boolean(process.env.GEMINI_API_KEY);
   }
 }

@@ -15,6 +15,7 @@ import {
   computeBookSearchTokens,
 } from '../../../lib/duplicateDetection';
 import {catalogOrchestrator} from '../catalog';
+import {geminiDecisionProvider, verifyCoverImageWithDecisions} from '../gemini';
 import {
   bookDocConverter,
   bookDetailsDocConverter,
@@ -347,7 +348,7 @@ export async function resetMetadata(
       const docId = doc.id || (doc.ref as {id?: string})?.id || 'reset_book';
       bookDocConverter.fromFirestoreWithLegacyLeaks(
         docId,
-        (doc.data?.() || {}) as Record<string, unknown>,
+        doc.data?.() || {},
         `/libraries/${libraryId}/books/${docId}`,
       );
       batch.update(doc.ref, deletePayload);
@@ -420,7 +421,7 @@ export async function auditPlaceholderCovers(
   userId: string,
   userEmail: string | undefined,
   libraryId: string,
-  options?: {skipAccessCheck?: boolean},
+  options?: {skipAccessCheck?: boolean; enableVisualAudit?: boolean},
 ): Promise<AuditPlaceholderCoversResult> {
   if (!options?.skipAccessCheck) {
     await LibraryService.verifyLibraryAccess(
@@ -445,16 +446,19 @@ export async function auditPlaceholderCovers(
 
     const candidateBooks: Array<{
       doc: FirebaseFirestore.QueryDocumentSnapshot;
+      title: string;
+      author?: string;
       coverUrl?: string;
       coverUrlRaw?: string;
     }> = [];
     const uniqueUrls = new Set<string>();
+    const urlBookContext = new Map<string, {title: string; author?: string}>();
 
     for (const doc of snapshot.docs) {
       const docId = doc.id || (doc.ref as {id?: string})?.id || 'audit_book';
       const parsedBook = bookDocConverter.fromFirestore(
         docId,
-        (doc.data() || {}) as Record<string, unknown>,
+        doc.data() || {},
         `/libraries/${libraryId}/books/${docId}`,
       );
       const coverUrl = parsedBook.coverUrl?.trim() || undefined;
@@ -463,12 +467,30 @@ export async function auditPlaceholderCovers(
       const hasAuditableCover =
         isAuditableCoverUrl(coverUrl) || isAuditableCoverUrl(coverUrlRaw);
       if (hasAuditableCover) {
-        candidateBooks.push({doc, coverUrl, coverUrlRaw});
+        candidateBooks.push({
+          doc,
+          title: parsedBook.title,
+          author: parsedBook.author,
+          coverUrl,
+          coverUrlRaw,
+        });
         if (isAuditableCoverUrl(coverUrl)) {
           uniqueUrls.add(coverUrl);
+          if (!urlBookContext.has(coverUrl)) {
+            urlBookContext.set(coverUrl, {
+              title: parsedBook.title,
+              author: parsedBook.author,
+            });
+          }
         }
         if (isAuditableCoverUrl(coverUrlRaw)) {
           uniqueUrls.add(coverUrlRaw);
+          if (!urlBookContext.has(coverUrlRaw)) {
+            urlBookContext.set(coverUrlRaw, {
+              title: parsedBook.title,
+              author: parsedBook.author,
+            });
+          }
         }
       }
     }
@@ -495,6 +517,45 @@ export async function auditPlaceholderCovers(
       },
     );
     await Promise.all(workers);
+
+    if (options?.enableVisualAudit && geminiDecisionProvider.isAvailable()) {
+      const passedUrls = urlList
+        .filter(u => urlValidity.get(u) === true)
+        .slice(0, 10);
+      await Promise.all(
+        passedUrls.map(async url => {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 4000);
+            const res = await fetch(url, {signal: controller.signal});
+            clearTimeout(timer);
+            if (!res.ok) {
+              return;
+            }
+            const mimeType =
+              res.headers.get('content-type')?.split(';')[0]?.trim() ||
+              'image/jpeg';
+            const arrayBuf = await res.arrayBuffer();
+            if (arrayBuf.byteLength === 0 || arrayBuf.byteLength > 2_000_000) {
+              return;
+            }
+            const imageBase64 = Buffer.from(arrayBuf).toString('base64');
+            const ctxBook = urlBookContext.get(url) ?? {title: 'Unknown Book'};
+            const verdict = await verifyCoverImageWithDecisions({
+              imageBase64,
+              mimeType,
+              title: ctxBook.title,
+              author: ctxBook.author,
+            });
+            if (!verdict.isValidCover) {
+              urlValidity.set(url, false);
+            }
+          } catch {
+            // Non-fatal visual fetch error; preserve HTTP verification verdict
+          }
+        }),
+      );
+    }
 
     const batchSize = 400;
     let batch = db.batch();

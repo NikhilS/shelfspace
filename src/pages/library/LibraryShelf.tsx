@@ -7,7 +7,8 @@ import {BookCard} from '../../components/book/BookCard';
 import {SortOption} from '../../hooks/useBookFilters';
 import {User} from 'firebase/auth';
 import {Checkbox} from '@/components/ui/checkbox';
-import {preloadRouteChunk} from '../../lib/routePreload';
+import {navigateWithCoverTransition} from '../../lib/bookCoverTransition';
+import {useCoverTransitionStore} from '../../stores/coverTransitionStore';
 import {
   DataTable,
   DataTableColumn,
@@ -53,15 +54,55 @@ export function LibraryShelf({
   const booksById = useMemo(() => new Map(books.map(b => [b.id, b])), [books]);
   const isSelectMode = selectedBooks.size > 0;
 
+  // When returning from BookDetailsView after swiping far away in the deck,
+  // align virtualized lists so the active book's shelf slot is mounted in view.
+  const returnTargetIndex = useCoverTransitionStore(state => {
+    const active = state.activeTransition;
+    if (
+      !active ||
+      active.phase !== 'to-shelf' ||
+      active.libraryId !== libraryId ||
+      (active.originSurface !== 'library-grid' &&
+        active.originSurface !== 'library-table') ||
+      active.bookId === active.initialBookId
+    ) {
+      return undefined;
+    }
+    const targetIdx = bookIds.indexOf(active.bookId);
+    if (targetIdx < 0) {
+      return undefined;
+    }
+    const initialIdx = bookIds.indexOf(active.initialBookId);
+    if (initialIdx >= 0 && Math.abs(targetIdx - initialIdx) <= 4) {
+      return undefined;
+    }
+    return targetIdx;
+  });
+
   const handleNavigateBook = useCallback(
     (bookId: string) => {
-      preloadRouteChunk('bookDetails');
       const targetBook = booksById.get(bookId);
       const targetLibraryId = targetBook?.libraryId || libraryId;
-      void navigate(`/library/${targetLibraryId}/book/${bookId}`, {
-        state: {
-          from: location.pathname + location.search,
-          bookList: bookIds,
+      navigateWithCoverTransition({
+        navigate,
+        libraryId: targetLibraryId,
+        bookId,
+        originSurface: viewMode === 'table' ? 'library-table' : 'library-grid',
+        fromRouteKey: location.pathname + location.search,
+        bookList: bookIds,
+        coverPreview: {
+          title: targetBook?.title || 'Untitled',
+          author: targetBook?.author || 'Unknown Author',
+          coverUrl: targetBook?.coverUrl,
+          publishedDate: targetBook?.publishedDate,
+          primaryGenre: targetBook?.primaryGenre,
+          subgenres: targetBook?.subgenres,
+          series: targetBook?.series,
+          synopsis: targetBook?.synopsis,
+          readingStatus: targetBook?.readingStatus,
+          ownershipStatus: targetBook?.ownershipStatus,
+          format: targetBook?.format,
+          isbn: targetBook?.isbn,
         },
       });
     },
@@ -69,6 +110,7 @@ export function LibraryShelf({
       navigate,
       booksById,
       libraryId,
+      viewMode,
       location.pathname,
       location.search,
       bookIds,
@@ -126,6 +168,11 @@ export function LibraryShelf({
             isSelected={selectedBooks.has(book.id)}
             showCheckbox={Boolean(canEdit && user)}
             onToggleSelect={e => toggleBookSelection(e, book.id)}
+            coverTransition={{
+              surface: 'library-table',
+              libraryId: book.libraryId || libraryId,
+              bookId: book.id,
+            }}
           />
         ),
       },
@@ -161,6 +208,7 @@ export function LibraryShelf({
       selectedBooks,
       isSelectMode,
       shelfSelectAllState,
+      libraryId,
       toggleAllBooks,
       toggleBookSelection,
     ],
@@ -178,6 +226,7 @@ export function LibraryShelf({
             sortDirection={sortOrder}
             onSort={colId => handleSort(colId as SortOption)}
             onRowClick={book => handleNavigateBook(book.id)}
+            initialTopMostItemIndex={returnTargetIndex}
             tableClassName="table-fixed w-full"
             rowClassName={() =>
               'group hover:bg-surface-container-low/50 transition-colors cursor-pointer border-b border-surface-variant/60'
@@ -207,11 +256,15 @@ export function LibraryShelf({
         <VirtuosoGrid
           useWindowScroll
           data={books}
+          {...(typeof returnTargetIndex === 'number'
+            ? {initialTopMostItemIndex: returnTargetIndex}
+            : {})}
           listClassName="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 pb-24"
           itemContent={(_index, book) => (
             <BookCard
               canEdit={!!canEdit}
               book={book}
+              fallbackLibraryId={libraryId}
               isSelected={selectedBooks.has(book.id)}
               isSelectMode={isSelectMode}
               onSelectBook={canEdit ? toggleBookSelection : undefined}

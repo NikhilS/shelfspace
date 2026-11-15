@@ -12,7 +12,8 @@ export type CatalogProviderId =
   | 'open-library'
   | 'inventaire-wikidata'
   | 'longitood-cover'
-  | 'library-of-congress';
+  | 'library-of-congress'
+  | (string & {});
 
 export interface ProviderCapabilities {
   isbnSearch: boolean;
@@ -21,6 +22,8 @@ export interface ProviderCapabilities {
   synopsis: boolean;
   series: boolean;
   genre: boolean;
+  batchWave?: 1 | 2;
+  structuredSeries?: boolean;
 }
 
 export interface CatalogQuery {
@@ -48,7 +51,11 @@ export interface ProviderBookHit {
   synopsis?: string;
 }
 
-export interface ICatalogSourceProvider {
+/**
+ * Pluggable external book-catalog source contract (Google TypeScript Style Guide:
+ * no Hungarian `I` prefix).
+ */
+export interface CatalogSourceProvider {
   readonly id: CatalogProviderId;
   readonly name: string;
   readonly authorityWeight: number;

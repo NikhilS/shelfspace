@@ -3,8 +3,7 @@ import {describe, it, expect, vi} from 'vitest';
 import {render, screen, fireEvent} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import {CurrentlyReadingCard} from './CurrentlyReadingCard';
-import type {TrackedBookItem} from '../../server/services/readingTracker';
-import type {Book} from '../../types';
+import type {Book, TrackedBookItem} from '../../types';
 
 const SAMPLE_BOOKS: TrackedBookItem[] = [
   {
@@ -15,6 +14,8 @@ const SAMPLE_BOOKS: TrackedBookItem[] = [
     ownershipStatus: 'owned',
     title: 'Piranesi',
     author: 'Susanna Clarke',
+    format: 'physical',
+    addedAt: '2026-01-01',
     readingStatus: 'reading',
     primaryGenre: 'Fantasy',
     synopsis: 'Piranesi lives in the House.',
@@ -27,6 +28,8 @@ const SAMPLE_BOOKS: TrackedBookItem[] = [
     ownershipStatus: 'owned',
     title: 'Invisible Cities',
     author: 'Italo Calvino',
+    format: 'physical',
+    addedAt: '2026-01-02',
     readingStatus: 'reading',
     primaryGenre: 'Fiction',
     synopsis: 'Marco Polo describes impossible cities to Kublai Khan.',
@@ -39,6 +42,8 @@ const SAMPLE_BOOKS: TrackedBookItem[] = [
     ownershipStatus: 'unowned',
     title: 'The Left Hand of Darkness',
     author: 'Ursula K. Le Guin',
+    format: 'physical',
+    addedAt: '2026-01-03',
     readingStatus: 'reading',
     primaryGenre: 'Science Fiction',
   },
@@ -151,6 +156,7 @@ describe('CurrentlyReadingCard', () => {
         libraryId: 'lib-9',
         title: 'The Dispossessed',
         author: 'Ursula K. Le Guin',
+        format: 'physical',
         primaryGenre: 'Science Fiction',
         readingStatus: 'reading',
         addedAt: '2026-01-01',
@@ -160,6 +166,7 @@ describe('CurrentlyReadingCard', () => {
         libraryId: 'lib-9',
         title: 'Solaris',
         author: 'Stanislaw Lem',
+        format: 'physical',
         primaryGenre: 'Science Fiction',
         readingStatus: 'reading',
         addedAt: '2026-01-02',

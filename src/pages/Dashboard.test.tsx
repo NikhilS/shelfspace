@@ -127,7 +127,8 @@ vi.mock('../lib/trpc', () => ({
   trpcVanilla: {
     book: {
       updateStatus: {
-        mutate: (...args: unknown[]) => mockUpdateStatusMutate(...args),
+        mutate: (...args: unknown[]): unknown =>
+          mockUpdateStatusMutate(...args),
       },
     },
     library: {
@@ -307,6 +308,10 @@ describe('Dashboard', () => {
         libraryId: 'lib1',
         bookId: 'unread-1',
         status: 'want_to_read',
+        bookSnapshot: expect.objectContaining({
+          title: 'The Dispossessed',
+          author: 'Ursula K. Le Guin',
+        }) as unknown,
       });
     });
 

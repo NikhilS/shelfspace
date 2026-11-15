@@ -8,7 +8,7 @@ import {mapLegacyGenreToTaxonomy} from '../../../../constants/taxonomy';
 import {ProviderQuotaScheduler} from '../../scheduler/providerQuotaScheduler';
 import {
   CatalogQuery,
-  ICatalogSourceProvider,
+  CatalogSourceProvider,
   ProviderBookHit,
   ProviderCapabilities,
   fetchWithProviderTimeout,
@@ -75,7 +75,7 @@ export function upgradeGoogleCoverUrl(
   return hiResUrl;
 }
 
-export class GoogleBooksProvider implements ICatalogSourceProvider {
+export class GoogleBooksProvider implements CatalogSourceProvider {
   readonly id = 'google-books' as const;
   readonly name = 'Google Books';
   readonly authorityWeight = 85;
@@ -86,6 +86,7 @@ export class GoogleBooksProvider implements ICatalogSourceProvider {
     synopsis: true,
     series: false,
     genre: true,
+    batchWave: 1,
   };
 
   readonly scheduler = new ProviderQuotaScheduler({
