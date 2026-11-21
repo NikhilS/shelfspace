@@ -44,9 +44,23 @@ vi.mock('../lib/trpc', () => ({
         get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
       },
       readingTracker: {
-        getShelf: {invalidate: vi.fn()},
+        getShelf: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        getUnreadLibraryBooks: {
+          invalidate: vi.fn(),
+          setData: vi.fn(),
+          getData: vi.fn(),
+        },
       },
     }),
+    auth: {
+      getPermissions: {
+        useQuery: vi.fn(() => ({
+          data: {isAppAllowed: true, isAdmin: false, hasAiPlan: true},
+          isLoading: false,
+          refetch: vi.fn(),
+        })),
+      },
+    },
     book: {
       list: {
         useQuery: vi.fn(() => ({
@@ -69,6 +83,12 @@ vi.mock('../lib/trpc', () => ({
               abandoned: 0,
             },
           },
+          isLoading: false,
+        })),
+      },
+      getUnreadLibraryBooks: {
+        useQuery: vi.fn(() => ({
+          data: [],
           isLoading: false,
         })),
       },
@@ -96,11 +116,6 @@ vi.mock('../lib/trpc', () => ({
       },
       trackBook: {
         mutate: (...args: unknown[]): unknown => mockTrackBookMutate(...args),
-      },
-    },
-    metadata: {
-      enrichCreate: {
-        mutate: vi.fn(() => Promise.resolve({status: 'success', results: []})),
       },
     },
   },

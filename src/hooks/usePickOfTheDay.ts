@@ -27,8 +27,7 @@ export function usePickOfTheDay(
   const {hasAiPlan} = useAppPermissions();
   const [refreshEpoch, setRefreshEpoch] = useState(0);
   const localDateBucket = getLocalDateBucket();
-  const getPickOfTheDayMutation =
-    trpc?.gemini?.getPickOfTheDay?.useMutation?.();
+  const getPickOfTheDayMutation = trpc.gemini.getPickOfTheDay.useMutation();
 
   const isEnabled =
     typeof currentTabOrEnabled === 'boolean'
@@ -37,18 +36,11 @@ export function usePickOfTheDay(
 
   const query = useQuery({
     queryKey: ['pickOfTheDay', scopeKey, localDateBucket, refreshEpoch],
-    enabled:
-      books.length > 0 &&
-      isEnabled &&
-      hasAiPlan &&
-      Boolean(getPickOfTheDayMutation?.mutateAsync),
+    enabled: books.length > 0 && isEnabled && hasAiPlan,
     retry: false,
     staleTime: 1000 * 60 * 60 * 24, // 24 hours
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      if (!getPickOfTheDayMutation?.mutateAsync) {
-        throw new Error('Recommendation service unavailable.');
-      }
       logger.info(
         `[Curator pick] Starting AI Curator recommendation engine (${scopeKey}). Seed size: ${books.length} books.`,
       );
@@ -125,7 +117,7 @@ export function usePickOfTheDay(
             `[Curator pick] Querying federated catalog to look up cover art for: "${finalPick.title}" by ${finalPick.author}...`,
           );
           const result =
-            await trpcVanilla?.metadata?.searchByTitleAndAuthor?.mutate?.({
+            await trpcVanilla.metadata.searchByTitleAndAuthor.mutate({
               title: finalPick.title,
               author: finalPick.author,
               priority: 'INTERACTIVE',

@@ -33,7 +33,6 @@ vi.mock('./firebaseAdmin', () => {
                     : {
                         title: `Book ${bookId}`,
                         author: `Author ${bookId}`,
-                        synopsis: '',
                       },
               }),
               update: vi.fn().mockResolvedValue(undefined),
@@ -43,6 +42,8 @@ vi.mock('./firebaseAdmin', () => {
         }),
       }),
     }),
+    formatFirestoreAdminError: (err: unknown) =>
+      err instanceof Error ? err.message : String(err),
   };
 });
 
@@ -50,6 +51,12 @@ vi.mock('./gemini', () => ({
   extractBookGeoMetadataBatch: vi.fn(),
   extractBookTemporalMetadataBatch: vi.fn(),
   classifyBooks: vi.fn(),
+  evaluateGenreAndSeriesGateCoalesced: vi.fn(),
+  extractBookSeriesBatch: vi.fn(),
+  gateSeriesCandidatesWithDecisions: vi.fn(),
+  generateAuthorBiosBatch: vi.fn(),
+  generateBookSynopsesBatch: vi.fn(),
+  generateBookEmbeddings: vi.fn(),
 }));
 
 vi.mock('./catalog', () => ({

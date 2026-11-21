@@ -4,9 +4,10 @@ import {
   attachShardedQueryPersistence,
   clearPersistedQueryShards,
 } from './idbQueryShardPersister';
+import {useEntityCacheStore} from '../stores/entityCacheStore';
 import {DebugTelemetryEngine} from './telemetry';
 
-export const QUERY_CACHE_BUSTER = 'v2.1.0';
+export const QUERY_CACHE_BUSTER = 'v3.0.0';
 const SEVEN_DAYS_MS = 1000 * 60 * 60 * 24 * 7;
 
 export const queryClient = new QueryClient({
@@ -46,6 +47,7 @@ function getActivePersistenceUid(): string {
 
 export async function resetClientQueryCaches(uid?: string): Promise<void> {
   queryClient.clear();
+  useEntityCacheStore.getState().clearAllEntities();
   await clearPersistedQueryShards(uid);
 }
 

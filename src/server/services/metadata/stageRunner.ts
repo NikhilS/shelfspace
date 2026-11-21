@@ -15,22 +15,6 @@ export interface HorizontalPipelineRunResult<Output> {
 }
 
 /**
- * Safely resolves a named function export from a module namespace without
- * crashing when tests supply partial ESM mocks (`vi.mock('./module', () => ...)`).
- */
-export function getOptionalModuleFunction<Fn>(
-  mod: object,
-  exportName: string,
-): Fn | undefined {
-  try {
-    const candidate = (mod as Record<string, unknown>)[exportName];
-    return typeof candidate === 'function' ? (candidate as Fn) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Executes a plugin's declarative `EnrichmentPipelineStage[]` horizontally:
  * Stage 0 runs across all eligible books first; Stage 1 runs strictly on the
  * residual books that returned `{status: 'escalate'}`, and so on.

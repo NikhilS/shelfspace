@@ -28,7 +28,7 @@ export function NightstandBookIllustration({
         cy="46"
         rx="28"
         ry="8"
-        className="fill-primary/8 dark:fill-primary/15"
+        className="fill-tertiary/10 dark:fill-tertiary/18"
       />
       {/* Bedside table surface line */}
       <path
@@ -79,7 +79,7 @@ export function NightstandBookIllustration({
       {/* Terracotta ribbon bookmark */}
       <path
         d="M40 22V52L43.5 49L47 52V37"
-        className="fill-primary/20 stroke-primary"
+        className="fill-tertiary/20 dark:fill-tertiary/28 stroke-tertiary"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -110,7 +110,7 @@ export function BedsideStackIllustration({
         cy="51"
         rx="28"
         ry="6"
-        className="fill-primary/8 dark:fill-primary/15"
+        className="fill-tertiary/10 dark:fill-tertiary/18"
       />
       {/* Bottom book */}
       <rect
@@ -136,10 +136,10 @@ export function BedsideStackIllustration({
         width="44"
         height="9"
         rx="2.5"
-        className="fill-primary/12 stroke-primary"
+        className="fill-tertiary/15 dark:fill-tertiary/24 stroke-tertiary"
         strokeWidth="1.5"
       />
-      <path d="M25 30V39" className="stroke-primary" strokeWidth="1.4" />
+      <path d="M25 30V39" className="stroke-tertiary" strokeWidth="1.4" />
       {/* Top book (slightly tilted/offset) */}
       <rect
         x="17"
@@ -160,7 +160,7 @@ export function BedsideStackIllustration({
       {/* Terracotta ribbon tail hanging from top book */}
       <path
         d="M50 20V14L53 16L56 14V20"
-        className="fill-primary/20 stroke-primary"
+        className="fill-tertiary/20 dark:fill-tertiary/28 stroke-tertiary"
         strokeWidth="1.4"
         strokeLinejoin="round"
       />
@@ -190,12 +190,12 @@ export function BookshelfBookendsIllustration({
         cy="54"
         rx="32"
         ry="6"
-        className="fill-primary/8 dark:fill-primary/15"
+        className="fill-tertiary/10 dark:fill-tertiary/18"
       />
       {/* Left architectural bookend */}
       <path
         d="M16 50V34C16 30.6863 18.6863 28 22 28H24V50"
-        className="fill-primary/12 stroke-primary"
+        className="fill-primary/10 stroke-current"
         strokeWidth="1.5"
         strokeLinejoin="round"
       />
@@ -228,7 +228,7 @@ export function BookshelfBookendsIllustration({
       />
       <path
         d="M36.5 26H40.5"
-        className="stroke-primary"
+        className="stroke-tertiary"
         strokeWidth="1.5"
         strokeLinecap="round"
       />
@@ -240,12 +240,12 @@ export function BookshelfBookendsIllustration({
           width="10"
           height="31"
           rx="1.5"
-          className="fill-primary/15 stroke-primary"
+          className="fill-tertiary/16 dark:fill-tertiary/25 stroke-tertiary"
           strokeWidth="1.5"
         />
         <path
           d="M47.5 25H52.5M47.5 43H52.5"
-          className="stroke-primary"
+          className="stroke-tertiary"
           strokeWidth="1.3"
           strokeLinecap="round"
         />
@@ -289,7 +289,7 @@ export function ConstellationSkyIllustration({
       <path
         d="M14 46C22 22 66 22 74 46"
         stroke="currentColor"
-        strokeOpacity="0.2"
+        strokeOpacity="0.22"
         strokeWidth="1.3"
         strokeDasharray="3 3"
         strokeLinecap="round"
@@ -315,7 +315,7 @@ export function ConstellationSkyIllustration({
         cx="38"
         cy="22"
         r="3.8"
-        className="fill-primary/20 stroke-primary"
+        className="fill-tertiary/22 dark:fill-tertiary/30 stroke-tertiary"
         strokeWidth="1.6"
       />
       <circle
@@ -329,7 +329,7 @@ export function ConstellationSkyIllustration({
         cx="66"
         cy="16"
         r="2.8"
-        className="fill-primary/20 stroke-primary"
+        className="fill-tertiary/22 dark:fill-tertiary/30 stroke-tertiary"
         strokeWidth="1.5"
       />
       <circle
@@ -379,14 +379,13 @@ export function ChronicleSundialIllustration({
       {/* Meandering river path */}
       <path
         d="M46 16C34 22 56 30 42 38C28 46 58 50 44 58"
-        className="stroke-primary"
-        strokeWidth="1.8"
+        className="stroke-current"
+        strokeWidth="1.7"
         strokeLinecap="round"
       />
       <path
         d="M51 18C39 24 61 32 47 40C33 48 63 52 49 58"
-        stroke="currentColor"
-        strokeOpacity="0.35"
+        className="stroke-tertiary/55"
         strokeWidth="1.3"
         strokeLinecap="round"
       />
@@ -401,8 +400,8 @@ export function ChronicleSundialIllustration({
       <circle
         cx="44"
         cy="37"
-        r="3.5"
-        className="fill-primary/20 stroke-primary"
+        r="3.6"
+        className="fill-tertiary/22 dark:fill-tertiary/30 stroke-tertiary"
         strokeWidth="1.6"
       />
       <circle
@@ -433,10 +432,18 @@ export function CartographyCompassIllustration({
       className={cn('w-16 h-14 text-on-surface', className)}
       {...props}
     >
+      {/* Subtle warm shadow */}
+      <ellipse
+        cx="40"
+        cy="55"
+        rx="22"
+        ry="4.5"
+        className="fill-tertiary/10 dark:fill-tertiary/18"
+      />
       {/* Outer compass ring */}
       <circle
         cx="40"
-        cy="32"
+        cy="31"
         r="21"
         className="fill-surface stroke-current"
         strokeWidth="1.5"
@@ -444,7 +451,7 @@ export function CartographyCompassIllustration({
       {/* Inner latitude/longitude arcs */}
       <ellipse
         cx="40"
-        cy="32"
+        cy="31"
         rx="10"
         ry="21"
         stroke="currentColor"
@@ -452,23 +459,23 @@ export function CartographyCompassIllustration({
         strokeWidth="1.2"
       />
       <path
-        d="M19 32H61"
+        d="M19 31H61"
         stroke="currentColor"
         strokeOpacity="0.22"
         strokeWidth="1.2"
       />
-      {/* Compass needle diamond */}
+      {/* Compass needle diamond in dual-tone terracotta */}
       <path
-        d="M40 15L44.5 32L40 49L35.5 32L40 15Z"
-        className="fill-primary/15 stroke-primary"
+        d="M40 14L44.5 31L40 48L35.5 31L40 14Z"
+        className="fill-tertiary/18 dark:fill-tertiary/28 stroke-tertiary"
         strokeWidth="1.5"
         strokeLinejoin="round"
       />
       <circle
         cx="40"
-        cy="32"
+        cy="31"
         r="2.5"
-        className="fill-surface stroke-primary"
+        className="fill-surface stroke-tertiary"
         strokeWidth="1.5"
       />
     </svg>
@@ -509,10 +516,10 @@ export function MagnifyingBookmarkIllustration({
         strokeWidth="1.4"
         strokeLinecap="round"
       />
-      {/* Bookmark ribbon at top of page */}
+      {/* Terracotta bookmark ribbon at top of page */}
       <path
         d="M41 10V20L44 17.5L47 20V10"
-        className="fill-primary/20 stroke-primary"
+        className="fill-tertiary/22 dark:fill-tertiary/30 stroke-tertiary"
         strokeWidth="1.4"
         strokeLinejoin="round"
       />
@@ -521,13 +528,18 @@ export function MagnifyingBookmarkIllustration({
         cx="48"
         cy="38"
         r="11"
-        className="fill-surface stroke-primary"
+        className="fill-surface stroke-current"
         strokeWidth="1.6"
       />
-      <circle cx="48" cy="38" r="7.5" className="fill-primary/10" />
+      <circle
+        cx="48"
+        cy="38"
+        r="7.5"
+        className="fill-tertiary/12 dark:fill-tertiary/20"
+      />
       <path
         d="M56 46L63 53"
-        className="stroke-primary"
+        className="stroke-tertiary"
         strokeWidth="2"
         strokeLinecap="round"
       />
@@ -543,10 +555,3 @@ export {
   FallenBookendIllustration,
   ArchivalBookLoaderIllustration,
 } from './workbench-spot-illustrations';
-
-/**
- * Canonical Evergreen Spec Aliases (Section 6 of 01-DESIGN-SYSTEM-AND-UI.md)
- */
-export const OpenBookBookmarkIllustration = NightstandBookIllustration;
-export const BookStackTeaIllustration = BedsideStackIllustration;
-export const CompassGlobeIllustration = CartographyCompassIllustration;

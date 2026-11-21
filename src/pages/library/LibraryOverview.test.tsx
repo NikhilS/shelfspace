@@ -5,6 +5,45 @@ import {MemoryRouter} from 'react-router-dom';
 import {LibraryOverview} from './LibraryOverview';
 import {Library, Book} from '../../types';
 
+vi.mock('../../lib/trpc', () => ({
+  trpc: {
+    useUtils: () => ({
+      book: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+      library: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+      readingTracker: {
+        getShelf: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        getUnreadLibraryBooks: {
+          invalidate: vi.fn(),
+          setData: vi.fn(),
+          getData: vi.fn(),
+        },
+      },
+    }),
+    auth: {
+      getPermissions: {
+        useQuery: () => ({
+          data: {isAppAllowed: true, isAdmin: false, hasAiPlan: true},
+          isLoading: false,
+          refetch: vi.fn(),
+        }),
+      },
+    },
+  },
+  trpcVanilla: {
+    book: {
+      updateStatus: {
+        mutate: vi.fn().mockResolvedValue({}),
+      },
+    },
+  },
+}));
+
 describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
   const mockLibrary: Library = {
     id: 'lib-1',
@@ -39,7 +78,7 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
       libraryId: 'lib-1',
       primaryGenre: 'Philosophy',
       subgenres: ['Ancient & Classical'],
-      readingStatus: 'completed',
+      readingStatus: 'finished',
       addedAt: '2024-01-02',
       coverUrl: 'https://example.com/meditations.jpg',
     },
@@ -113,7 +152,7 @@ describe('LibraryOverview - Three-Tier Information Hierarchy', () => {
   it('shows Curator Spotlight in Tier 1 when no volumes are in progress', () => {
     const noReadingBooks = mockBooks.map(b => ({
       ...b,
-      readingStatus: 'completed' as const,
+      readingStatus: 'finished' as const,
     }));
     render(
       <MemoryRouter>

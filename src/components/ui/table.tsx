@@ -21,7 +21,10 @@ function TableHeader({className, ...props}: React.ComponentProps<'thead'>) {
   return (
     <thead
       data-slot="table-header"
-      className={cn('[&_tr]:border-b', className)}
+      className={cn(
+        '[&_tr]:border-b [&_tr]:border-outline-variant/60',
+        className,
+      )}
       {...props}
     />
   );
@@ -42,7 +45,7 @@ function TableFooter({className, ...props}: React.ComponentProps<'tfoot'>) {
     <tfoot
       data-slot="table-footer"
       className={cn(
-        'border-t bg-muted/50 font-medium [&>tr]:last:border-b-0',
+        'border-t border-outline-variant/60 bg-surface-container-low font-medium [&>tr]:last:border-b-0',
         className,
       )}
       {...props}
@@ -55,7 +58,7 @@ function TableRow({className, ...props}: React.ComponentProps<'tr'>) {
     <tr
       data-slot="table-row"
       className={cn(
-        'border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted',
+        'border-b border-outline-variant/60 transition-colors hover:bg-surface-container-low/70 has-aria-expanded:bg-surface-container-low/70 data-[state=selected]:bg-surface-container',
         className,
       )}
       {...props}
@@ -93,7 +96,7 @@ function TableCaption({className, ...props}: React.ComponentProps<'caption'>) {
   return (
     <caption
       data-slot="table-caption"
-      className={cn('mt-4 text-sm text-muted-foreground', className)}
+      className={cn('mt-4 text-sm text-on-surface-variant', className)}
       {...props}
     />
   );

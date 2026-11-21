@@ -12,10 +12,10 @@ To eliminate split-brain security rules and redundant REST wrappers, **book(ish)
 ```
 +-----------------------------------------------------------------------------------+
 |                                BOOK(ISH) WEB CLIENT                               |
-|   [React 19 + TanStack Query + tRPC Client]          [EventSource SSE Progress]   |
+|   [React 19 + TanStack Query + tRPC Client]      [fetch ReadableStream SSE]       |
 +-----------------------+----------------------------------+------------------------+
                         |                                  |
-            tRPC HTTP   | (Bearer Firebase JWT)            | GET /api/enrichment/stream
+            tRPC HTTP   | (Bearer Firebase JWT)            | GET /api/enrichment/stream (Bearer JWT)
                         v                                  v
 +-----------------------------------------------------------------------------------+
 |                         NODE.JS / EXPRESS API GATEWAY (Port 3000)                 |
@@ -96,9 +96,9 @@ libraryProcedure('viewer').query(...)    // Owner, Editor, or Viewer (Read-only)
    - `/api/enrichment/stream`: $30\text{ req/min}$ per user/IP and max $5$ concurrent SSE streams per user.
    - `/api/client-log`: $20\text{ req/min}$ per IP.
    - Emits `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `Retry-After` headers on `429 Too Many Requests`.
-3. **Log Sanitization & Token Redaction:**
-   - Query parameters containing tokens (`?token=...`) are redacted (`[REDACTED]`) before HTTP access logs are written.
-   - Client error logs strip control characters (`\r`, `\n`, ANSI escapes) and enforce strict field truncation.
+3. **Header-Only Bearer Auth & Log Sanitization:**
+   - All API and SSE endpoints (`/trpc` and `/api/enrichment/stream`) authenticate exclusively via `Authorization: Bearer <idToken>` headers (`?token=` query-string JWTs are rejected so tokens never leak into proxy logs or browser history).
+   - Any stray `?token=...` query parameters are still redacted (`[REDACTED]`) before HTTP access logs are written, and client error logs strip control characters (`\r`, `\n`, ANSI escapes) with strict field truncation.
 
 ---
 
@@ -132,7 +132,8 @@ All Gemini and external catalog calls execute exclusively on the server via `@go
 
 Metadata enrichment pipelines avoid per-field `if (enrichmentType === ...)` branching by declaring ordered `EnrichmentPipelineStage<Output>[]` arrays (`tier: 'decision' | 'catalog' | 'generative' | 'embedding'`) directly on each `MetadataPlugin<Output>`:
 
-1. **Horizontal Wave Execution (`EnrichmentJobCoordinator` & `EnrichmentService`)**:
+1. **Stateless Durable Job Persistence & Horizontal Wave Execution (`EnrichmentJobCoordinator` & `EnrichmentService`)**:
+   - Job state, lease heartbeats, cancellation flags (`cancelRequested`), and monotonically sequenced `recentBatches` are persisted in `/libraries/{libraryId}/jobs/{jobId}` (`enrichmentJobDocConverter`), allowing any Cloud Run instance to serve `/api/enrichment/stream` via Firestore `onSnapshot` without sticky sessions.
    - Wave 0 (`decision`, micro-batch size `30`) evaluates **all** eligible books in the job first using `Title + Author` (+ any already-saved Firestore `bookDetails.synopsis` read via `db.getAll`), immediately committing and streaming `resolved` and `pruned` books over SSE (`batch:committed`).
    - Subsequent waves (`catalog` micro-batch `10`, `generative` micro-batch `20`) dynamically batch **only** the residual books that returned `{ status: 'escalate' }` (e.g., standalone-surviving `Series` candidates, or `Genre` / `Geo` / `Temporal` books lacking a saved synopsis whose calibrated Decision confidence fell below threshold).
 2. **Split Fast/Slow On-Create Enrichment (`MetadataRegistry` & `bookBatchUpsert`)**:

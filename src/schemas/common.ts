@@ -162,7 +162,7 @@ export interface ValidationIssueDetail {
 export interface SchemaValidationContext {
   /** Logical entity or schema name (e.g., 'StoredBookDoc', 'StoredUserReadingStateDoc') */
   entity: string;
-  /** Optional Firestore document path or identifier (e.g., '/users/u1/readingStates/isbn:9780140449136') */
+  /** Optional Firestore document path or identifier (e.g., '/users/u1/readingStates/book:lib_1:book_1') */
   documentPath?: string;
   /** Operation being performed ('create' | 'update' | 'upsert' | 'read') */
   operation?: 'create' | 'update' | 'upsert' | 'read';
@@ -249,7 +249,9 @@ export function isFirestoreFieldValueSentinel(value: unknown): boolean {
     '_methodName' in obj ||
     '_increment' in obj ||
     '_delete' in obj ||
-    '_serverTimestamp' in obj
+    '_serverTimestamp' in obj ||
+    '_arrayUnion' in obj ||
+    '_arrayRemove' in obj
   ) {
     return true;
   }
@@ -263,7 +265,7 @@ const UNSAFE_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
  * dot-notation update paths expanded into nested objects for schema validation,
  * and `Date` instances normalized to ISO-8601 strings.
  */
-export function stripFirestoreSentinels(value: unknown): unknown {
+export function stripFirestoreSentinels(value: unknown, depth = 0): unknown {
   if (value === undefined || isFirestoreFieldValueSentinel(value)) {
     return undefined;
   }
@@ -272,17 +274,17 @@ export function stripFirestoreSentinels(value: unknown): unknown {
   }
   if (Array.isArray(value)) {
     return value
-      .map(item => stripFirestoreSentinels(item))
+      .map(item => stripFirestoreSentinels(item, depth + 1))
       .filter(item => item !== undefined);
   }
   if (value && typeof value === 'object') {
     const clean: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      const stripped = stripFirestoreSentinels(v);
+      const stripped = stripFirestoreSentinels(v, depth + 1);
       if (stripped === undefined) {
         continue;
       }
-      if (k.includes('.')) {
+      if (depth === 0 && k.includes('.')) {
         const segments = k.split('.').filter(Boolean);
         if (
           segments.length === 0 ||

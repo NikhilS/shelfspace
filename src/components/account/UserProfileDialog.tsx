@@ -25,7 +25,7 @@ import {Badge} from '@/components/ui/badge';
 import {useAuth} from '../../stores/authStore';
 import {useAppStore} from '../../stores/appStore';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
-import {useDebugMode} from '../../hooks/useDebugMode';
+import {useDebug} from '../../stores/debugStore';
 import {toast} from 'sonner';
 
 interface UserProfileDialogProps {
@@ -42,7 +42,7 @@ export function UserProfileDialog({
   const {user, logOut} = useAuth();
   const {isAdmin} = useAppPermissions();
   const {theme, setTheme} = useAppStore();
-  const {isDebugMode, toggleDebugMode} = useDebugMode();
+  const {isDebugMode, toggleDebugMode} = useDebug();
   const hasDebugAccess = isAdmin || isDebugMode;
   const navigate = useNavigate();
   const location = useLocation();

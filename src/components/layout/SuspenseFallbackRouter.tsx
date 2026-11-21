@@ -1,9 +1,11 @@
 import React, {useEffect} from 'react';
 import {useLocation} from 'react-router-dom';
 import {useQueryClient, QueryClient} from '@tanstack/react-query';
-import {trpc} from '../../lib/trpc';
-import {queryClient as defaultQueryClient} from '../../lib/queryClient';
 import {useAuthStore} from '../../stores/authStore';
+import {
+  selectLibraryBooks,
+  useEntityCacheStore,
+} from '../../stores/entityCacheStore';
 import {Library, Book} from '../../types';
 import {PageLoading} from './PageLoading';
 import {
@@ -29,14 +31,6 @@ export function markLibraryVisited(libraryId: string): void {
 
 export function isLibraryVisited(libraryId: string): boolean {
   return visitedLibraryIds.has(libraryId);
-}
-
-export function markReadingShelfVisited(): void {
-  hasVisitedReadingShelf = true;
-}
-
-export function isReadingShelfVisited(): boolean {
-  return hasVisitedReadingShelf;
 }
 
 export function markRouteVisited(pathname: string): void {
@@ -181,53 +175,22 @@ export function parseRouteForFallback(
   return {routeCategory: 'other'};
 }
 
-function extractCachedLibraryFromQueryClient(
+function extractCachedLibrary(
   qc: QueryClient,
   libraryId: string,
-  trpcUtils?: ReturnType<typeof trpc.useUtils>,
 ): Library | null {
   if (!libraryId) {
     return null;
   }
 
-  // 1. Try tRPC typed cache helpers first if available
-  try {
-    if (trpcUtils?.library) {
-      const fromGet = trpcUtils.library.get?.getData?.({
-        libraryId,
-      });
-      if (fromGet && fromGet.id === libraryId) {
-        return fromGet;
-      }
-
-      const ownedShared = trpcUtils.library.list?.getData?.({
-        scopes: ['owned', 'shared'],
-      })?.libraries as Library[] | undefined;
-      const foundOwned = ownedShared?.find(l => l.id === libraryId);
-      if (foundOwned) {
-        return foundOwned;
-      }
-
-      const allLibs = trpcUtils.library.list?.getData?.({
-        scopes: ['all'],
-      })?.libraries as Library[] | undefined;
-      const foundAll = allLibs?.find(l => l.id === libraryId);
-      if (foundAll) {
-        return foundAll;
-      }
-
-      const defaultLibs = trpcUtils.library.list?.getData?.()?.libraries as
-        Library[] | undefined;
-      const foundDefault = defaultLibs?.find(l => l.id === libraryId);
-      if (foundDefault) {
-        return foundDefault;
-      }
-    }
-  } catch {
-    // Fallback to raw QueryClient cache inspection
+  // 1. Check normalized entity cache store first
+  const fromEntityStore =
+    useEntityCacheStore.getState().librariesById[libraryId];
+  if (fromEntityStore) {
+    return fromEntityStore;
   }
 
-  // 2. Inspect raw QueryClient cache entries (handles both tRPC nested keys and test keys)
+  // 2. Inspect TanStack Query cache entries
   const allQueries = qc.getQueriesData<unknown>({});
   for (const [, data] of allQueries) {
     if (!data || typeof data !== 'object') {
@@ -250,34 +213,24 @@ function extractCachedLibraryFromQueryClient(
   return null;
 }
 
-function extractCachedBooksFromQueryClient(
+function extractCachedBooks(
   qc: QueryClient,
   libraryId: string,
-  trpcUtils?: ReturnType<typeof trpc.useUtils>,
 ): Book[] | undefined {
   if (!libraryId) {
     return undefined;
   }
 
-  try {
-    if (trpcUtils?.book?.list?.getData) {
-      const raw = trpcUtils.book.list.getData({libraryId}) as unknown;
-      if (Array.isArray(raw)) {
-        return raw as Book[];
-      }
-      if (
-        raw &&
-        typeof raw === 'object' &&
-        'books' in raw &&
-        Array.isArray(raw.books)
-      ) {
-        return (raw as {books: Book[]}).books;
-      }
-    }
-  } catch {
-    // Fallback to raw QueryClient inspection
+  // 1. Check normalized entity cache store first
+  const entityBooks = selectLibraryBooks(
+    useEntityCacheStore.getState(),
+    libraryId,
+  );
+  if (entityBooks.length > 0) {
+    return entityBooks;
   }
 
+  // 2. Inspect TanStack Query cache entries
   const allQueries = qc.getQueriesData<unknown>({});
   for (const [queryKey, data] of allQueries) {
     const keyStr = JSON.stringify(queryKey);
@@ -302,6 +255,12 @@ function extractCachedBooksFromQueryClient(
 
 function checkReadingShelfCache(qc: QueryClient): boolean {
   if (hasVisitedReadingShelf) {
+    return true;
+  }
+  if (
+    Object.keys(useEntityCacheStore.getState().readingStatesByBookKey).length >
+    0
+  ) {
     return true;
   }
   const allQueries = qc.getQueriesData<unknown>({});
@@ -350,21 +309,7 @@ export function SuspenseFallbackRouter({
   const search = searchOverride ?? location.search;
   const {user} = useAuthStore();
 
-  let activeQueryClient: QueryClient = defaultQueryClient;
-  try {
-    activeQueryClient = useQueryClient();
-  } catch {
-    activeQueryClient = defaultQueryClient;
-  }
-
-  let trpcUtils: ReturnType<typeof trpc.useUtils> | undefined;
-  try {
-    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
-      trpcUtils = trpc.useUtils();
-    }
-  } catch {
-    trpcUtils = undefined;
-  }
+  const activeQueryClient = useQueryClient();
 
   const descriptor = parseRouteForFallback(pathname, search);
 
@@ -374,16 +319,8 @@ export function SuspenseFallbackRouter({
 
   if (descriptor.routeCategory === 'library' && descriptor.libraryId) {
     const {libraryId, viewType = 'overview', tab = 'overview'} = descriptor;
-    const cachedLibrary = extractCachedLibraryFromQueryClient(
-      activeQueryClient,
-      libraryId,
-      trpcUtils,
-    );
-    const cachedBooks = extractCachedBooksFromQueryClient(
-      activeQueryClient,
-      libraryId,
-      trpcUtils,
-    );
+    const cachedLibrary = extractCachedLibrary(activeQueryClient, libraryId);
+    const cachedBooks = extractCachedBooks(activeQueryClient, libraryId);
     const isWarm = Boolean(
       cachedLibrary ||
       (cachedBooks && cachedBooks.length > 0) ||

@@ -14,9 +14,33 @@ vi.mock('../stores/authStore', () => ({
 vi.mock('../lib/trpc', () => ({
   trpc: {
     useUtils: () => ({
-      book: {list: {invalidate: vi.fn()}},
-      library: {listAllowedDuplicates: {invalidate: vi.fn()}},
+      book: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+      library: {
+        listAllowedDuplicates: {invalidate: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+      readingTracker: {
+        getShelf: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        getUnreadLibraryBooks: {
+          invalidate: vi.fn(),
+          setData: vi.fn(),
+          getData: vi.fn(),
+        },
+      },
     }),
+    auth: {
+      getPermissions: {
+        useQuery: vi.fn(() => ({
+          data: {isAppAllowed: true, isAdmin: true, hasAiPlan: true},
+          isLoading: false,
+          refetch: vi.fn(),
+        })),
+      },
+    },
     book: {
       list: {
         useQuery: vi.fn(() => ({
@@ -79,6 +103,15 @@ vi.mock('../lib/trpc', () => ({
     book: {
       delete: {mutate: vi.fn()},
       batchUpsert: {mutate: vi.fn()},
+      mergeDuplicates: {mutate: vi.fn()},
+      syncChanges: {
+        query: vi.fn().mockResolvedValue({
+          upsertedBooks: [],
+          deletedBookIds: [],
+          readingStates: {},
+          syncCursorMs: Date.now(),
+        }),
+      },
     },
     enrichment: {
       auditPlaceholderCovers: {
@@ -88,6 +121,12 @@ vi.mock('../lib/trpc', () => ({
           clearedBookIds: ['1'],
         }),
       },
+      adjudicateDuplicates: {
+        mutate: vi.fn().mockResolvedValue({decisions: []}),
+      },
+      startJob: {mutate: vi.fn()},
+      getJobStatus: {query: vi.fn()},
+      cancelJob: {mutate: vi.fn()},
     },
   },
 }));
@@ -97,7 +136,7 @@ describe('SpruceUpView', () => {
     vi.clearAllMocks();
   });
 
-  it('renders Shelf Care 3-tab workspace and switches between Enrichment, Duplicates, and Maintenance tabs', async () => {
+  it('renders Shelf Care 3-tab workspace and switches between Enrichment, Duplicates, and Reset Details tabs', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {queries: {retry: false}},
     });
@@ -113,6 +152,9 @@ describe('SpruceUpView', () => {
 
     expect(await screen.findByText('Shelf Care')).toBeInTheDocument();
     expect(screen.getByText('Complete Book Details')).toBeInTheDocument();
+    expect(getByTestId('shelf-care-tab-maintenance')).toHaveTextContent(
+      'Reset Details',
+    );
 
     // Switch to Duplicates tab and verify non-blocking duplicate group detection
     fireEvent.click(getByTestId('shelf-care-tab-duplicates'));
@@ -121,11 +163,9 @@ describe('SpruceUpView', () => {
       await screen.findByTestId('duplicate-confidence-badge-0'),
     ).toHaveTextContent('100% Match • Exact ISBN');
 
-    // Switch to Maintenance tab
+    // Switch to Reset Details tab
     fireEvent.click(getByTestId('shelf-care-tab-maintenance'));
-    expect(
-      await screen.findByText('Optimize Library Storage'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Reset Book Details')).toBeInTheDocument();
   });
 
   it('auto-scans Google Books cover URLs when opening Shelf Care and invalidates book list when placeholders are cleared', async () => {
@@ -166,5 +206,26 @@ describe('SpruceUpView', () => {
     expect(
       trpcVanilla.enrichment.auditPlaceholderCovers.mutate,
     ).toHaveBeenCalledWith({libraryId: '123'});
+  });
+
+  it('opens Reset Book Details directly when navigated with ?tab=reset deep link', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {queries: {retry: false}},
+    });
+    const {getByTestId} = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/library/123/spruce-up?tab=reset']}>
+          <Routes>
+            <Route path="/library/:id/spruce-up" element={<SpruceUpView />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Reset Book Details')).toBeInTheDocument();
+    expect(getByTestId('shelf-care-tab-maintenance')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 });

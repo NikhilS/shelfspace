@@ -47,6 +47,7 @@ import {LibraryOverview} from './library/LibraryOverview';
 import {LibraryCollection} from './library/LibraryCollection';
 import {LibrarySettingsModals} from './library/LibrarySettingsModals';
 import {BulkActionsBar} from './library/BulkActionsBar';
+import {ActiveLibraryEnrichmentBanner} from './library/ActiveLibraryEnrichmentBanner';
 import {QuickAddBookDialog} from '../components/book/QuickAddBookDialog';
 import {ErrorBoundary} from '../components/layout/ErrorBoundary';
 import {useDebug} from '../stores/debugStore';
@@ -555,7 +556,7 @@ export function LibraryView() {
         <div className="layout-page-content flex items-center justify-center min-h-[60vh]">
           <div
             role="alert"
-            className="py-12 px-6 bg-surface-container-low rounded-xl border border-destructive/30 shadow-elevation-1 text-center max-w-lg w-full"
+            className="py-12 px-6 bg-surface-container-low rounded-xl border border-error/30 shadow-elevation-1 text-center max-w-lg w-full"
           >
             <div className="flex items-center justify-center mx-auto mb-3 text-on-surface">
               <FallenBookendIllustration className="w-24 h-16" />
@@ -750,6 +751,15 @@ export function LibraryView() {
               )}
             </div>
           </div>
+
+          {isOnline && id && (
+            <ActiveLibraryEnrichmentBanner
+              libraryId={id}
+              books={books}
+              canEdit={canEdit}
+              isAdmin={isAdmin}
+            />
+          )}
 
           <div className="relative flex-grow flex flex-col pt-4 sm:pt-6">
             {filters.currentTab === 'overview' ? (

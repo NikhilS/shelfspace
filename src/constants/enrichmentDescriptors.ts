@@ -4,7 +4,6 @@ import {type CanonicalEnrichmentType, MetadataKey} from '../types/metadata';
 export interface EnrichmentDescriptor {
   readonly key: MetadataKey;
   readonly statusKey: CanonicalEnrichmentType;
-  readonly aliases: readonly string[];
   readonly label: string;
   readonly providerLabel: string;
   readonly requiresAiPlan: boolean;
@@ -16,7 +15,6 @@ export const ENRICHMENT_DESCRIPTORS: readonly EnrichmentDescriptor[] = [
   {
     key: MetadataKey.GEO,
     statusKey: 'geo',
-    aliases: ['geo', 'geoMetadata'],
     label: 'Settings & Places',
     providerLabel: 'Gemini Decisions + Catalog',
     requiresAiPlan: true,
@@ -35,7 +33,6 @@ export const ENRICHMENT_DESCRIPTORS: readonly EnrichmentDescriptor[] = [
   {
     key: MetadataKey.TEMPORAL,
     statusKey: 'temporal',
-    aliases: ['temporal', 'temporalMetadata'],
     label: 'Historical Eras',
     providerLabel: 'Gemini Decisions + Catalog',
     requiresAiPlan: true,
@@ -47,7 +44,6 @@ export const ENRICHMENT_DESCRIPTORS: readonly EnrichmentDescriptor[] = [
           (book.temporalMetadata.isNonHistorical ||
             book.temporalMetadata.startYear !== undefined ||
             book.temporalMetadata.eraName ||
-            book.temporalMetadata.eraLabel ||
             book.temporalMetadata.rationale)) ||
         status.temporal === 'completed' ||
         status.temporal === 'unsupported',
@@ -57,7 +53,6 @@ export const ENRICHMENT_DESCRIPTORS: readonly EnrichmentDescriptor[] = [
   {
     key: MetadataKey.GENRE,
     statusKey: 'genre',
-    aliases: ['genre', 'primaryGenre'],
     label: 'Genres',
     providerLabel: 'Gemini Decisions + Catalog',
     requiresAiPlan: true,
@@ -74,7 +69,6 @@ export const ENRICHMENT_DESCRIPTORS: readonly EnrichmentDescriptor[] = [
   {
     key: MetadataKey.SERIES,
     statusKey: 'series',
-    aliases: ['series'],
     label: 'Series',
     providerLabel: 'Decisions + Catalog + AI',
     requiresAiPlan: false,
@@ -91,7 +85,6 @@ export const ENRICHMENT_DESCRIPTORS: readonly EnrichmentDescriptor[] = [
   {
     key: MetadataKey.SYNOPSIS,
     statusKey: 'synopsis',
-    aliases: ['synopsis'],
     label: 'Summaries',
     providerLabel: 'Catalog + Gemini AI',
     requiresAiPlan: false,
@@ -108,7 +101,6 @@ export const ENRICHMENT_DESCRIPTORS: readonly EnrichmentDescriptor[] = [
   {
     key: MetadataKey.AUTHOR_BIO,
     statusKey: 'authorBio',
-    aliases: ['authorBio'],
     label: 'Author Bios',
     providerLabel: 'Wikipedia + Gemini AI',
     requiresAiPlan: false,
@@ -125,7 +117,6 @@ export const ENRICHMENT_DESCRIPTORS: readonly EnrichmentDescriptor[] = [
   {
     key: MetadataKey.EMBEDDING,
     statusKey: 'embedding',
-    aliases: ['embedding', 'embeddings'],
     label: 'Embeddings',
     providerLabel: 'Gemini Embeddings',
     requiresAiPlan: true,
@@ -143,7 +134,6 @@ export const ENRICHMENT_DESCRIPTORS: readonly EnrichmentDescriptor[] = [
   {
     key: MetadataKey.COVER_IMAGE,
     statusKey: 'coverImage',
-    aliases: ['coverImage', 'coverUrl'],
     label: 'Cover Art',
     providerLabel: 'Multi-Source Catalog',
     requiresAiPlan: false,
@@ -163,10 +153,6 @@ export const ENRICHMENT_DESCRIPTORS: readonly EnrichmentDescriptor[] = [
 const DESCRIPTOR_BY_TOKEN = new Map<string, EnrichmentDescriptor>();
 for (const descriptor of ENRICHMENT_DESCRIPTORS) {
   DESCRIPTOR_BY_TOKEN.set(descriptor.key, descriptor);
-  DESCRIPTOR_BY_TOKEN.set(descriptor.statusKey, descriptor);
-  for (const alias of descriptor.aliases) {
-    DESCRIPTOR_BY_TOKEN.set(alias, descriptor);
-  }
 }
 
 export function findEnrichmentDescriptor(
@@ -176,13 +162,6 @@ export function findEnrichmentDescriptor(
     return undefined;
   }
   return DESCRIPTOR_BY_TOKEN.get(rawType);
-}
-
-export function normalizeEnrichmentType(
-  rawType?: string,
-): CanonicalEnrichmentType {
-  const matched = findEnrichmentDescriptor(rawType);
-  return matched ? matched.statusKey : 'genre';
 }
 
 export function requiresAiPlanForEnrichment(rawType?: string): boolean {

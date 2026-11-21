@@ -9,6 +9,71 @@ vi.mock('../stores/authStore', () => ({
   useAuth: () => ({user: {uid: 'u1'}, logOut: vi.fn()}),
 }));
 
+vi.mock('../lib/trpc', () => ({
+  trpc: {
+    useUtils: () => ({
+      book: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+      library: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+      readingTracker: {
+        getShelf: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        getUnreadLibraryBooks: {
+          invalidate: vi.fn(),
+          setData: vi.fn(),
+          getData: vi.fn(),
+        },
+      },
+    }),
+    auth: {
+      getPermissions: {
+        useQuery: () => ({
+          data: {isAppAllowed: true, isAdmin: false, hasAiPlan: true},
+          isLoading: false,
+          refetch: vi.fn(),
+        }),
+      },
+    },
+    readingTracker: {
+      getShelf: {
+        useQuery: () => ({
+          data: undefined,
+          isLoading: false,
+          refetch: vi.fn(),
+        }),
+      },
+      getUnreadLibraryBooks: {
+        useQuery: () => ({
+          data: [],
+          isLoading: false,
+          refetch: vi.fn(),
+        }),
+      },
+    },
+    enrichment: {
+      trigger: {
+        useMutation: () => ({mutateAsync: vi.fn()}),
+      },
+    },
+  },
+  trpcVanilla: {
+    enrichment: {
+      trigger: {mutate: vi.fn()},
+      startJob: {mutate: vi.fn()},
+      getJobStatus: {query: vi.fn()},
+      cancelJob: {mutate: vi.fn()},
+    },
+    book: {
+      syncChanges: {query: vi.fn()},
+      updateStatus: {mutate: vi.fn()},
+    },
+  },
+}));
+
 // Mock Google Maps components to avoid network dependencies
 vi.mock('@vis.gl/react-google-maps', () => ({
   APIProvider: ({children}: {children: React.ReactNode}) => (

@@ -6,9 +6,11 @@
 import {
   storedBookDocSchema,
   storedBookDetailsDocSchema,
+  storedBookTombstoneDocSchema,
   storedReviewDocSchema,
   type StoredBookDoc,
   type StoredBookDetailsDoc,
+  type StoredBookTombstoneDoc,
   type StoredReviewDoc,
 } from './book';
 import {validateFirestoreReadPayload} from './common';
@@ -18,9 +20,11 @@ import {
 } from './geolocation';
 import {
   storedAllowedDuplicateDocSchema,
+  storedEnrichmentJobDocSchema,
   storedLibraryDocSchema,
   storedUserProfileDocSchema,
   type StoredAllowedDuplicateDoc,
+  type StoredEnrichmentJobDoc,
   type StoredLibraryDoc,
   type StoredUserProfileDoc,
 } from './libraryApi';
@@ -36,7 +40,7 @@ import {
 } from './waitlist';
 
 /**
- * Registry of all 10 persisted Firestore/disk stores and their corresponding
+ * Registry of all 12 persisted Firestore stores and their corresponding
  * strict Zod schemas.
  */
 export const STORED_DOCUMENT_SCHEMAS = {
@@ -47,6 +51,8 @@ export const STORED_DOCUMENT_SCHEMAS = {
   bookDetails: storedBookDetailsDocSchema,
   reviews: storedReviewDocSchema,
   allowedDuplicates: storedAllowedDuplicateDocSchema,
+  jobs: storedEnrichmentJobDocSchema,
+  tombstones: storedBookTombstoneDocSchema,
   allowlist: storedAllowlistUserDocSchema,
   waitlist: storedWaitlistEntryDocSchema,
   geolocationCache: storedGeolocationCacheDocSchema,
@@ -82,9 +88,9 @@ export function buildValidStoredReadingStateFixture(
   overrides: Partial<StoredUserReadingStateDoc> = {},
 ): StoredUserReadingStateDoc {
   const candidate: StoredUserReadingStateDoc = {
-    id: 'isbn:9780140449136',
+    id: 'book:lib-1:book-1',
     userId: 'user-1',
-    keyType: 'isbn',
+    keyType: 'book',
     cleanIsbn: '9780140449136',
     bookId: 'book-1',
     libraryId: 'lib-1',
@@ -102,7 +108,7 @@ export function buildValidStoredReadingStateFixture(
     candidate,
     {
       entity: 'StoredUserReadingStateDoc',
-      documentPath: 'users/user-1/readingStates/isbn:9780140449136',
+      documentPath: 'users/user-1/readingStates/book:lib-1:book-1',
       operation: 'read',
     },
   );
@@ -118,6 +124,7 @@ export function buildValidStoredLibraryFixture(
     id: 'lib-1',
     name: 'Home Library',
     ownerId: 'user-1',
+    collaboratorEmails: ['ada@example.com'],
     bookCount: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -142,6 +149,9 @@ export function buildValidStoredBookFixture(
     author: 'Ada Lovelace',
     isbn: '9780140449136',
     cleanIsbn: '9780140449136',
+    primaryGenre: 'Science',
+    primaryGenreLower: 'science',
+    missingFlags: ['geo', 'temporal', 'synopsis', 'coverImage', 'series'],
     addedAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -216,6 +226,60 @@ export function buildValidStoredAllowedDuplicateFixture(
       operation: 'read',
     },
   );
+}
+
+/**
+ * Builds a schema-validated `StoredEnrichmentJobDoc` fixture for tests.
+ */
+export function buildValidStoredEnrichmentJobFixture(
+  overrides: Partial<StoredEnrichmentJobDoc> = {},
+): StoredEnrichmentJobDoc {
+  const candidate: StoredEnrichmentJobDoc = {
+    id: 'job-1',
+    libraryId: 'lib-1',
+    ownerUid: 'user-1',
+    leaseOwnerId: 'worker-1',
+    leaseExpiresAtMs: 1735689650000,
+    enrichmentType: 'genre',
+    status: 'running',
+    totalBooks: 10,
+    completedBooks: 4,
+    failedBooks: 0,
+    skippedBooks: 1,
+    overwrite: false,
+    cancelRequested: false,
+    pendingBookIds: ['book-6', 'book-7'],
+    startedAt: 1735689600000,
+    updatedAtMs: 1735689605000,
+    updatedAt: '2026-01-01T00:00:05.000Z',
+    ...overrides,
+  };
+  return validateFirestoreReadPayload(storedEnrichmentJobDocSchema, candidate, {
+    entity: 'StoredEnrichmentJobDoc',
+    documentPath: 'libraries/lib-1/jobs/job-1',
+    operation: 'read',
+  });
+}
+
+/**
+ * Builds a schema-validated `StoredBookTombstoneDoc` fixture for tests.
+ */
+export function buildValidStoredBookTombstoneFixture(
+  overrides: Partial<StoredBookTombstoneDoc> = {},
+): StoredBookTombstoneDoc {
+  const candidate: StoredBookTombstoneDoc = {
+    id: 'book-1',
+    bookId: 'book-1',
+    deletedAtMs: 1735689600000,
+    deletedBy: 'user-1',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+  return validateFirestoreReadPayload(storedBookTombstoneDocSchema, candidate, {
+    entity: 'StoredBookTombstoneDoc',
+    documentPath: 'libraries/lib-1/tombstones/book-1',
+    operation: 'read',
+  });
 }
 
 /**

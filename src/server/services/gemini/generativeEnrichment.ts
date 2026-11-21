@@ -8,82 +8,10 @@ import {
 } from './client';
 import {gateSeriesCandidatesWithDecisions} from './decisionsEnrichment';
 
-export async function generateLibraryRecommendations(
-  libraryBooks: Array<{
-    title: string;
-    author: string;
-    primaryGenre?: string;
-    subgenres?: string[];
-  }>,
-): Promise<string> {
-  try {
-    const limitedBooks = libraryBooks.slice(0, 100);
-    const allOwnedTitles = Array.from(
-      new Set(
-        libraryBooks
-          .map(b => b.title?.trim())
-          .filter((t): t is string => Boolean(t)),
-      ),
-    ).slice(0, 300);
-
-    const bookList = limitedBooks
-      .map(b => {
-        let line = `"${b.title}" by ${b.author}`;
-        if (b.primaryGenre) {
-          const subText =
-            b.subgenres && b.subgenres.length > 0
-              ? ` (${b.subgenres.join(', ')})`
-              : '';
-          line += ` [Genre: ${b.primaryGenre}${subText}]`;
-        }
-        return line;
-      })
-      .join('\n');
-
-    const prompt = `Here is a catalog of books from a reader's personal library:
-
-${bookList}
-
-Owned Titles Do-Not-Recommend List:
-${allOwnedTitles.join(' | ')}
-
-Based on this reader's interests, recurring genres, narrative styles, pacing, and philosophical themes, recommend 5 captivating new books to expand their horizons.
-
-CRITICAL DIRECTIVES:
-1. STRICTLY DO NOT recommend any book already listed in the reader's library or in the Owned Titles Do-Not-Recommend List above, nor direct sequels to unread series already owned.
-2. Every recommended book MUST be a real, verifiable published work attributed to its actual author (never invent or conflate titles and authors).
-3. Recommend exceptional, distinctive titles (a thoughtful blend of acclaimed literary works, modern masterworks, and high-resonance hidden gems).
-4. For each book, use this exact markdown format:
-   ## [Book Title] by [Author]
-   **Why It Fits Your Library**: 2-3 sentences explaining the exact thematic, stylistic, or intellectual resonance with specific books in their collection.
-   **Key Themes**: 3-4 comma-separated tags (e.g., *Speculative Fiction, Found Family, Moral Ambiguity*).`;
-
-    const response = await generateContentWithLimiter({
-      model: 'gemini-3.8-flash',
-      contents: prompt,
-      config: {
-        systemInstruction:
-          'You are an erudite, insightful literary curator and librarian who recommends real, verifiable books with nuance, depth, and precision.',
-        temperature: 0.5,
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.LOW,
-        },
-      },
-    });
-
-    return (
-      response.text ||
-      "I'm sorry, I couldn't generate recommendations at the moment."
-    );
-  } catch (error) {
-    handleGeminiError(error);
-  }
-}
-
 export async function generateBookInsights(
   title: string,
   author: string,
-  type: 'summary' | 'catchup' | 'similar' | 'author_bio' | 'synopsis',
+  type: 'summary' | 'catchup' | 'similar' | 'authorBio' | 'synopsis',
   signal?: AbortSignal,
 ): Promise<string> {
   let prompt = '';
@@ -94,7 +22,7 @@ export async function generateBookInsights(
 Focus on the core premise, central conflict, primary themes, setting, and narrative tone.
 Conclude with what kind of reader would find this work most rewarding. Keep it to 2-3 engaging, well-crafted paragraphs without conversational filler. Format with clean markdown (use ## for subheadings if appropriate).`;
       break;
-    case 'author_bio':
+    case 'authorBio':
       prompt = `Provide an authoritative biographical profile of ${author}, focusing on their literary career, artistic philosophy, major themes across their bibliography, and critical recognition or awards.
 Highlight the context surrounding "${title}". Keep it to 1-2 focused, elegant paragraphs without introductory or conversational filler.`;
       break;

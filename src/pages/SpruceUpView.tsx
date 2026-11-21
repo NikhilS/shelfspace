@@ -5,9 +5,8 @@ import {
   WifiOff,
   LibraryBig,
   Layers,
-  Database,
+  RotateCcw,
   Loader2,
-  AlertTriangle,
   CheckCircle2,
 } from 'lucide-react';
 import {ErrorBoundary} from '../components/layout/ErrorBoundary';
@@ -19,7 +18,6 @@ import {PageLoading} from '../components/layout/PageLoading';
 import {BackToLibrary} from '../components/layout/BackToLibrary';
 import {useOnlineStatus} from '../hooks/useOnlineStatus';
 import {isBookMissingCoreEnrichment} from '../constants/enrichmentDescriptors';
-import {hasHeavyLeaks} from '../lib/sanitizeStorage';
 
 export type ShelfCareTab = 'enrichment' | 'duplicates' | 'maintenance';
 
@@ -42,11 +40,11 @@ export function SpruceUpView() {
 
   const rawTab = searchParams.get('tab');
   const activeTab: ShelfCareTab =
-    rawTab === 'duplicates' ||
-    rawTab === 'maintenance' ||
-    rawTab === 'enrichment'
+    rawTab === 'duplicates' || rawTab === 'enrichment'
       ? rawTab
-      : 'enrichment';
+      : rawTab === 'maintenance' || rawTab === 'reset'
+        ? 'maintenance'
+        : 'enrichment';
 
   const setActiveTab = (tab: ShelfCareTab) => {
     setSearchParams(
@@ -66,13 +64,6 @@ export function SpruceUpView() {
     return books.filter(isBookMissingCoreEnrichment).length;
   }, [books]);
 
-  const leaksCount = useMemo(() => {
-    if (!books) {
-      return 0;
-    }
-    return books.filter(hasHeavyLeaks).length;
-  }, [books]);
-
   if (loading) {
     return (
       <PageLoading
@@ -90,7 +81,7 @@ export function SpruceUpView() {
           <h1 className="layout-header-title">Shelf Care</h1>
           <p className="layout-header-subtitle">
             Keep your shelves in great shape—fill in missing book details, merge
-            duplicate copies, and tidy up library storage.
+            duplicate copies, or reset details to start fresh.
           </p>
         </div>
       </div>
@@ -103,8 +94,8 @@ export function SpruceUpView() {
         >
           <WifiOff className="w-4 h-4 shrink-0 text-amber-700 dark:text-amber-300" />
           <span>
-            You&apos;re offline. Finding duplicates and filling in book details
-            require an internet connection.
+            You&apos;re offline. Finding duplicates, filling in book details,
+            and resetting details require an internet connection.
           </span>
         </div>
       )}
@@ -188,26 +179,14 @@ export function SpruceUpView() {
           aria-selected={activeTab === 'maintenance'}
           data-testid="shelf-care-tab-maintenance"
           onClick={() => setActiveTab('maintenance')}
-          className={`inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-sans font-semibold transition-all cursor-pointer ${
+          className={`inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-sans font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
             activeTab === 'maintenance'
               ? 'bg-primary text-on-primary shadow-xs'
               : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container border border-outline-variant/30'
           }`}
         >
-          <Database className="w-4 h-4 shrink-0" />
-          <span>Storage &amp; Reset</span>
-          {leaksCount > 0 && (
-            <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono ${
-                activeTab === 'maintenance'
-                  ? 'bg-on-primary/20 text-on-primary'
-                  : 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
-              }`}
-            >
-              <AlertTriangle className="w-3 h-3" />
-              {leaksCount}
-            </span>
-          )}
+          <RotateCcw className="w-4 h-4 shrink-0" />
+          <span>Reset Details</span>
         </button>
       </div>
 

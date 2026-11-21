@@ -146,36 +146,19 @@ export function useBookRecommendations(
   const unreadLibraryBooks = options?.unreadLibraryBooks ?? [];
   const limit = options?.limit ?? 12;
 
-  let queryResult:
-    | {
-        data?: unknown;
-        isLoading?: boolean;
-        isFetching?: boolean;
-        error?: unknown;
-        refetch?: () => Promise<unknown>;
-      }
-    | undefined;
-
-  try {
-    if (trpc?.readingTracker?.getRecommendations?.useQuery) {
-      queryResult = trpc.readingTracker.getRecommendations.useQuery(
-        {
-          filter: 'all',
-          limit,
-          includeAi: Boolean(hasAiPlan),
-          refreshSeed,
-        },
-        {
-          enabled:
-            isEnabled && (books.length > 0 || unreadLibraryBooks.length > 0),
-          staleTime: 1000 * 60 * 60 * 24, // 24 hours daily editorial cache
-          refetchOnWindowFocus: false,
-        },
-      );
-    }
-  } catch {
-    queryResult = undefined;
-  }
+  const queryResult = trpc.readingTracker.getRecommendations.useQuery(
+    {
+      filter: 'all',
+      limit,
+      includeAi: Boolean(hasAiPlan),
+      refreshSeed,
+    },
+    {
+      enabled: isEnabled && (books.length > 0 || unreadLibraryBooks.length > 0),
+      staleTime: 1000 * 60 * 60 * 24, // 24 hours daily editorial cache
+      refetchOnWindowFocus: false,
+    },
+  );
 
   const localFallbackItems = useMemo(
     () =>
@@ -184,7 +167,7 @@ export function useBookRecommendations(
   );
 
   const allItems = useMemo<BookRecommendationItem[]>(() => {
-    const data = queryResult?.data as GetRecommendationsOutput | undefined;
+    const data = queryResult?.data;
     if (data && Array.isArray(data.items) && data.items.length > 0) {
       return data.items;
     }
@@ -215,7 +198,7 @@ export function useBookRecommendations(
   }, [allItems, activeFilter]);
 
   const tasteSummary = useMemo(() => {
-    const data = queryResult?.data as GetRecommendationsOutput | undefined;
+    const data = queryResult?.data;
     return data?.tasteSummary ?? EMPTY_TASTE_SUMMARY;
   }, [queryResult?.data]);
 

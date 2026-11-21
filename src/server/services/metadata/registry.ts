@@ -7,7 +7,7 @@ import {
   type MetadataProvider,
 } from '../../../types/metadata';
 import {catalogOrchestrator} from '../catalog';
-import * as geminiService from '../gemini';
+import {classifyBooks, evaluateGenreAndSeriesGateCoalesced} from '../gemini';
 import type {SchedulePriority} from '../scheduler/providerQuotaScheduler';
 import {AuthorBioMetadataProvider} from './providers/AuthorBioMetadataProvider';
 import {CoverImageMetadataProvider} from './providers/CoverImageMetadataProvider';
@@ -17,7 +17,6 @@ import {GeoMetadataProvider} from './providers/GeoMetadataProvider';
 import {SeriesMetadataProvider} from './providers/SeriesMetadataProvider';
 import {SynopsisMetadataProvider} from './providers/SynopsisMetadataProvider';
 import {TemporalMetadataProvider} from './providers/TemporalMetadataProvider';
-import {getOptionalModuleFunction} from './stageRunner';
 import {registerSynopsisProviderResolver} from './utils';
 
 export interface OnCreateEnrichmentOptions {
@@ -176,16 +175,12 @@ export class MetadataRegistry {
       registeredGenreProvider instanceof GenreMetadataProvider &&
       registeredGenreProvider.isAvailable();
 
-    const coalescedDecisionsFn = getOptionalModuleFunction<
-      typeof geminiService.evaluateGenreAndSeriesGateCoalesced
-    >(geminiService, 'evaluateGenreAndSeriesGateCoalesced');
     const canRunCoalescedDecisions =
       options?.allowAiFallback !== false &&
       Boolean(process.env.GEMINI_API_KEY) &&
-      Boolean(coalescedDecisionsFn) &&
       !options?.signal?.aborted;
 
-    if (!canRunCoalescedDecisions || !coalescedDecisionsFn) {
+    if (!canRunCoalescedDecisions) {
       return {
         workingBooks,
         updatesByBookId,
@@ -220,7 +215,7 @@ export class MetadataRegistry {
     const genreConfidenceThreshold = GENRE_CONFIDENCE_THRESHOLD;
 
     try {
-      const coalesced = await coalescedDecisionsFn(
+      const coalesced = await evaluateGenreAndSeriesGateCoalesced(
         eligibleBooks.map(b => ({
           id: b.id,
           title: b.title,
@@ -228,9 +223,7 @@ export class MetadataRegistry {
           synopsis:
             typeof b.synopsis === 'string' && b.synopsis.trim()
               ? b.synopsis.trim()
-              : typeof b.description === 'string' && b.description.trim()
-                ? b.description.trim()
-                : undefined,
+              : undefined,
         })),
         {
           customGenres: options?.customGenres,
@@ -266,8 +259,7 @@ export class MetadataRegistry {
             book.subgenres = genreMatch.subgenres || [];
 
             const hasSavedSynopsis = Boolean(
-              (typeof book.synopsis === 'string' && book.synopsis.trim()) ||
-              (typeof book.description === 'string' && book.description.trim()),
+              typeof book.synopsis === 'string' && book.synopsis.trim(),
             );
             if (
               !hasSavedSynopsis &&
@@ -332,7 +324,7 @@ export class MetadataRegistry {
           return;
         }
         const hasCover = Boolean(book.coverUrl);
-        const hasSynopsis = Boolean(book.synopsis || book.description);
+        const hasSynopsis = Boolean(book.synopsis);
         const isStandaloneSeries = fastState.standaloneSeriesBookIds.has(
           book.id,
         );
@@ -380,11 +372,11 @@ export class MetadataRegistry {
           if (match) {
             const current = slowUpdates.get(book.id) || {};
             if (!book.coverUrl && match.coverUrl) {
-              current[MetadataKey.COVER_IMAGE] = match.coverUrl;
+              current.coverUrl = match.coverUrl;
               book.coverUrl = match.coverUrl;
             }
             if (!hasSynopsis && match.synopsis) {
-              current[MetadataKey.SYNOPSIS] = match.synopsis;
+              current.synopsis = match.synopsis;
               book.synopsis = match.synopsis;
             }
             if (!book.isbn && match.isbn) {
@@ -425,14 +417,9 @@ export class MetadataRegistry {
       return slowUpdates;
     }
 
-    const classifyBooksFn = getOptionalModuleFunction<
-      typeof geminiService.classifyBooks
-    >(geminiService, 'classifyBooks');
-
     if (
       fastState.lowConfidenceGenreBookIds.size > 0 &&
-      Boolean(process.env.GEMINI_API_KEY) &&
-      classifyBooksFn
+      Boolean(process.env.GEMINI_API_KEY)
     ) {
       const repassBooks = workingBooks.filter(
         b =>
@@ -443,7 +430,7 @@ export class MetadataRegistry {
 
       if (repassBooks.length > 0) {
         try {
-          const refreshedGenres = await classifyBooksFn(
+          const refreshedGenres = await classifyBooks(
             repassBooks.map(b => ({
               id: b.id,
               title: b.title,
@@ -502,6 +489,12 @@ export class MetadataRegistry {
         if (key === MetadataKey.GENRE) {
           return !b.primaryGenre;
         }
+        if (key === MetadataKey.GEO) {
+          return !b.geoMetadata;
+        }
+        if (key === MetadataKey.TEMPORAL) {
+          return !b.temporalMetadata;
+        }
         return !b[key];
       });
       if (booksNeedingField.length === 0) {
@@ -520,7 +513,12 @@ export class MetadataRegistry {
           }
           const current = slowUpdates.get(bookId) || {};
           const targetBook = workingBooks.find(wb => wb.id === bookId);
-          if (key === MetadataKey.GENRE) {
+          if (key === MetadataKey.COVER_IMAGE) {
+            current.coverUrl = value;
+            if (targetBook && typeof value === 'string') {
+              targetBook.coverUrl = value;
+            }
+          } else if (key === MetadataKey.GENRE) {
             const genreVal = value as BookGenreData;
             if (genreVal.primaryGenre) {
               current.primaryGenre = genreVal.primaryGenre;
@@ -530,6 +528,16 @@ export class MetadataRegistry {
                 targetBook.primaryGenre = genreVal.primaryGenre;
                 targetBook.subgenres = genreVal.subgenres || [];
               }
+            }
+          } else if (key === MetadataKey.GEO) {
+            current.geoMetadata = value;
+            if (targetBook) {
+              (targetBook as Record<string, unknown>).geoMetadata = value;
+            }
+          } else if (key === MetadataKey.TEMPORAL) {
+            current.temporalMetadata = value;
+            if (targetBook) {
+              (targetBook as Record<string, unknown>).temporalMetadata = value;
             }
           } else {
             current[key] = value;

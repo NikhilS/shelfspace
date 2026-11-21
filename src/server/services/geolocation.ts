@@ -1,5 +1,3 @@
-import fs from 'fs';
-import path from 'path';
 import {getAdminDb} from './firebaseAdmin';
 import {
   SchemaValidationError,
@@ -7,7 +5,6 @@ import {
   validateFirestoreWritePayload,
 } from '../../schemas/common';
 import {
-  diskGeolocationCacheSchema,
   storedGeolocationCacheDocSchema,
   type StoredGeolocationCacheDoc,
 } from '../../schemas/geolocation';
@@ -63,7 +60,30 @@ export const geolocationCacheConverter = {
   },
 };
 
+const MAX_L1_GEOCACHE_ENTRIES = 2000;
 const cache = new Map<string, {lat: number; lng: number}>();
+
+function setL1Cache(slug: string, coords: {lat: number; lng: number}): void {
+  if (cache.has(slug)) {
+    cache.delete(slug);
+  } else if (cache.size >= MAX_L1_GEOCACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (typeof oldestKey === 'string') {
+      cache.delete(oldestKey);
+    }
+  }
+  cache.set(slug, coords);
+}
+
+function getL1Cache(slug: string): {lat: number; lng: number} | undefined {
+  const hit = cache.get(slug);
+  if (!hit) {
+    return undefined;
+  }
+  cache.delete(slug);
+  cache.set(slug, hit);
+  return hit;
+}
 
 // Seed known common locations to eliminate redundant external calls
 const SEED_LOCATIONS: Record<string, {lat: number; lng: number}> = {
@@ -91,58 +111,12 @@ const SEED_LOCATIONS: Record<string, {lat: number; lng: number}> = {
 };
 
 for (const [slug, coords] of Object.entries(SEED_LOCATIONS)) {
-  cache.set(slug, coords);
-}
-
-// Local disk cache path
-const CACHE_FILE = path.join(process.cwd(), '.cache', 'geocache.json');
-
-// Initialize cache from local disk if present
-try {
-  if (fs.existsSync(CACHE_FILE)) {
-    const raw = fs.readFileSync(CACHE_FILE, 'utf-8');
-    const parsed = JSON.parse(raw) as unknown;
-    const validatedCache = validateFirestoreReadPayload(
-      diskGeolocationCacheSchema,
-      parsed,
-      {
-        entity: 'DiskGeolocationCache',
-        documentPath: '.cache/geocache.json',
-        operation: 'read',
-      },
-    );
-    for (const [k, v] of Object.entries(validatedCache)) {
-      cache.set(k, v);
-    }
-  }
-} catch {
-  // Ignore disk cache load errors
-}
-
-function persistToDisk() {
-  try {
-    const dir = path.dirname(CACHE_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, {recursive: true});
-    }
-    const obj: Record<string, {lat: number; lng: number}> = {};
-    for (const [k, v] of cache.entries()) {
-      obj[k] = v;
-    }
-    validateFirestoreWritePayload(diskGeolocationCacheSchema, obj, {
-      entity: 'DiskGeolocationCache',
-      documentPath: '.cache/geocache.json',
-      operation: 'upsert',
-    });
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(obj), 'utf-8');
-  } catch {
-    // Non-fatal disk write error
-  }
+  setL1Cache(slug, coords);
 }
 
 // Circuit breaker for Firestore L2 cache:
-// If server credentials are missing or lack Firestore IAM permissions (e.g. Cloud Run sandbox),
-// we gracefully disable Firestore L2 after the first permission rejection to avoid repetitive gRPC retry timeouts and error logs.
+// If server credentials are missing or lack Firestore IAM permissions (e.g. sandbox),
+// gracefully disable Firestore L2 after the first permission rejection.
 let firestoreL2Disabled = false;
 
 function isPermissionOrUnavailableError(err: unknown): boolean {
@@ -183,16 +157,15 @@ export async function getCachedGeocode(
     return undefined;
   }
 
-  // 1. Check in-memory L1 cache
-  if (cache.has(slug)) {
-    return cache.get(slug);
+  const l1Hit = getL1Cache(slug);
+  if (l1Hit) {
+    return l1Hit;
   }
 
   if (options?.skipL2Read) {
     return undefined;
   }
 
-  // 2. Check Firestore L2 cache if enabled
   if (!firestoreL2Disabled) {
     try {
       const db = getAdminDb();
@@ -203,8 +176,7 @@ export async function getCachedGeocode(
           docSnap.data() || {},
         );
         const coords = {lat: parsed.lat, lng: parsed.lng};
-        cache.set(slug, coords);
-        persistToDisk();
+        setL1Cache(slug, coords);
         return coords;
       }
     } catch (err) {
@@ -212,7 +184,6 @@ export async function getCachedGeocode(
         throw err;
       }
       if (isPermissionOrUnavailableError(err)) {
-        // Quietly trip circuit breaker; rely on in-memory and disk caching
         firestoreL2Disabled = true;
       }
     }
@@ -251,7 +222,6 @@ export async function warmGeocodeCacheBulk(names: string[]): Promise<void> {
     const refs = missingSlugs.map(slug => col.doc(slug));
     const snaps = await db.getAll(...refs);
 
-    let updatedDisk = false;
     for (let i = 0; i < missingSlugs.length; i++) {
       const slug = missingSlugs[i];
       const docSnap = snaps[i];
@@ -260,13 +230,8 @@ export async function warmGeocodeCacheBulk(names: string[]): Promise<void> {
           slug,
           docSnap.data() || {},
         );
-        cache.set(slug, {lat: parsed.lat, lng: parsed.lng});
-        updatedDisk = true;
+        setL1Cache(slug, {lat: parsed.lat, lng: parsed.lng});
       }
-    }
-
-    if (updatedDisk) {
-      persistToDisk();
     }
   } catch (err) {
     if (err instanceof SchemaValidationError) {
@@ -281,7 +246,7 @@ export async function warmGeocodeCacheBulk(names: string[]): Promise<void> {
 export async function cacheGeocode(
   name: string,
   coordinates: {lat: number; lng: number},
-) {
+): Promise<void> {
   await cacheGeocodesBulk([{name, coordinates}]);
 }
 
@@ -305,7 +270,7 @@ export async function cacheGeocodesBulk(
       continue;
     }
     seenSlugs.add(slug);
-    cache.set(slug, entry.coordinates);
+    setL1Cache(slug, entry.coordinates);
     validEntries.push({
       slug,
       name: entry.name,
@@ -316,8 +281,6 @@ export async function cacheGeocodesBulk(
   if (validEntries.length === 0) {
     return;
   }
-
-  persistToDisk();
 
   if (!firestoreL2Disabled) {
     try {
@@ -362,8 +325,11 @@ export async function geocodeLocation(
 ): Promise<{lat: number; lng: number} | undefined> {
   if (options?.skipL2Read) {
     const slug = toSlug(name);
-    if (slug && cache.has(slug)) {
-      return cache.get(slug);
+    if (slug) {
+      const hit = getL1Cache(slug);
+      if (hit) {
+        return hit;
+      }
     }
   } else {
     const cached = await getCachedGeocode(name);

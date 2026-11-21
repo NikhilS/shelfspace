@@ -4,10 +4,14 @@ import {getVirtualLibraryId} from '../library/libraryShareService';
 import {
   BookPartitioner,
   bookDocConverter,
-  computeReadingStateKey,
   fetchUserReadingStatesMap,
+  fetchUserReadingStatesProjection,
+  parseBookOrStateIdentifier,
+  resolveReadingStateFromMap,
 } from '../book';
+import {safeIdSchema} from '../../../schemas/common';
 import type {RequestScopedLoaders} from '../../auth/types';
+import type {Book, UserReadingState} from '../../../types';
 import type {
   ReadingShelfSummary,
   TrackedBookItem,
@@ -17,6 +21,7 @@ import type {
 
 const DEFAULT_UNREAD_LIBRARY_BOOKS_LIMIT = 80;
 const MIN_PER_LIBRARY_UNREAD_CAP = 25;
+const LIVE_BOOK_HYDRATION_CHUNK_SIZE = 250;
 
 export function normalizeShelfStatus(
   raw?: string,
@@ -24,7 +29,7 @@ export function normalizeShelfStatus(
   if (!raw || raw === 'unset') {
     return 'unset';
   }
-  if (raw === 'completed' || raw === 'finished') {
+  if (raw === 'finished') {
     return 'finished';
   }
   if (raw === 'want_to_read') {
@@ -50,9 +55,18 @@ export function normalizeTrackerIsbnKey(val?: string): string {
   return (val || '').replace(/[^0-9Xx]/g, '').toUpperCase();
 }
 
+interface PendingTrackedShelfRow {
+  state: Partial<UserReadingState>;
+  readingStatus: TrackedShelfStatus;
+  resolvedBookId: string;
+  libMeta: {id: string; name: string; isVirtual: boolean};
+  canHydrateLiveBook: boolean;
+}
+
 /**
  * Retrieves all books tracked by the user directly from `/users/{userId}/readingStates`,
- * annotated with library metadata from accessible owned/shared libraries and the personal virtual shelf.
+ * batch-hydrating live `/libraries/{libraryId}/books/{bookId}` catalog records via `db.getAll`
+ * and falling back to `< 2KB` `MinimalBookStub` snapshots for external or deleted entries.
  */
 export async function getPersonalReadingShelf(
   userId: string,
@@ -62,6 +76,7 @@ export async function getPersonalReadingShelf(
     requestLoaders?: RequestScopedLoaders;
   },
 ): Promise<ReadingShelfSummary> {
+  const db = getAdminDb();
   const virtualLibraryId = getVirtualLibraryId(userId);
 
   const [{libraries}, readingStatesMap] = await Promise.all([
@@ -75,7 +90,7 @@ export async function getPersonalReadingShelf(
         ),
     options?.requestLoaders
       ? options.requestLoaders.getUserReadingStatesMap(userId)
-      : fetchUserReadingStatesMap(getAdminDb(), userId),
+      : fetchUserReadingStatesMap(db, userId),
   ]);
 
   const libraryMetaMap = new Map<
@@ -97,7 +112,15 @@ export async function getPersonalReadingShelf(
     isVirtual: true,
   });
 
-  const allTracked: TrackedBookItem[] = [];
+  const pendingRows: PendingTrackedShelfRow[] = [];
+  const hydrationTargets = new Map<
+    string,
+    {
+      libraryId: string;
+      bookId: string;
+      ref: FirebaseFirestore.DocumentReference;
+    }
+  >();
 
   for (const [stateKey, state] of readingStatesMap.entries()) {
     const readingStatus = normalizeShelfStatus(state.status);
@@ -106,9 +129,14 @@ export async function getPersonalReadingShelf(
     }
 
     const snap = state.bookSnapshot;
+    const parsedKey = parseBookOrStateIdentifier(stateKey);
     const resolvedLibraryId =
-      state.libraryId || snap?.libraryId || virtualLibraryId;
-    const libMeta = libraryMetaMap.get(resolvedLibraryId) || {
+      state.libraryId ||
+      parsedKey.libraryIdFromId ||
+      snap?.libraryId ||
+      virtualLibraryId;
+    const accessibleMeta = libraryMetaMap.get(resolvedLibraryId);
+    const libMeta = accessibleMeta || {
       id: resolvedLibraryId,
       name:
         snap?.libraryName ||
@@ -118,60 +146,152 @@ export async function getPersonalReadingShelf(
       isVirtual: resolvedLibraryId.startsWith('virtual_'),
     };
     const resolvedBookId =
-      state.bookId ||
-      snap?.bookId ||
-      (stateKey.startsWith('bookid:')
-        ? stateKey.slice('bookid:'.length)
-        : stateKey);
+      state.bookId || snap?.bookId || parsedKey.cleanBookId || stateKey;
+    const canHydrateLiveBook =
+      Boolean(accessibleMeta) &&
+      state.keyType !== 'ext' &&
+      safeIdSchema.safeParse(resolvedBookId).success;
+
+    if (canHydrateLiveBook) {
+      const compositeKey = `${libMeta.id}:${resolvedBookId}`;
+      if (!hydrationTargets.has(compositeKey)) {
+        hydrationTargets.set(compositeKey, {
+          libraryId: libMeta.id,
+          bookId: resolvedBookId,
+          ref: db
+            .collection('libraries')
+            .doc(libMeta.id)
+            .collection('books')
+            .doc(resolvedBookId),
+        });
+      }
+    }
+
+    pendingRows.push({
+      state,
+      readingStatus,
+      resolvedBookId,
+      libMeta,
+      canHydrateLiveBook,
+    });
+  }
+
+  const liveBooksMap = new Map<string, Book>();
+  if (hydrationTargets.size > 0) {
+    const targetEntries = Array.from(hydrationTargets.entries());
+    for (
+      let i = 0;
+      i < targetEntries.length;
+      i += LIVE_BOOK_HYDRATION_CHUNK_SIZE
+    ) {
+      const slice = targetEntries.slice(i, i + LIVE_BOOK_HYDRATION_CHUNK_SIZE);
+      const refs = slice.map(([, entry]) => entry.ref);
+      const snaps = await db.getAll(...refs);
+      for (let idx = 0; idx < snaps.length; idx++) {
+        const docSnap = snaps[idx];
+        const [compositeKey, target] = slice[idx];
+        if (!docSnap?.exists) {
+          continue;
+        }
+        const parsed = bookDocConverter.fromFirestore(
+          docSnap.id || target.bookId,
+          docSnap.data() || {},
+          `/libraries/${target.libraryId}/books/${target.bookId}`,
+        );
+        const merged = BookPartitioner.mergeBookAndDetails(
+          docSnap.id || target.bookId,
+          parsed,
+        );
+        liveBooksMap.set(compositeKey, merged);
+      }
+    }
+  }
+
+  const allTracked: TrackedBookItem[] = [];
+
+  for (const row of pendingRows) {
+    const {state, readingStatus, resolvedBookId, libMeta, canHydrateLiveBook} =
+      row;
+    const snap = state.bookSnapshot;
+    const liveBook = canHydrateLiveBook
+      ? liveBooksMap.get(`${libMeta.id}:${resolvedBookId}`)
+      : undefined;
 
     const ownershipStatus: 'owned' | 'unowned' =
-      libMeta.isVirtual || snap?.ownershipStatus === 'unowned'
+      libMeta.isVirtual ||
+      liveBook?.ownershipStatus === 'unowned' ||
+      (!liveBook && snap?.ownershipStatus === 'unowned')
         ? 'unowned'
         : 'owned';
 
-    const addedAt = state.updatedAt || new Date().toISOString();
+    const effectiveUpdatedAt = state.updatedAt || liveBook?.updatedAt;
+    const addedAt =
+      liveBook?.addedAt || state.updatedAt || new Date().toISOString();
 
-    allTracked.push({
-      id: resolvedBookId,
-      title: snap?.title || 'Untitled Book',
-      author: snap?.author || 'Unknown Author',
-      ...(snap?.isbn || state.cleanIsbn
-        ? {isbn: snap?.isbn || state.cleanIsbn}
-        : {}),
-      ...(snap?.cleanIsbn || state.cleanIsbn
-        ? {cleanIsbn: snap?.cleanIsbn || state.cleanIsbn}
-        : {}),
-      ...(snap?.coverUrl ? {coverUrl: snap.coverUrl} : {}),
-      ...(snap?.publishedDate ? {publishedDate: snap.publishedDate} : {}),
-      ...(snap?.primaryGenre ? {primaryGenre: snap.primaryGenre} : {}),
-      subgenres: Array.isArray(snap?.subgenres) ? snap.subgenres : [],
-      isCustomPrimary: false,
-      ...(snap?.series ? {series: snap.series} : {}),
-      format: snap?.format || 'physical',
-      ...(snap?.synopsis ? {synopsis: snap.synopsis} : {}),
-      ...(snap?.authorBio ? {authorBio: snap.authorBio} : {}),
-      ...(snap?.geoMetadata ? {geoMetadata: snap.geoMetadata} : {}),
-      ...(snap?.temporalMetadata
-        ? {temporalMetadata: snap.temporalMetadata}
-        : {}),
-      ...(snap?.clusterCoordinates
-        ? {clusterCoordinates: snap.clusterCoordinates}
-        : {}),
-      addedBy: userId,
-      addedAt,
-      ...(state.updatedAt ? {updatedAt: state.updatedAt} : {}),
-      libraryId: libMeta.id,
-      libraryName: libMeta.name,
-      isVirtual: libMeta.isVirtual || ownershipStatus === 'unowned',
-      ownershipStatus,
-      readingStatus,
-      ...(typeof state.rating === 'number' ? {userRating: state.rating} : {}),
-      ...(state.readStatusReviewedAt !== undefined
-        ? {readStatusReviewedAt: state.readStatusReviewedAt}
-        : {}),
-      ...(state.startedAt !== undefined ? {startedAt: state.startedAt} : {}),
-      ...(state.finishedAt !== undefined ? {finishedAt: state.finishedAt} : {}),
-    });
+    if (liveBook) {
+      allTracked.push({
+        ...liveBook,
+        id: resolvedBookId,
+        isbn: liveBook.isbn || snap?.isbn || state.cleanIsbn,
+        cleanIsbn: liveBook.cleanIsbn || snap?.cleanIsbn || state.cleanIsbn,
+        coverUrl: liveBook.coverUrl || snap?.coverUrl,
+        publishedDate: liveBook.publishedDate || snap?.publishedDate,
+        primaryGenre: liveBook.primaryGenre || snap?.primaryGenre,
+        series: liveBook.series ?? snap?.series,
+        format: liveBook.format || snap?.format || 'physical',
+        addedBy: liveBook.addedBy ?? userId,
+        addedAt,
+        ...(effectiveUpdatedAt ? {updatedAt: effectiveUpdatedAt} : {}),
+        libraryId: libMeta.id,
+        libraryName: libMeta.name,
+        isVirtual: libMeta.isVirtual || ownershipStatus === 'unowned',
+        ownershipStatus,
+        readingStatus,
+        ...(typeof state.rating === 'number' ? {userRating: state.rating} : {}),
+        ...(state.readStatusReviewedAt !== undefined
+          ? {readStatusReviewedAt: state.readStatusReviewedAt}
+          : {}),
+        ...(state.startedAt !== undefined ? {startedAt: state.startedAt} : {}),
+        ...(state.finishedAt !== undefined
+          ? {finishedAt: state.finishedAt}
+          : {}),
+      });
+    } else {
+      allTracked.push({
+        id: resolvedBookId,
+        title: snap?.title || 'Untitled Book',
+        author: snap?.author || 'Unknown Author',
+        ...(snap?.isbn || state.cleanIsbn
+          ? {isbn: snap?.isbn || state.cleanIsbn}
+          : {}),
+        ...(snap?.cleanIsbn || state.cleanIsbn
+          ? {cleanIsbn: snap?.cleanIsbn || state.cleanIsbn}
+          : {}),
+        ...(snap?.coverUrl ? {coverUrl: snap.coverUrl} : {}),
+        ...(snap?.publishedDate ? {publishedDate: snap.publishedDate} : {}),
+        ...(snap?.primaryGenre ? {primaryGenre: snap.primaryGenre} : {}),
+        subgenres: [],
+        isCustomPrimary: false,
+        ...(snap?.series ? {series: snap.series} : {}),
+        format: snap?.format || 'physical',
+        addedBy: userId,
+        addedAt,
+        ...(effectiveUpdatedAt ? {updatedAt: effectiveUpdatedAt} : {}),
+        libraryId: libMeta.id,
+        libraryName: libMeta.name,
+        isVirtual: libMeta.isVirtual || ownershipStatus === 'unowned',
+        ownershipStatus,
+        readingStatus,
+        ...(typeof state.rating === 'number' ? {userRating: state.rating} : {}),
+        ...(state.readStatusReviewedAt !== undefined
+          ? {readStatusReviewedAt: state.readStatusReviewedAt}
+          : {}),
+        ...(state.startedAt !== undefined ? {startedAt: state.startedAt} : {}),
+        ...(state.finishedAt !== undefined
+          ? {finishedAt: state.finishedAt}
+          : {}),
+      });
+    }
   }
 
   allTracked.sort((a, b) => {
@@ -206,7 +326,7 @@ export async function getPersonalReadingShelf(
 
 /**
  * Retrieves unread books ('unset' or 'want_to_read') across all non-virtual libraries
- * accessible to the user (owned and shared), using the strict single-lookup reading state key.
+ * accessible to the user (owned and shared), using lightweight reading-state field projections.
  */
 export async function getUnreadLibraryBooks(
   userId: string,
@@ -247,73 +367,58 @@ export async function getUnreadLibraryBooks(
   const [librarySnaps, readingStatesMap] = await Promise.all([
     Promise.all(
       nonVirtualLibraries.map(async lib => {
-        try {
-          let booksQuery: FirebaseFirestore.Query = db
-            .collection('libraries')
-            .doc(lib.id)
-            .collection('books');
-          if (
-            typeof (booksQuery as {orderBy?: unknown}).orderBy === 'function'
-          ) {
-            try {
-              booksQuery = booksQuery.orderBy('addedAt', 'desc');
-            } catch {
-              // Fallback if index or test mock does not implement orderBy
-            }
-          }
-          if (typeof (booksQuery as {limit?: unknown}).limit === 'function') {
-            booksQuery = booksQuery.limit(perLibraryCap);
-          }
-          const snap = await booksQuery.get();
-          return {
-            libId: lib.id,
-            libName: lib.name || 'Untitled Library',
-            docs: snap.docs || [],
-          };
-        } catch {
-          return {
-            libId: lib.id,
-            libName: lib.name || 'Untitled Library',
-            docs: [],
-          };
-        }
+        const snap = await db
+          .collection('libraries')
+          .doc(lib.id)
+          .collection('books')
+          .orderBy('addedAt', 'desc')
+          .limit(perLibraryCap)
+          .get();
+        return {
+          libId: lib.id,
+          libName: lib.name || 'Untitled Library',
+          docs: snap.docs || [],
+        };
       }),
     ),
     options?.requestLoaders
       ? options.requestLoaders.getUserReadingStatesMap(userId)
-      : fetchUserReadingStatesMap(db, userId),
+      : fetchUserReadingStatesProjection(db, userId),
   ]);
 
   const unreadItems: UnreadLibraryBookItem[] = [];
-  const seenKeys = new Set<string>();
+  const seenIdentities = new Set<string>();
 
   for (const {libId, libName, docs} of librarySnaps) {
     for (const docSnap of docs) {
       const rawData = bookDocConverter.fromFirestore(
         docSnap.id,
         docSnap.data() || {},
+        `/libraries/${libId}/books/${docSnap.id}`,
       );
       if (rawData.ownershipStatus === 'unowned') {
         continue;
       }
       const merged = BookPartitioner.mergeBookAndDetails(docSnap.id, rawData);
-      const stateKey = computeReadingStateKey({
+      const state = resolveReadingStateFromMap(readingStatesMap, {
+        libraryId: libId,
+        bookId: merged.id,
         isbn: merged.isbn,
         cleanIsbn: merged.cleanIsbn,
-        bookId: merged.id,
       });
-
-      const state = readingStatesMap.get(stateKey);
       const status = normalizeShelfStatus(state?.status);
 
       if (status !== 'unset' && status !== 'want_to_read') {
         continue;
       }
 
-      if (seenKeys.has(stateKey)) {
+      const dedupeIdentity = merged.cleanIsbn
+        ? `cleanIsbn:${merged.cleanIsbn}`
+        : `book:${libId}:${merged.id}`;
+      if (seenIdentities.has(dedupeIdentity)) {
         continue;
       }
-      seenKeys.add(stateKey);
+      seenIdentities.add(dedupeIdentity);
 
       unreadItems.push({
         ...merged,

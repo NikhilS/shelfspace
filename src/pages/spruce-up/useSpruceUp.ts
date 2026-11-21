@@ -10,6 +10,14 @@ import {
   detectDuplicatesWithConfidence,
   DuplicateGroupMetadata,
 } from '../../lib/duplicateDetection';
+import {
+  commitBookDeleteDelta,
+  removeBookFromReadingCaches,
+} from '../../lib/readingStatusCache';
+import {
+  makeEntityBookKey,
+  useEntityCacheStore,
+} from '../../stores/entityCacheStore';
 import {DuplicateMergePayload} from './DuplicateMergeModal';
 
 export function useSpruceUp(libraryId: string | undefined) {
@@ -92,45 +100,54 @@ export function useSpruceUp(libraryId: string | undefined) {
       return;
     }
 
-    const enrichmentClient = trpcVanilla.enrichment;
-    if (!enrichmentClient?.auditPlaceholderCovers?.mutate) {
-      return;
-    }
-
     let cancelled = false;
     setIsAuditingCovers(true);
 
-    void enrichmentClient.auditPlaceholderCovers
+    void trpcVanilla.enrichment.auditPlaceholderCovers
       .mutate({libraryId})
       .then(result => {
         if (cancelled || !result || result.clearedCount <= 0) {
           return;
         }
         const clearedSet = new Set(result.clearedBookIds);
-        if (typeof utilsRef.current.book?.list?.setData === 'function') {
-          utilsRef.current.book.list.setData({libraryId}, old => {
-            if (!old || !Array.isArray(old.books)) {
-              return old;
-            }
+        const currentEntityBooks = useEntityCacheStore.getState().booksByKey;
+        useEntityCacheStore.getState().upsertBooksDelta(
+          libraryId,
+          result.clearedBookIds.map(clearedId => {
+            const existing =
+              currentEntityBooks[makeEntityBookKey(libraryId, clearedId)];
+            const nextStatus = {...(existing?.enrichmentStatus || {})};
+            delete nextStatus.coverImage;
             return {
-              ...old,
-              books: old.books.map(b => {
-                if (!clearedSet.has(b.id)) {
-                  return b;
-                }
-                const nextStatus = {...(b.enrichmentStatus || {})};
-                delete nextStatus.coverImage;
-                return {
-                  ...b,
-                  coverUrl: undefined,
-                  coverUrlRaw: undefined,
-                  enrichmentStatus: nextStatus,
-                };
-              }),
+              id: clearedId,
+              coverUrl: undefined,
+              coverUrlRaw: undefined,
+              enrichmentStatus: nextStatus,
             };
-          });
-        }
-        void utilsRef.current.book?.list?.invalidate?.({libraryId});
+          }),
+        );
+        utilsRef.current.book.list.setData({libraryId}, old => {
+          if (!old || !Array.isArray(old.books)) {
+            return old;
+          }
+          return {
+            ...old,
+            books: old.books.map(b => {
+              if (!clearedSet.has(b.id)) {
+                return b;
+              }
+              const nextStatus = {...(b.enrichmentStatus || {})};
+              delete nextStatus.coverImage;
+              return {
+                ...b,
+                coverUrl: undefined,
+                coverUrlRaw: undefined,
+                enrichmentStatus: nextStatus,
+              };
+            }),
+          };
+        });
+        void utilsRef.current.book.list.invalidate({libraryId});
         toast.info(
           result.clearedCount === 1
             ? 'Cleared 1 placeholder book cover so it can be backfilled.'
@@ -276,17 +293,12 @@ export function useSpruceUp(libraryId: string | undefined) {
       return;
     }
 
-    const enrichmentClient = trpcVanilla.enrichment;
-    if (!enrichmentClient?.adjudicateDuplicates?.mutate) {
-      return;
-    }
-
     for (const g of fuzzyPending) {
       requestedAdjudicationKeysRef.current.add(g.groupKey);
     }
 
     let cancelled = false;
-    void enrichmentClient.adjudicateDuplicates
+    void trpcVanilla.enrichment.adjudicateDuplicates
       .mutate({
         libraryId,
         groups: fuzzyPending.slice(0, 50).map(group => ({
@@ -366,30 +378,27 @@ export function useSpruceUp(libraryId: string | undefined) {
     if (!libraryId) {
       return;
     }
-    const originalData = utilsRef.current.book.list.getData({libraryId});
     setProcessingIds(prev => new Set(prev).add(id));
+    const rollback = removeBookFromReadingCaches(utilsRef.current, {
+      libraryId,
+      bookId: id,
+    });
     try {
-      utilsRef.current.book.list.setData({libraryId}, old => {
-        if (!old || !Array.isArray(old.books)) {
-          return {books: []};
-        }
-        return {
-          ...old,
-          books: old.books.filter(b => b.id !== id),
-        };
-      });
-
       await instrumentMutation(
         'delete',
         `libraries/${libraryId}/books/${id}`,
         {libraryId, bookId: id},
         () => deleteBookMutation.mutateAsync({libraryId, bookId: id}),
       );
+      commitBookDeleteDelta(utilsRef.current, {
+        libraryId,
+        bookId: id,
+        bookCountDelta: -1,
+        alreadyRemovedOptimistically: true,
+      });
       toast.success('Book deleted');
     } catch (error) {
-      if (originalData) {
-        utilsRef.current.book.list.setData({libraryId}, originalData);
-      }
+      rollback();
       toast.error('Failed to delete book');
       console.error('Failed to delete book:', error);
     } finally {
@@ -428,58 +437,69 @@ export function useSpruceUp(libraryId: string | undefined) {
     if (!libraryId) {
       return;
     }
-    const normalizedFormat: 'physical' | 'digital' | undefined =
-      payload.mergedFields.format === 'ebook' ||
-      payload.mergedFields.format === 'audiobook'
-        ? 'digital'
-        : payload.mergedFields.format;
 
     try {
-      if (trpcVanilla.book?.mergeDuplicates?.mutate) {
-        await trpcVanilla.book.mergeDuplicates.mutate({
+      await trpcVanilla.book.mergeDuplicates.mutate({
+        libraryId,
+        survivorBookId: payload.survivorBookId,
+        duplicateBookIds: payload.duplicateBookIds,
+        mergedFields: {
+          ...(payload.mergedFields.title !== undefined
+            ? {title: payload.mergedFields.title}
+            : {}),
+          ...(payload.mergedFields.author !== undefined
+            ? {author: payload.mergedFields.author}
+            : {}),
+          ...(payload.mergedFields.isbn !== undefined
+            ? {isbn: payload.mergedFields.isbn}
+            : {}),
+          ...(payload.mergedFields.coverUrl !== undefined
+            ? {coverUrl: payload.mergedFields.coverUrl}
+            : {}),
+          ...(payload.mergedFields.publishedDate !== undefined
+            ? {publishedDate: payload.mergedFields.publishedDate}
+            : {}),
+          ...(payload.mergedFields.primaryGenre !== undefined
+            ? {primaryGenre: payload.mergedFields.primaryGenre}
+            : {}),
+          ...(payload.mergedFields.subgenres !== undefined
+            ? {subgenres: payload.mergedFields.subgenres}
+            : {}),
+          ...(payload.mergedFields.series !== undefined
+            ? {series: payload.mergedFields.series}
+            : {}),
+          ...(payload.mergedFields.format !== undefined
+            ? {format: payload.mergedFields.format}
+            : {}),
+          ...(payload.mergedHeavyFields?.synopsis !== undefined
+            ? {synopsis: payload.mergedHeavyFields.synopsis}
+            : {}),
+          ...(payload.mergedHeavyFields?.authorBio !== undefined
+            ? {authorBio: payload.mergedHeavyFields.authorBio}
+            : {}),
+        },
+      });
+      for (const dupId of payload.duplicateBookIds) {
+        removeBookFromReadingCaches(utilsRef.current, {
           libraryId,
-          survivorBookId: payload.survivorBookId,
-          duplicateBookIds: payload.duplicateBookIds,
-          mergedFields: {
-            ...(payload.mergedFields.title !== undefined
-              ? {title: payload.mergedFields.title}
-              : {}),
-            ...(payload.mergedFields.author !== undefined
-              ? {author: payload.mergedFields.author}
-              : {}),
-            ...(payload.mergedFields.isbn !== undefined
-              ? {isbn: payload.mergedFields.isbn}
-              : {}),
-            ...(payload.mergedFields.coverUrl !== undefined
-              ? {coverUrl: payload.mergedFields.coverUrl}
-              : {}),
-            ...(payload.mergedFields.publishedDate !== undefined
-              ? {publishedDate: payload.mergedFields.publishedDate}
-              : {}),
-            ...(payload.mergedFields.primaryGenre !== undefined
-              ? {primaryGenre: payload.mergedFields.primaryGenre}
-              : {}),
-            ...(payload.mergedFields.subgenres !== undefined
-              ? {subgenres: payload.mergedFields.subgenres}
-              : {}),
-            ...(payload.mergedFields.series !== undefined
-              ? {series: payload.mergedFields.series}
-              : {}),
-            ...(normalizedFormat !== undefined
-              ? {format: normalizedFormat}
-              : {}),
-            ...(payload.mergedHeavyFields?.synopsis !== undefined
-              ? {synopsis: payload.mergedHeavyFields.synopsis}
-              : {}),
-            ...(payload.mergedHeavyFields?.authorBio !== undefined
-              ? {authorBio: payload.mergedHeavyFields.authorBio}
-              : {}),
-          },
+          bookId: dupId,
         });
       }
+      useEntityCacheStore
+        .getState()
+        .adjustLibraryBookCount(libraryId, -payload.duplicateBookIds.length);
+      useEntityCacheStore.getState().upsertBooksDelta(libraryId, [
+        {
+          id: payload.survivorBookId,
+          ...payload.mergedFields,
+          ...payload.mergedHeavyFields,
+        },
+      ]);
       await utilsRef.current.book.list.invalidate({libraryId});
       void utilsRef.current.library.get?.invalidate({libraryId});
       void utilsRef.current.library.list?.invalidate();
+      void utilsRef.current.readingTracker?.getShelf?.invalidate?.();
+      void utilsRef.current.readingTracker?.getUnreadLibraryBooks?.invalidate?.();
       toast.success('Duplicate records merged into surviving edition');
     } catch (error) {
       toast.error('Failed to merge duplicate books');

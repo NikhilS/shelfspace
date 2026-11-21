@@ -63,14 +63,7 @@ export function LibraryOverview({
   const location = useLocation();
   const isOnline = useOnlineStatus();
 
-  let utils: ReturnType<typeof trpc.useUtils> | undefined;
-  try {
-    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
-      utils = trpc.useUtils();
-    }
-  } catch {
-    utils = undefined;
-  }
+  const utils = trpc.useUtils();
 
   const handlePrewarmBookDetails = useCallback(() => {
     preloadRouteChunk('bookDetails');
@@ -108,17 +101,12 @@ export function LibraryOverview({
         bookHint,
       });
       try {
-        let response:
-          | Awaited<ReturnType<typeof trpcVanilla.book.updateStatus.mutate>>
-          | undefined;
-        if (trpcVanilla?.book?.updateStatus?.mutate) {
-          response = await trpcVanilla.book.updateStatus.mutate({
-            libraryId: targetLibraryId,
-            bookId,
-            status: nextStatus,
-            ...(snapshotHint ? {bookSnapshot: snapshotHint} : {}),
-          });
-        }
+        const response = await trpcVanilla.book.updateStatus.mutate({
+          libraryId: targetLibraryId,
+          bookId,
+          status: nextStatus,
+          ...(snapshotHint ? {bookSnapshot: snapshotHint} : {}),
+        });
         commitReadingStatusDelta(utils, {
           libraryId: targetLibraryId,
           bookId,

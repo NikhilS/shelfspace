@@ -16,7 +16,11 @@ import {
   validateFirestoreWritePayload,
 } from '../../../schemas/common';
 import {storedLibraryDocSchema} from '../../../schemas/libraryApi';
-import {libraryDocConverter} from './libraryCrudService';
+import {
+  collectDeprecatedLibraryFieldDeletes,
+  computeCollaboratorEmails,
+  parseAndSelfHealLibrarySnapshot,
+} from './libraryCrudService';
 import {LibraryMetadataCache} from './libraryMetadataCache';
 
 export interface ResolvedLibraryAccess {
@@ -46,11 +50,6 @@ export async function captureLibraryAccess<T>(
   const store: {access?: ResolvedLibraryAccess} = {};
   const result = await accessCaptureStorage.run(store, fn);
   return {result, captured: store.access};
-}
-
-export function getRecentResolvedLibraryAccess():
-  ResolvedLibraryAccess | undefined {
-  return accessCaptureStorage.getStore()?.access;
 }
 
 function assertSafeLibraryId(libraryId: string): string {
@@ -87,8 +86,15 @@ export function evaluateRoleFromLibraryData(
   if (userEmail && accessMap[userEmail]) {
     return accessMap[userEmail] as LibraryRole;
   }
-  if (normalizedEmail && accessMap[normalizedEmail]) {
-    return accessMap[normalizedEmail] as LibraryRole;
+  if (normalizedEmail) {
+    if (accessMap[normalizedEmail]) {
+      return accessMap[normalizedEmail] as LibraryRole;
+    }
+    for (const [rawKey, roleVal] of Object.entries(accessMap)) {
+      if (rawKey.trim().toLowerCase() === normalizedEmail && roleVal) {
+        return roleVal as LibraryRole;
+      }
+    }
   }
   return null;
 }
@@ -141,13 +147,14 @@ export async function resolveLibraryAccess(
       const db = getAdminDb();
       const libRef = db.collection('libraries').doc(cleanLibraryId);
       const libSnap = await libRef.get();
-      if (libSnap?.exists) {
-        virtualData = libraryDocConverter.fromFirestore(
+      if (libSnap.exists) {
+        virtualData = parseAndSelfHealLibrarySnapshot(
           cleanLibraryId,
           libSnap.data() || virtualData,
           userId,
+          libRef,
         );
-      } else if (typeof libRef?.set === 'function') {
+      } else {
         const virtualSetPayload = {
           ...virtualData,
           createdAt: FieldValue.serverTimestamp(),
@@ -164,11 +171,19 @@ export async function resolveLibraryAccess(
         );
         await libRef.set(virtualSetPayload, {merge: true});
       }
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof SchemaValidationError) {
         throw err;
       }
-      // Non-fatal in unit test mocks that do not stub virtual doc reads
+      const errMsg = formatFirestoreAdminError(err);
+      console.error(
+        '[LibraryService] Error initializing virtual shelf:',
+        errMsg,
+      );
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `Failed to initialize virtual shelf: ${errMsg}`,
+      });
     }
 
     const resolved: ResolvedLibraryAccess = {
@@ -196,10 +211,8 @@ export async function resolveLibraryAccess(
   if (!libData) {
     try {
       const db = getAdminDb();
-      const libSnap = await db
-        .collection('libraries')
-        .doc(cleanLibraryId)
-        .get();
+      const libRef = db.collection('libraries').doc(cleanLibraryId);
+      const libSnap = await libRef.get();
 
       if (!libSnap.exists) {
         throw new TRPCError({
@@ -208,10 +221,11 @@ export async function resolveLibraryAccess(
         });
       }
 
-      const parsedLib = libraryDocConverter.fromFirestore(
+      const parsedLib = parseAndSelfHealLibrarySnapshot(
         cleanLibraryId,
         libSnap.data() || {},
         userId,
+        libRef,
       );
       LibraryMetadataCache.set(cleanLibraryId, parsedLib);
       libData = parsedLib;
@@ -280,83 +294,6 @@ export async function verifyLibraryAccess(
 }
 
 /**
- * Resolves caller's role on library without throwing FORBIDDEN.
- */
-export async function getUserRole(
-  userId: string,
-  userEmail: string | undefined,
-  libraryId: string,
-): Promise<{
-  role: LibraryRole | null;
-  isOwner: boolean;
-  canEdit: boolean;
-}> {
-  if (!userId) {
-    return {role: null, isOwner: false, canEdit: false};
-  }
-  const parsedId = safeIdSchema.safeParse(libraryId);
-  if (!parsedId.success) {
-    return {role: null, isOwner: false, canEdit: false};
-  }
-
-  const normalizedEmail = userEmail?.toLowerCase().trim();
-  const isSuperAdmin =
-    normalizedEmail === SUPERADMIN_EMAIL.toLowerCase().trim();
-
-  if (isVirtualLibraryId(parsedId.data)) {
-    if (parsedId.data === getVirtualLibraryId(userId) || isSuperAdmin) {
-      return {role: 'owner', isOwner: true, canEdit: true};
-    }
-    return {role: null, isOwner: false, canEdit: false};
-  }
-
-  if (isSuperAdmin) {
-    return {role: 'owner', isOwner: true, canEdit: true};
-  }
-
-  let libData: Record<string, unknown> | undefined = LibraryMetadataCache.get(
-    parsedId.data,
-  );
-  if (!libData) {
-    try {
-      const db = getAdminDb();
-      const libSnap = await db.collection('libraries').doc(parsedId.data).get();
-      if (!libSnap.exists) {
-        return {role: null, isOwner: false, canEdit: false};
-      }
-
-      const parsedLib = libraryDocConverter.fromFirestore(
-        parsedId.data,
-        libSnap.data() || {},
-        userId,
-      );
-      LibraryMetadataCache.set(parsedId.data, parsedLib);
-      libData = parsedLib;
-    } catch (err) {
-      if (err instanceof SchemaValidationError) {
-        throw err;
-      }
-      return {role: null, isOwner: false, canEdit: false};
-    }
-  }
-
-  let role = evaluateRoleFromLibraryData(userId, userEmail, libData);
-  if (!role && normalizedEmail) {
-    try {
-      const perms = await AllowlistService.getPermissions(normalizedEmail);
-      if (perms?.isAdmin) {
-        role = 'owner';
-      }
-    } catch {
-      // Non-fatal
-    }
-  }
-  const isOwner = role === 'owner';
-  const canEdit = role === 'owner' || role === 'editor';
-  return {role, isOwner, canEdit};
-}
-
-/**
  * Atomically invites or updates a collaborator's role ('editor' | 'viewer') on a library.
  * If the invitee is not on the global allowlist, creates a pending waitlist entry for admin review.
  */
@@ -395,22 +332,18 @@ export async function upsertCollaborator(
     const db = getAdminDb();
     const libRef = db.collection('libraries').doc(cleanLibraryId);
 
-    const applyUpdate = async (
-      getSnap: () => Promise<FirebaseFirestore.DocumentSnapshot>,
-      writeAccess: (
-        nextAccess: Record<string, LibraryRole>,
-      ) => Promise<void> | void,
-    ) => {
-      const snap = await getSnap();
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(libRef);
       if (!snap.exists) {
         throw new TRPCError({
           code: 'NOT_FOUND',
           message: `Library '${cleanLibraryId}' not found`,
         });
       }
-      const data = libraryDocConverter.fromFirestore(
+      const rawSnapData = (snap.data() || {}) as Record<string, unknown>;
+      const data = parseAndSelfHealLibrarySnapshot(
         cleanLibraryId,
-        snap.data() || {},
+        rawSnapData,
         userId,
       );
       libraryName = data.name || 'Shared Library';
@@ -432,54 +365,23 @@ export async function upsertCollaborator(
       }
 
       nextAccess[normalizedTarget] = role;
-      await writeAccess(nextAccess);
-    };
-
-    if (
-      typeof (db as {runTransaction?: unknown}).runTransaction === 'function'
-    ) {
-      await db.runTransaction(async tx => {
-        await applyUpdate(
-          () => tx.get(libRef),
-          nextAccess => {
-            const updatePayload = {
-              access: nextAccess,
-              updatedAt: FieldValue.serverTimestamp(),
-            };
-            validateFirestoreWritePayload(
-              storedLibraryDocSchema.partial(),
-              updatePayload,
-              {
-                entity: 'StoredLibraryDoc',
-                documentPath: `/libraries/${cleanLibraryId}`,
-                operation: 'update',
-              },
-            );
-            tx.update(libRef, updatePayload);
-          },
-        );
-      });
-    } else {
-      await applyUpdate(
-        () => libRef.get(),
-        async nextAccess => {
-          const updatePayload = {
-            access: nextAccess,
-            updatedAt: FieldValue.serverTimestamp(),
-          };
-          validateFirestoreWritePayload(
-            storedLibraryDocSchema.partial(),
-            updatePayload,
-            {
-              entity: 'StoredLibraryDoc',
-              documentPath: `/libraries/${cleanLibraryId}`,
-              operation: 'update',
-            },
-          );
-          await libRef.update(updatePayload);
+      const updatePayload = {
+        ...collectDeprecatedLibraryFieldDeletes(rawSnapData),
+        access: nextAccess,
+        collaboratorEmails: computeCollaboratorEmails(nextAccess),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      validateFirestoreWritePayload(
+        storedLibraryDocSchema.partial(),
+        updatePayload,
+        {
+          entity: 'StoredLibraryDoc',
+          documentPath: `/libraries/${cleanLibraryId}`,
+          operation: 'update',
         },
       );
-    }
+      tx.update(libRef, updatePayload);
+    });
     LibraryMetadataCache.invalidate(cleanLibraryId);
   } catch (err: unknown) {
     if (err instanceof TRPCError || err instanceof SchemaValidationError) {
@@ -550,22 +452,18 @@ export async function removeCollaborator(
     const db = getAdminDb();
     const libRef = db.collection('libraries').doc(cleanLibraryId);
 
-    const applyRemove = async (
-      getSnap: () => Promise<FirebaseFirestore.DocumentSnapshot>,
-      writeAccess: (
-        nextAccess: Record<string, LibraryRole>,
-      ) => Promise<void> | void,
-    ) => {
-      const snap = await getSnap();
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(libRef);
       if (!snap.exists) {
         throw new TRPCError({
           code: 'NOT_FOUND',
           message: `Library '${cleanLibraryId}' not found`,
         });
       }
-      const data = libraryDocConverter.fromFirestore(
+      const rawSnapData = (snap.data() || {}) as Record<string, unknown>;
+      const data = parseAndSelfHealLibrarySnapshot(
         cleanLibraryId,
-        snap.data() || {},
+        rawSnapData,
         userId,
       );
       const rawAccess = data.access || {};
@@ -586,54 +484,23 @@ export async function removeCollaborator(
       }
 
       delete nextAccess[normalizedTarget];
-      await writeAccess(nextAccess);
-    };
-
-    if (
-      typeof (db as {runTransaction?: unknown}).runTransaction === 'function'
-    ) {
-      await db.runTransaction(async tx => {
-        await applyRemove(
-          () => tx.get(libRef),
-          nextAccess => {
-            const updatePayload = {
-              access: nextAccess,
-              updatedAt: FieldValue.serverTimestamp(),
-            };
-            validateFirestoreWritePayload(
-              storedLibraryDocSchema.partial(),
-              updatePayload,
-              {
-                entity: 'StoredLibraryDoc',
-                documentPath: `/libraries/${cleanLibraryId}`,
-                operation: 'update',
-              },
-            );
-            tx.update(libRef, updatePayload);
-          },
-        );
-      });
-    } else {
-      await applyRemove(
-        () => libRef.get(),
-        async nextAccess => {
-          const updatePayload = {
-            access: nextAccess,
-            updatedAt: FieldValue.serverTimestamp(),
-          };
-          validateFirestoreWritePayload(
-            storedLibraryDocSchema.partial(),
-            updatePayload,
-            {
-              entity: 'StoredLibraryDoc',
-              documentPath: `/libraries/${cleanLibraryId}`,
-              operation: 'update',
-            },
-          );
-          await libRef.update(updatePayload);
+      const updatePayload = {
+        ...collectDeprecatedLibraryFieldDeletes(rawSnapData),
+        access: nextAccess,
+        collaboratorEmails: computeCollaboratorEmails(nextAccess),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      validateFirestoreWritePayload(
+        storedLibraryDocSchema.partial(),
+        updatePayload,
+        {
+          entity: 'StoredLibraryDoc',
+          documentPath: `/libraries/${cleanLibraryId}`,
+          operation: 'update',
         },
       );
-    }
+      tx.update(libRef, updatePayload);
+    });
     LibraryMetadataCache.invalidate(cleanLibraryId);
 
     return {
@@ -673,6 +540,7 @@ export async function getCollaboratorStatuses(
 }> {
   const cleanLibraryId = assertSafeLibraryId(libraryId);
   let rawData: Record<string, unknown>;
+  let fetchedRef: FirebaseFirestore.DocumentReference | undefined;
   if (options?.prefetchedData) {
     rawData = options.prefetchedData;
   } else {
@@ -680,7 +548,8 @@ export async function getCollaboratorStatuses(
       await verifyLibraryAccess(userId, userEmail, cleanLibraryId, 'viewer');
     }
     const db = getAdminDb();
-    const snap = await db.collection('libraries').doc(cleanLibraryId).get();
+    const libRef = db.collection('libraries').doc(cleanLibraryId);
+    const snap = await libRef.get();
     if (!snap.exists) {
       throw new TRPCError({
         code: 'NOT_FOUND',
@@ -688,12 +557,14 @@ export async function getCollaboratorStatuses(
       });
     }
     rawData = snap.data() || {};
+    fetchedRef = libRef;
   }
 
-  const storedLib = libraryDocConverter.fromFirestore(
+  const storedLib = parseAndSelfHealLibrarySnapshot(
     cleanLibraryId,
     rawData,
     userId,
+    fetchedRef,
   );
   const accessMap = storedLib.access || {};
   const entries = Object.entries(accessMap);

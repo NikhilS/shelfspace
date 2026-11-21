@@ -1,148 +1,38 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {BookService} from './index';
 import {TRPCError} from '@trpc/server';
+import {BookService} from './index';
+import * as adminModule from '../firebaseAdmin';
+import {
+  createFakeFirestore,
+  type FakeFirestore,
+} from '../../testing/fakeFirestore';
 
-const mockSet = vi.fn();
-const mockUpdate = vi.fn();
-const mockDelete = vi.fn();
-const mockCommit = vi.fn().mockResolvedValue(undefined);
+describe('BookService — FakeFirestore Integration & Canonical Ledger', () => {
+  let fake: FakeFirestore;
 
-const mockBatch = vi.fn(() => ({
-  set: mockSet,
-  update: mockUpdate,
-  delete: mockDelete,
-  commit: mockCommit,
-}));
-
-const mockBookGet = vi.fn();
-const mockDetailGet = vi.fn();
-const mockReviewsGet = vi.fn().mockResolvedValue({
-  forEach: vi.fn(),
-});
-const mockBooksQueryGet = vi.fn().mockResolvedValue({
-  docs: [],
-});
-const mockWhere = vi.fn().mockReturnThis();
-
-const mockReadingStatesQueryGet = vi.fn().mockResolvedValue({
-  docs: [],
-});
-const mockReadingStateDocGet = vi.fn().mockResolvedValue({
-  exists: false,
-});
-const mockReadingStateDocSet = vi.fn().mockResolvedValue(undefined);
-
-const mockBookDoc = {
-  id: 'book-1',
-  get: mockBookGet,
-  collection: vi.fn((sub: string) => {
-    if (sub === 'reviews') {
-      return {
-        get: mockReviewsGet,
-        doc: vi.fn((id?: string) => ({id: id || 'rev-1'})),
-      };
-    }
-    return {doc: vi.fn()};
-  }),
-};
-
-const mockDetailDoc = {
-  id: 'book-1',
-  get: mockDetailGet,
-};
-
-const mockDoc = vi.fn((docId?: string): Record<string, unknown> => {
-  const effectiveId = docId || 'generated-id-123';
-  return {
-    id: effectiveId,
-    get: mockBookGet,
-    set: mockReadingStateDocSet,
-    collection: vi.fn((sub: string) => {
-      if (sub === 'books') {
-        const queryObj = {
-          doc: vi.fn((id?: string): unknown =>
-            id === 'book-1' ? mockBookDoc : mockDoc(id),
-          ),
-          where: mockWhere,
-          orderBy: vi.fn().mockReturnThis(),
-          limit: vi.fn().mockReturnThis(),
-          get: mockBooksQueryGet,
-        };
-        return queryObj;
-      }
-      if (sub === 'bookDetails') {
-        return {
-          doc: vi.fn((id?: string) =>
-            id === 'book-1' ? mockDetailDoc : mockDoc(id),
-          ),
-        };
-      }
-      if (sub === 'reviews') {
-        return {
-          get: mockReviewsGet,
-          doc: vi.fn((id?: string) => ({id: id || 'rev-1'})),
-        };
-      }
-      if (sub === 'readingStates') {
-        return {
-          get: mockReadingStatesQueryGet,
-          doc: vi.fn((stateKey?: string) => ({
-            id: stateKey || 'bookid:book-1',
-            get: mockReadingStateDocGet,
-            set: mockReadingStateDocSet,
-          })),
-        };
-      }
-      return {doc: mockDoc};
-    }),
-  };
-});
-
-const mockCollection = vi.fn(() => ({
-  doc: mockDoc,
-}));
-
-const mockGetAll = vi.fn(
-  async (...refs: Array<{get: () => Promise<unknown>}>) =>
-    Promise.all(refs.map(r => r.get())),
-);
-
-vi.mock('../firebaseAdmin', () => ({
-  getAdminDb: () => ({
-    collection: mockCollection,
-    batch: mockBatch,
-    getAll: mockGetAll,
-  }),
-  formatFirestoreAdminError: (err: unknown) =>
-    err instanceof Error ? err.message : String(err),
-}));
-
-vi.mock('firebase-admin/firestore', () => ({
-  FieldValue: {
-    serverTimestamp: () => 'MOCK_SERVER_TIMESTAMP',
-    increment: (n: number) => ({_increment: n}),
-  },
-  FieldPath: class {
-    fields: string[];
-    constructor(...f: string[]) {
-      this.fields = f;
-    }
-  },
-}));
-
-describe('BookService - Unified Write Layer', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    const created = createFakeFirestore();
+    fake = created.fake;
+    vi.spyOn(adminModule, 'getAdminDb').mockReturnValue(created.db);
+    fake.seedDoc('libraries/lib-1', {
+      name: 'Home Archive',
+      ownerId: 'user-1',
+      access: {'user1@example.com': 'owner'},
+      collaboratorEmails: ['user1@example.com'],
+      bookCount: 0,
+    });
   });
 
   describe('createBook', () => {
-    it('creates book, partitions heavy details to bookDetails, and writes initial readingStatus to /users/{uid}/readingStates/isbn:<ISBN>', async () => {
+    it('creates book with primaryGenreLower/missingFlags, partitions heavy details to bookDetails, and writes slim readingStates stub to book:<libraryId>:<bookId>', async () => {
       const res = await BookService.createBook('user-1', {
         libraryId: 'lib-1',
         bookId: 'book-1',
         title: 'Dune',
         author: 'Frank Herbert',
         isbn: '978-0-441-17271-9',
+        primaryGenre: 'Science Fiction',
         synopsis: 'Desert planet spice story',
         authorBio: 'American sci-fi master',
         embedding: [0.1, 0.2, 0.3],
@@ -153,79 +43,112 @@ describe('BookService - Unified Write Layer', () => {
       expect(res.id).toBe('book-1');
       expect(res.book?.readingStatus).toBe('reading');
 
-      // Verify core book write includes deterministic index fields and NO embedded user state
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          id: 'book-1',
-          title: 'Dune',
-          author: 'Frank Herbert',
-          cleanIsbn: '9780441172719',
-          dedupeKey: 'dune::frank herbert',
-          searchTokens: expect.arrayContaining([
-            'dune',
-            'frank',
-            'herbert',
-          ]) as unknown,
-          bookDetailsMetadata: {
-            hasSynopsis: true,
-            hasAuthorBio: true,
-            hasEmbedding: true,
-            hasClusterCoordinates: false,
-          },
-        }),
+      const storedBook = fake.inspectDoc('libraries/lib-1/books/book-1');
+      expect(storedBook).toMatchObject({
+        id: 'book-1',
+        title: 'Dune',
+        author: 'Frank Herbert',
+        cleanIsbn: '9780441172719',
+        dedupeKey: 'dune::frank herbert',
+        primaryGenre: 'Science Fiction',
+        primaryGenreLower: 'science fiction',
+        bookDetailsMetadata: {
+          hasSynopsis: true,
+          hasAuthorBio: true,
+          hasEmbedding: true,
+          hasClusterCoordinates: false,
+        },
+      });
+      expect(storedBook?.synopsis).toBeUndefined();
+      expect(storedBook?.missingFlags).toEqual(
+        expect.arrayContaining(['geo', 'temporal', 'coverImage', 'series']),
       );
+      expect(storedBook?.missingFlags).not.toContain('genre');
+      expect(storedBook?.missingFlags).not.toContain('synopsis');
+      expect(storedBook?.missingFlags).not.toContain('authorBio');
+      expect(storedBook?.missingFlags).not.toContain('embedding');
 
-      // Verify reading state write to /users/user-1/readingStates/isbn:9780441172719
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({id: 'isbn:9780441172719'}),
-        expect.objectContaining({
-          id: 'isbn:9780441172719',
-          userId: 'user-1',
-          keyType: 'isbn',
-          cleanIsbn: '9780441172719',
-          bookId: 'book-1',
-          libraryId: 'lib-1',
-          status: 'reading',
-        }),
-        {merge: true},
+      const storedDetails = fake.inspectDoc(
+        'libraries/lib-1/bookDetails/book-1',
       );
+      expect(storedDetails).toMatchObject({
+        synopsis: 'Desert planet spice story',
+        authorBio: 'American sci-fi master',
+        embedding: [0.1, 0.2, 0.3],
+      });
 
-      // Verify heavy details write
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          synopsis: 'Desert planet spice story',
-          authorBio: 'American sci-fi master',
-          embedding: [0.1, 0.2, 0.3],
-        }),
+      const storedState = fake.inspectDoc(
+        'users/user-1/readingStates/book:lib-1:book-1',
       );
+      expect(storedState).toMatchObject({
+        id: 'book:lib-1:book-1',
+        userId: 'user-1',
+        keyType: 'book',
+        cleanIsbn: '9780441172719',
+        bookId: 'book-1',
+        libraryId: 'lib-1',
+        status: 'reading',
+      });
+      const snapshot = storedState?.bookSnapshot as Record<string, unknown>;
+      expect(snapshot).toMatchObject({
+        title: 'Dune',
+        author: 'Frank Herbert',
+        cleanIsbn: '9780441172719',
+        bookId: 'book-1',
+        libraryId: 'lib-1',
+      });
+      expect(snapshot.synopsis).toBeUndefined();
+      expect(snapshot.authorBio).toBeUndefined();
 
-      // Verify library bookCount increment
-      expect(mockUpdate).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          bookCount: {_increment: 1},
-        }),
-      );
-
-      expect(mockCommit).toHaveBeenCalled();
+      const updatedLib = fake.inspectDoc('libraries/lib-1');
+      expect(updatedLib?.bookCount).toBe(1);
     });
 
-    it('generates a book ID if none is supplied', async () => {
+    it('generates a book ID if none is supplied and clears any prior tombstone on re-creation', async () => {
+      fake.seedDoc('libraries/lib-1/tombstones/book-reborn', {
+        id: 'book-reborn',
+        libraryId: 'lib-1',
+        deletedAtMs: Date.now() - 5000,
+      });
+
       const res = await BookService.createBook('user-1', {
         libraryId: 'lib-1',
-        title: 'Untitled Book',
+        bookId: 'book-reborn',
+        title: 'Reborn Book',
       });
 
       expect(res.success).toBe(true);
-      expect(res.id).toBeDefined();
-      expect(mockCommit).toHaveBeenCalled();
+      expect(res.id).toBe('book-reborn');
+      expect(
+        fake.inspectDoc('libraries/lib-1/tombstones/book-reborn'),
+      ).toBeUndefined();
+
+      const autoRes = await BookService.createBook('user-1', {
+        libraryId: 'lib-1',
+        title: 'Auto ID Book',
+      });
+      expect(autoRes.id).toBeDefined();
     });
   });
 
   describe('updateBook', () => {
-    it('updates core fields and propagates heavy fields to bookDetails', async () => {
+    it('updates core fields, recalculates primaryGenreLower and missingFlags, and writes heavy fields to bookDetails', async () => {
+      fake.seedDoc('libraries/lib-1/books/book-1', {
+        id: 'book-1',
+        title: 'Dune',
+        author: 'Frank Herbert',
+        missingFlags: [
+          'geo',
+          'temporal',
+          'genre',
+          'synopsis',
+          'authorBio',
+          'embedding',
+          'coverImage',
+          'series',
+        ],
+      });
+
       const res = await BookService.updateBook('user-1', {
         libraryId: 'lib-1',
         bookId: 'book-1',
@@ -238,58 +161,88 @@ describe('BookService - Unified Write Layer', () => {
 
       expect(res.success).toBe(true);
 
-      // Core update contains title, primaryGenre, and metadata flag
-      expect(mockUpdate).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          title: 'Dune Messiah',
-          primaryGenre: 'Science Fiction',
-          'bookDetailsMetadata.hasSynopsis': true,
-        }),
-      );
+      const updatedBook = fake.inspectDoc('libraries/lib-1/books/book-1');
+      expect(updatedBook).toMatchObject({
+        title: 'Dune Messiah',
+        primaryGenre: 'Science Fiction',
+        primaryGenreLower: 'science fiction',
+        bookDetailsMetadata: {hasSynopsis: true},
+      });
+      expect(updatedBook?.missingFlags).not.toContain('genre');
+      expect(updatedBook?.missingFlags).not.toContain('synopsis');
 
-      // Heavy update contains synopsis
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          synopsis: 'Second Dune book',
-        }),
-        {merge: true},
-      );
-
-      expect(mockCommit).toHaveBeenCalled();
+      const details = fake.inspectDoc('libraries/lib-1/bookDetails/book-1');
+      expect(details?.synopsis).toBe('Second Dune book');
     });
   });
 
-  describe('deleteBook', () => {
-    it('deletes book doc, detail doc, reviews, and decrements bookCount', async () => {
+  describe('deleteBook & syncChanges tombstones', () => {
+    it('deletes book, detail, and reviews, decrements bookCount, and persists a Firestore tombstone surfaced by syncChanges', async () => {
+      const beforeDeleteMs = Date.now() - 100;
+      fake.seedDoc('libraries/lib-1', {
+        name: 'Home Archive',
+        ownerId: 'user-1',
+        bookCount: 2,
+      });
+      fake.seedDoc('libraries/lib-1/books/book-1', {
+        id: 'book-1',
+        title: 'Doomed Book',
+        author: 'Author X',
+      });
+      fake.seedDoc('libraries/lib-1/bookDetails/book-1', {
+        synopsis: 'Old synopsis',
+      });
+      fake.seedDoc('libraries/lib-1/books/book-1/reviews/rev-1', {
+        userId: 'user-1',
+        rating: 4,
+        text: 'Good',
+      });
+
       const res = await BookService.deleteBook('user-1', {
         libraryId: 'lib-1',
         bookId: 'book-1',
       });
 
       expect(res.success).toBe(true);
-      expect(mockDelete).toHaveBeenCalledTimes(2); // bookRef and detailRef
-      expect(mockUpdate).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          bookCount: {_increment: -1},
-        }),
-      );
-      expect(mockCommit).toHaveBeenCalled();
+      expect(fake.inspectDoc('libraries/lib-1/books/book-1')).toBeUndefined();
+      expect(
+        fake.inspectDoc('libraries/lib-1/bookDetails/book-1'),
+      ).toBeUndefined();
+      expect(
+        fake.inspectDoc('libraries/lib-1/books/book-1/reviews/rev-1'),
+      ).toBeUndefined();
+      expect(fake.inspectDoc('libraries/lib-1')?.bookCount).toBe(1);
+      expect(
+        fake.inspectDoc('libraries/lib-1/tombstones/book-1'),
+      ).toBeDefined();
+
+      const delta = await BookService.syncChanges('user-1', 'lib-1', {
+        sinceUpdatedAtMs: beforeDeleteMs,
+      });
+      expect(delta.deletedBookIds).toContain('book-1');
     });
   });
 
   describe('batchUpsert', () => {
-    it('executes batch creation and decrements/increments book count net delta', async () => {
+    it('executes batch creation/deletion, updates bookCount net delta, and writes tombstones for deleted books', async () => {
+      fake.seedDoc('libraries/lib-1', {
+        name: 'Home Archive',
+        ownerId: 'user-1',
+        bookCount: 1,
+      });
+      fake.seedDoc('libraries/lib-1/books/b-3', {
+        id: 'b-3',
+        title: 'Old Book',
+        author: 'Author 3',
+      });
+
       const res = await BookService.batchUpsert('user-1', {
         libraryId: 'lib-1',
         operations: [
           {
             type: 'create',
             bookId: 'b-1',
-            data: {title: 'Book 1'},
-            heavyData: {synopsis: 'Synopsis 1'},
+            data: {title: 'Book 1', synopsis: 'Synopsis 1'},
           },
           {
             type: 'create',
@@ -307,24 +260,27 @@ describe('BookService - Unified Write Layer', () => {
       expect(res.count).toBe(3);
       expect(res.added).toBe(2);
       expect(res.deleted).toBe(1);
-
-      // Net delta = +1
-      expect(mockUpdate).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          bookCount: {_increment: 1},
-        }),
-      );
-
-      expect(mockCommit).toHaveBeenCalled();
+      expect(fake.inspectDoc('libraries/lib-1')?.bookCount).toBe(2);
+      expect(fake.inspectDoc('libraries/lib-1/tombstones/b-3')).toBeDefined();
     });
 
     it('handles books array with action flags', async () => {
+      fake.seedDoc('libraries/lib-1/books/b-11', {
+        id: 'b-11',
+        title: 'Existing Book 11',
+        author: 'Author 11',
+      });
+      fake.seedDoc('libraries/lib-1/books/b-12', {
+        id: 'b-12',
+        title: 'Existing Book 12',
+        author: 'Author 12',
+      });
+
       const res = await BookService.batchUpsert('user-1', {
         libraryId: 'lib-1',
         books: [
           {id: 'b-10', title: 'Book 10', action: 'create'},
-          {id: 'b-11', title: 'Book 11', action: 'update'},
+          {id: 'b-11', title: 'Book 11 Updated', action: 'update'},
           {id: 'b-12', action: 'delete'},
         ],
       });
@@ -334,38 +290,21 @@ describe('BookService - Unified Write Layer', () => {
       expect(res.added).toBe(1);
       expect(res.updated).toBe(1);
       expect(res.deleted).toBe(1);
-      expect(mockCommit).toHaveBeenCalled();
     });
 
-    it('pre-fetches existing book metadata when a partial update mutates readingStatus so bookSnapshot and isbn:<cleanIsbn> are always populated', async () => {
-      mockBookGet.mockResolvedValueOnce({
-        exists: true,
+    it('pre-fetches existing core book metadata without reading bookDetails and writes a slim stub to book:<libraryId>:<bookId>', async () => {
+      fake.seedDoc('libraries/lib-1/books/book-1', {
         id: 'book-1',
-        data: () => ({
-          title: 'Ship of Magic',
-          author: 'Robin Hobb',
-          isbn: '978-0-553-57563-7',
-          cleanIsbn: '9780553575637',
-          coverUrl: 'https://covers.openlibrary.org/b/isbn/9780553575637-L.jpg',
-          primaryGenre: 'Fantasy',
-          subgenres: ['Epic Fantasy'],
-          series: 'Liveship Traders',
-          format: 'physical',
-          ownershipStatus: 'owned',
-          bookDetailsMetadata: {
-            hasSynopsis: true,
-            hasAuthorBio: false,
-            hasEmbedding: false,
-            hasClusterCoordinates: false,
-          },
-        }),
-      });
-      mockDetailGet.mockResolvedValueOnce({
-        exists: true,
-        id: 'book-1',
-        data: () => ({
-          synopsis: 'First book of the Liveship Traders trilogy.',
-        }),
+        title: 'Ship of Magic',
+        author: 'Robin Hobb',
+        isbn: '978-0-553-57563-7',
+        cleanIsbn: '9780553575637',
+        coverUrl: 'https://covers.openlibrary.org/b/isbn/9780553575637-L.jpg',
+        primaryGenre: 'Fantasy',
+        subgenres: ['Epic Fantasy'],
+        series: 'Liveship Traders',
+        format: 'physical',
+        ownershipStatus: 'owned',
       });
 
       const res = await BookService.batchUpsert('user-1', {
@@ -381,89 +320,88 @@ describe('BookService - Unified Write Layer', () => {
 
       expect(res.success).toBe(true);
       expect(res.updated).toBe(1);
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({id: 'isbn:9780553575637'}),
-        expect.objectContaining({
-          id: 'isbn:9780553575637',
-          userId: 'user-1',
-          keyType: 'isbn',
-          cleanIsbn: '9780553575637',
-          bookId: 'book-1',
-          libraryId: 'lib-1',
-          status: 'finished',
-          bookSnapshot: expect.objectContaining({
-            title: 'Ship of Magic',
-            author: 'Robin Hobb',
-            isbn: '978-0-553-57563-7',
-            cleanIsbn: '9780553575637',
-            series: 'Liveship Traders',
-            synopsis: 'First book of the Liveship Traders trilogy.',
-          }) as unknown,
-        }),
-        {merge: true},
+
+      const state = fake.inspectDoc(
+        'users/user-1/readingStates/book:lib-1:book-1',
       );
+      expect(state).toMatchObject({
+        id: 'book:lib-1:book-1',
+        userId: 'user-1',
+        keyType: 'book',
+        cleanIsbn: '9780553575637',
+        bookId: 'book-1',
+        libraryId: 'lib-1',
+        status: 'finished',
+        bookSnapshot: {
+          title: 'Ship of Magic',
+          author: 'Robin Hobb',
+          isbn: '978-0-553-57563-7',
+          cleanIsbn: '9780553575637',
+          series: 'Liveship Traders',
+        },
+      });
     });
   });
 
   describe('getBook', () => {
-    it('fetches book and merges heavy details', async () => {
-      mockBookGet.mockResolvedValueOnce({
-        exists: true,
+    it('fetches book, heavy details, and predicted book:<libId>:<bookId> readingState in a single db.getAll RTT', async () => {
+      fake.seedDoc('libraries/lib-1/books/book-1', {
         id: 'book-1',
-        data: () => ({title: 'Dune', author: 'Frank Herbert'}),
+        title: 'Dune',
+        author: 'Frank Herbert',
+      });
+      fake.seedDoc('libraries/lib-1/bookDetails/book-1', {
+        synopsis: 'Spice world',
+      });
+      fake.seedDoc('users/user-1/readingStates/book:lib-1:book-1', {
+        id: 'book:lib-1:book-1',
+        userId: 'user-1',
+        keyType: 'book',
+        bookId: 'book-1',
+        libraryId: 'lib-1',
+        status: 'reading',
+        rating: 5,
       });
 
-      mockDetailGet.mockResolvedValueOnce({
-        exists: true,
-        id: 'book-1',
-        data: () => ({synopsis: 'Spice world'}),
-      });
-
+      const getAllSpy = vi.spyOn(fake, 'getAll');
       const res = await BookService.getBook('user-1', 'lib-1', 'book-1');
+      expect(getAllSpy).toHaveBeenCalledTimes(1);
       expect(res.id).toBe('book-1');
       expect(res.title).toBe('Dune');
       expect(res.synopsis).toBe('Spice world');
+      expect(res.readingStatus).toBe('reading');
+      expect(res.userRating).toBe(5);
     });
 
     it('throws NOT_FOUND when book document does not exist', async () => {
-      mockBookGet.mockResolvedValueOnce({
-        exists: false,
-      });
-
       await expect(
-        BookService.getBook('user-1', 'lib-1', 'book-1'),
+        BookService.getBook('user-1', 'lib-1', 'nonexistent'),
       ).rejects.toThrow(TRPCError);
     });
   });
 
   describe('listBooks', () => {
-    it('returns formatted books from Firestore query', async () => {
-      mockBooksQueryGet.mockResolvedValueOnce({
-        docs: [
-          {
-            id: 'book-1',
-            data: () => ({
-              title: 'Neuromancer',
-              author: 'William Gibson',
-              primaryGenre: 'Cyberpunk',
-              subgenres: ['Sci-Fi'],
-              temporalMetadata: {startYear: 1984},
-            }),
-          },
-          {
-            id: 'book-2',
-            data: () => ({
-              title: 'Snow Crash',
-              author: 'Neal Stephenson',
-            }),
-          },
-        ],
+    it('returns formatted books and overlays projected readingStates across canonical and legacy keys', async () => {
+      fake.seedDoc('libraries/lib-1/books/book-1', {
+        id: 'book-1',
+        title: 'Neuromancer',
+        author: 'William Gibson',
+        primaryGenre: 'Cyberpunk',
+        primaryGenreLower: 'cyberpunk',
+        subgenres: ['Sci-Fi'],
+        temporalMetadata: {startYear: 1984},
+        addedAt: '2026-01-02T00:00:00.000Z',
+      });
+      fake.seedDoc('libraries/lib-1/books/book-2', {
+        id: 'book-2',
+        title: 'Snow Crash',
+        author: 'Neal Stephenson',
+        addedAt: '2026-01-01T00:00:00.000Z',
       });
 
       const res = await BookService.listBooks('user-1', 'lib-1');
       expect(res.books).toHaveLength(2);
       expect(res.books[0].title).toBe('Neuromancer');
-      expect(res.books[0].primaryGenre).toBe('Cyberpunk');
       expect(
         (res.books[0].temporalMetadata as {endYear?: number} | undefined)
           ?.endYear,
@@ -471,179 +409,139 @@ describe('BookService - Unified Write Layer', () => {
       expect(res.books[1].title).toBe('Snow Crash');
     });
 
-    it('filters books by missingMetadata if specified', async () => {
-      mockBooksQueryGet.mockResolvedValueOnce({
-        docs: [
-          {
-            id: 'book-1',
-            data: () => ({
-              title: 'Has Geo',
-              geoMetadata: {locations: [{name: 'Paris', lat: 10, lng: 20}]},
-            }),
-          },
-          {
-            id: 'book-2',
-            data: () => ({
-              title: 'Missing Geo',
-            }),
-          },
-        ],
+    it('filters books natively by missingFlags array-contains and primaryGenreLower', async () => {
+      fake.seedDoc('libraries/lib-1/books/book-1', {
+        id: 'book-1',
+        title: 'Has Geo',
+        author: 'Author A',
+        primaryGenre: 'Sci-Fi',
+        primaryGenreLower: 'sci-fi',
+        geoMetadata: {
+          locations: [{name: 'Paris', coordinates: {lat: 10, lng: 20}}],
+        },
+        missingFlags: ['temporal'],
+        addedAt: '2026-01-02T00:00:00.000Z',
+      });
+      fake.seedDoc('libraries/lib-1/books/book-2', {
+        id: 'book-2',
+        title: 'Missing Geo',
+        author: 'Author B',
+        primaryGenre: 'Fantasy',
+        primaryGenreLower: 'fantasy',
+        missingFlags: ['geo', 'temporal'],
+        addedAt: '2026-01-01T00:00:00.000Z',
       });
 
-      const res = await BookService.listBooks('user-1', 'lib-1', {
+      const missingRes = await BookService.listBooks('user-1', 'lib-1', {
         filters: {missingMetadata: 'geo'},
       });
+      expect(missingRes.books).toHaveLength(1);
+      expect(missingRes.books[0].title).toBe('Missing Geo');
 
-      expect(res.books).toHaveLength(1);
-      expect(res.books[0].title).toBe('Missing Geo');
+      const genreRes = await BookService.listBooks('user-1', 'lib-1', {
+        filters: {primaryGenre: 'SCI-FI'},
+      });
+      expect(genreRes.books).toHaveLength(1);
+      expect(genreRes.books[0].title).toBe('Has Geo');
     });
 
-    it('uses limit + 1 lookahead to populate nextCursor only when more books exist', async () => {
-      mockBooksQueryGet.mockResolvedValueOnce({
-        docs: [
-          {id: 'book-1', data: () => ({title: 'Book 1'})},
-          {id: 'book-2', data: () => ({title: 'Book 2'})},
-          {id: 'book-3', data: () => ({title: 'Book 3'})},
-        ],
+    it('uses limit + 1 lookahead to populate nextCursor and self-heals drifted bookCount', async () => {
+      fake.seedDoc('libraries/lib-1', {
+        name: 'Home Archive',
+        ownerId: 'user-1',
+        bookCount: 1000,
+      });
+      fake.seedDoc('libraries/lib-1/books/book-1', {
+        id: 'book-1',
+        title: 'Book 1',
+        author: 'Author 1',
+        addedAt: '2026-01-03T00:00:00.000Z',
+      });
+      fake.seedDoc('libraries/lib-1/books/book-2', {
+        id: 'book-2',
+        title: 'Book 2',
+        author: 'Author 2',
+        addedAt: '2026-01-02T00:00:00.000Z',
+      });
+      fake.seedDoc('libraries/lib-1/books/book-3', {
+        id: 'book-3',
+        title: 'Book 3',
+        author: 'Author 3',
+        addedAt: '2026-01-01T00:00:00.000Z',
       });
 
-      const res = await BookService.listBooks('user-1', 'lib-1', {limit: 2});
-      expect(res.books).toHaveLength(2);
-      expect(res.nextCursor).toBe('book-2');
-    });
+      const paged = await BookService.listBooks('user-1', 'lib-1', {limit: 2});
+      expect(paged.books).toHaveLength(2);
+      expect(paged.nextCursor).toBe('book-2');
 
-    it('self-heals parent library.bookCount when an unfiltered read detects count drift', async () => {
-      const mockLibUpdate = vi.fn().mockResolvedValue(undefined);
-      mockDoc.mockImplementationOnce((docId?: string) => ({
-        id: docId || 'lib-1',
-        update: mockLibUpdate,
-        collection: vi.fn(() => ({
-          orderBy: vi.fn().mockReturnThis(),
-          limit: vi.fn().mockReturnThis(),
-          get: mockBooksQueryGet,
-        })),
-      }));
-
-      mockBooksQueryGet.mockResolvedValueOnce({
-        docs: [
-          {id: 'book-1', data: () => ({title: 'Book 1'})},
-          {id: 'book-2', data: () => ({title: 'Book 2'})},
-        ],
-      });
-
-      const res = await BookService.listBooks('user-1', 'lib-1', {
+      const unpaged = await BookService.listBooks('user-1', 'lib-1', {
         prefetchedLibraryData: {bookCount: 1000},
       });
-
-      expect(res.books).toHaveLength(2);
-      expect(res.totalCount).toBe(2);
+      expect(unpaged.totalCount).toBe(3);
     });
 
-    it('overlays readingStatus from /users/{uid}/readingStates using single-lookup key and filters by status or primaryGenre', async () => {
-      mockBooksQueryGet.mockResolvedValueOnce({
-        docs: [
-          {
-            id: 'book-1',
-            data: () => ({
-              title: 'Hyperion',
-              author: 'Dan Simmons',
-              isbn: '978-0-553-28368-6',
-              cleanIsbn: '9780553283686',
-              primaryGenre: 'Sci-Fi',
-              addedAt: 2000,
-            }),
-          },
-          {
-            id: 'book-no-isbn',
-            data: () => ({
-              title: 'Self-Published Pamphlet',
-              author: 'Local Writer',
-              primaryGenre: 'Sci-Fi',
-              addedAt: 1500,
-            }),
-          },
-        ],
+    it('filters by caller reading status across canonical book: keys and standalone ext: keys', async () => {
+      fake.seedDoc('libraries/lib-1/books/book-1', {
+        id: 'book-1',
+        title: 'Hyperion',
+        author: 'Dan Simmons',
+        isbn: '978-0-553-28368-6',
+        cleanIsbn: '9780553283686',
+        addedAt: '2026-01-02T00:00:00.000Z',
       });
-
-      mockReadingStatesQueryGet.mockResolvedValueOnce({
-        docs: [
-          {
-            id: 'isbn:9780553283686',
-            data: () => ({
-              id: 'isbn:9780553283686',
-              userId: 'user-1',
-              keyType: 'isbn',
-              cleanIsbn: '9780553283686',
-              status: 'reading',
-              rating: 5,
-            }),
-          },
-          {
-            id: 'bookid:book-no-isbn',
-            data: () => ({
-              id: 'bookid:book-no-isbn',
-              userId: 'user-1',
-              keyType: 'bookid',
-              bookId: 'book-no-isbn',
-              status: 'finished',
-            }),
-          },
-        ],
+      fake.seedDoc('libraries/lib-1/books/book-2', {
+        id: 'book-2',
+        title: 'Endymion',
+        author: 'Dan Simmons',
+        addedAt: '2026-01-01T00:00:00.000Z',
+      });
+      fake.seedDoc('users/user-1/readingStates/ext:9780553283686', {
+        id: 'ext:9780553283686',
+        userId: 'user-1',
+        keyType: 'ext',
+        cleanIsbn: '9780553283686',
+        status: 'reading',
+        rating: 5,
+      });
+      fake.seedDoc('users/user-1/readingStates/book:lib-1:book-2', {
+        id: 'book:lib-1:book-2',
+        userId: 'user-1',
+        keyType: 'book',
+        bookId: 'book-2',
+        libraryId: 'lib-1',
+        status: 'finished',
       });
 
       const resStatus = await BookService.listBooks('user-1', 'lib-1', {
         filters: {status: 'reading'},
       });
-
       expect(resStatus.books).toHaveLength(1);
       expect(resStatus.books[0].title).toBe('Hyperion');
-      expect(resStatus.books[0].readingStatus).toBe('reading');
       expect(resStatus.books[0].userRating).toBe(5);
-
-      mockBooksQueryGet.mockResolvedValueOnce({
-        docs: [
-          {
-            id: 'book-2',
-            data: () => ({
-              title: 'Foundation',
-              author: 'Isaac Asimov',
-              primaryGenre: 'Sci-Fi',
-              addedAt: 3000,
-            }),
-          },
-        ],
-      });
-
-      const resGenre = await BookService.listBooks('user-1', 'lib-1', {
-        filters: {primaryGenre: 'Sci-Fi'},
-      });
-
-      expect(resGenre.books).toHaveLength(1);
-      expect(resGenre.books[0].title).toBe('Foundation');
-      expect(mockWhere).toHaveBeenCalledWith('primaryGenre', '==', 'Sci-Fi');
     });
   });
 
   describe('mergeDuplicates', () => {
-    it('fetches survivor and duplicate books in bulk via db.getAll and commits catalog merge in batch', async () => {
-      mockGetAll.mockResolvedValueOnce([
-        {
-          exists: true,
-          id: 'book-1',
-          data: () => ({
-            title: 'Dune',
-            author: 'Frank Herbert',
-          }),
-        },
-        {
-          exists: true,
-          id: 'book-dup-1',
-          data: () => ({
-            title: 'Dune (Duplicate)',
-            author: 'Frank Herbert',
-          }),
-        },
-      ]);
+    it('merges duplicate books, writes tombstones for removed duplicates, and migrates readingState to canonical survivor key', async () => {
+      fake.seedDoc('libraries/lib-1/books/book-1', {
+        id: 'book-1',
+        title: 'Dune',
+        author: 'Frank Herbert',
+      });
+      fake.seedDoc('libraries/lib-1/books/book-dup-1', {
+        id: 'book-dup-1',
+        title: 'Dune (Duplicate)',
+        author: 'Frank Herbert',
+      });
+      fake.seedDoc('users/user-1/readingStates/book:lib-1:book-dup-1', {
+        id: 'book:lib-1:book-dup-1',
+        userId: 'user-1',
+        keyType: 'book',
+        bookId: 'book-dup-1',
+        libraryId: 'lib-1',
+        status: 'finished',
+        rating: 5,
+      });
 
       const res = await BookService.mergeDuplicates('user-1', {
         libraryId: 'lib-1',
@@ -655,113 +553,30 @@ describe('BookService - Unified Write Layer', () => {
       });
 
       expect(res.success).toBe(true);
-      expect(res.survivorBookId).toBe('book-1');
       expect(res.deletedCount).toBe(1);
-      expect(mockGetAll).toHaveBeenCalledTimes(1);
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          title: 'Dune (Definitive Edition)',
-          dedupeKey: 'dune::frank herbert',
-          searchTokens: expect.arrayContaining([
-            'dune',
-            'frank',
-            'herbert',
-          ]) as unknown,
-        }),
-        {merge: true},
-      );
-      expect(mockCommit).toHaveBeenCalledTimes(1);
+      expect(
+        fake.inspectDoc('libraries/lib-1/tombstones/book-dup-1'),
+      ).toBeDefined();
+      expect(
+        fake.inspectDoc('users/user-1/readingStates/book:lib-1:book-dup-1'),
+      ).toBeUndefined();
+      expect(
+        fake.inspectDoc('users/user-1/readingStates/book:lib-1:book-1'),
+      ).toMatchObject({
+        status: 'finished',
+        rating: 5,
+      });
     });
   });
 
-  describe('partial update index & client payload hardening', () => {
-    it('preserves existing title/author searchTokens and dedupeKey when updating a single field on updateBook', async () => {
-      mockBookGet.mockResolvedValueOnce({
-        exists: true,
+  describe('addReview & status migration', () => {
+    it('commits deterministic review document and syncs rating/reviewText to canonical book:<libId>:<bookId>', async () => {
+      fake.seedDoc('libraries/lib-1/books/book-1', {
         id: 'book-1',
-        data: () => ({
-          title: 'The Left Hand of Darkness',
-          author: 'Ursula K. Le Guin',
-          isbn: '9780441478125',
-        }),
-      });
-
-      await BookService.updateBook('user-1', {
-        libraryId: 'lib-1',
-        bookId: 'book-1',
-        updates: {
-          series: 'Hainish Cycle',
-        },
-      });
-
-      expect(mockUpdate).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          series: 'Hainish Cycle',
-          searchTokens: expect.arrayContaining([
-            'left',
-            'hand',
-            'darkness',
-            'ursula',
-            'guin',
-            'hainish',
-            'cycle',
-          ]) as unknown,
-        }),
-      );
-    });
-
-    it('strips raw searchTokens array and exposes hasSearchTokens boolean on listBooks payloads, and aligns filtered nextCursor with sorted books', async () => {
-      mockBooksQueryGet.mockResolvedValueOnce({
-        docs: [
-          {
-            id: 'book-older',
-            data: () => ({
-              title: 'Older Sci-Fi',
-              author: 'Author A',
-              primaryGenre: 'Sci-Fi',
-              searchTokens: ['older', 'author'],
-              addedAt: '2026-01-01T00:00:00.000Z',
-            }),
-          },
-          {
-            id: 'book-newer',
-            data: () => ({
-              title: 'Newer Sci-Fi',
-              author: 'Author B',
-              primaryGenre: 'Sci-Fi',
-              searchTokens: ['newer', 'author'],
-              addedAt: '2026-02-01T00:00:00.000Z',
-            }),
-          },
-        ],
-      });
-
-      const res = await BookService.listBooks('user-1', 'lib-1', {
-        filters: {primaryGenre: 'Sci-Fi'},
-        limit: 1,
-      });
-
-      expect(res.books).toHaveLength(1);
-      expect(res.books[0].id).toBe('book-newer');
-      expect(res.books[0].hasSearchTokens).toBe(true);
-      expect(res.books[0].searchTokens).toBeUndefined();
-      expect(res.nextCursor).toBe('book-newer');
-    });
-  });
-
-  describe('addReview', () => {
-    it('commits deterministic review document (keyed by userId) and syncs rating/reviewText to /users/{uid}/readingStates/{stateKey} in a single batch', async () => {
-      mockBookGet.mockResolvedValueOnce({
-        exists: true,
-        id: 'book-1',
-        data: () => ({
-          title: 'Dune',
-          author: 'Frank Herbert',
-          isbn: '978-0-441-17271-9',
-          cleanIsbn: '9780441172719',
-        }),
+        title: 'Dune',
+        author: 'Frank Herbert',
+        isbn: '978-0-441-17271-9',
+        cleanIsbn: '9780441172719',
       });
 
       const res = await BookService.addReview(
@@ -776,136 +591,150 @@ describe('BookService - Unified Write Layer', () => {
 
       expect(res.success).toBe(true);
       expect(res.id).toBe('user-1');
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({id: 'user-1'}),
-        expect.objectContaining({
-          userId: 'user-1',
-          userName: 'Reader One',
-          rating: 5,
-          text: 'Masterpiece!',
-        }),
-        {merge: true},
-      );
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({id: 'isbn:9780441172719'}),
-        expect.objectContaining({
-          id: 'isbn:9780441172719',
-          userId: 'user-1',
-          keyType: 'isbn',
-          cleanIsbn: '9780441172719',
-          rating: 5,
-          reviewText: 'Masterpiece!',
-          status: 'finished',
-        }),
-        {merge: true},
-      );
-      expect(mockCommit).toHaveBeenCalledTimes(1);
+      expect(
+        fake.inspectDoc('libraries/lib-1/books/book-1/reviews/user-1'),
+      ).toMatchObject({
+        userId: 'user-1',
+        userName: 'Reader One',
+        rating: 5,
+        text: 'Masterpiece!',
+      });
+      expect(
+        fake.inspectDoc('users/user-1/readingStates/book:lib-1:book-1'),
+      ).toMatchObject({
+        id: 'book:lib-1:book-1',
+        keyType: 'book',
+        cleanIsbn: '9780441172719',
+        rating: 5,
+        reviewText: 'Masterpiece!',
+        status: 'finished',
+      });
     });
 
-    it('handles isbn:<cleanIsbn> bookId from Reading Room cards in updateBookStatus without creating bookid:isbn:... keys', async () => {
-      mockBookGet.mockResolvedValueOnce({
-        exists: false,
-      });
-      mockReadingStateDocGet.mockResolvedValueOnce({
-        exists: true,
-        id: 'isbn:9780553573398',
-        data: () => ({
-          id: 'isbn:9780553573398',
-          userId: 'user-1',
-          keyType: 'isbn',
+    it('promotes standalone ext:<cleanIsbn> readingState to canonical book:<libraryId>:<bookId> when tracked on a library', async () => {
+      fake.seedDoc('users/user-1/readingStates/ext:9780553573398', {
+        id: 'ext:9780553573398',
+        userId: 'user-1',
+        keyType: 'ext',
+        cleanIsbn: '9780553573398',
+        bookId: 'book-farseer-1',
+        libraryId: 'lib-1',
+        status: 'reading',
+        bookSnapshot: {
+          title: "Assassin's Apprentice",
+          author: 'Robin Hobb',
+          isbn: '9780553573398',
           cleanIsbn: '9780553573398',
-          bookId: 'book-farseer-1',
-          libraryId: 'lib-1',
-          status: 'reading',
+        },
+      });
+
+      const res = await BookService.updateBookStatus(
+        'user-1',
+        'lib-1',
+        'book-farseer-1',
+        'finished',
+        {
           bookSnapshot: {
             title: "Assassin's Apprentice",
             author: 'Robin Hobb',
             isbn: '9780553573398',
             cleanIsbn: '9780553573398',
           },
-        }),
-      });
-
-      const res = await BookService.updateBookStatus(
-        'user-1',
-        'lib-1',
-        'isbn:9780553573398',
-        'finished',
-      );
-
-      expect(res.stateKey).toBe('isbn:9780553573398');
-      expect(res.id).toBe('book-farseer-1');
-      expect(mockReadingStateDocSet).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: 'isbn:9780553573398',
-          keyType: 'isbn',
-          cleanIsbn: '9780553573398',
-          bookId: 'book-farseer-1',
-          status: 'finished',
-          bookSnapshot: expect.objectContaining({
-            title: "Assassin's Apprentice",
-            author: 'Robin Hobb',
-          }) as unknown,
-        }),
-        {merge: true},
-      );
-    });
-
-    it('syncs readingStatus and migrates readingStates key from bookid:<id> to isbn:<cleanIsbn> when updateBook adds an ISBN', async () => {
-      mockBookGet.mockResolvedValueOnce({
-        exists: true,
-        id: 'book-1',
-        data: () => ({
-          title: 'Royal Assassin',
-          author: 'Robin Hobb',
-        }),
-      });
-      mockReadingStateDocGet.mockResolvedValueOnce({
-        exists: true,
-        id: 'bookid:book-1',
-        data: () => ({
-          id: 'bookid:book-1',
-          userId: 'user-1',
-          keyType: 'bookid',
-          bookId: 'book-1',
-          libraryId: 'lib-1',
-          status: 'reading',
-          bookSnapshot: {
-            title: 'Royal Assassin',
-            author: 'Robin Hobb',
-          },
-        }),
-      });
-
-      await BookService.updateBook('user-1', {
-        libraryId: 'lib-1',
-        bookId: 'book-1',
-        updates: {
-          title: 'Royal Assassin',
-          author: 'Robin Hobb',
-          isbn: '978-0-553-57340-4',
-          readingStatus: 'finished',
         },
+      );
+
+      expect(res.stateKey).toBe('book:lib-1:book-farseer-1');
+      expect(res.id).toBe('book-farseer-1');
+      expect(
+        fake.inspectDoc('users/user-1/readingStates/book:lib-1:book-farseer-1'),
+      ).toMatchObject({
+        id: 'book:lib-1:book-farseer-1',
+        keyType: 'book',
+        cleanIsbn: '9780553573398',
+        bookId: 'book-farseer-1',
+        status: 'finished',
+      });
+      expect(
+        fake.inspectDoc('users/user-1/readingStates/ext:9780553573398'),
+      ).toBeUndefined();
+    });
+  });
+
+  describe('legacy book & nested metadata background self-healing', () => {
+    it('normalizes genres, temporalMetadata.eraLabel, geoMetadata flat coords, and rescues embedded description to bookDetails on read', async () => {
+      fake.seedDoc('libraries/vMZu9i2bVwmkOVgrwSyi', {
+        name: 'Secondary Library',
+        ownerId: 'user-1',
+        access: {'user1@example.com': 'owner'},
+        collaboratorEmails: ['user1@example.com'],
+      });
+      fake.seedDoc(
+        'libraries/vMZu9i2bVwmkOVgrwSyi/books/XkYKCSHqOfisvfU01EDl',
+        {
+          title: 'All Quiet on the Western Front',
+          author: 'Erich Maria Remarque',
+          genres: ['Historical Fiction', 'Anti-War'],
+          description: 'Unpartitioned legacy synopsis preserved on first read.',
+          temporalMetadata: {
+            isNonHistorical: false,
+            startYear: 1914,
+            endYear: 1918,
+            eraLabel: 'World War I',
+          },
+          geoMetadata: {
+            locations: [
+              {
+                name: 'Western Front',
+                adminLevel: 'Region',
+                lat: 49.9,
+                lng: 2.9,
+              },
+            ],
+          },
+          addedAt: '2026-01-01T00:00:00.000Z',
+        },
+      );
+
+      const firstGet = await BookService.getBook(
+        'user-1',
+        'vMZu9i2bVwmkOVgrwSyi',
+        'XkYKCSHqOfisvfU01EDl',
+      );
+      expect(firstGet.primaryGenre).toBe('Historical Fiction');
+      expect(firstGet.subgenres).toEqual(['Anti-War']);
+      expect(firstGet.synopsis).toBe(
+        'Unpartitioned legacy synopsis preserved on first read.',
+      );
+      expect(firstGet.temporalMetadata?.eraName).toBe('World War I');
+      expect(firstGet.geoMetadata?.locations?.[0]).toEqual({
+        name: 'Western Front',
+        adminLevel: 'region',
+        coordinates: {lat: 49.9, lng: 2.9},
       });
 
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({id: 'isbn:9780553573404'}),
-        expect.objectContaining({
-          id: 'isbn:9780553573404',
-          keyType: 'isbn',
-          cleanIsbn: '9780553573404',
-          bookId: 'book-1',
-          status: 'finished',
-          bookSnapshot: expect.objectContaining({
-            title: 'Royal Assassin',
-            author: 'Robin Hobb',
-            cleanIsbn: '9780553573404',
-          }) as unknown,
-        }),
-        {merge: true},
+      // Wait for 15ms micro-batch self-heal WriteBatch to commit to FakeFirestore
+      await new Promise(resolve => setTimeout(resolve, 40));
+
+      const healedBook = fake.inspectDoc(
+        'libraries/vMZu9i2bVwmkOVgrwSyi/books/XkYKCSHqOfisvfU01EDl',
       );
-      expect(mockDelete).toHaveBeenCalledWith(
-        expect.objectContaining({id: 'bookid:book-1'}),
+      expect(healedBook).toBeDefined();
+      expect(healedBook && 'genres' in healedBook).toBe(false);
+      expect(healedBook && 'description' in healedBook).toBe(false);
+      expect(
+        (healedBook?.temporalMetadata as Record<string, unknown> | undefined)
+          ?.eraLabel,
+      ).toBeUndefined();
+      expect(
+        (healedBook?.temporalMetadata as Record<string, unknown> | undefined)
+          ?.eraName,
+      ).toBe('World War I');
+
+      const rescuedDetails = fake.inspectDoc(
+        'libraries/vMZu9i2bVwmkOVgrwSyi/bookDetails/XkYKCSHqOfisvfU01EDl',
+      );
+      expect(rescuedDetails?.synopsis).toBe(
+        'Unpartitioned legacy synopsis preserved on first read.',
       );
     });
   });

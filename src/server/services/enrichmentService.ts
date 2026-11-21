@@ -5,20 +5,11 @@ import {
   TIER_EXECUTION_PROFILES,
 } from '../../constants/enrichment';
 import {findEnrichmentDescriptor} from '../../constants/enrichmentDescriptors';
-import {
-  storedBookDetailsDocSchema,
-  storedBookDocSchema,
-} from '../../schemas/book';
-import {
-  SchemaValidationError,
-  validateFirestoreWritePayload,
-} from '../../schemas/common';
+import {SchemaValidationError} from '../../schemas/common';
 import type {
-  BonusCatalogFields,
   CoreBookData,
   EnrichmentPipelineStage,
   MetadataBulkFetchOptions,
-  MetadataPersistencePatch,
   MetadataPlugin,
   MetadataProvider,
   StageEscalationState,
@@ -27,21 +18,20 @@ import {
   bookDetailsDocConverter,
   bookDocConverter,
 } from './book/bookPartitioner';
-import * as firebaseAdmin from './firebaseAdmin';
+import {formatFirestoreAdminError, getAdminDb} from './firebaseAdmin';
 import {LibraryService} from './library';
 import {MetadataRegistry} from './metadata';
+import {mergeBonusCatalogFields} from './metadata/bonusCatalogPatcher';
 import {
-  applyNonDestructiveBonusCatalogPatch,
-  mergeBonusCatalogFields,
-} from './metadata/bonusCatalogPatcher';
+  commitPendingEnrichmentWrites,
+  createEnrichmentWriteCollector,
+  isNonEmptyMetadataValue,
+} from './metadata/enrichmentWriteBuilder';
 import {
   getBuiltInMetadataPluginSpec,
   type MetadataPluginSpec,
 } from './metadata/pluginSpecs';
-import {
-  executePluginStagesHorizontally,
-  getOptionalModuleFunction,
-} from './metadata/stageRunner';
+import {executePluginStagesHorizontally} from './metadata/stageRunner';
 
 export type PerBookJobStage =
   | 'queued'
@@ -68,7 +58,6 @@ export interface BatchEnrichmentCallbacks {
 export interface TriggerBatchEnrichmentInput {
   libraryId: string;
   enrichmentType?: string;
-  flow?: string;
   bookIds: string[];
   overwrite?: boolean;
   customGenres?: string[];
@@ -102,15 +91,6 @@ export interface TriggerBatchEnrichmentResult {
   results: Array<Record<string, unknown>>;
   escalatedBooks?: EscalatedBookContext[];
   prunedCount?: number;
-}
-
-function isNonEmptyMetadataValue(value: unknown): boolean {
-  return (
-    value !== undefined &&
-    value !== null &&
-    !(typeof value === 'string' && value.trim() === '') &&
-    !(Array.isArray(value) && value.length === 0)
-  );
 }
 
 function resolvePluginCapabilities(
@@ -210,7 +190,7 @@ export class EnrichmentService {
     options?: TriggerBatchEnrichmentOptions,
   ): Promise<TriggerBatchEnrichmentResult> {
     const {libraryId, bookIds} = input;
-    const rawType = input.enrichmentType || input.flow || 'genre';
+    const rawType = input.enrichmentType || 'genre';
     const callbacks = options?.callbacks;
 
     if (!options?.skipAccessCheck) {
@@ -270,7 +250,7 @@ export class EnrichmentService {
     const pluginStages = getPluginStages(provider);
 
     try {
-      const db = firebaseAdmin.getAdminDb();
+      const db = getAdminDb();
       const booksCollection = db
         .collection('libraries')
         .doc(libraryId)
@@ -317,12 +297,11 @@ export class EnrichmentService {
         }
 
         const rawDoc = (snap.data?.() || {}) as Record<string, unknown>;
-        const {book: parsedBook, leakedDetails} =
-          bookDocConverter.fromFirestoreWithLegacyLeaks(
-            bookId,
-            rawDoc,
-            `/libraries/${libraryId}/books/${bookId}`,
-          );
+        const parsedBook = bookDocConverter.fromFirestore(
+          bookId,
+          rawDoc,
+          `/libraries/${libraryId}/books/${bookId}`,
+        );
         const title =
           typeof rawDoc.title === 'string' ? rawDoc.title.trim() : '';
         if (!title) {
@@ -333,15 +312,6 @@ export class EnrichmentService {
           continue;
         }
 
-        const inlineSynopsis =
-          typeof leakedDetails.synopsis === 'string' &&
-          leakedDetails.synopsis.trim()
-            ? leakedDetails.synopsis.trim()
-            : typeof leakedDetails.description === 'string' &&
-                leakedDetails.description.trim()
-              ? leakedDetails.description.trim()
-              : undefined;
-
         const priorEscalation = options?.priorEscalations?.get(bookId);
         const baseBookData: CoreBookData = {
           ...parsedBook,
@@ -351,8 +321,6 @@ export class EnrichmentService {
           isbn: parsedBook.isbn,
           primaryGenre: parsedBook.primaryGenre ?? undefined,
           subgenres: parsedBook.subgenres,
-          synopsis: inlineSynopsis,
-          description: leakedDetails.description ?? undefined,
         };
         const mergedBookData: CoreBookData = priorEscalation?.enrichedBook
           ? {
@@ -393,10 +361,7 @@ export class EnrichmentService {
                 typeof detailData.synopsis === 'string' &&
                 detailData.synopsis.trim()
                   ? detailData.synopsis.trim()
-                  : typeof detailData.description === 'string' &&
-                      detailData.description.trim()
-                    ? detailData.description.trim()
-                    : undefined;
+                  : undefined;
               if (detailSyn) {
                 const target = validBooks[missingSynopsisIndices[i].validIndex];
                 if (target) {
@@ -427,252 +392,17 @@ export class EnrichmentService {
         customGenres: input.customGenres,
       };
 
-      const results: Array<Record<string, unknown>> = [];
-      let processedCount = 0;
-      let prunedCount = 0;
       const escalatedBooks: EscalatedBookContext[] = [];
-
-      interface PendingWriteOperation {
-        type: 'update' | 'set_merge';
-        ref: FirebaseFirestore.DocumentReference;
-        data: Record<string, unknown>;
-        targetEntity: 'StoredBookDoc' | 'StoredBookDetailsDoc';
-        documentPath: string;
-      }
-
-      const pendingWrites: PendingWriteOperation[] = [];
-      const pendingProgressUpdates: PerBookProgressUpdate[] = [];
-      const nowIso = new Date().toISOString();
-
-      const commitResolvedBook = (params: {
-        bookData: CoreBookData;
-        rawDoc: Record<string, unknown>;
-        value: unknown;
-        winningProvider?: string;
-        bonusCatalog?: BonusCatalogFields;
-      }): void => {
-        const {bookData, rawDoc, value, winningProvider, bonusCatalog} = params;
-        const bookId = bookData.id;
-        const bookRef = booksCollection.doc(bookId);
-        const detailRef = detailsCollection.doc(bookId);
-        const bookDocPath = `/libraries/${libraryId}/books/${bookId}`;
-        const detailDocPath = `/libraries/${libraryId}/bookDetails/${bookId}`;
-
-        const existingStatus =
-          rawDoc.enrichmentStatus && typeof rawDoc.enrichmentStatus === 'object'
-            ? {...(rawDoc.enrichmentStatus as Record<string, unknown>)}
-            : {};
-        const existingDetailsMeta =
-          rawDoc.bookDetailsMetadata &&
-          typeof rawDoc.bookDetailsMetadata === 'object'
-            ? {...(rawDoc.bookDetailsMetadata as Record<string, unknown>)}
-            : {};
-
-        let validatedValue: unknown = value;
-        if (pluginSpec.outputSchema) {
-          const parsedOutput = pluginSpec.outputSchema.safeParse(value);
-          if (!parsedOutput.success) {
-            pendingProgressUpdates.push({
-              bookId,
-              stage: 'failed',
-              error: parsedOutput.error.message,
-            });
-            return;
-          }
-          validatedValue = parsedOutput.data;
-        }
-
-        const basePatch = pluginSpec.toPersistencePatch({
-          book: bookData,
-          value: validatedValue,
-          existingStatus,
-          existingDetailsMeta,
-          nowIso,
-        });
-
-        const {patch, bonusUpdatedFields} =
-          applyNonDestructiveBonusCatalogPatch({
-            rawDoc,
-            book: bookData,
-            primaryStatusKey: statusKey,
-            patch: basePatch,
-            bonusCatalog,
-            existingStatus,
-            existingDetailsMeta,
-            nowIso,
-          });
-
-        pendingWrites.push({
-          type: 'update',
-          ref: bookRef,
-          targetEntity: 'StoredBookDoc',
-          documentPath: bookDocPath,
-          data: patch.bookUpdate,
-        });
-
-        if (patch.detailsUpdate) {
-          pendingWrites.push({
-            type: 'set_merge',
-            ref: detailRef,
-            targetEntity: 'StoredBookDetailsDoc',
-            documentPath: detailDocPath,
-            data: patch.detailsUpdate,
-          });
-        }
-
-        processedCount++;
-        results.push(patch.resultPreview);
-
-        pendingProgressUpdates.push({
-          bookId,
-          stage: 'completed',
-          winningProviders: {[statusKey]: winningProvider || providerLabel},
-          updatedFields: [statusKey, ...bonusUpdatedFields],
-        });
-      };
-
-      const commitPrunedBook = (params: {
-        bookData: CoreBookData;
-        rawDoc: Record<string, unknown>;
-        bonusCatalog?: BonusCatalogFields;
-      }): void => {
-        const {bookData, rawDoc, bonusCatalog} = params;
-        const bookId = bookData.id;
-        const bookRef = booksCollection.doc(bookId);
-        const detailRef = detailsCollection.doc(bookId);
-        const bookDocPath = `/libraries/${libraryId}/books/${bookId}`;
-        const detailDocPath = `/libraries/${libraryId}/bookDetails/${bookId}`;
-
-        const existingStatus =
-          rawDoc.enrichmentStatus && typeof rawDoc.enrichmentStatus === 'object'
-            ? {...(rawDoc.enrichmentStatus as Record<string, unknown>)}
-            : {};
-        const existingDetailsMeta =
-          rawDoc.bookDetailsMetadata &&
-          typeof rawDoc.bookDetailsMetadata === 'object'
-            ? {...(rawDoc.bookDetailsMetadata as Record<string, unknown>)}
-            : {};
-
-        const basePrunedPatch: MetadataPersistencePatch = {
-          bookUpdate: {
-            enrichmentStatus: {
-              ...existingStatus,
-              [statusKey]: 'unsupported',
-            },
-          },
-          resultPreview: {id: bookId},
-        };
-
-        const {patch} = applyNonDestructiveBonusCatalogPatch({
-          rawDoc,
-          book: bookData,
-          primaryStatusKey: statusKey,
-          patch: basePrunedPatch,
-          bonusCatalog,
-          existingStatus,
-          existingDetailsMeta,
-          nowIso,
-        });
-
-        pendingWrites.push({
-          type: 'update',
-          ref: bookRef,
-          targetEntity: 'StoredBookDoc',
-          documentPath: bookDocPath,
-          data: patch.bookUpdate,
-        });
-
-        if (patch.detailsUpdate) {
-          pendingWrites.push({
-            type: 'set_merge',
-            ref: detailRef,
-            targetEntity: 'StoredBookDetailsDoc',
-            documentPath: detailDocPath,
-            data: patch.detailsUpdate,
-          });
-        }
-
-        prunedCount++;
-        pendingProgressUpdates.push({
-          bookId,
-          stage: 'skipped',
-        });
-      };
-
-      const commitUnresolvedBook = (params: {
-        bookData: CoreBookData;
-        rawDoc: Record<string, unknown>;
-        bonusCatalog?: BonusCatalogFields;
-      }): void => {
-        const {bookData, rawDoc, bonusCatalog} = params;
-        const bookId = bookData.id;
-        const bookRef = booksCollection.doc(bookId);
-        const detailRef = detailsCollection.doc(bookId);
-        const bookDocPath = `/libraries/${libraryId}/books/${bookId}`;
-        const detailDocPath = `/libraries/${libraryId}/bookDetails/${bookId}`;
-
-        const existingStatus =
-          rawDoc.enrichmentStatus && typeof rawDoc.enrichmentStatus === 'object'
-            ? {...(rawDoc.enrichmentStatus as Record<string, unknown>)}
-            : {};
-        const existingDetailsMeta =
-          rawDoc.bookDetailsMetadata &&
-          typeof rawDoc.bookDetailsMetadata === 'object'
-            ? {...(rawDoc.bookDetailsMetadata as Record<string, unknown>)}
-            : {};
-
-        const skippedAiFallback =
-          pluginSpec.supportsHybridAiFallback &&
-          input.allowAiFallback === false;
-
-        const baseBookUpdate: Record<string, unknown> = skippedAiFallback
-          ? {}
-          : {
-              enrichmentStatus: {
-                ...existingStatus,
-                [statusKey]: 'unsupported',
-              },
-            };
-
-        const {patch} = applyNonDestructiveBonusCatalogPatch({
-          rawDoc,
-          book: bookData,
-          primaryStatusKey: statusKey,
-          patch: {
-            bookUpdate: baseBookUpdate,
-            resultPreview: {id: bookId},
-          },
-          bonusCatalog,
-          existingStatus,
-          existingDetailsMeta,
-          nowIso,
-        });
-
-        if (Object.keys(patch.bookUpdate).length > 0) {
-          pendingWrites.push({
-            type: 'update',
-            ref: bookRef,
-            targetEntity: 'StoredBookDoc',
-            documentPath: bookDocPath,
-            data: patch.bookUpdate,
-          });
-        }
-
-        if (patch.detailsUpdate) {
-          pendingWrites.push({
-            type: 'set_merge',
-            ref: detailRef,
-            targetEntity: 'StoredBookDetailsDoc',
-            documentPath: detailDocPath,
-            data: patch.detailsUpdate,
-          });
-        }
-
-        pendingProgressUpdates.push({
-          bookId,
-          stage: 'skipped',
-        });
-      };
+      const collector = createEnrichmentWriteCollector({
+        libraryId,
+        statusKey,
+        providerLabel,
+        allowAiFallback: input.allowAiFallback,
+        pluginSpec,
+        booksCollection,
+        detailsCollection,
+        nowIso: new Date().toISOString(),
+      });
 
       if (pluginStages && typeof options?.stageIndex === 'number') {
         const targetStage = pluginStages[options.stageIndex];
@@ -738,7 +468,7 @@ export class EnrichmentService {
             outcome?.status === 'resolved' &&
             isNonEmptyMetadataValue(outcome.value)
           ) {
-            commitResolvedBook({
+            collector.commitResolvedBook({
               bookData,
               rawDoc,
               value: outcome.value,
@@ -746,7 +476,7 @@ export class EnrichmentService {
               bonusCatalog: mergedBonus,
             });
           } else if (outcome?.status === 'pruned') {
-            commitPrunedBook({
+            collector.commitPrunedBook({
               bookData,
               rawDoc,
               bonusCatalog: mergedBonus,
@@ -778,28 +508,28 @@ export class EnrichmentService {
                 },
               });
             } else if (isNonEmptyMetadataValue(nextFallback)) {
-              commitResolvedBook({
+              collector.commitResolvedBook({
                 bookData,
                 rawDoc,
                 value: nextFallback,
                 bonusCatalog: mergedBonus,
               });
             } else {
-              commitUnresolvedBook({
+              collector.commitUnresolvedBook({
                 bookData,
                 rawDoc,
                 bonusCatalog: mergedBonus,
               });
             }
           } else if (isNonEmptyMetadataValue(prior?.fallbackValue)) {
-            commitResolvedBook({
+            collector.commitResolvedBook({
               bookData,
               rawDoc,
               value: prior!.fallbackValue,
               bonusCatalog: mergedBonus,
             });
           } else {
-            commitUnresolvedBook({
+            collector.commitUnresolvedBook({
               bookData,
               rawDoc,
               bonusCatalog: mergedBonus,
@@ -843,7 +573,7 @@ export class EnrichmentService {
             outcome?.status === 'resolved' &&
             isNonEmptyMetadataValue(outcome.value)
           ) {
-            commitResolvedBook({
+            collector.commitResolvedBook({
               bookData,
               rawDoc,
               value: outcome.value,
@@ -851,13 +581,13 @@ export class EnrichmentService {
               bonusCatalog: outcome.bonusCatalog,
             });
           } else if (outcome?.status === 'pruned') {
-            commitPrunedBook({
+            collector.commitPrunedBook({
               bookData,
               rawDoc,
               bonusCatalog: outcome.bonusCatalog,
             });
           } else {
-            commitUnresolvedBook({
+            collector.commitUnresolvedBook({
               bookData,
               rawDoc,
               bonusCatalog:
@@ -898,13 +628,13 @@ export class EnrichmentService {
           const value = extractedMap ? extractedMap[bookId] : undefined;
 
           if (isNonEmptyMetadataValue(value)) {
-            commitResolvedBook({
+            collector.commitResolvedBook({
               bookData,
               rawDoc,
               value,
             });
           } else {
-            commitUnresolvedBook({
+            collector.commitUnresolvedBook({
               bookData,
               rawDoc,
             });
@@ -912,35 +642,12 @@ export class EnrichmentService {
         }
       }
 
-      if (pendingWrites.length > 0 && !callbacks?.signal?.aborted) {
-        const MAX_BATCH_OPS = 400;
-        for (let i = 0; i < pendingWrites.length; i += MAX_BATCH_OPS) {
-          const chunk = pendingWrites.slice(i, i + MAX_BATCH_OPS);
-          const writeBatch = db.batch();
-          for (const op of chunk) {
-            validateFirestoreWritePayload(
-              op.targetEntity === 'StoredBookDoc'
-                ? storedBookDocSchema.partial()
-                : storedBookDetailsDocSchema.partial(),
-              op.data,
-              {
-                entity: op.targetEntity,
-                documentPath: op.documentPath,
-                operation: op.type === 'update' ? 'update' : 'upsert',
-              },
-            );
-            if (op.type === 'update') {
-              writeBatch.update(op.ref, op.data);
-            } else {
-              writeBatch.set(op.ref, op.data, {merge: true});
-            }
-          }
-          await writeBatch.commit();
-        }
+      if (collector.pendingWrites.length > 0 && !callbacks?.signal?.aborted) {
+        await commitPendingEnrichmentWrites(db, collector.pendingWrites);
       }
 
       if (callbacks?.onBookProgress && !callbacks?.signal?.aborted) {
-        for (const progressUpdate of pendingProgressUpdates) {
+        for (const progressUpdate of collector.pendingProgressUpdates) {
           callbacks.onBookProgress(progressUpdate);
         }
       }
@@ -948,24 +655,17 @@ export class EnrichmentService {
       return {
         status: 'success',
         enrichmentType: statusKey,
-        processedCount,
-        results,
+        processedCount: collector.getProcessedCount(),
+        results: collector.results,
         ...(typeof options?.stageIndex === 'number'
-          ? {escalatedBooks, prunedCount}
+          ? {escalatedBooks, prunedCount: collector.getPrunedCount()}
           : {}),
       };
     } catch (err: unknown) {
       if (err instanceof TRPCError || err instanceof SchemaValidationError) {
         throw err;
       }
-      const formatErrFn = getOptionalModuleFunction<
-        typeof firebaseAdmin.formatFirestoreAdminError
-      >(firebaseAdmin, 'formatFirestoreAdminError');
-      const errMsg = formatErrFn
-        ? formatErrFn(err)
-        : err instanceof Error
-          ? err.message
-          : String(err);
+      const errMsg = formatFirestoreAdminError(err);
       console.error(
         `[EnrichmentService] Error in triggerBatchEnrichment (${statusKey}):`,
         errMsg,

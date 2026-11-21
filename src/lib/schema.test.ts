@@ -25,6 +25,8 @@ import {
   buildValidStoredAllowlistFixture,
   buildValidStoredBookDetailsFixture,
   buildValidStoredBookFixture,
+  buildValidStoredBookTombstoneFixture,
+  buildValidStoredEnrichmentJobFixture,
   buildValidStoredGeolocationFixture,
   buildValidStoredLibraryFixture,
   buildValidStoredReadingStateFixture,
@@ -41,7 +43,9 @@ import {
   bookDocConverter,
 } from '../server/services/book/bookPartitioner';
 import {reviewDocConverter} from '../server/services/book/bookReviewService';
+import {bookTombstoneConverter} from '../server/services/book/bookTombstoneLedger';
 import {readingStateConverter} from '../server/services/book/readingStateLedger';
+import {enrichmentJobConverter} from '../server/services/enrichmentJobCoordinator';
 import {geolocationCacheConverter} from '../server/services/geolocation';
 import {libraryDocConverter} from '../server/services/library/libraryCrudService';
 import {allowedDuplicateConverter} from '../server/services/library/librarySpruceService';
@@ -119,11 +123,11 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
       firestorePathPattern: '/users/{userId}/readingStates/{stateKey}',
       snapshots: [
         {
-          id: 'isbn:9780140449136',
-          documentPath: '/users/user-1/readingStates/isbn:9780140449136',
+          id: 'book:lib-1:book-1',
+          documentPath: '/users/user-1/readingStates/book:lib-1:book-1',
           data: () => ({
             ...buildValidStoredReadingStateFixture({
-              id: 'isbn:9780140449136',
+              id: 'book:lib-1:book-1',
               userId: 'user-1',
             }),
             updatedAt: fakeTimestamp,
@@ -281,6 +285,64 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
       }),
     },
     {
+      collection: 'jobs',
+      firestorePathPattern: '/libraries/{libraryId}/jobs/{jobId}',
+      snapshots: [
+        {
+          id: 'job-1',
+          documentPath: '/libraries/lib-1/jobs/job-1',
+          data: () => ({
+            ...buildValidStoredEnrichmentJobFixture({id: 'job-1'}),
+            updatedAt: fakeTimestamp,
+          }),
+        },
+      ],
+      parseWithConverter: snap =>
+        enrichmentJobConverter.fromFirestore('lib-1', snap.id, snap.data()),
+      createWritePayload: () => ({
+        ...enrichmentJobConverter.toFirestoreWrite('lib-1', 'job-1', {
+          ownerUid: 'user-1',
+          enrichmentType: 'genre',
+          status: 'running',
+          totalBooks: 10,
+          completedBooks: 4,
+          failedBooks: 0,
+          skippedBooks: 1,
+          overwrite: false,
+          cancelRequested: false,
+          startedAt: 1735689600000,
+          updatedAtMs: 1735689605000,
+          updatedAt: fixedIso,
+        }),
+      }),
+    },
+    {
+      collection: 'tombstones',
+      firestorePathPattern: '/libraries/{libraryId}/tombstones/{bookId}',
+      snapshots: [
+        {
+          id: 'book-1',
+          documentPath: '/libraries/lib-1/tombstones/book-1',
+          data: () => ({
+            ...buildValidStoredBookTombstoneFixture({
+              id: 'book-1',
+              bookId: 'book-1',
+            }),
+            updatedAt: fakeTimestamp,
+          }),
+        },
+      ],
+      parseWithConverter: snap =>
+        bookTombstoneConverter.fromFirestore('lib-1', snap.id, snap.data()),
+      createWritePayload: () => ({
+        ...bookTombstoneConverter.toFirestoreWrite('lib-1', 'book-1', {
+          deletedAtMs: 1735689600000,
+          deletedBy: 'user-1',
+          updatedAt: fixedIso,
+        }),
+      }),
+    },
+    {
       collection: 'allowlist',
       firestorePathPattern: '/appSettings/allowlist/users/{email}',
       snapshots: [
@@ -355,7 +417,7 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
     const specCollections = collectionSpecs.map(s => s.collection).sort();
 
     expect(specCollections).toEqual(registeredCollections);
-    expect(registeredCollections.length).toBe(10);
+    expect(registeredCollections.length).toBe(12);
   });
 
   it('iterates through every Firestore collection snapshot and verifies converter output matches its strict Zod schema', () => {
@@ -364,10 +426,8 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
       expect(schema).toBeDefined();
 
       for (const snapshot of spec.snapshots) {
-        // 1. Parse raw Firestore snapshot (including Timestamp objects) via collection converter
         const hydratedDoc = spec.parseWithConverter(snapshot);
 
-        // 2. Verify converter output strictly conforms to the collection's Zod schema
         const validatedRead = validateFirestoreReadPayload(
           schema,
           hydratedDoc,
@@ -379,7 +439,6 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
         );
         expect(validatedRead).toEqual(hydratedDoc);
 
-        // 3. Verify write payload produced by the collection converter passes strict write validation
         const writePayload = spec.createWritePayload();
         const writeCheck = validateFirestoreWritePayload(schema, writePayload, {
           entity: spec.collection,
@@ -388,7 +447,6 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
         });
         expect(writeCheck.success).toBe(true);
 
-        // Ensure sentinel stripping produces a clean object accepted by safeParse
         const strippedWrite = stripFirestoreSentinels(writePayload);
         const directParse = schema.safeParse(strippedWrite);
         expect(
@@ -404,7 +462,6 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
       const schema = STORED_DOCUMENT_SCHEMAS[spec.collection];
       const baseSnapshot = spec.snapshots[0];
 
-      // A. Drift via unexpected shadow field on Firestore read snapshot
       const driftedSnapshot: SimulatedFirestoreDocSnapshot = {
         ...baseSnapshot,
         data: () => ({
@@ -418,7 +475,6 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
         `Collection '${spec.collection}' at ${spec.firestorePathPattern} failed to reject unknown shadow field on read`,
       ).toThrow(SchemaValidationError);
 
-      // B. Drift via unexpected shadow field on Firestore write payload
       const driftedWrite = {
         ...spec.createWritePayload(),
         unregisteredDriftField: 'should-fail-strict-zod-write',
@@ -440,11 +496,6 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
     const serverDir = path.resolve(process.cwd(), 'src/server');
     const serverFiles = collectServerSourceFiles(serverDir);
 
-    // Allowed Firestore collection identifiers:
-    // - The 10 canonical collections in STORED_DOCUMENT_SCHEMAS
-    // - Structural parent/subcollection paths ('appSettings', 'entries',
-    //   'appSettings/allowlist/users', 'appSettings/waitlist/entries') that route
-    //   directly to `allowlist` and `waitlist`.
     const allowedCollectionLiterals = new Set<string>([
       ...Object.keys(STORED_DOCUMENT_SCHEMAS),
       'appSettings',
@@ -457,6 +508,9 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
     const discoveredCollections = new Set<string>();
 
     for (const filePath of serverFiles) {
+      if (filePath.includes(`${path.sep}testing${path.sep}`)) {
+        continue;
+      }
       const content = fs.readFileSync(filePath, 'utf-8');
       let match = collectionCallRegex.exec(content);
       while (match !== null) {
@@ -474,23 +528,27 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
     expect(discoveredCollections.size).toBeGreaterThan(0);
   });
 
-  it('ignores deprecated legacy fields on libraries and books without propagating them, while allowing nullable temporalMetadata and raster base64 hero banners', () => {
-    // 1. Library with 120KB raster base64 heroImageUrl and legacy sharedWith field
+  it('strictly rejects deprecated legacy fields on libraries and books while allowing nullable temporalMetadata and raster base64 hero banners', () => {
     const largeBase64Banner = `data:image/jpeg;base64,${'A'.repeat(120_000)}`;
-    const hydratedLib = libraryDocConverter.fromFirestore('lib-legacy-1', {
+    const hydratedLib = libraryDocConverter.fromFirestore('lib-clean-1', {
       name: 'Historical Archive',
       ownerId: 'user-1',
       ownerName: 'Ada Lovelace',
-      sharedWith: ['legacy@example.com'],
       heroImageUrl: largeBase64Banner,
       createdAt: fakeTimestamp,
     });
 
-    expect(hydratedLib.id).toBe('lib-legacy-1');
+    expect(hydratedLib.id).toBe('lib-clean-1');
     expect(hydratedLib.heroImageUrl).toBe(largeBase64Banner);
-    expect('sharedWith' in hydratedLib).toBe(false);
 
-    // HTTP(S) URLs exceeding 2,048 chars must still be rejected on library heroImageUrl
+    expect(() =>
+      libraryDocConverter.fromFirestore('lib-legacy-shared', {
+        name: 'Historical Archive',
+        ownerId: 'user-1',
+        sharedWith: ['legacy@example.com'],
+      }),
+    ).toThrow(SchemaValidationError);
+
     expect(() =>
       libraryDocConverter.fromFirestore('lib-bad-url', {
         name: 'Oversized HTTP URL',
@@ -499,32 +557,26 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
       }),
     ).toThrow(SchemaValidationError);
 
-    // 2. Book with legacy fields (genres, genre, description, readingStatus) and nullable temporalMetadata + lastSyncedAt
     const hydratedBook = bookDocConverter.fromFirestore(
-      'book-legacy-1',
+      'book-clean-1',
       {
         title: 'The Monuments Men',
         author: 'Robert M. Edsel',
         isbn: '9781594630392',
-        genres: ['History', 'World War II'],
-        genre: 'History',
-        description: 'Legacy embedded description field',
-        readingStatus: 'finished',
         temporalMetadata: {
           isNonHistorical: false,
           startYear: null,
           endYear: null,
           eraName: null,
           rationale: null,
-          lastProcessedAt: '2026-06-14T18:48:52.172Z',
           lastSyncedAt: '2026-10-22T12:46:23.743Z',
         },
         addedAt: fakeTimestamp,
       },
-      '/libraries/lib-1/books/book-legacy-1',
+      '/libraries/lib-1/books/book-clean-1',
     );
 
-    expect(hydratedBook.id).toBe('book-legacy-1');
+    expect(hydratedBook.id).toBe('book-clean-1');
     expect(hydratedBook.temporalMetadata?.startYear).toBeNull();
     expect(hydratedBook.temporalMetadata?.endYear).toBeNull();
     expect(hydratedBook.temporalMetadata?.eraName).toBeNull();
@@ -532,9 +584,70 @@ describe('Firestore Collection Schema Architecture (src/lib/schema.test.ts)', ()
     expect(hydratedBook.temporalMetadata?.lastSyncedAt).toBe(
       '2026-10-22T12:46:23.743Z',
     );
-    expect('genres' in hydratedBook).toBe(false);
-    expect('genre' in hydratedBook).toBe(false);
-    expect('description' in hydratedBook).toBe(false);
-    expect('readingStatus' in hydratedBook).toBe(false);
+
+    const normalizedLegacyBook = bookDocConverter.fromFirestore(
+      'book-legacy-fields',
+      {
+        title: 'The Monuments Men',
+        author: 'Robert M. Edsel',
+        genres: ['History', 'World War II'],
+        description: 'Legacy embedded description field',
+        temporalMetadata: {
+          startYear: 1943,
+          eraLabel: 'World War II',
+        },
+        geoMetadata: {
+          locations: [
+            {
+              name: 'Paris',
+              adminLevel: 'City',
+              lat: 48.8566,
+              lng: 2.3522,
+            },
+          ],
+        },
+        addedAt: fakeTimestamp,
+      },
+      '/libraries/lib-1/books/book-legacy-fields',
+    );
+    expect(normalizedLegacyBook.primaryGenre).toBe('History');
+    expect(normalizedLegacyBook.subgenres).toEqual(['World War II']);
+    expect(normalizedLegacyBook.temporalMetadata?.eraName).toBe('World War II');
+    expect(normalizedLegacyBook.geoMetadata?.locations?.[0]).toEqual({
+      name: 'Paris',
+      adminLevel: 'city',
+      coordinates: {lat: 48.8566, lng: 2.3522},
+    });
+    expect(normalizedLegacyBook.bookDetailsMetadata?.hasSynopsis).toBe(true);
+    expect('description' in normalizedLegacyBook).toBe(false);
+    expect('genres' in normalizedLegacyBook).toBe(false);
+
+    expect(() =>
+      validateFirestoreWritePayload(
+        STORED_DOCUMENT_SCHEMAS.books,
+        {
+          ...buildValidStoredBookFixture({id: 'book-bad-write'}),
+          genres: ['Forbidden Legacy Write'],
+        },
+        {
+          entity: 'StoredBookDoc',
+          documentPath: '/libraries/lib-1/books/book-bad-write',
+          operation: 'create',
+        },
+      ),
+    ).toThrow(SchemaValidationError);
+
+    expect(() =>
+      bookDocConverter.fromFirestore(
+        'book-unknown-shadow',
+        {
+          title: 'The Monuments Men',
+          author: 'Robert M. Edsel',
+          unexpectedShadowField: 'should-fail-strict-parse',
+          addedAt: fakeTimestamp,
+        },
+        '/libraries/lib-1/books/book-unknown-shadow',
+      ),
+    ).toThrow(SchemaValidationError);
   });
 });

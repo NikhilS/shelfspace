@@ -1,4 +1,5 @@
 import React, {useState, useMemo, useEffect} from 'react';
+import {motion} from 'motion/react';
 import {Search, X, Plus} from 'lucide-react';
 import {
   Dialog,
@@ -141,14 +142,29 @@ export function ReadingListsDialog({
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`px-3 py-1.5 text-xs font-sans font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                    className={`relative px-3 py-1.5 text-xs font-sans font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
                       isActive
-                        ? 'bg-surface text-on-surface shadow-2xs border border-outline-variant/60'
+                        ? 'text-on-surface'
                         : 'text-on-surface-variant hover:text-on-surface'
                     }`}
                   >
-                    <span>{tab.label}</span>
-                    <span className="font-mono tabular-nums text-[11px] text-on-surface-variant">
+                    {isActive && (
+                      <motion.span
+                        layoutId="reading-lists-dialog-pill"
+                        transition={{
+                          type: 'spring',
+                          stiffness: 500,
+                          damping: 38,
+                        }}
+                        className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/60"
+                      />
+                    )}
+                    <span className="relative z-10">{tab.label}</span>
+                    <span
+                      className={`relative z-10 font-mono tabular-nums text-[11px] ${
+                        isActive ? 'text-tertiary' : 'text-on-surface-variant'
+                      }`}
+                    >
                       {count}
                     </span>
                   </button>

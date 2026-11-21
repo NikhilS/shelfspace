@@ -1,6 +1,5 @@
 import {
   verifyLibraryAccess,
-  getUserRole,
   upsertCollaborator,
   removeCollaborator,
   getCollaboratorStatuses,
@@ -23,7 +22,6 @@ import {
   allowedDuplicateConverter,
   uploadImage,
 } from './librarySpruceService';
-
 export type {LibraryApiRecord};
 
 export class LibraryService {
@@ -35,7 +33,6 @@ export class LibraryService {
   static createLibrary = createLibrary;
   static updateLibrary = updateLibrary;
   static deleteLibrary = deleteLibrary;
-  static getUserRole = getUserRole;
   static upsertCollaborator = upsertCollaborator;
   static removeCollaborator = removeCollaborator;
   static getCollaboratorStatuses = getCollaboratorStatuses;
@@ -55,7 +52,6 @@ export {
   deleteLibrary,
   libraryDocConverter,
   LibraryMetadataCache,
-  getUserRole,
   upsertCollaborator,
   removeCollaborator,
   getCollaboratorStatuses,

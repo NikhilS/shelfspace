@@ -1,4 +1,4 @@
-import React, {useState, useMemo} from 'react';
+import React, {useMemo, useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {
   Dialog,
@@ -15,114 +15,107 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  RotateCcw,
-  CheckCircle2,
-  Loader2,
-  ShieldAlert,
-  Sparkles,
-} from 'lucide-react';
+import {RotateCcw, CheckCircle2, Loader2} from 'lucide-react';
 import {toast} from 'sonner';
+import {findEnrichmentDescriptor} from '../../constants/enrichmentDescriptors';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {trpc, trpcVanilla} from '../../lib/trpc';
-import {Book} from '../../types';
-import {
-  hasHeavyLeaks,
-  needsIndexBackfill,
-  needsStorageOptimization,
-} from '../../lib/sanitizeStorage';
+import {useEntityCacheStore} from '../../stores/entityCacheStore';
+import type {Book} from '../../types';
+import type {CanonicalEnrichmentType} from '../../types/metadata';
 
-interface ResetMetadataSectionProps {
+export interface ResetMetadataSectionProps {
   libraryId: string;
   books?: Book[];
 }
 
-type ResettableMetadataType =
-  | 'genre'
-  | 'geo'
-  | 'temporal'
-  | 'synopsis'
-  | 'authorBio'
-  | 'embedding'
-  | 'coverImage';
-
-const RESETTABLE_METADATA_OPTIONS: Array<{
-  id: ResettableMetadataType;
+const RESETTABLE_METADATA_OPTIONS: ReadonlyArray<{
+  id: CanonicalEnrichmentType;
   label: string;
   shortLabel: string;
   description: string;
-  isLegacy: boolean;
 }> = [
   {
     id: 'genre',
-    label: 'Primary Genre & Subgenres (Current Taxonomy)',
-    shortLabel: 'Taxonomy Genres',
+    label: 'Primary Genre & Subgenres',
+    shortLabel: 'Genres',
     description:
-      'Removes the standardized primary genre, subgenres, and custom flags across all books.',
-    isLegacy: false,
+      'Removes the standardized primary genre, subgenres, and custom genre flags across all books.',
   },
   {
     id: 'geo',
-    label: 'Settings & Places (Geo Metadata)',
+    label: 'Settings & Places',
     shortLabel: 'Settings & Places',
     description:
-      'Removes extracted geographical locations and map settings from all books.',
-    isLegacy: false,
+      'Removes extracted geographical locations and map settings across all books.',
   },
   {
     id: 'temporal',
-    label: 'Historical Eras (Temporal Metadata)',
+    label: 'Historical Eras',
     shortLabel: 'Historical Eras',
     description:
-      'Removes extracted narrative time periods and historical eras from all books.',
-    isLegacy: false,
+      'Removes narrative time periods and historical eras across all books.',
   },
   {
     id: 'synopsis',
     label: 'Summaries & Synopses',
     shortLabel: 'Summaries',
-    description: 'Removes synopses and descriptions from all books.',
-    isLegacy: false,
+    description: 'Removes summaries across all books.',
   },
   {
     id: 'authorBio',
     label: 'Author Biographies',
     shortLabel: 'Author Bios',
-    description: 'Removes biographical author notes from all books.',
-    isLegacy: false,
+    description: 'Removes biographical author notes across all books.',
   },
   {
-    id: 'embedding',
-    label: 'Embeddings & Visual Clusters',
-    shortLabel: 'Embeddings',
-    description:
-      'Removes vector embeddings and cluster projection coordinates from all books.',
-    isLegacy: false,
+    id: 'series',
+    label: 'Series Info',
+    shortLabel: 'Series Info',
+    description: 'Removes series names and volume numbers across all books.',
   },
   {
     id: 'coverImage',
     label: 'Cover Art Images',
     shortLabel: 'Cover Art',
     description:
-      'Removes cover image URLs across all books so you can backfill fresh high-resolution covers.',
-    isLegacy: false,
+      'Removes cover image links across all books so you can fetch fresh high-resolution covers.',
+  },
+  {
+    id: 'embedding',
+    label: 'Visual Clusters & Themes',
+    shortLabel: 'Visual Clusters',
+    description:
+      'Removes similarity vectors and constellation map coordinates across all books.',
   },
 ];
+
+function doesBookIncludeResettableDetail(
+  book: Book,
+  type: CanonicalEnrichmentType,
+): boolean {
+  if (type === 'synopsis' && Boolean(book.synopsis?.trim())) {
+    return true;
+  }
+  if (type === 'authorBio' && Boolean(book.authorBio?.trim())) {
+    return true;
+  }
+  const descriptor = findEnrichmentDescriptor(type);
+  if (descriptor) {
+    return descriptor.isPresent(book);
+  }
+  return false;
+}
 
 export function ResetMetadataSection({
   libraryId,
   books,
 }: ResetMetadataSectionProps) {
-  let utils: ReturnType<typeof trpc.useUtils> | undefined;
-  try {
-    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
-      utils = trpc.useUtils();
-    }
-  } catch {
-    utils = undefined;
-  }
+  const utils = trpc.useUtils();
+  const isOnline = useOnlineStatus();
 
   const [selectedType, setSelectedType] =
-    useState<ResettableMetadataType>('genre');
+    useState<CanonicalEnrichmentType>('genre');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [lastResetInfo, setLastResetInfo] = useState<{
@@ -130,63 +123,22 @@ export function ResetMetadataSection({
     count: number;
   } | null>(null);
 
-  // Storage Sanitization State
-  const [isSanitizeDialogOpen, setIsSanitizeDialogOpen] = useState(false);
-  const [isSanitizing, setIsSanitizing] = useState(false);
-  const [sanitizeProgress, setSanitizeProgress] = useState<{
-    completed: number;
-    total: number;
-  } | null>(null);
-  const [lastSanitizeResult, setLastSanitizeResult] = useState<{
-    scanned: number;
-    sanitized: number;
-    purged: number;
-  } | null>(null);
-
-  const booksWithLeaks = useMemo(() => {
-    return (books || []).filter(needsStorageOptimization);
-  }, [books]);
-
-  const unindexedCount = useMemo(() => {
-    return (books || []).filter(needsIndexBackfill).length;
-  }, [books]);
-
-  const heavyLeaksCount = useMemo(() => {
-    return (books || []).filter(hasHeavyLeaks).length;
-  }, [books]);
-
-  const isPending = isResetting || isSanitizing;
-
   const currentOption =
     RESETTABLE_METADATA_OPTIONS.find(opt => opt.id === selectedType) ||
     RESETTABLE_METADATA_OPTIONS[0];
 
-  const handleConfirmSanitize = async () => {
-    setIsSanitizing(true);
-    try {
-      const res = await trpcVanilla.library.resetMetadata.mutate({
-        libraryId,
-        metadataType: 'sanitize',
-      });
-      void utils?.book?.list?.invalidate({libraryId});
-      void utils?.library?.get?.invalidate({libraryId});
-      setLastSanitizeResult({
-        scanned: books?.length || 0,
-        sanitized: res.count,
-        purged: res.count,
-      });
-      toast.success(
-        `Optimized ${res.count} books for faster search, duplicate matching, and lightweight shelf loading.`,
-      );
-      setIsSanitizeDialogOpen(false);
-    } catch (err: unknown) {
-      console.error('Failed to sanitize books:', err);
-      toast.error('Failed to optimize library storage');
-    } finally {
-      setIsSanitizing(false);
-      setSanitizeProgress(null);
+  const affectedCount = useMemo(() => {
+    if (!books) {
+      return undefined;
     }
-  };
+    return books.filter(book =>
+      doesBookIncludeResettableDetail(book, selectedType),
+    ).length;
+  }, [books, selectedType]);
+
+  const isZeroAffected = affectedCount !== undefined && affectedCount === 0;
+  const isTriggerDisabled = !isOnline || isResetting || isZeroAffected;
+  const offlineTitle = !isOnline ? 'Unavailable while offline' : undefined;
 
   const handleConfirmReset = async () => {
     setIsResetting(true);
@@ -195,18 +147,30 @@ export function ResetMetadataSection({
         libraryId,
         metadataType: selectedType,
       });
-      void utils?.book?.list?.invalidate({libraryId});
-      void utils?.library?.get?.invalidate({libraryId});
+      useEntityCacheStore
+        .getState()
+        .clearLibraryEnrichmentField(libraryId, selectedType);
+      void utils.book.list.invalidate({libraryId});
+      void utils.library.get.invalidate({libraryId});
+      if (
+        selectedType === 'coverImage' ||
+        selectedType === 'genre' ||
+        selectedType === 'series' ||
+        selectedType === 'synopsis'
+      ) {
+        void utils.readingTracker?.getShelf?.invalidate?.();
+        void utils.readingTracker?.getUnreadLibraryBooks?.invalidate?.();
+      }
 
       toast.success(
-        `Successfully reset ${currentOption.shortLabel} across ${res.count} book${res.count === 1 ? '' : 's'}.`,
+        `Reset ${currentOption.shortLabel} across ${res.count} book${res.count === 1 ? '' : 's'}.`,
       );
 
       setLastResetInfo({label: currentOption.shortLabel, count: res.count});
       setIsDialogOpen(false);
     } catch (err: unknown) {
       console.error('Failed to reset metadata:', err);
-      toast.error('Failed to reset metadata');
+      toast.error('Failed to reset book details');
     } finally {
       setIsResetting(false);
     }
@@ -215,321 +179,151 @@ export function ResetMetadataSection({
   const actionButtonText = `Reset ${currentOption.shortLabel}`;
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* 1. Storage Hardening & Search Index Optimization Card */}
-      <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl overflow-hidden shadow-sm flex flex-col">
-        <div className="p-6 border-b border-outline-variant/30">
-          <div>
-            <h3 className="font-serif text-xl font-semibold text-on-surface">
-              Optimize Library Storage
-            </h3>
-            <p className="text-sm text-on-surface-variant font-sans mt-0.5">
-              Keep your library fast and lightweight by indexing search &amp;
-              duplicate keys and storing long summaries separately from your
-              main book list.
-            </p>
-          </div>
-        </div>
-
-        <div className="p-6 flex flex-col gap-4">
-          {booksWithLeaks.length > 0 ? (
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-on-surface">
-              <div className="flex items-start gap-3">
-                <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                <div className="space-y-1 font-sans text-sm">
-                  <p className="font-semibold text-amber-800 dark:text-amber-300">
-                    {booksWithLeaks.length === 1
-                      ? '1 book can be optimized for faster search and loading'
-                      : `${booksWithLeaks.length} books can be optimized for faster search and loading`}
-                  </p>
-                  <p className="text-xs text-on-surface-variant leading-relaxed">
-                    {heavyLeaksCount > 0 && unindexedCount > 0
-                      ? 'Optimizing builds fast search and duplicate-matching keys and moves long summaries or AI vectors into the dedicated '
-                      : unindexedCount > 0
-                        ? 'Some earlier books are missing normalized search and duplicate-matching keys. Optimizing indexes them and keeps long summaries in '
-                        : 'Some books still store full summaries or AI vectors on their main shelf entry. Optimizing moves those details into the dedicated '}
-                    <code className="font-mono font-body-xs text-body-xs px-1 py-0.5 rounded bg-surface-container">
-                      bookDetails
-                    </code>{' '}
-                    collection with lightweight{' '}
-                    <code className="font-mono font-body-xs text-body-xs px-1 py-0.5 rounded bg-surface-container">
-                      bookDetailsMetadata
-                    </code>{' '}
-                    flags.
-                  </p>
-                </div>
-              </div>
-
-              <Button
-                id="open-sanitize-dialog-btn"
-                variant="default"
-                onClick={() => setIsSanitizeDialogOpen(true)}
-                disabled={isPending}
-                className="flex-shrink-0 gap-2 bg-amber-600 hover:bg-amber-700 text-white font-sans text-xs sm:text-sm"
-              >
-                {isSanitizing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Sparkles className="w-4 h-4" />
-                )}
-                Optimize Storage ({booksWithLeaks.length})
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-on-surface">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                <div className="font-sans text-sm">
-                  <p className="font-semibold text-emerald-800 dark:text-emerald-300">
-                    Library Storage Is Optimized
-                  </p>
-                  <p className="text-xs text-on-surface-variant">
-                    All {books?.length || 0} books are indexed for fast search
-                    and duplicate matching, with long summaries and AI vectors
-                    stored separately in{' '}
-                    <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-surface-container">
-                      bookDetails
-                    </code>
-                    .
-                  </p>
-                </div>
-              </div>
-
-              <Button
-                id="manual-rescan-sanitize-btn"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsSanitizeDialogOpen(true)}
-                disabled={isPending}
-                className="flex-shrink-0 text-xs gap-1.5"
-              >
-                {isSanitizing ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <RotateCcw className="w-3.5 h-3.5" />
-                )}
-                Check Again
-              </Button>
-            </div>
-          )}
-
-          {sanitizeProgress && (
-            <div className="space-y-1.5 font-sans text-xs text-on-surface-variant">
-              <div className="flex justify-between">
-                <span>Sanitizing storage...</span>
-                <span>
-                  {sanitizeProgress.completed} / {sanitizeProgress.total}
-                </span>
-              </div>
-              <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary transition-all duration-200"
-                  style={{
-                    width: `${Math.round(
-                      (sanitizeProgress.completed /
-                        Math.max(1, sanitizeProgress.total)) *
-                        100,
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {lastSanitizeResult && (
-            <div className="p-3.5 rounded-xl bg-surface border border-outline-variant/20 font-sans text-xs text-on-surface-variant flex items-center justify-between">
-              <span>
-                Last purge: Sanitized {lastSanitizeResult.sanitized} books and
-                purged {lastSanitizeResult.purged} leaked root fields.
-              </span>
-              <span className="font-body-xs text-body-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                Up to date
-              </span>
-            </div>
-          )}
-        </div>
+    <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl overflow-hidden shadow-xs flex flex-col">
+      <div className="p-6 border-b border-outline-variant/30">
+        <h3 className="font-serif text-xl font-semibold text-on-surface text-balance">
+          Reset Book Details
+        </h3>
+        <p className="text-sm text-on-surface-variant font-sans mt-0.5 leading-relaxed max-w-[68ch]">
+          Clear a specific detail—like covers, genres, series info, or
+          summaries—across every book on this shelf when you want to start
+          fresh.
+        </p>
       </div>
 
-      {/* 2. Reset Metadata Category Card */}
-      <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl overflow-hidden shadow-sm flex flex-col">
-        <div className="p-6 border-b border-outline-variant/30">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="font-serif text-xl font-semibold text-on-surface">
-                Reset Book Details
-              </h3>
-              <p className="text-sm text-on-surface-variant font-sans mt-0.5">
-                Clear a specific detail (like covers, genres, or summaries)
-                across all books if you want to start fresh.
-              </p>
-            </div>
-          </div>
+      <div className="p-6 flex flex-col md:flex-row items-start md:items-center gap-6 justify-between">
+        <div className="flex-1 w-full">
+          <label
+            htmlFor="reset-metadata-select"
+            className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block mb-1.5"
+          >
+            Detail Category to Reset
+          </label>
+          <Select
+            value={selectedType}
+            onValueChange={val => {
+              const matched = RESETTABLE_METADATA_OPTIONS.find(
+                opt => opt.id === val,
+              );
+              if (matched) {
+                setSelectedType(matched.id);
+                setLastResetInfo(null);
+              }
+            }}
+          >
+            <SelectTrigger
+              id="reset-metadata-select"
+              className="w-full max-w-md bg-surface-container text-sm border-outline-variant/50 rounded-lg px-3 py-2 text-on-surface h-10"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RESETTABLE_METADATA_OPTIONS.map(opt => (
+                <SelectItem key={opt.id} value={opt.id}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-on-surface-variant/80 mt-2 font-sans leading-relaxed max-w-xl">
+            {currentOption.description}
+          </p>
+          {books !== undefined && affectedCount !== undefined && (
+            <p
+              data-testid="reset-metadata-affected-count"
+              className="text-xs text-on-surface-variant font-sans tabular-nums mt-2"
+            >
+              {affectedCount > 0
+                ? `${affectedCount} of ${books.length} ${
+                    books.length === 1
+                      ? 'book currently includes'
+                      : 'books currently include'
+                  } ${currentOption.shortLabel}`
+                : `No books currently include ${currentOption.shortLabel}`}
+            </p>
+          )}
         </div>
 
-        <div className="p-6 flex flex-col gap-6">
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-4 justify-between bg-surface p-4 rounded-xl border border-outline-variant/20">
-            <div className="flex-1">
-              <label
-                htmlFor="reset-metadata-select"
-                className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider block mb-1.5"
-              >
-                Metadata Category to Reset
-              </label>
-              <Select
-                value={selectedType}
-                onValueChange={val => {
-                  const matched = RESETTABLE_METADATA_OPTIONS.find(
-                    opt => opt.id === val,
-                  );
-                  if (matched) {
-                    setSelectedType(matched.id);
-                    setLastResetInfo(null);
-                  }
-                }}
-              >
-                <SelectTrigger
-                  id="reset-metadata-select"
-                  className="w-full max-w-md bg-surface-container text-sm border-outline-variant/50 rounded-lg px-3 py-2 text-on-surface h-10"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {RESETTABLE_METADATA_OPTIONS.map(opt => (
-                    <SelectItem key={opt.id} value={opt.id}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-on-surface-variant/80 mt-2 font-sans leading-relaxed max-w-xl">
-                {currentOption.description}
-              </p>
-            </div>
+        <span title={offlineTitle} className="inline-flex shrink-0">
+          <Button
+            id="open-reset-metadata-dialog-btn"
+            variant="destructive"
+            onClick={() => setIsDialogOpen(true)}
+            disabled={isTriggerDisabled}
+            title={offlineTitle}
+            className="shrink-0 gap-2 rounded-lg whitespace-nowrap mt-2 md:mt-0"
+          >
+            {isResetting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RotateCcw className="w-4 h-4" />
+            )}
+            {actionButtonText}
+          </Button>
+        </span>
+      </div>
 
+      {lastResetInfo && (
+        <div className="flex items-center gap-3 px-6 py-4 border-t border-outline-variant/30 bg-emerald-500/5 text-emerald-800 dark:text-emerald-300 text-sm font-sans">
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <div className="tabular-nums">
+            <span className="font-semibold">{lastResetInfo.label}</span> was
+            cleared across {lastResetInfo.count}{' '}
+            {lastResetInfo.count === 1 ? 'book' : 'books'}. Switch to the{' '}
+            <span className="font-semibold">Missing Details</span> tab anytime
+            to fill them back in.
+          </div>
+        </div>
+      )}
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl font-semibold text-balance">
+              Confirm Detail Reset
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="font-sans text-sm text-on-surface-variant pt-2 space-y-2">
+                <p className="tabular-nums">
+                  Clear{' '}
+                  <strong className="text-on-surface font-semibold">
+                    {currentOption.label}
+                  </strong>{' '}
+                  from{' '}
+                  {affectedCount !== undefined && affectedCount > 0
+                    ? `${affectedCount} ${affectedCount === 1 ? 'book' : 'books'}`
+                    : 'matching books'}{' '}
+                  in this library?
+                </p>
+                <p className="text-xs text-on-surface-variant">
+                  This cannot be undone automatically, though you can fill these
+                  details back in from the Missing Details tab afterwards.
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0 mt-4">
             <Button
-              id="open-reset-metadata-dialog-btn"
-              variant="destructive"
-              onClick={() => setIsDialogOpen(true)}
-              disabled={isPending}
-              className="flex-shrink-0 gap-2 mt-2 md:mt-0"
+              variant="outline"
+              onClick={() => setIsDialogOpen(false)}
+              disabled={isResetting}
+              className="rounded-lg whitespace-nowrap shrink-0"
             >
-              {isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RotateCcw className="w-4 h-4" />
-              )}
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmReset}
+              disabled={!isOnline || isResetting}
+              title={offlineTitle}
+              className="gap-2 rounded-lg whitespace-nowrap shrink-0"
+            >
+              {isResetting && <Loader2 className="w-4 h-4 animate-spin" />}
               {actionButtonText}
             </Button>
-          </div>
-
-          {lastResetInfo && (
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-sm font-sans">
-              <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <div>
-                <span className="font-semibold">{lastResetInfo.label}</span> was
-                successfully reset across {lastResetInfo.count} books. You can
-                now re-enrich your collection using the Complete Book Details
-                table above.
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Reset Category Dialog */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="font-serif text-xl font-semibold">
-                Confirm Metadata Reset
-              </DialogTitle>
-              <DialogDescription asChild>
-                <div className="font-sans text-sm text-on-surface-variant pt-2 space-y-2">
-                  <p>
-                    Are you sure you want to permanently delete{' '}
-                    <strong className="text-on-surface font-semibold">
-                      {currentOption.label}
-                    </strong>{' '}
-                    from every book in this library?
-                  </p>
-                  <p className="text-xs text-on-surface-variant">
-                    This action cannot be undone automatically, but you can
-                    always re-enrich your books afterwards.
-                  </p>
-                </div>
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="gap-2 sm:gap-0 mt-4">
-              <Button
-                variant="outline"
-                onClick={() => setIsDialogOpen(false)}
-                disabled={isPending}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleConfirmReset}
-                disabled={isPending}
-                className="gap-2"
-              >
-                {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                {actionButtonText}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Storage Sanitization Dialog */}
-        <Dialog
-          open={isSanitizeDialogOpen}
-          onOpenChange={setIsSanitizeDialogOpen}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="font-serif text-xl font-semibold">
-                Optimize Library Storage
-              </DialogTitle>
-              <DialogDescription asChild>
-                <div className="font-sans text-sm text-on-surface-variant pt-2 space-y-2">
-                  <p>
-                    We&apos;ll scan your library and move any long summaries,
-                    author biographies, or AI vectors into the dedicated{' '}
-                    <code className="font-mono text-xs px-1 py-0.5 rounded bg-surface-container">
-                      bookDetails
-                    </code>{' '}
-                    collection.
-                  </p>
-                  <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Your main book list stays fast and lightweight with simple{' '}
-                    <code className="font-mono text-xs px-1 py-0.5 rounded bg-surface-container">
-                      bookDetailsMetadata
-                    </code>{' '}
-                    flags, and none of your book descriptions or notes are lost.
-                  </p>
-                </div>
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="gap-2 sm:gap-0 mt-4">
-              <Button
-                variant="outline"
-                onClick={() => setIsSanitizeDialogOpen(false)}
-                disabled={isPending}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="default"
-                onClick={handleConfirmSanitize}
-                disabled={isPending}
-                className="gap-2 bg-primary text-on-primary"
-              >
-                {isSanitizing && <Loader2 className="w-4 h-4 animate-spin" />}
-                Optimize Now
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

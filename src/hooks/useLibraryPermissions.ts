@@ -2,6 +2,7 @@ import {useAuth} from '../stores/authStore';
 import {trpc} from '../lib/trpc';
 import {SUPERADMIN_EMAIL} from '../constants/auth';
 import {getAccessFromLibrary} from '../lib/permissions';
+import {useEntityCacheStore} from '../stores/entityCacheStore';
 import {Library} from '../types';
 
 export function useLibraryPermissions(
@@ -10,14 +11,7 @@ export function useLibraryPermissions(
 ) {
   const {user, isAuthReady} = useAuth();
   const email = user?.email?.toLowerCase().trim();
-  let utils: ReturnType<typeof trpc.useUtils> | undefined;
-  try {
-    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
-      utils = trpc.useUtils();
-    }
-  } catch {
-    utils = undefined;
-  }
+  const utils = trpc.useUtils();
 
   // Fast-path for superadmin or user's own virtual reading shelf
   const isSuperAdmin = email === SUPERADMIN_EMAIL.toLowerCase().trim();
@@ -26,7 +20,15 @@ export function useLibraryPermissions(
   );
 
   const getCachedLibrary = (): Library | undefined => {
-    if (!libraryId || !userId || !utils?.library) {
+    if (!libraryId || !userId) {
+      return undefined;
+    }
+    const fromEntityStore =
+      useEntityCacheStore.getState().librariesById[libraryId];
+    if (fromEntityStore) {
+      return fromEntityStore;
+    }
+    if (!utils?.library) {
       return undefined;
     }
     return (
@@ -50,31 +52,15 @@ export function useLibraryPermissions(
     isAuthReady && libraryId && userId && !isSuperAdmin && !isUserVirtualShelf,
   );
 
-  // Share the canonical library.get query instead of firing a redundant library.getPermissions RPC
-  const hasLibraryGetQuery = Boolean(trpc?.library?.get?.useQuery);
-  const libraryQuery = hasLibraryGetQuery
-    ? trpc.library.get.useQuery(
-        {libraryId: libraryId || ''},
-        {
-          enabled: isQueryEnabled,
-          initialData: cachedLibrary,
-          staleTime: 1000 * 60 * 5,
-          gcTime: 1000 * 60 * 60 * 24,
-        },
-      )
-    : undefined;
-
-  // Fallback for isolated test mocks that only define library.getUserRole.useQuery
-  const legacyPermQuery =
-    !hasLibraryGetQuery && Boolean(trpc?.library?.getUserRole?.useQuery)
-      ? trpc.library.getUserRole.useQuery(
-          {libraryId: libraryId || ''},
-          {
-            enabled: isQueryEnabled,
-            staleTime: 1000 * 60 * 5,
-          },
-        )
-      : undefined;
+  const libraryQuery = trpc.library.get.useQuery(
+    {libraryId: libraryId || ''},
+    {
+      enabled: isQueryEnabled,
+      initialData: cachedLibrary,
+      staleTime: 1000 * 60 * 5,
+      gcTime: 1000 * 60 * 60 * 24,
+    },
+  );
 
   if (isSuperAdmin || isUserVirtualShelf) {
     return {
@@ -95,25 +81,17 @@ export function useLibraryPermissions(
   const effective =
     resolvedFromLibrary && resolvedFromLibrary.role
       ? resolvedFromLibrary
-      : legacyPermQuery?.data
-        ? {
-            role: legacyPermQuery.data.role,
-            isOwner: legacyPermQuery.data.isOwner,
-            canEdit: legacyPermQuery.data.canEdit,
-          }
-        : cachedAccess && cachedAccess.role
-          ? cachedAccess
-          : undefined;
+      : cachedAccess && cachedAccess.role
+        ? cachedAccess
+        : undefined;
 
   const role = effective?.role ?? null;
   const isOwner = effective?.isOwner ?? false;
   const canEdit = effective?.canEdit ?? false;
   const canDelete = isOwner || canEdit;
   const canView = isOwner || canEdit || role === 'viewer';
-  const isQueryLoading = Boolean(
-    libraryQuery?.isLoading ?? legacyPermQuery?.isLoading,
-  );
-  const isError = Boolean(libraryQuery?.isError ?? legacyPermQuery?.isError);
+  const isQueryLoading = Boolean(libraryQuery?.isLoading);
+  const isError = Boolean(libraryQuery?.isError);
 
   return {
     canEdit,

@@ -130,7 +130,7 @@ export function CuratorPickCard({
           <div className="flex flex-col justify-center flex-1 min-w-0 text-center sm:text-left break-words">
             <span className="metadata-eyebrow flex items-center justify-center sm:justify-start gap-1.5 mb-1">
               <span
-                className="w-1.5 h-1.5 rounded-full bg-primary inline-block"
+                className="w-1.5 h-1.5 rounded-full bg-tertiary inline-block"
                 aria-hidden="true"
               />
               {eyebrow}
@@ -148,7 +148,7 @@ export function CuratorPickCard({
               {pickOfTheDay.libraryName ? ` · ${pickOfTheDay.libraryName}` : ''}
             </p>
             <div className="pt-2 border-t border-outline-variant/50 text-left">
-              <p className="font-serif text-xs sm:text-sm text-on-surface leading-relaxed italic line-clamp-3">
+              <p className="font-sans text-xs sm:text-sm text-on-surface/95 leading-relaxed line-clamp-3">
                 &ldquo;{pickOfTheDay.reason}&rdquo;
               </p>
             </div>
@@ -245,7 +245,7 @@ export function CuratorPickCard({
             size="sm"
             className="mt-1 gap-2 bg-surface hover:bg-surface-container min-h-[38px] px-4 rounded-lg text-xs font-semibold disabled:opacity-50"
           >
-            <Sparkles className="w-3.5 h-3.5 text-primary" />
+            <Sparkles className="w-3.5 h-3.5 text-tertiary" />
             Surprise Me
           </Button>
         </div>

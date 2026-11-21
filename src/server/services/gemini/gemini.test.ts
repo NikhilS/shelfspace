@@ -1,10 +1,6 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import * as clientMod from './client';
-import {
-  generateClusterNames,
-  generateClusterThemes,
-  generateBookEmbeddings,
-} from './embeddings';
+import {generateClusterThemes, generateBookEmbeddings} from './embeddings';
 import {
   classifyBooks,
   extractBookGeoMetadataBatch,
@@ -64,7 +60,7 @@ describe('gemini service unit suite', () => {
     expect(bios).toEqual({});
   });
 
-  it('parses array and object formats in generateClusterNames/generateClusterThemes and handles generateBookEmbeddings progress', async () => {
+  it('parses array and object formats in generateClusterThemes and handles generateBookEmbeddings progress', async () => {
     vi.spyOn(
       clientMod.geminiStructuredProvider,
       'generateContent',
@@ -98,18 +94,6 @@ describe('gemini service unit suite', () => {
         thesis: 'Expeditions into incomprehensible ancient frontiers.',
       },
     });
-
-    vi.spyOn(
-      clientMod.geminiStructuredProvider,
-      'generateContent',
-    ).mockResolvedValueOnce({
-      text: JSON.stringify([{id: 0, name: '  Cosmic Dread  ', thesis: ''}]),
-    } as never);
-
-    const names = await generateClusterNames([
-      {id: 0, books: [{title: 'At the Mountains of Madness'}]},
-    ]);
-    expect(names).toEqual({0: 'Cosmic Dread'});
 
     vi.spyOn(clientMod.geminiEmbeddingProvider, 'embedText').mockResolvedValue([
       0.25, 0.75,

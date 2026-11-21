@@ -2,6 +2,7 @@ import {useState, useEffect, useCallback, useRef} from 'react';
 import {Book, BookDetailsPayload} from '../../types';
 import {toast} from 'sonner';
 import {trpc, trpcVanilla} from '../../lib/trpc';
+import {commitBookUpsertDelta} from '../../lib/readingStatusCache';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
 
 export function useBookInsights(
@@ -22,6 +23,8 @@ export function useBookInsights(
   const attemptedAutoEnrichRef = useRef<Set<string>>(new Set());
 
   const utils = trpc.useUtils();
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
   const generateBookInsightsMutation =
     trpc.gemini.generateBookInsights.useMutation();
 
@@ -30,12 +33,29 @@ export function useBookInsights(
       if (!libraryId) {
         return;
       }
+      const querySingleBook = trpcVanilla.book?.get?.query;
+      if (typeof querySingleBook === 'function') {
+        try {
+          const freshBook = await querySingleBook({libraryId, bookId});
+          if (freshBook && typeof freshBook === 'object' && 'id' in freshBook) {
+            commitBookUpsertDelta(utilsRef.current, {
+              libraryId,
+              book: freshBook,
+              bookCountDelta: 0,
+            });
+            await utilsRef.current.book.get.invalidate({libraryId, bookId});
+            return;
+          }
+        } catch {
+          // Fall back to standard query invalidation if single-book fetch fails
+        }
+      }
       await Promise.allSettled([
-        utils.book.get.invalidate({libraryId, bookId}),
-        utils.book.list.invalidate({libraryId}),
+        utilsRef.current.book.get.invalidate({libraryId, bookId}),
+        utilsRef.current.book.list.invalidate({libraryId}),
       ]);
     },
-    [libraryId, utils.book.get, utils.book.list],
+    [libraryId],
   );
 
   const triggerManualEnrichment = useCallback(

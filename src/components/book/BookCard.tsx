@@ -1,7 +1,6 @@
 import React, {memo, useCallback} from 'react';
 import {toTitleCase} from '../../lib/utils';
 import {Book, FirestoreDate} from '../../types';
-import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {ArchivalCoverImage} from './ArchivalCoverImage';
 import {SharedCoverFrame} from './SharedCoverFrame';
@@ -65,12 +64,12 @@ function BookCardComponent({
           : ''
       }`}
     >
-      {/* Framed 2:3 Book Cover Showcase */}
+      {/* Unobstructed 2:3 Book Cover Showcase */}
       <SharedCoverFrame
         surface="library-grid"
         libraryId={resolvedLibraryId}
         bookId={book.id}
-        className="relative aspect-[2/3] mb-3.5 bg-surface-container rounded-lg book-cover-shadow overflow-hidden border border-outline-variant/50"
+        className="relative aspect-[2/3] mb-3.5 bg-surface-container rounded-lg book-cover-shadow overflow-hidden border border-outline-variant/55"
       >
         {hasSelectHandler && (
           <Button
@@ -108,18 +107,6 @@ function BookCardComponent({
           </Button>
         )}
 
-        {book.primaryGenre && (
-          <div className="absolute top-2.5 right-2.5 z-20 pointer-events-none">
-            <Badge
-              variant="genre"
-              size="sm"
-              className="bg-surface/92 text-primary backdrop-blur-xs shadow-2xs tracking-wider line-clamp-1 max-w-[130px] uppercase font-semibold border border-outline-variant/50"
-            >
-              {book.primaryGenre}
-            </Badge>
-          </div>
-        )}
-
         <ArchivalCoverImage
           src={book.coverUrl}
           alt={book.title}
@@ -132,23 +119,33 @@ function BookCardComponent({
         />
       </SharedCoverFrame>
 
-      {/* Bento Editorial Metadata & Synopsis Preview */}
+      {/* Bento Literary Metadata & Synopsis Preview (Unboxed Metadata Discipline) */}
       <div className="flex flex-col flex-1 justify-between min-w-0 pt-0.5">
         <div>
           <h3 className="font-serif font-semibold text-base leading-snug text-on-surface group-hover:text-primary transition-colors line-clamp-1 tracking-tight">
             {toTitleCase(book.title)}
           </h3>
-          <div className="flex items-center gap-1.5 text-xs text-on-surface-variant mt-0.5 truncate">
+          <div className="flex items-center gap-1.5 text-xs text-on-surface-variant mt-0.5 min-w-0">
             <span className="font-sans font-medium truncate">
               {toTitleCase(book.author)}
             </span>
             {pubYear && (
               <>
-                <span aria-hidden="true" className="text-outline/60 shrink-0">
+                <span aria-hidden="true" className="text-outline/50 shrink-0">
                   ·
                 </span>
                 <span className="font-mono tabular-nums text-[11px] text-on-surface-variant/85 shrink-0">
                   {pubYear}
+                </span>
+              </>
+            )}
+            {book.primaryGenre && (
+              <>
+                <span aria-hidden="true" className="text-outline/50 shrink-0">
+                  ·
+                </span>
+                <span className="font-sans text-[11px] text-on-surface-variant/85 truncate">
+                  {book.primaryGenre}
                 </span>
               </>
             )}

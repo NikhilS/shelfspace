@@ -132,7 +132,7 @@ export function WaitlistScreen({
       <main className="flex-1 flex items-center justify-center px-4 sm:px-6 py-10 sm:py-16">
         <div
           id="waitlist-card"
-          className="w-full max-w-lg bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-6 sm:p-10 shadow-[0_10px_30px_rgba(2,26,53,0.04)] text-center space-y-6"
+          className="w-full max-w-lg bento-card p-6 sm:p-10 shadow-elevation-2 text-center space-y-6"
         >
           {isLoading ? (
             <div className="py-12 flex flex-col items-center justify-center space-y-4">
@@ -152,7 +152,7 @@ export function WaitlistScreen({
                 <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40">
                   Invitation Approved
                 </span>
-                <h1 className="font-sans text-2xl sm:text-3xl font-bold tracking-tight text-primary">
+                <h1 className="font-serif text-2xl sm:text-3xl font-semibold tracking-tight text-primary">
                   Welcome to the Archives
                 </h1>
                 <p className="font-sans text-sm sm:text-base text-on-surface-variant leading-relaxed">
@@ -184,7 +184,7 @@ export function WaitlistScreen({
                 <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/40">
                   In Queue &middot; Pending Cohort Admission
                 </span>
-                <h1 className="font-sans text-2xl sm:text-3xl font-bold tracking-tight text-primary">
+                <h1 className="font-serif text-2xl sm:text-3xl font-semibold tracking-tight text-primary">
                   You&apos;re on the list.
                 </h1>
                 {entry?.invitedLibraryName ? (
@@ -269,15 +269,15 @@ export function WaitlistScreen({
           ) : status === 'rejected' ? (
             /* State D: Rejected / Deferred */
             <>
-              <div className="w-14 h-14 rounded-full bg-slate-500/10 border border-slate-500/20 text-slate-600 dark:text-slate-400 flex items-center justify-center mx-auto">
+              <div className="w-14 h-14 rounded-full bg-surface-container-high border border-outline-variant text-on-surface-variant flex items-center justify-center mx-auto">
                 <ShieldAlert className="w-7 h-7" />
               </div>
 
               <div className="space-y-2">
-                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide bg-slate-100 text-slate-700 border border-slate-300 dark:bg-slate-900/40 dark:text-slate-300 dark:border-slate-800">
+                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide bg-surface-container text-on-surface-variant border border-outline-variant">
                   Cohort At Capacity
                 </span>
-                <h1 className="font-sans text-2xl sm:text-3xl font-bold tracking-tight text-primary">
+                <h1 className="font-serif text-2xl sm:text-3xl font-semibold tracking-tight text-primary">
                   Registration is at Capacity
                 </h1>
                 <p className="font-sans text-sm sm:text-base text-on-surface-variant leading-relaxed">
@@ -315,7 +315,7 @@ export function WaitlistScreen({
                 <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide bg-secondary/10 text-secondary border border-secondary/20">
                   Early Reader Access
                 </span>
-                <h1 className="font-sans text-2xl sm:text-3xl font-bold tracking-tight text-primary">
+                <h1 className="font-serif text-2xl sm:text-3xl font-semibold tracking-tight text-primary [text-wrap:balance]">
                   An intimate archive for physical &amp; digital books.
                 </h1>
                 <p className="font-sans text-sm sm:text-base text-on-surface-variant leading-relaxed">

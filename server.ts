@@ -315,12 +315,18 @@ async function startServer() {
         typeof req.query.libraryId === 'string'
           ? req.query.libraryId.trim()
           : '';
-      const queryToken =
-        typeof req.query.token === 'string' ? req.query.token.trim() : '';
-      const headerToken = TokenVerifier.extractTokenFromHeader(
-        req.headers.authorization,
-      );
-      const token = queryToken || headerToken || '';
+      if (
+        typeof req.query.token === 'string' &&
+        req.query.token.trim().length > 0
+      ) {
+        res.status(400).json({
+          error:
+            'Query string token authentication is disabled; provide an Authorization Bearer header',
+        });
+        return;
+      }
+      const token =
+        TokenVerifier.extractTokenFromHeader(req.headers.authorization) || '';
 
       const parsedLibId = safeIdSchema.safeParse(rawLibraryId);
       if (!parsedLibId.success) {
@@ -361,46 +367,89 @@ async function startServer() {
         return;
       }
 
-      res.status(200).set({
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
-      res.flushHeaders?.();
+      let closed = Boolean(req.destroyed || res.writableEnded);
+      let cleanedUp = false;
+      let unsubscribe: (() => void) | null = null;
+      let heartbeat: ReturnType<typeof setInterval> | null = null;
 
-      const writeEvent = (eventType: string, payload: unknown) => {
-        if (res.writableEnded) {
+      const cleanupStream = () => {
+        if (cleanedUp) {
           return;
         }
-        res.write(`event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`);
+        cleanedUp = true;
+        closed = true;
+        if (heartbeat) {
+          clearInterval(heartbeat);
+          heartbeat = null;
+        }
+        if (unsubscribe) {
+          unsubscribe();
+          unsubscribe = null;
+        }
+        releaseSseSlot();
       };
 
-      // Immediately emit current job snapshot if one exists
-      const initialSnapshot = enrichmentJobCoordinator.getJobStatus(libraryId);
-      if (initialSnapshot) {
-        writeEvent('job:snapshot', initialSnapshot);
+      req.once('close', cleanupStream);
+      res.once('close', cleanupStream);
+
+      if (closed) {
+        cleanupStream();
+        return;
       }
 
-      const unsubscribe = enrichmentJobCoordinator.subscribeToLibrary(
-        libraryId,
-        event => {
-          writeEvent(event.type, event.payload);
-        },
-      );
+      try {
+        res.status(200).set({
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        res.flushHeaders?.();
 
-      const heartbeat = setInterval(() => {
-        if (res.writableEnded) {
+        const writeEvent = (eventType: string, payload: unknown) => {
+          if (closed || res.writableEnded) {
+            return;
+          }
+          res.write(
+            `event: ${eventType}\ndata: ${JSON.stringify(payload)}\n\n`,
+          );
+        };
+
+        // Immediately emit current durable job snapshot if one exists
+        const initialSnapshot =
+          await enrichmentJobCoordinator.getJobStatus(libraryId);
+        if (closed || res.writableEnded) {
+          cleanupStream();
           return;
         }
-        res.write(': heartbeat\n\n');
-      }, 15_000);
+        if (initialSnapshot) {
+          writeEvent('job:snapshot', initialSnapshot);
+        }
 
-      req.on('close', () => {
-        clearInterval(heartbeat);
-        unsubscribe();
-        releaseSseSlot();
-      });
+        unsubscribe = enrichmentJobCoordinator.subscribeToLibrary(
+          libraryId,
+          event => {
+            writeEvent(event.type, event.payload);
+          },
+        );
+
+        if (closed || res.writableEnded) {
+          cleanupStream();
+          return;
+        }
+
+        heartbeat = setInterval(() => {
+          if (closed || res.writableEnded) {
+            cleanupStream();
+            return;
+          }
+          res.write(': heartbeat\n\n');
+        }, 15_000);
+        heartbeat.unref?.();
+      } catch (streamErr) {
+        cleanupStream();
+        throw streamErr;
+      }
     })().catch(next);
   });
 

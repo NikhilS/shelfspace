@@ -61,27 +61,45 @@ export const AiInsightsPanel = memo(
         : undefined;
 
     return (
-      <section className="mt-8">
-        <div className="flex flex-wrap items-center gap-2 mb-6 swiper-no-swiping">
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2 swiper-no-swiping">
           <Button
+            size="sm"
             variant={activeInsight === 'catchup' ? 'default' : 'outline'}
             disabled={!isOnline || !hasAiPlan || isGeneratingInsight}
             title={buttonTooltip}
             onClick={() =>
               isOnline && hasAiPlan && handleGenerateInsight('catchup')
             }
+            className="gap-1.5 rounded-lg font-sans text-xs font-semibold h-9 px-3.5"
           >
-            Catch Me Up (Spoilers)
+            <Sparkles
+              className={`w-3.5 h-3.5 ${
+                activeInsight === 'catchup'
+                  ? 'text-on-primary'
+                  : 'text-tertiary'
+              }`}
+            />
+            <span>Catch Me Up (Spoilers)</span>
           </Button>
           <Button
+            size="sm"
             variant={activeInsight === 'similar' ? 'default' : 'outline'}
             disabled={!isOnline || !hasAiPlan || isGeneratingInsight}
             title={buttonTooltip}
             onClick={() =>
               isOnline && hasAiPlan && handleGenerateInsight('similar')
             }
+            className="gap-1.5 rounded-lg font-sans text-xs font-semibold h-9 px-3.5"
           >
-            Other Books Like This
+            <Sparkles
+              className={`w-3.5 h-3.5 ${
+                activeInsight === 'similar'
+                  ? 'text-on-primary'
+                  : 'text-tertiary'
+              }`}
+            />
+            <span>Other Books Like This</span>
           </Button>
           {!hasAiPlan && (
             <span
@@ -95,14 +113,14 @@ export const AiInsightsPanel = memo(
         </div>
 
         {activeInsight && (
-          <div className="bg-surface-container-lowest rounded-lg p-6 sm:p-8 architectural-shadow border border-surface-variant">
+          <div className="bento-card p-5 sm:p-6">
             {isGeneratingInsight ? (
-              <div className="flex items-center gap-3 text-on-surface-variant">
-                <Loader2 className="animate-spin" size={24} />
-                <p>Putting together notes...</p>
+              <div className="flex items-center gap-3 text-on-surface-variant font-sans text-sm">
+                <Loader2 className="animate-spin text-tertiary" size={18} />
+                <p>Putting together literary notes...</p>
               </div>
             ) : insightContent ? (
-              <div className="markdown-body">
+              <div className="markdown-body text-sm sm:text-[15px] text-on-surface/90 leading-relaxed max-w-[70ch]">
                 <Markdown>{insightContent}</Markdown>
               </div>
             ) : null}

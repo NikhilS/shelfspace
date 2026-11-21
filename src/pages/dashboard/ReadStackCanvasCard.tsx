@@ -26,96 +26,18 @@ import {
   useShelfCoverLayoutId,
 } from '../../stores/coverTransitionStore';
 import type {TrackedBookItem} from '../../types';
+import {
+  type AnimatedBookPose,
+  computeBookStackGeometry,
+  computeTargetPoseForBook,
+  hitTestReadStack,
+  paintReadStackCanvas,
+} from './readStackCanvasRenderer';
 
 interface ReadStackCanvasCardProps {
   finishedBooks: TrackedBookItem[];
   onOpenAllRead: () => void;
   onTrackBook: () => void;
-}
-
-interface StackPose {
-  dxRatio: number;
-  dyRatio: number;
-  angleDeg: number;
-}
-
-// Deterministic messy bedside-table stack poses (slot 0 = bottom of pile -> slot 4 = top of pile)
-const MESSY_STACK_POSES: StackPose[] = [
-  {dxRatio: -0.15, dyRatio: 0.07, angleDeg: -13.5},
-  {dxRatio: 0.14, dyRatio: 0.05, angleDeg: 10.5},
-  {dxRatio: -0.1, dyRatio: -0.04, angleDeg: -7.5},
-  {dxRatio: 0.09, dyRatio: -0.02, angleDeg: 6.5},
-  {dxRatio: 0.0, dyRatio: 0.01, angleDeg: -2.0},
-];
-
-const MONOGRAPH_PALETTES = [
-  {bgTop: '#FAF6EE', bgBottom: '#EDE5D5', accent: '#7C2D12', ink: '#292524'},
-  {bgTop: '#F3F6F4', bgBottom: '#E0E8E3', accent: '#14532D', ink: '#1C2826'},
-  {bgTop: '#F5F3F7', bgBottom: '#E5E0EC', accent: '#4C1D95', ink: '#272130'},
-  {bgTop: '#FDF8F3', bgBottom: '#EFE4D8', accent: '#9A3412', ink: '#2A221E'},
-  {bgTop: '#F4F6F8', bgBottom: '#E1E6EC', accent: '#1E3A8A', ink: '#1E2530'},
-];
-
-interface AnimatedBookPose {
-  dxRatio: number;
-  dyRatio: number;
-  angleDeg: number;
-  lift: number;
-}
-
-function drawRoundedRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-) {
-  const radius = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + w - radius, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-  ctx.lineTo(x + w, y + h - radius);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-  ctx.lineTo(x + radius, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
-}
-
-function wrapCanvasText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-  maxLines: number,
-): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    if (ctx.measureText(testLine).width <= maxWidth) {
-      currentLine = testLine;
-    } else {
-      if (currentLine) {
-        lines.push(currentLine);
-        if (lines.length >= maxLines) {
-          const last = lines[lines.length - 1];
-          lines[lines.length - 1] =
-            last.length > 3 ? `${last.slice(0, -2)}…` : `${last}…`;
-          return lines;
-        }
-      }
-      currentLine = word;
-    }
-  }
-  if (currentLine && lines.length < maxLines) {
-    lines.push(currentLine);
-  }
-  return lines;
 }
 
 export function ReadStackCanvasCard({
@@ -142,7 +64,6 @@ export function ReadStackCanvasCard({
   const dragOffsetPxRef = useRef<number>(0);
   const didSwipeRef = useRef(false);
 
-  // stackBooks[0] is #1 (most recently read), up to stackBooks[4] (#5 most recent)
   const stackBooks = useMemo(() => {
     return finishedBooks.slice(0, 5);
   }, [finishedBooks]);
@@ -209,8 +130,6 @@ export function ReadStackCanvasCard({
     [navigate],
   );
 
-  // Draw order from bottom of pile (slot 0) to top of pile (slot N-1):
-  // All non-active books sit underneath in chronological order, and safeActiveIndex sits on top!
   const drawOrder = useMemo(() => {
     const total = stackBooks.length;
     if (total === 0) {
@@ -225,7 +144,6 @@ export function ReadStackCanvasCard({
     return [...others, safeActiveIndex];
   }, [stackBooks.length, safeActiveIndex]);
 
-  // Preload cover images for the 5 books in the stack
   useEffect(() => {
     let isMounted = true;
     stackBooks.forEach(book => {
@@ -267,65 +185,16 @@ export function ReadStackCanvasCard({
     };
   }, [stackBooks]);
 
-  // Compute target pose for a given book index based on its current slot in drawOrder and live drag offset
   const getTargetPoseForBook = useCallback(
-    (bookIndex: number): AnimatedBookPose => {
-      const total = stackBooks.length;
-      const slotIndex = drawOrder.indexOf(bookIndex);
-      const effectiveSlot = slotIndex >= 0 ? slotIndex : 0;
-      const poseOffset = MESSY_STACK_POSES.length - total + effectiveSlot;
-      const basePose =
-        MESSY_STACK_POSES[
-          Math.max(0, Math.min(MESSY_STACK_POSES.length - 1, poseOffset))
-        ];
-
-      const isTopBook = bookIndex === safeActiveIndex;
-      const isHovered = hoveredIndex === bookIndex;
-      const dragPx = dragOffsetPxRef.current;
-      const isDragging = Math.abs(dragPx) > 1;
-
-      if (isTopBook && isDragging) {
-        const clampedDrag = Math.max(-140, Math.min(140, dragPx));
-        return {
-          dxRatio: basePose.dxRatio + (clampedDrag / 280) * 0.65,
-          dyRatio: basePose.dyRatio - Math.abs(clampedDrag / 280) * 0.04,
-          angleDeg: basePose.angleDeg + (clampedDrag / 280) * 16,
-          lift: 1.1,
-        };
-      }
-
-      if (isDragging && total > 1) {
-        const nextCandidateIndex =
-          dragPx < 0
-            ? (safeActiveIndex + 1) % total
-            : (safeActiveIndex - 1 + total) % total;
-        if (bookIndex === nextCandidateIndex) {
-          const topPose = MESSY_STACK_POSES[MESSY_STACK_POSES.length - 1];
-          const progress = Math.min(1, Math.abs(dragPx) / 85);
-          return {
-            dxRatio:
-              basePose.dxRatio +
-              (topPose.dxRatio - basePose.dxRatio) * progress,
-            dyRatio:
-              basePose.dyRatio +
-              (topPose.dyRatio - basePose.dyRatio) * progress,
-            angleDeg:
-              basePose.angleDeg +
-              (topPose.angleDeg - basePose.angleDeg) * progress,
-            lift: 0.35 * progress,
-          };
-        }
-      }
-
-      const lift = isHovered ? 1 : isTopBook ? 0.35 : 0;
-
-      return {
-        dxRatio: basePose.dxRatio,
-        dyRatio: basePose.dyRatio,
-        angleDeg: basePose.angleDeg * (isHovered ? 0.55 : 1),
-        lift,
-      };
-    },
+    (bookIndex: number): AnimatedBookPose =>
+      computeTargetPoseForBook({
+        bookIndex,
+        totalBooks: stackBooks.length,
+        drawOrder,
+        safeActiveIndex,
+        hoveredIndex,
+        dragOffsetPx: dragOffsetPxRef.current,
+      }),
     [stackBooks.length, drawOrder, safeActiveIndex, hoveredIndex],
   );
 
@@ -333,225 +202,24 @@ export function ReadStackCanvasCard({
     (bookIndex: number, width: number, height: number) => {
       const currentPose =
         animatedPosesRef.current[bookIndex] || getTargetPoseForBook(bookIndex);
-
-      const bookH = Math.min(height * 0.68, 156);
-      const bookW = bookH * 0.67;
-      const lift = currentPose.lift;
-
-      const cx = width * 0.5 + currentPose.dxRatio * width;
-      const cy = height * 0.52 + currentPose.dyRatio * height - lift * 7;
-      const angleRad = (currentPose.angleDeg * Math.PI) / 180;
-      const scale = 1 + lift * 0.045;
-
-      return {
-        cx,
-        cy,
-        bookW: bookW * scale,
-        bookH: bookH * scale,
-        angleRad,
-        lift,
-      };
+      return computeBookStackGeometry(currentPose, width, height);
     },
     [getTargetPoseForBook],
   );
 
-  // Render the 2D Canvas scene
   const renderStackCanvas = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas || typeof canvas.getContext !== 'function') {
+    if (!canvas) {
       return;
     }
-    let ctx: CanvasRenderingContext2D | null = null;
-    try {
-      ctx = canvas.getContext('2d');
-    } catch {
-      ctx = null;
-    }
-    if (!ctx) {
-      return;
-    }
-
-    const dpr =
-      typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const rect = canvas.getBoundingClientRect();
-    const width = rect.width || 320;
-    const height = rect.height || 220;
-
-    if (
-      canvas.width !== Math.round(width * dpr) ||
-      canvas.height !== Math.round(height * dpr)
-    ) {
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-    }
-
-    ctx.save();
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, width, height);
-
-    // Subtle desk mat / archival ring watermark beneath the pile
-    const centerGrad = ctx.createRadialGradient(
-      width * 0.5,
-      height * 0.54,
-      12,
-      width * 0.5,
-      height * 0.54,
-      Math.min(width, height) * 0.46,
-    );
-    centerGrad.addColorStop(0, 'rgba(120, 113, 108, 0.10)');
-    centerGrad.addColorStop(1, 'rgba(120, 113, 108, 0.0)');
-    ctx.fillStyle = centerGrad;
-    ctx.beginPath();
-    ctx.ellipse(
-      width * 0.5,
-      height * 0.55,
-      width * 0.38,
-      height * 0.32,
-      0,
-      0,
-      Math.PI * 2,
-    );
-    ctx.fill();
-
-    // Draw books in drawOrder (bottom of pile -> top of pile)
-    drawOrder.forEach(bookIndex => {
-      const book = stackBooks[bookIndex];
-      if (!book) {
-        return;
-      }
-
-      const {cx, cy, bookW, bookH, angleRad, lift} = getBookGeometry(
-        bookIndex,
-        width,
-        height,
-      );
-      const halfW = bookW / 2;
-      const halfH = bookH / 2;
-      const pageBlockDepth = 6;
-      const isTopBook = bookIndex === safeActiveIndex;
-
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(angleRad);
-
-      // 1. Ambient & elevation drop shadow
-      ctx.save();
-      ctx.shadowColor =
-        isTopBook || lift > 0.2
-          ? 'rgba(28, 25, 23, 0.32)'
-          : 'rgba(28, 25, 23, 0.20)';
-      ctx.shadowBlur = 13 + lift * 12;
-      ctx.shadowOffsetX = 3 + lift * 2;
-      ctx.shadowOffsetY = 5 + lift * 6;
-      drawRoundedRect(
-        ctx,
-        -halfW,
-        -halfH,
-        bookW + pageBlockDepth * 0.6,
-        bookH + pageBlockDepth * 0.6,
-        6,
-      );
-      ctx.fillStyle = '#E7E0D3';
-      ctx.fill();
-      ctx.restore();
-
-      // 2. 3D Paper page-block edge (right + bottom thickness)
-      drawRoundedRect(
-        ctx,
-        -halfW + pageBlockDepth,
-        -halfH + pageBlockDepth,
-        bookW,
-        bookH,
-        5,
-      );
-      ctx.fillStyle = '#EAE3D5';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(120, 113, 108, 0.35)';
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-
-      // 3. Book Cover surface
-      ctx.save();
-      drawRoundedRect(ctx, -halfW, -halfH, bookW, bookH, 5);
-      ctx.clip();
-
-      const cachedImg = book.coverUrl
-        ? imageCacheRef.current.get(book.coverUrl)
-        : undefined;
-
-      if (cachedImg && cachedImg !== 'error') {
-        try {
-          ctx.drawImage(cachedImg, -halfW, -halfH, bookW, bookH);
-        } catch {
-          // Fallback if drawImage fails
-        }
-      } else {
-        // Bespoke Archival Monograph Cover on Canvas
-        const palette =
-          MONOGRAPH_PALETTES[bookIndex % MONOGRAPH_PALETTES.length];
-        const bgGrad = ctx.createLinearGradient(-halfW, -halfH, halfW, halfH);
-        bgGrad.addColorStop(0, palette.bgTop);
-        bgGrad.addColorStop(1, palette.bgBottom);
-        ctx.fillStyle = bgGrad;
-        ctx.fillRect(-halfW, -halfH, bookW, bookH);
-
-        ctx.strokeStyle = 'rgba(120, 113, 108, 0.28)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(-halfW + 7, -halfH + 7, bookW - 14, bookH - 14);
-
-        ctx.fillStyle = palette.accent;
-        ctx.fillRect(-halfW + 12, -halfH + 13, bookW - 24, 2);
-
-        ctx.fillStyle = palette.ink;
-        ctx.font = '600 11px Georgia, "Newsreader", serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        const titleLines = wrapCanvasText(
-          ctx,
-          toTitleCase(book.title),
-          bookW - 26,
-          3,
-        );
-        titleLines.forEach((line, lineIdx) => {
-          ctx.fillText(line, -halfW + 12, -halfH + 22 + lineIdx * 13.5);
-        });
-
-        ctx.fillStyle = 'rgba(68, 64, 60, 0.85)';
-        ctx.font = '500 8.5px system-ui, sans-serif';
-        const authorLines = wrapCanvasText(
-          ctx,
-          toTitleCase(book.author || 'Unknown'),
-          bookW - 26,
-          1,
-        );
-        if (authorLines[0]) {
-          ctx.fillText(authorLines[0], -halfW + 12, halfH - 21);
-        }
-      }
-
-      // 4. Tactile Book Spine Crease & Specular Highlight
-      const spineGrad = ctx.createLinearGradient(-halfW, 0, -halfW + 10, 0);
-      spineGrad.addColorStop(0, 'rgba(0, 0, 0, 0.22)');
-      spineGrad.addColorStop(0.35, 'rgba(255, 255, 255, 0.24)');
-      spineGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.08)');
-      spineGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = spineGrad;
-      ctx.fillRect(-halfW, -halfH, 10, bookH);
-
-      ctx.restore();
-
-      // 5. Outer Cover Rim & Active Highlight Ring
-      drawRoundedRect(ctx, -halfW, -halfH, bookW, bookH, 5);
-      ctx.strokeStyle = isTopBook
-        ? 'rgba(154, 52, 18, 0.78)'
-        : 'rgba(68, 64, 60, 0.25)';
-      ctx.lineWidth = isTopBook ? 1.6 : 0.9;
-      ctx.stroke();
-
-      ctx.restore();
+    paintReadStackCanvas({
+      canvas,
+      stackBooks,
+      drawOrder,
+      safeActiveIndex,
+      imageCache: imageCacheRef.current,
+      getGeometry: getBookGeometry,
     });
-
-    ctx.restore();
   }, [stackBooks, drawOrder, getBookGeometry, safeActiveIndex]);
 
   const startPoseAnimationLoop = useCallback(() => {
@@ -598,7 +266,6 @@ export function ReadStackCanvasCard({
     rafRef.current = window.requestAnimationFrame(step);
   }, [stackBooks.length, getTargetPoseForBook, renderStackCanvas]);
 
-  // Smoothly animate book positions, angles, and lift when activeIndex or hoveredIndex changes
   useEffect(() => {
     startPoseAnimationLoop();
     return () => {
@@ -615,47 +282,24 @@ export function ReadStackCanvasCard({
     startPoseAnimationLoop,
   ]);
 
-  // Repaint on resize
   useEffect(() => {
     const handleResize = () => renderStackCanvas();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [renderStackCanvas]);
 
-  // Hit-test pointer coordinates in reverse drawOrder (from visually top-most book down to bottom)
   const hitTestStack = (clientX: number, clientY: number): number | null => {
     const canvas = canvasRef.current;
     if (!canvas || stackBooks.length === 0) {
       return null;
     }
-    const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const width = rect.width || 320;
-    const height = rect.height || 220;
-
-    for (let s = drawOrder.length - 1; s >= 0; s--) {
-      const bookIndex = drawOrder[s];
-      const {cx, cy, bookW, bookH, angleRad} = getBookGeometry(
-        bookIndex,
-        width,
-        height,
-      );
-      const dx = x - cx;
-      const dy = y - cy;
-      const cos = Math.cos(-angleRad);
-      const sin = Math.sin(-angleRad);
-      const localX = dx * cos - dy * sin;
-      const localY = dx * sin + dy * cos;
-
-      if (
-        Math.abs(localX) <= bookW / 2 + 4 &&
-        Math.abs(localY) <= bookH / 2 + 4
-      ) {
-        return bookIndex;
-      }
-    }
-    return null;
+    return hitTestReadStack({
+      canvas,
+      clientX,
+      clientY,
+      drawOrder,
+      getGeometry: getBookGeometry,
+    });
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -769,7 +413,6 @@ export function ReadStackCanvasCard({
 
     const hit = hitTestStack(e.clientX, e.clientY);
     if (hit !== null && hit !== safeActiveIndex) {
-      // Tapping a peeking book underneath brings it to the top of the stack first
       setActiveIndex(hit);
       return;
     }

@@ -10,6 +10,16 @@ import {
   type UserProfile,
 } from '../../schemas/libraryApi';
 import {normalizeFirestoreTimestamp} from './book/bookPartitioner';
+import {canRunBackgroundSelfHeal} from './book/bookLegacySelfHealer';
+
+const DEPRECATED_USER_PROFILE_KEYS = [
+  'id',
+  'role',
+  'isAdmin',
+  'lastLoginAt',
+] as const;
+
+const inFlightUserHeals = new Set<string>();
 
 export interface StoredUserProfileWritePayload {
   uid?: string;
@@ -100,17 +110,56 @@ export const userProfileConverter = {
       delete candidate.updatedAt;
     }
 
+    const deletePatch: Record<string, unknown> = {};
+    for (const depKey of DEPRECATED_USER_PROFILE_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(raw, depKey)) {
+        delete candidate[depKey];
+        deletePatch[depKey] = FieldValue.delete();
+      }
+    }
+
     for (const key of Object.keys(candidate)) {
       if (candidate[key] === undefined) {
         delete candidate[key];
       }
     }
 
-    return validateFirestoreReadPayload(storedUserProfileDocSchema, candidate, {
-      entity: 'StoredUserProfileDoc',
-      documentPath: `/users/${uid}`,
-      operation: 'read',
-    });
+    const parsedProfile = validateFirestoreReadPayload(
+      storedUserProfileDocSchema,
+      candidate,
+      {
+        entity: 'StoredUserProfileDoc',
+        documentPath: `/users/${uid}`,
+        operation: 'read',
+      },
+    );
+
+    if (
+      Object.keys(deletePatch).length > 0 &&
+      canRunBackgroundSelfHeal() &&
+      !inFlightUserHeals.has(uid)
+    ) {
+      inFlightUserHeals.add(uid);
+      validateFirestoreWritePayload(
+        storedUserProfileDocSchema.partial(),
+        deletePatch,
+        {
+          entity: 'StoredUserProfileDoc',
+          documentPath: `/users/${uid}`,
+          operation: 'update',
+        },
+      );
+      void getAdminDb()
+        .collection('users')
+        .doc(uid)
+        .update(deletePatch)
+        .catch(() => {})
+        .finally(() => {
+          inFlightUserHeals.delete(uid);
+        });
+    }
+
+    return parsedProfile;
   },
 };
 

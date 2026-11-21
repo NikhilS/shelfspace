@@ -1,4 +1,5 @@
 import React, {useState, useMemo} from 'react';
+import {motion} from 'motion/react';
 import {useAuth} from '../stores/authStore';
 import {Navigate, useNavigate} from 'react-router-dom';
 import {Plus, RefreshCw, Search, LayoutDashboard, BookOpen} from 'lucide-react';
@@ -42,6 +43,7 @@ const READING_SHELF_TABS: Array<{id: ShelfFilterTab; label: string}> = [
 
 const EMPTY_SELECTED_BOOKS = new Set<string>();
 const NOOP = () => {};
+const TAB_SPRING = {type: 'spring' as const, stiffness: 500, damping: 38};
 
 export function Dashboard() {
   const {user} = useAuth();
@@ -221,7 +223,7 @@ export function Dashboard() {
   const readingCollectionHeaderSlot = (
     <div className="pb-2.5 border-b border-outline-variant/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
       <div
-        className="flex items-center gap-1 p-1 bg-surface-container rounded-lg overflow-x-auto hide-scrollbar"
+        className="flex items-center gap-1 p-1 bg-surface-container rounded-lg border border-outline-variant/50 overflow-x-auto hide-scrollbar"
         role="tablist"
         aria-label="Filter tracked books by reading status"
       >
@@ -235,16 +237,23 @@ export function Dashboard() {
               role="tab"
               aria-selected={isActive}
               onClick={() => setCollectionShelfTab(tab.id)}
-              className={`px-3 py-1.5 rounded-md text-xs font-sans font-medium whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`relative px-3 py-1.5 rounded-md text-xs font-sans font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${
                 isActive
-                  ? 'bg-surface text-primary font-semibold shadow-2xs'
+                  ? 'text-primary font-semibold'
                   : 'text-on-surface-variant hover:text-on-surface'
               }`}
             >
-              <span>{tab.label}</span>
+              {isActive && (
+                <motion.span
+                  layoutId="dashboard-shelf-status-pill"
+                  transition={TAB_SPRING}
+                  className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/50"
+                />
+              )}
+              <span className="relative z-10">{tab.label}</span>
               <span
-                className={`font-mono tabular-nums text-[11px] ${
-                  isActive ? 'text-primary' : 'text-on-surface-variant/80'
+                className={`relative z-10 font-mono tabular-nums text-[11px] ${
+                  isActive ? 'text-tertiary' : 'text-on-surface-variant/80'
                 }`}
               >
                 {count}
@@ -255,7 +264,7 @@ export function Dashboard() {
       </div>
 
       <div
-        className="flex items-center gap-1 p-1 bg-surface-container rounded-lg self-start sm:self-auto shrink-0"
+        className="flex items-center gap-1 p-1 bg-surface-container rounded-lg border border-outline-variant/50 self-start sm:self-auto shrink-0"
         role="group"
         aria-label="Filter by book ownership"
       >
@@ -272,13 +281,20 @@ export function Dashboard() {
               key={opt.id}
               type="button"
               onClick={() => setOwnershipFilter(opt.id)}
-              className={`px-2.5 py-1 rounded-md text-xs font-sans font-medium transition-colors cursor-pointer ${
+              className={`relative px-2.5 py-1 rounded-md text-xs font-sans font-medium transition-colors cursor-pointer ${
                 isActive
-                  ? 'bg-surface text-on-surface font-semibold shadow-2xs'
+                  ? 'text-on-surface font-semibold'
                   : 'text-on-surface-variant hover:text-on-surface'
               }`}
             >
-              {opt.label}
+              {isActive && (
+                <motion.span
+                  layoutId="dashboard-ownership-pill"
+                  transition={TAB_SPRING}
+                  className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/50"
+                />
+              )}
+              <span className="relative z-10">{opt.label}</span>
             </button>
           );
         })}
@@ -349,17 +365,26 @@ export function Dashboard() {
                   role="tab"
                   aria-selected={filters.currentTab === 'overview'}
                   onClick={() => filters.setCurrentTab('overview')}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-md transition-all ${
+                  className={`relative flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-md transition-colors hover:bg-transparent ${
                     filters.currentTab === 'overview'
-                      ? 'bg-surface text-primary font-semibold shadow-2xs border border-outline-variant/50 hover:bg-surface'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
+                      ? 'text-primary font-semibold'
+                      : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
-                  <LayoutDashboard
-                    className="w-3.5 h-3.5 shrink-0"
-                    strokeWidth={1.75}
-                  />
-                  <span>Overview</span>
+                  {filters.currentTab === 'overview' && (
+                    <motion.span
+                      layoutId="dashboard-workspace-tab-pill"
+                      transition={TAB_SPRING}
+                      className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/50"
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-1.5 sm:gap-2">
+                    <LayoutDashboard
+                      className="w-3.5 h-3.5 shrink-0"
+                      strokeWidth={1.75}
+                    />
+                    <span>Overview</span>
+                  </span>
                 </Button>
 
                 <Button
@@ -369,24 +394,33 @@ export function Dashboard() {
                   role="tab"
                   aria-selected={filters.currentTab === 'collection'}
                   onClick={() => filters.setCurrentTab('collection')}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-md transition-all ${
+                  className={`relative flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 h-8 rounded-md transition-colors hover:bg-transparent ${
                     filters.currentTab === 'collection'
-                      ? 'bg-surface text-primary font-semibold shadow-2xs border border-outline-variant/50 hover:bg-surface'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
+                      ? 'text-primary font-semibold'
+                      : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
-                  <BookOpen
-                    className="w-3.5 h-3.5 shrink-0"
-                    strokeWidth={1.75}
-                  />
-                  <span>All Books</span>
-                  <Badge
-                    variant="outline"
-                    size="sm"
-                    className="ml-0.5 px-1.5 py-0 font-mono tabular-nums text-[10px] font-semibold bg-surface-container-high/80 text-on-surface border-transparent rounded-sm"
-                  >
-                    {formatCompactNumber(shelfCounts.all)}
-                  </Badge>
+                  {filters.currentTab === 'collection' && (
+                    <motion.span
+                      layoutId="dashboard-workspace-tab-pill"
+                      transition={TAB_SPRING}
+                      className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/50"
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-1.5 sm:gap-2">
+                    <BookOpen
+                      className="w-3.5 h-3.5 shrink-0"
+                      strokeWidth={1.75}
+                    />
+                    <span>All Books</span>
+                    <Badge
+                      variant="outline"
+                      size="sm"
+                      className="ml-0.5 px-1.5 py-0 font-mono tabular-nums text-[10px] font-semibold bg-surface-container-high/80 text-on-surface border-transparent rounded-sm"
+                    >
+                      {formatCompactNumber(shelfCounts.all)}
+                    </Badge>
+                  </span>
                 </Button>
               </div>
 
@@ -541,7 +575,7 @@ export function Dashboard() {
               ) : error ? (
                 <div
                   role="alert"
-                  className="py-12 px-6 bg-surface-container-low rounded-lg border border-destructive/30 shadow-elevation-1 text-center max-w-2xl mx-auto"
+                  className="py-12 px-6 bg-surface-container-low rounded-lg border border-error/30 shadow-elevation-1 text-center max-w-2xl mx-auto"
                 >
                   <FallenBookendIllustration className="mx-auto mb-3" />
                   <h3 className="font-serif text-lg font-semibold text-on-surface mb-2">
@@ -597,7 +631,7 @@ export function Dashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto text-left">
                     <div className="p-4 rounded-xl bg-surface border border-outline-variant/50 flex flex-col justify-between gap-3">
                       <div className="space-y-1">
-                        <span className="font-mono text-[10px] uppercase tracking-wider text-primary font-semibold">
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-tertiary font-semibold">
                           Personal Collection
                         </span>
                         <h4 className="font-serif text-sm sm:text-base font-semibold text-on-surface">
@@ -633,7 +667,7 @@ export function Dashboard() {
 
                     <div className="p-4 rounded-xl bg-surface border border-outline-variant/50 flex flex-col justify-between gap-3">
                       <div className="space-y-1">
-                        <span className="font-mono text-[10px] uppercase tracking-wider text-primary font-semibold">
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-tertiary font-semibold">
                           Shared Shelves
                         </span>
                         <h4 className="font-serif text-sm sm:text-base font-semibold text-on-surface">

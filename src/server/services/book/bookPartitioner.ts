@@ -1,3 +1,4 @@
+import {FieldValue} from 'firebase-admin/firestore';
 import type {
   Book,
   BookDetailsMetadata,
@@ -10,14 +11,39 @@ import {
   storedBookDetailsDocSchema,
   storedBookDocSchema,
 } from '../../../schemas/book';
+import {
+  hasControlCharacters,
+  isFirestoreFieldValueSentinel,
+  validateFirestoreReadPayload,
+  validateFirestoreWritePayload,
+} from '../../../schemas/common';
+import {
+  normalizeIsbnForDedupe,
+  computeBookDedupeKey,
+  computeBookSearchTokens,
+} from '../../../lib/duplicateDetection';
+import {
+  normalizeLegacyBookDetailsReadCandidate,
+  normalizeLegacyBookReadCandidate,
+} from './bookLegacyNormalizers';
+import {
+  scheduleBookDetailsSelfHeal,
+  scheduleBookSelfHeal,
+} from './bookLegacySelfHealer';
 
 export interface StoredBookWritePayload extends Omit<
   Partial<StoredBookDoc>,
-  'addedAt' | 'updatedAt' | 'searchTokens'
+  | 'addedAt'
+  | 'updatedAt'
+  | 'searchTokens'
+  | 'primaryGenreLower'
+  | 'missingFlags'
 > {
   addedAt?: unknown;
   updatedAt?: unknown;
   searchTokens?: string[] | unknown;
+  primaryGenreLower?: string | unknown;
+  missingFlags?: string[] | unknown;
   [key: string]: unknown;
 }
 
@@ -26,7 +52,6 @@ export const HEAVY_FIELDS = new Set([
   'authorBio',
   'embedding',
   'clusterCoordinates',
-  'description',
 ]);
 
 export const IMMUTABLE_SYSTEM_FIELDS = new Set([
@@ -57,6 +82,8 @@ export const ALLOWED_CORE_BOOK_FIELDS = new Set([
   'coverUrlRaw',
   'publishedDate',
   'primaryGenre',
+  'primaryGenreLower',
+  'missingFlags',
   'subgenres',
   'isCustomPrimary',
   'series',
@@ -72,17 +99,60 @@ export const ALLOWED_CORE_BOOK_FIELDS = new Set([
   'skippedProviders',
 ]);
 
-import {FieldValue} from 'firebase-admin/firestore';
-import {
-  hasControlCharacters,
-  validateFirestoreReadPayload,
-  validateFirestoreWritePayload,
-} from '../../../schemas/common';
-import {
-  normalizeIsbnForDedupe,
-  computeBookDedupeKey,
-  computeBookSearchTokens,
-} from '../../../lib/duplicateDetection';
+export function computePrimaryGenreLower(
+  primaryGenre: unknown,
+): string | undefined {
+  if (typeof primaryGenre !== 'string') {
+    return undefined;
+  }
+  const normalized = primaryGenre.trim().toLowerCase();
+  return normalized.length > 0 ? normalized.slice(0, 200) : undefined;
+}
+
+export function computeBookMissingFlags(
+  core: {
+    geoMetadata?: unknown;
+    temporalMetadata?: unknown;
+    primaryGenre?: unknown;
+    coverUrl?: unknown;
+    series?: unknown;
+  },
+  detailsMeta?: {
+    hasSynopsis?: boolean;
+    hasAuthorBio?: boolean;
+    hasEmbedding?: boolean;
+  },
+): string[] {
+  const flags: string[] = [];
+  if (!core.geoMetadata) {
+    flags.push('geo');
+  }
+  if (!core.temporalMetadata) {
+    flags.push('temporal');
+  }
+  if (
+    typeof core.primaryGenre !== 'string' ||
+    core.primaryGenre.trim().length === 0
+  ) {
+    flags.push('genre');
+  }
+  if (!detailsMeta?.hasSynopsis) {
+    flags.push('synopsis');
+  }
+  if (!detailsMeta?.hasAuthorBio) {
+    flags.push('authorBio');
+  }
+  if (!detailsMeta?.hasEmbedding) {
+    flags.push('embedding');
+  }
+  if (typeof core.coverUrl !== 'string' || core.coverUrl.trim().length === 0) {
+    flags.push('coverImage');
+  }
+  if (typeof core.series !== 'string' || core.series.trim().length === 0) {
+    flags.push('series');
+  }
+  return flags;
+}
 
 export function isUnsafeFieldKey(key: string): boolean {
   return (
@@ -148,12 +218,11 @@ export function sanitizeTemporalMetadata(
 
 export interface PartitionUpdateOptions {
   callerUserId?: string;
-  existingBook?: {
-    title?: string;
-    author?: string;
-    isbn?: string;
-    series?: string;
-  };
+  existingBook?: Partial<StoredBookDoc>;
+}
+
+function isClearedFieldValue(value: unknown): boolean {
+  return value === null || value === '' || isFirestoreFieldValueSentinel(value);
 }
 
 /**
@@ -174,16 +243,28 @@ export const bookDetailsDocConverter = {
     } else {
       delete candidate.updatedAt;
     }
+    const detailsHealPatch = normalizeLegacyBookDetailsReadCandidate(
+      candidate,
+      raw,
+    );
     for (const key of Object.keys(candidate)) {
       if (candidate[key] === undefined) {
         delete candidate[key];
       }
     }
-    return validateFirestoreReadPayload(storedBookDetailsDocSchema, candidate, {
-      entity: 'StoredBookDetailsDoc',
-      documentPath,
-      operation: 'read',
-    });
+    const parsedDetails = validateFirestoreReadPayload(
+      storedBookDetailsDocSchema,
+      candidate,
+      {
+        entity: 'StoredBookDetailsDoc',
+        documentPath,
+        operation: 'read',
+      },
+    );
+    if (detailsHealPatch) {
+      scheduleBookDetailsSelfHeal(documentPath, detailsHealPatch);
+    }
+    return parsedDetails;
   },
 
   toFirestoreWrite(
@@ -207,23 +288,134 @@ export const bookDetailsDocConverter = {
   },
 };
 
-/**
- * Deprecated legacy fields on `/libraries/{libraryId}/books/{bookId}` documents that
- * are completely ignored on read and never propagated to `StoredBookDoc` or client DTOs.
- */
-const IGNORED_LEGACY_BOOK_FIELDS = new Set([
-  'genres',
-  'genre',
-  'description',
-  'readingStatus',
-  'userRating',
-  'rating',
-  'reviewText',
-  'reviewedAt',
-  'startedAt',
-  'finishedAt',
-  'readStatusReviewedAt',
-]);
+export interface BookConverterReadOptions {
+  skipSelfHeal?: boolean;
+  isPartialProjection?: boolean;
+}
+
+function isFullBookDocumentSnapshot(
+  raw: Record<string, unknown>,
+  options?: BookConverterReadOptions,
+): boolean {
+  if (options?.isPartialProjection) {
+    return false;
+  }
+  return (
+    'addedAt' in raw ||
+    'addedBy' in raw ||
+    'format' in raw ||
+    'enrichmentStatus' in raw ||
+    'bookDetailsMetadata' in raw ||
+    'missingFlags' in raw
+  );
+}
+
+function augmentBookReadCandidateWithMissingIndexes(
+  candidate: Record<string, unknown>,
+  raw: Record<string, unknown>,
+  existingPlan: ReturnType<typeof normalizeLegacyBookReadCandidate>,
+  options?: BookConverterReadOptions,
+): ReturnType<typeof normalizeLegacyBookReadCandidate> {
+  const indexPatch: Record<string, unknown> = {};
+  const isFullSnapshot = isFullBookDocumentSnapshot(raw, options);
+
+  if (typeof candidate.isbn === 'string' && candidate.isbn.trim().length > 0) {
+    const expectedCleanIsbn = normalizeIsbnForDedupe(candidate.isbn);
+    if (expectedCleanIsbn && candidate.cleanIsbn !== expectedCleanIsbn) {
+      candidate.cleanIsbn = expectedCleanIsbn;
+      indexPatch.cleanIsbn = expectedCleanIsbn;
+    }
+  }
+
+  const hasExplicitTitleAndAuthor =
+    typeof raw.title === 'string' &&
+    raw.title.trim().length > 0 &&
+    typeof raw.author === 'string' &&
+    raw.author.trim().length > 0;
+  if (
+    hasExplicitTitleAndAuthor &&
+    (typeof candidate.dedupeKey !== 'string' ||
+      candidate.dedupeKey.trim().length === 0)
+  ) {
+    const expectedDedupeKey = computeBookDedupeKey(
+      String(candidate.title),
+      String(candidate.author),
+    );
+    if (expectedDedupeKey) {
+      candidate.dedupeKey = expectedDedupeKey;
+      indexPatch.dedupeKey = expectedDedupeKey;
+    }
+  }
+
+  if (typeof candidate.primaryGenre === 'string') {
+    const expectedGenreLower = computePrimaryGenreLower(candidate.primaryGenre);
+    if (
+      expectedGenreLower &&
+      candidate.primaryGenreLower !== expectedGenreLower
+    ) {
+      candidate.primaryGenreLower = expectedGenreLower;
+      indexPatch.primaryGenreLower = expectedGenreLower;
+    }
+  }
+
+  if (isFullSnapshot) {
+    if (
+      !Array.isArray(candidate.searchTokens) ||
+      candidate.searchTokens.length === 0
+    ) {
+      const computedTokens = computeBookSearchTokens({
+        title: String(candidate.title || ''),
+        author: String(candidate.author || ''),
+        isbn: typeof candidate.isbn === 'string' ? candidate.isbn : undefined,
+        series:
+          typeof candidate.series === 'string' ? candidate.series : undefined,
+      });
+      if (computedTokens.length > 0) {
+        candidate.searchTokens = computedTokens;
+        indexPatch.searchTokens = computedTokens;
+      }
+    }
+
+    if (!Array.isArray(candidate.missingFlags)) {
+      const detailsMeta =
+        candidate.bookDetailsMetadata &&
+        typeof candidate.bookDetailsMetadata === 'object' &&
+        !Array.isArray(candidate.bookDetailsMetadata)
+          ? (candidate.bookDetailsMetadata as BookDetailsMetadata)
+          : undefined;
+      const computedFlags = computeBookMissingFlags(
+        {
+          geoMetadata: candidate.geoMetadata,
+          temporalMetadata: candidate.temporalMetadata,
+          primaryGenre: candidate.primaryGenre,
+          coverUrl: candidate.coverUrl,
+          series: candidate.series,
+        },
+        detailsMeta,
+      );
+      candidate.missingFlags = computedFlags;
+      indexPatch.missingFlags = computedFlags;
+    }
+  }
+
+  if (Object.keys(indexPatch).length === 0) {
+    return existingPlan;
+  }
+
+  if (existingPlan) {
+    return {
+      bookPatch: {
+        ...existingPlan.bookPatch,
+        ...indexPatch,
+      },
+      rescuedHeavy: existingPlan.rescuedHeavy,
+    };
+  }
+
+  return {
+    bookPatch: indexPatch,
+  };
+}
 
 /**
  * Typed Firestore converter for `/libraries/{libraryId}/books/{bookId}`.
@@ -233,6 +425,7 @@ export const bookDocConverter = {
     bookId: string,
     raw: Record<string, unknown>,
     documentPath = `books/${bookId}`,
+    options?: BookConverterReadOptions,
   ): StoredBookDoc {
     const addedAt = normalizeFirestoreTimestamp(raw.addedAt);
     const updatedAt = normalizeFirestoreTimestamp(raw.updatedAt);
@@ -248,9 +441,6 @@ export const bookDocConverter = {
           ? raw.author
           : 'Unknown Author',
     };
-    for (const legacyKey of IGNORED_LEGACY_BOOK_FIELDS) {
-      delete candidate[legacyKey];
-    }
     if (addedAt !== undefined) {
       candidate.addedAt = addedAt;
     } else {
@@ -261,58 +451,31 @@ export const bookDocConverter = {
     } else {
       delete candidate.updatedAt;
     }
+    const baseHealPlan = normalizeLegacyBookReadCandidate(candidate, raw);
+    const healPlan = augmentBookReadCandidateWithMissingIndexes(
+      candidate,
+      raw,
+      baseHealPlan,
+      options,
+    );
     for (const key of Object.keys(candidate)) {
       if (candidate[key] === undefined) {
         delete candidate[key];
       }
     }
-    return validateFirestoreReadPayload(storedBookDocSchema, candidate, {
-      entity: 'StoredBookDoc',
-      documentPath,
-      operation: 'read',
-    });
-  },
-
-  /**
-   * Used during Shelf Care sanitization (`resetMetadata('sanitize')`) and batch enrichment
-   * to inspect and separate any legacy heavy fields (`synopsis`, `authorBio`, `embedding`,
-   * `clusterCoordinates`, `description`) before validating both partitions against their schemas.
-   */
-  fromFirestoreWithLegacyLeaks(
-    bookId: string,
-    raw: Record<string, unknown>,
-    documentPath = `books/${bookId}`,
-  ): {
-    book: StoredBookDoc;
-    leakedDetails: StoredBookDetailsDoc;
-    hasLeaks: boolean;
-  } {
-    const coreRaw: Record<string, unknown> = {};
-    const heavyRaw: Record<string, unknown> = {};
-    let hasLeaks = false;
-
-    for (const [key, val] of Object.entries(raw)) {
-      if (HEAVY_FIELDS.has(key)) {
-        if (val !== undefined) {
-          hasLeaks = true;
-          heavyRaw[key] = val;
-        }
-      } else {
-        coreRaw[key] = val;
-      }
+    const parsedBook = validateFirestoreReadPayload(
+      storedBookDocSchema,
+      candidate,
+      {
+        entity: 'StoredBookDoc',
+        documentPath,
+        operation: 'read',
+      },
+    );
+    if (healPlan && !options?.skipSelfHeal) {
+      scheduleBookSelfHeal(documentPath, healPlan);
     }
-
-    const book = bookDocConverter.fromFirestore(bookId, coreRaw, documentPath);
-    const leakedDetails =
-      Object.keys(heavyRaw).length > 0
-        ? bookDetailsDocConverter.fromFirestore(
-            bookId,
-            heavyRaw,
-            `bookDetails/${bookId}`,
-          )
-        : {};
-
-    return {book, leakedDetails, hasLeaks};
+    return parsedBook;
   },
 };
 
@@ -337,39 +500,15 @@ export class BookPartitioner {
       }
     }
 
-    const nestedHeavyRaw =
-      (input.heavyDetails as Record<string, unknown> | undefined) ||
-      (input.heavyData as Record<string, unknown> | undefined) ||
-      {};
-
     const heavyData: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(nestedHeavyRaw)) {
-      if (HEAVY_FIELDS.has(k) && !isUnsafeFieldKey(k)) {
-        heavyData[k] = v;
-      }
-    }
-
-    const synopsisVal =
-      input.synopsis !== undefined && input.synopsis !== null
-        ? input.synopsis
-        : input.description !== undefined && input.description !== null
-          ? input.description
-          : nestedHeavyRaw.synopsis !== undefined
-            ? nestedHeavyRaw.synopsis
-            : nestedHeavyRaw.description;
-
-    if (synopsisVal !== undefined && synopsisVal !== null) {
-      heavyData.synopsis = synopsisVal;
+    if (input.synopsis !== undefined && input.synopsis !== null) {
+      heavyData.synopsis = input.synopsis;
     }
     if (input.authorBio !== undefined && input.authorBio !== null) {
       heavyData.authorBio = input.authorBio;
     }
-    const embeddingVal =
-      input.embedding !== undefined && input.embedding !== null
-        ? input.embedding
-        : (input.embeddings as number[] | undefined);
-    if (embeddingVal !== undefined && embeddingVal !== null) {
-      heavyData.embedding = embeddingVal;
+    if (input.embedding !== undefined && input.embedding !== null) {
+      heavyData.embedding = input.embedding;
     }
     if (
       input.clusterCoordinates !== undefined &&
@@ -380,8 +519,7 @@ export class BookPartitioner {
 
     const cleanHeavy = Object.fromEntries(
       Object.entries(heavyData).filter(
-        ([k, v]) =>
-          k !== 'description' && v !== undefined && v !== null && v !== '',
+        ([, v]) => v !== undefined && v !== null && v !== '',
       ),
     ) as BookDetailsPayload;
 
@@ -406,7 +544,6 @@ export class BookPartitioner {
         Boolean(existingMeta.hasClusterCoordinates),
     };
 
-    // Per-user reading state is stored in /users/{userId}/readingStates/{stateKey}, never on books/{bookId}
     delete rawInput.readingStatus;
 
     const titleStr = (input.title as string) || '';
@@ -422,6 +559,19 @@ export class BookPartitioner {
       isbn: isbnStr,
       series: seriesStr,
     });
+    const computedPrimaryGenreLower = computePrimaryGenreLower(
+      rawInput.primaryGenre,
+    );
+    const computedMissingFlags = computeBookMissingFlags(
+      {
+        geoMetadata: rawInput.geoMetadata,
+        temporalMetadata: rawInput.temporalMetadata,
+        primaryGenre: rawInput.primaryGenre,
+        coverUrl: rawInput.coverUrl,
+        series: rawInput.series,
+      },
+      bookDetailsMetadata,
+    );
 
     const coreData: Record<string, unknown> = {
       ...rawInput,
@@ -434,18 +584,23 @@ export class BookPartitioner {
       ...(computedSearchTokens.length > 0
         ? {searchTokens: computedSearchTokens}
         : {}),
+      ...(computedPrimaryGenreLower
+        ? {primaryGenreLower: computedPrimaryGenreLower}
+        : {}),
+      missingFlags: computedMissingFlags,
       addedBy: userId || null,
       addedAt: serverTimestamp,
       updatedAt: serverTimestamp,
       bookDetailsMetadata,
     };
 
+    if (!computedPrimaryGenreLower) {
+      delete coreData.primaryGenreLower;
+    }
+
     HEAVY_FIELDS.forEach(f => {
       delete coreData[f];
     });
-    delete coreData.embeddings;
-    delete coreData.heavyDetails;
-    delete coreData.heavyData;
 
     const cleanCore = Object.fromEntries(
       Object.entries(coreData).filter(([, v]) => v !== undefined),
@@ -487,38 +642,31 @@ export class BookPartitioner {
       }
 
       if (HEAVY_FIELDS.has(key)) {
-        if (key === 'description' && heavyUpdates.synopsis === undefined) {
-          heavyUpdates.synopsis = value;
-        } else {
-          heavyUpdates[key] = value;
-        }
-      } else if (
-        (key === 'heavyDetails' || key === 'heavyData') &&
-        typeof value === 'object' &&
-        value !== null &&
-        !Array.isArray(value)
-      ) {
-        for (const [hk, hv] of Object.entries(
-          value as Record<string, unknown>,
-        )) {
-          if (HEAVY_FIELDS.has(hk) && !isUnsafeFieldKey(hk)) {
-            if (hk === 'description' && heavyUpdates.synopsis === undefined) {
-              heavyUpdates.synopsis = hv;
-            } else {
-              heavyUpdates[hk] = hv;
-            }
-          }
-        }
+        heavyUpdates[key] = value;
       } else if (ALLOWED_CORE_BOOK_FIELDS.has(key)) {
         coreUpdates[key] = value;
       }
     }
 
-    // Recompute normalized index fields when searchable/dedupe fields are updated
     if (typeof coreUpdates.isbn === 'string') {
       const cleanIsbn = normalizeIsbnForDedupe(coreUpdates.isbn);
       if (cleanIsbn) {
         coreUpdates.cleanIsbn = cleanIsbn;
+      }
+    }
+
+    if ('primaryGenre' in coreUpdates) {
+      const lowerGenre = computePrimaryGenreLower(coreUpdates.primaryGenre);
+      coreUpdates.primaryGenreLower = lowerGenre ?? FieldValue.delete();
+    } else if (
+      options?.existingBook?.primaryGenre &&
+      options.existingBook.primaryGenreLower === undefined
+    ) {
+      const backfilledLower = computePrimaryGenreLower(
+        options.existingBook.primaryGenre,
+      );
+      if (backfilledLower) {
+        coreUpdates.primaryGenreLower = backfilledLower;
       }
     }
 
@@ -538,7 +686,7 @@ export class BookPartitioner {
       : options?.existingBook?.isbn;
     const effectiveSeries = hasSeriesUpdate
       ? (coreUpdates.series as string)
-      : options?.existingBook?.series;
+      : (options?.existingBook?.series ?? undefined);
 
     if (
       (hasTitleUpdate || hasAuthorUpdate) &&
@@ -567,17 +715,12 @@ export class BookPartitioner {
         !hasAuthorUpdate &&
         (hasSeriesUpdate || hasIsbnUpdate)
       ) {
-        // Additive token merge when only series or isbn is patched without baseline title/author
         const deltaTokens = computeBookSearchTokens({
           isbn: hasIsbnUpdate ? coreUpdates.isbn : undefined,
           series: hasSeriesUpdate ? (coreUpdates.series as string) : undefined,
         });
         if (deltaTokens.length > 0) {
-          coreUpdates.searchTokens =
-            typeof (FieldValue as {arrayUnion?: (...el: unknown[]) => unknown})
-              ?.arrayUnion === 'function'
-              ? FieldValue.arrayUnion(...deltaTokens)
-              : deltaTokens;
+          coreUpdates.searchTokens = FieldValue.arrayUnion(...deltaTokens);
         }
       } else {
         const searchTokens = computeBookSearchTokens({
@@ -592,9 +735,9 @@ export class BookPartitioner {
       }
     }
 
-    // Per-user reading state is stored in /users/{userId}/readingStates/{stateKey}, never on books/{bookId}
     delete coreUpdates.readingStatus;
 
+    const explicitMetaPatch: Partial<BookDetailsMetadata> = {};
     if (
       coreUpdates.bookDetailsMetadata &&
       typeof coreUpdates.bookDetailsMetadata === 'object'
@@ -606,6 +749,7 @@ export class BookPartitioner {
       for (const [metaKey, metaVal] of Object.entries(explicitMeta)) {
         if (typeof metaVal === 'boolean') {
           coreUpdates[`bookDetailsMetadata.${metaKey}`] = metaVal;
+          explicitMetaPatch[metaKey as keyof BookDetailsMetadata] = metaVal;
         }
       }
       delete coreUpdates.bookDetailsMetadata;
@@ -613,25 +757,128 @@ export class BookPartitioner {
 
     if (Object.keys(heavyUpdates).length > 0) {
       if (heavyUpdates.synopsis !== undefined) {
-        coreUpdates['bookDetailsMetadata.hasSynopsis'] = Boolean(
-          heavyUpdates.synopsis,
-        );
+        const hasSyn = Boolean(heavyUpdates.synopsis);
+        coreUpdates['bookDetailsMetadata.hasSynopsis'] = hasSyn;
+        explicitMetaPatch.hasSynopsis = hasSyn;
       }
       if (heavyUpdates.authorBio !== undefined) {
-        coreUpdates['bookDetailsMetadata.hasAuthorBio'] = Boolean(
-          heavyUpdates.authorBio,
-        );
+        const hasBio = Boolean(heavyUpdates.authorBio);
+        coreUpdates['bookDetailsMetadata.hasAuthorBio'] = hasBio;
+        explicitMetaPatch.hasAuthorBio = hasBio;
       }
       if (heavyUpdates.embedding !== undefined) {
-        coreUpdates['bookDetailsMetadata.hasEmbedding'] = Boolean(
+        const hasEmb = Boolean(
           Array.isArray(heavyUpdates.embedding) &&
           heavyUpdates.embedding.length > 0,
         );
+        coreUpdates['bookDetailsMetadata.hasEmbedding'] = hasEmb;
+        explicitMetaPatch.hasEmbedding = hasEmb;
       }
       if (heavyUpdates.clusterCoordinates !== undefined) {
-        coreUpdates['bookDetailsMetadata.hasClusterCoordinates'] = Boolean(
-          heavyUpdates.clusterCoordinates,
-        );
+        const hasCoords = Boolean(heavyUpdates.clusterCoordinates);
+        coreUpdates['bookDetailsMetadata.hasClusterCoordinates'] = hasCoords;
+        explicitMetaPatch.hasClusterCoordinates = hasCoords;
+      }
+    }
+
+    const existingFull = options?.existingBook;
+    const hasFullExistingContext = Boolean(
+      existingFull &&
+      ('id' in existingFull ||
+        'bookDetailsMetadata' in existingFull ||
+        'missingFlags' in existingFull),
+    );
+    if (hasFullExistingContext && existingFull) {
+      const effectiveGeo =
+        'geoMetadata' in coreUpdates
+          ? isClearedFieldValue(coreUpdates.geoMetadata)
+            ? undefined
+            : coreUpdates.geoMetadata
+          : existingFull.geoMetadata;
+      const effectiveTemporal =
+        'temporalMetadata' in coreUpdates
+          ? isClearedFieldValue(coreUpdates.temporalMetadata)
+            ? undefined
+            : coreUpdates.temporalMetadata
+          : existingFull.temporalMetadata;
+      const effectiveGenre =
+        'primaryGenre' in coreUpdates
+          ? isClearedFieldValue(coreUpdates.primaryGenre)
+            ? undefined
+            : coreUpdates.primaryGenre
+          : existingFull.primaryGenre;
+      const effectiveCover =
+        'coverUrl' in coreUpdates
+          ? isClearedFieldValue(coreUpdates.coverUrl)
+            ? undefined
+            : coreUpdates.coverUrl
+          : existingFull.coverUrl;
+      const effectiveSeriesVal =
+        'series' in coreUpdates
+          ? isClearedFieldValue(coreUpdates.series)
+            ? undefined
+            : coreUpdates.series
+          : existingFull.series;
+      const effectiveDetailsMeta: BookDetailsMetadata = {
+        ...(existingFull.bookDetailsMetadata || {}),
+        ...explicitMetaPatch,
+      };
+      coreUpdates.missingFlags = computeBookMissingFlags(
+        {
+          geoMetadata: effectiveGeo,
+          temporalMetadata: effectiveTemporal,
+          primaryGenre: effectiveGenre,
+          coverUrl: effectiveCover,
+          series: effectiveSeriesVal,
+        },
+        effectiveDetailsMeta,
+      );
+    } else if (coreUpdates.missingFlags === undefined) {
+      const satisfiedFlags: string[] = [];
+      if (
+        'geoMetadata' in coreUpdates &&
+        !isClearedFieldValue(coreUpdates.geoMetadata)
+      ) {
+        satisfiedFlags.push('geo');
+      }
+      if (
+        'temporalMetadata' in coreUpdates &&
+        !isClearedFieldValue(coreUpdates.temporalMetadata)
+      ) {
+        satisfiedFlags.push('temporal');
+      }
+      if (
+        'primaryGenre' in coreUpdates &&
+        typeof coreUpdates.primaryGenre === 'string' &&
+        coreUpdates.primaryGenre.trim().length > 0
+      ) {
+        satisfiedFlags.push('genre');
+      }
+      if (
+        'coverUrl' in coreUpdates &&
+        typeof coreUpdates.coverUrl === 'string' &&
+        coreUpdates.coverUrl.trim().length > 0
+      ) {
+        satisfiedFlags.push('coverImage');
+      }
+      if (
+        'series' in coreUpdates &&
+        typeof coreUpdates.series === 'string' &&
+        coreUpdates.series.trim().length > 0
+      ) {
+        satisfiedFlags.push('series');
+      }
+      if (explicitMetaPatch.hasSynopsis === true) {
+        satisfiedFlags.push('synopsis');
+      }
+      if (explicitMetaPatch.hasAuthorBio === true) {
+        satisfiedFlags.push('authorBio');
+      }
+      if (explicitMetaPatch.hasEmbedding === true) {
+        satisfiedFlags.push('embedding');
+      }
+      if (satisfiedFlags.length > 0) {
+        coreUpdates.missingFlags = FieldValue.arrayRemove(...satisfiedFlags);
       }
     }
 

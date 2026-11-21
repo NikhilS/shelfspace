@@ -248,11 +248,12 @@ describe('Security Schemas & Input Hardening (SEC-01, SEC-03, SEC-06, SEC-11)', 
       expect(isFirestoreFieldValueSentinel(sentinel)).toBe(true);
 
       const writePayload = {
-        id: 'isbn:9780140449136',
+        id: 'book:lib_1:book_1',
         userId: 'user_123',
-        keyType: 'isbn' as const,
+        keyType: 'book' as const,
         cleanIsbn: '9780140449136',
         bookId: 'book_1',
+        libraryId: 'lib_1',
         status: 'reading' as const,
         updatedAt: sentinel,
       };
@@ -269,7 +270,7 @@ describe('Security Schemas & Input Hardening (SEC-01, SEC-03, SEC-06, SEC-11)', 
         writePayload,
         {
           entity: 'StoredUserReadingStateDoc',
-          documentPath: '/users/user_123/readingStates/isbn:9780140449136',
+          documentPath: '/users/user_123/readingStates/book:lib_1:book_1',
           operation: 'upsert',
           logger,
         },
@@ -279,6 +280,16 @@ describe('Security Schemas & Input Hardening (SEC-01, SEC-03, SEC-06, SEC-11)', 
       expect(result.issues).toEqual([]);
       expect(result.data.updatedAt).toBe(sentinel);
       expect(logger).not.toHaveBeenCalled();
+
+      const nestedAccessStripped = stripFirestoreSentinels({
+        'enrichmentStatus.genre': 'completed',
+        access: {'owner@example.com': 'owner'},
+        updatedAt: sentinel,
+      });
+      expect(nestedAccessStripped).toEqual({
+        enrichmentStatus: {genre: 'completed'},
+        access: {'owner@example.com': 'owner'},
+      });
     });
 
     it('throws SchemaValidationError by default (strict: true) and returns issues when strict: false on invalid Firestore write payloads', () => {

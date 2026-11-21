@@ -32,14 +32,7 @@ export function RequireLibraryPermission({
   const {canEdit, isOwner, canView, role, loading, isError} =
     useLibraryPermissions(libraryId, user?.uid);
 
-  let utils: ReturnType<typeof trpc.useUtils> | undefined;
-  try {
-    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
-      utils = trpc.useUtils();
-    }
-  } catch {
-    utils = undefined;
-  }
+  const utils = trpc.useUtils();
   const utilsRef = useRef(utils);
   utilsRef.current = utils;
 
@@ -49,9 +42,8 @@ export function RequireLibraryPermission({
     if (!isOnline) {
       return;
     }
-    const currentUtils = utilsRef.current;
-    if (libraryId && user?.uid && currentUtils?.book?.list?.prefetch) {
-      void currentUtils.book.list.prefetch(
+    if (libraryId && user?.uid) {
+      void utilsRef.current.book.list.prefetch(
         {libraryId},
         {staleTime: 1000 * 60 * 5},
       );

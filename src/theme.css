@@ -3,166 +3,119 @@
     /* Primary Brand: Deep Archival Espresso Ink (High-contrast literary ink) */
     --color-primary-base: #1c1917;
     --color-primary-on: #faf7f2;
-    --color-primary-container-base: #292524;
-    --color-primary-container-on: #d6d3d1;
-    --color-primary-inverse: #faf7f2;
-    --color-primary-fixed-base: #ece5d8;
-    --color-primary-fixed-dim-base: #dfd6c5;
-    --color-primary-fixed-on: #1c1917;
-    --color-primary-fixed-variant-on: #44403c;
 
     /* Secondary Brand: Warm Archival Umber & Curatorial Stone */
     --color-secondary-base: #44403c;
-    --color-secondary-on: #faf7f2;
-    --color-secondary-container-base: #f4efe6;
-    --color-secondary-container-on: #1c1917;
-    --color-secondary-fixed-base: #ece5d8;
-    --color-secondary-fixed-dim-base: #dfd6c5;
-    --color-secondary-fixed-on: #1c1917;
-    --color-secondary-fixed-variant-on: #44403c;
 
-    /* Tertiary Accent: Curatorial Terracotta Bronze & Forest Ink */
+    /* Tertiary Accent: Curatorial Terracotta Clay */
     --color-tertiary-base: #9a3412;
     --color-tertiary-on: #ffffff;
-    --color-tertiary-container-base: #ffedd5;
-    --color-tertiary-container-on: #7c2d12;
-    --color-tertiary-fixed-base: #fed7aa;
-    --color-tertiary-fixed-dim-base: #fdba74;
-    --color-tertiary-fixed-on: #431407;
-    --color-tertiary-fixed-variant-on: #9a3412;
 
     /* Error / Destructive: Archival Crimson */
     --color-error-base: #dc2626;
     --color-error-on: #ffffff;
     --color-error-container-base: #fef2f2;
-    --color-error-container-on: #991b1b;
 
     /* Surface & Canvas: Warm Alabaster Paper & Crisp Parchment Studio */
     --color-background-base: #faf7f2;
     --color-background-on: #1c1917;
     --color-surface-base: #ffffff;
     --color-surface-dim-base: #f4efe6;
-    --color-surface-bright-base: #ffffff;
     --color-surface-variant-base: #f4efe6;
     --color-surface-on: #1c1917;
-    --color-surface-variant-on: #686259;
-    --color-surface-inverse: #1c1917;
-    --color-surface-inverse-on: #faf7f2;
-    --color-surface-tint-value: #1c1917;
+    --color-surface-variant-on: #645d54;
 
     /* Surface Hierarchy & Warm Limestone Container Steps */
     --color-surface-container-lowest-base: #ffffff;
-    --color-surface-container-low-base: #faf7f2;
-    --color-surface-container-base: #f4efe6;
-    --color-surface-container-high-base: #ece5d8;
-    --color-surface-container-highest-base: #dfd6c5;
+    --color-surface-container-low-base: #f6f2ea;
+    --color-surface-container-base: #efe9de;
+    --color-surface-container-high-base: #e7dfd1;
+    --color-surface-container-highest-base: #dcd2c0;
 
     /* Outlines & Hairline Boundaries */
     --color-outline-base: #78716c;
     --color-outline-variant-base: #e4ddd0;
 
-    /* Semantic Tokens */
-    --color-success-base: #059669;
-    --color-success-on: #ffffff;
-    --color-auth-card-bg: #ffffff;
+    /* Light-mode Warm Paper Ambient Diffusion Shadows */
+    --shadow-elevation-1-base:
+      0 1px 2px rgba(28, 25, 23, 0.04),
+      0 2px 6px -1px rgba(28, 25, 23, 0.04);
+    --shadow-elevation-2-base:
+      0 8px 20px -4px rgba(28, 25, 23, 0.07),
+      0 2px 6px -1px rgba(28, 25, 23, 0.04);
+    --shadow-elevation-3-base:
+      0 16px 36px -8px rgba(28, 25, 23, 0.11),
+      0 4px 12px -2px rgba(28, 25, 23, 0.05);
   }
 
   .dark {
-    /* Dark Mode: Warm Espresso Obsidian & Ivory Parchment Ink */
+    /* Dark Mode: Warm Espresso Obsidian & Candlelit Specular Depth */
     --color-primary-base: #f5f2eb;
     --color-primary-on: #12100e;
-    --color-primary-container-base: #292524;
-    --color-primary-container-on: #d6d3d1;
-    --color-primary-inverse: #1c1917;
 
     --color-secondary-base: #d6d3d1;
-    --color-secondary-on: #1c1917;
-    --color-secondary-container-base: #26221e;
-    --color-secondary-container-on: #f5f2eb;
 
     --color-tertiary-base: #fb923c;
     --color-tertiary-on: #431407;
-    --color-tertiary-container-base: #7c2d12;
-    --color-tertiary-container-on: #ffedd5;
 
     --color-error-base: #f87171;
     --color-error-on: #450a0a;
     --color-error-container-base: #7f1d1d;
-    --color-error-container-on: #fecaca;
 
-    /* Canvas & Surface: Deep Espresso Obsidian */
+    /* Canvas & Elevated Surfaces: True Ascending Luminance Above #12100e */
     --color-background-base: #12100e;
     --color-background-on: #f5f2eb;
-    --color-surface-base: #1c1917;
-    --color-surface-dim-base: #0d0b0a;
-    --color-surface-bright-base: #292524;
+    --color-surface-base: #1a1714;
+    --color-surface-dim-base: #0e0c0a;
     --color-surface-variant-base: #26221e;
     --color-surface-on: #f5f2eb;
-    --color-surface-variant-on: #a8a096;
-    --color-surface-inverse: #f5f2eb;
-    --color-surface-inverse-on: #1c1917;
-    --color-surface-tint-value: #f5f2eb;
+    --color-surface-variant-on: #b0a89e;
 
-    --color-surface-container-lowest-base: #0d0b0a;
-    --color-surface-container-low-base: #161412;
-    --color-surface-container-base: #1c1917;
-    --color-surface-container-high-base: #26221e;
-    --color-surface-container-highest-base: #332e29;
+    --color-surface-container-lowest-base: #181512;
+    --color-surface-container-low-base: #1f1b18;
+    --color-surface-container-base: #25211d;
+    --color-surface-container-high-base: #2e2924;
+    --color-surface-container-highest-base: #39332d;
 
-    --color-outline-base: #a8a096;
-    --color-outline-variant-base: #2e2924;
+    --color-outline-base: #9c948a;
+    --color-outline-variant-base: #332d27;
 
-    --color-success-base: #34d399;
-    --color-success-on: #064e3b;
-    --color-auth-card-bg: #1c1917;
+    /* Dark-mode Obsidian Shadows + 1px Top Specular Rim Lighting */
+    --shadow-elevation-1-base:
+      inset 0 1px 0 0 rgba(245, 242, 235, 0.05),
+      0 2px 8px -1px rgba(0, 0, 0, 0.42),
+      0 1px 2px rgba(0, 0, 0, 0.32);
+    --shadow-elevation-2-base:
+      inset 0 1px 0 0 rgba(245, 242, 235, 0.065),
+      0 10px 26px -4px rgba(0, 0, 0, 0.55),
+      0 3px 8px -2px rgba(0, 0, 0, 0.38);
+    --shadow-elevation-3-base:
+      inset 0 1px 0 0 rgba(245, 242, 235, 0.075),
+      0 20px 44px -8px rgba(0, 0, 0, 0.65),
+      0 6px 16px -3px rgba(0, 0, 0, 0.45);
   }
 }
 
 @theme {
   --color-primary: var(--color-primary-base);
   --color-on-primary: var(--color-primary-on);
-  --color-primary-container: var(--color-primary-container-base);
-  --color-on-primary-container: var(--color-primary-container-on);
-  --color-inverse-primary: var(--color-primary-inverse);
-  --color-primary-fixed: var(--color-primary-fixed-base);
-  --color-primary-fixed-dim: var(--color-primary-fixed-dim-base);
-  --color-on-primary-fixed: var(--color-primary-fixed-on);
-  --color-on-primary-fixed-variant: var(--color-primary-fixed-variant-on);
 
   --color-secondary: var(--color-secondary-base);
-  --color-on-secondary: var(--color-secondary-on);
-  --color-secondary-container: var(--color-secondary-container-base);
-  --color-on-secondary-container: var(--color-secondary-container-on);
-  --color-secondary-fixed: var(--color-secondary-fixed-base);
-  --color-secondary-fixed-dim: var(--color-secondary-fixed-dim-base);
-  --color-on-secondary-fixed: var(--color-secondary-fixed-on);
-  --color-on-secondary-fixed-variant: var(--color-secondary-fixed-variant-on);
 
   --color-tertiary: var(--color-tertiary-base);
   --color-on-tertiary: var(--color-tertiary-on);
-  --color-tertiary-container: var(--color-tertiary-container-base);
-  --color-on-tertiary-container: var(--color-tertiary-container-on);
-  --color-tertiary-fixed: var(--color-tertiary-fixed-base);
-  --color-tertiary-fixed-dim: var(--color-tertiary-fixed-dim-base);
-  --color-on-tertiary-fixed: var(--color-tertiary-fixed-on);
-  --color-on-tertiary-fixed-variant: var(--color-tertiary-fixed-variant-on);
 
   --color-error: var(--color-error-base);
   --color-on-error: var(--color-error-on);
   --color-error-container: var(--color-error-container-base);
-  --color-error-container-on: var(--color-error-container-on);
 
   --color-background: var(--color-background-base);
   --color-on-background: var(--color-background-on);
   --color-surface: var(--color-surface-base);
   --color-surface-dim: var(--color-surface-dim-base);
-  --color-surface-bright: var(--color-surface-bright-base);
   --color-surface-variant: var(--color-surface-variant-base);
   --color-on-surface: var(--color-surface-on);
   --color-on-surface-variant: var(--color-surface-variant-on);
-  --color-inverse-surface: var(--color-surface-inverse);
-  --color-inverse-on-surface: var(--color-surface-inverse-on);
-  --color-surface-tint: var(--color-surface-tint-value);
 
   --color-surface-container-lowest: var(--color-surface-container-lowest-base);
   --color-surface-container-low: var(--color-surface-container-low-base);
@@ -175,39 +128,8 @@
   --color-outline: var(--color-outline-base);
   --color-outline-variant: var(--color-outline-variant-base);
 
-  --color-success: var(--color-success-base);
-  --color-on-success: var(--color-success-on);
-  --color-auth-card: var(--color-auth-card-bg);
-
-  /* Warm Archival Multi-stop Ambient Diffusion Shadows */
-  --shadow-elevation-1:
-    0 1px 3px rgba(28, 25, 23, 0.05), 0 1px 2px rgba(28, 25, 23, 0.03);
-  --shadow-elevation-2:
-    0 6px 16px -3px rgba(28, 25, 23, 0.07),
-    0 2px 6px -1px rgba(28, 25, 23, 0.04);
-  --shadow-elevation-3:
-    0 14px 32px -6px rgba(28, 25, 23, 0.1),
-    0 4px 12px -2px rgba(28, 25, 23, 0.05);
-
-  /* Legacy Mappings */
-  --color-paper: var(--color-background-base);
-  --color-ink: var(--color-background-on);
-  --color-accent: var(--color-surface-container-highest-base);
-  --color-muted: var(--color-surface-variant-on);
-  --color-border: var(--color-outline-variant-base);
-
-  /* Shadcn Semantic Component Mappings */
-  --color-foreground: var(--color-surface-on);
-  --color-primary-foreground: var(--color-primary-on);
-  --color-secondary-foreground: var(--color-secondary-on);
-  --color-accent-foreground: var(--color-surface-on);
-  --color-muted-foreground: var(--color-surface-variant-on);
-  --color-destructive: var(--color-error-base);
-  --color-destructive-foreground: var(--color-error-on);
-  --color-input: var(--color-outline-variant-base);
-  --color-ring: var(--color-primary-base);
-  --color-popover: var(--color-surface-base);
-  --color-popover-foreground: var(--color-surface-on);
-  --color-card: var(--color-surface-base);
-  --color-card-foreground: var(--color-surface-on);
+  /* Theme-Reactive Warm Archival & Dark Specular Elevation Shadows */
+  --shadow-elevation-1: var(--shadow-elevation-1-base);
+  --shadow-elevation-2: var(--shadow-elevation-2-base);
+  --shadow-elevation-3: var(--shadow-elevation-3-base);
 }

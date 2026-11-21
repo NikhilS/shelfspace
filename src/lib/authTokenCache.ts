@@ -128,10 +128,6 @@ export function markLiveAuthResolved(): void {
   }
 }
 
-export function isLiveAuthSessionResolved(): boolean {
-  return liveAuthResolved;
-}
-
 export function resetLiveAuthGateForTests(): void {
   liveAuthResolved = false;
   liveAuthWaiters.clear();

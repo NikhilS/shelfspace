@@ -1,5 +1,6 @@
-import {describe, it, expect, vi} from 'vitest';
+import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {
+  applyOptimisticBookEditPatch,
   applyOptimisticReadingStatusPatch,
   buildBookSnapshotHint,
   commitBookDeleteDelta,
@@ -11,14 +12,18 @@ import {
   recalculateShelfCounts,
   removeBookFromReadingCaches,
   type ReadingStatusCacheUtils,
-} from './readingStatusCache';
+} from './index';
+import {
+  selectBookWithOverlay,
+  useEntityCacheStore,
+} from '../../stores/entityCacheStore';
 import type {
   Book,
   Library,
   ReadingShelfSummary,
   TrackedBookItem,
   UnreadLibraryBookItem,
-} from '../types';
+} from '../../types';
 
 function createMockCacheUtils(initialState?: {
   bookGet?: Book;
@@ -146,25 +151,34 @@ function createMockCacheUtils(initialState?: {
 }
 
 describe('readingStatusCache', () => {
-  it('normalizes legacy and canonical reading status values', () => {
-    expect(normalizeReadingStatus('completed')).toBe('finished');
+  beforeEach(() => {
+    useEntityCacheStore.getState().clearAllEntities();
+  });
+
+  it('normalizes canonical reading status values and maps unrecognized tokens to unset', () => {
     expect(normalizeReadingStatus('finished')).toBe('finished');
     expect(normalizeReadingStatus('reading')).toBe('reading');
     expect(normalizeReadingStatus('want_to_read')).toBe('want_to_read');
     expect(normalizeReadingStatus('abandoned')).toBe('abandoned');
     expect(normalizeReadingStatus('unset')).toBe('unset');
+    expect(normalizeReadingStatus('completed')).toBe('unset');
     expect(normalizeReadingStatus(undefined)).toBe('unset');
   });
 
-  it('builds strict-schema-validated bookSnapshot hints for 0-read server status writes', () => {
+  it('builds strict-schema-validated <2KB MinimalBookStub hints stripping heavy prose and oversized data URLs', () => {
+    const oversizedDataUrl = `data:image/png;base64,${'A'.repeat(2000)}`;
     const snapshot = buildBookSnapshotHint(
       {
         id: 'book-42',
         title: 'Piranesi',
         author: 'Susanna Clarke',
         isbn: '978-1-63557-563-7',
-        coverUrl: 'https://covers.openlibrary.org/b/id/123-L.jpg',
+        coverUrl: oversizedDataUrl,
         format: 'physical',
+        synopsis: 'Long archival synopsis '.repeat(400),
+        authorBio: 'Long author biography '.repeat(400),
+        subgenres: ['Mythic Fantasy', 'Labyrinthine Fiction'],
+        primaryGenre: 'Fantasy',
       },
       {libraryId: 'lib-1', libraryName: 'Home Study'},
     );
@@ -174,12 +188,16 @@ describe('readingStatusCache', () => {
       author: 'Susanna Clarke',
       isbn: '978-1-63557-563-7',
       cleanIsbn: '9781635575637',
-      coverUrl: 'https://covers.openlibrary.org/b/id/123-L.jpg',
       format: 'physical',
+      primaryGenre: 'Fantasy',
       libraryId: 'lib-1',
       libraryName: 'Home Study',
       bookId: 'book-42',
     });
+    expect('synopsis' in (snapshot || {})).toBe(false);
+    expect('authorBio' in (snapshot || {})).toBe(false);
+    expect('subgenres' in (snapshot || {})).toBe(false);
+    expect('coverUrl' in (snapshot || {})).toBe(false);
   });
 
   it('inserts an untracked library book into readingTracker.getShelf immediately when marked as reading', () => {
@@ -238,12 +256,154 @@ describe('readingStatusCache', () => {
       abandoned: 0,
     });
     expect(store.unread).toHaveLength(0);
+    expect(
+      useEntityCacheStore.getState().readingStatesByBookKey['book:lib-1:book-1']
+        ?.status,
+    ).toBe('reading');
 
     rollback();
     expect(store.bookGet?.readingStatus).toBe('unset');
     expect(store.bookList?.books[0]?.readingStatus).toBe('unset');
     expect(store.shelfAll?.items).toHaveLength(0);
     expect(store.unread).toHaveLength(1);
+    expect(
+      useEntityCacheStore.getState().readingStatesByBookKey[
+        'book:lib-1:book-1'
+      ],
+    ).toBeUndefined();
+  });
+
+  it('prevents stale optimistic rollbacks from clobbering newer committed reading-state mutations', () => {
+    const sampleBook: Book = {
+      id: 'book-race',
+      libraryId: 'lib-1',
+      title: 'Solaris',
+      author: 'Stanislaw Lem',
+      format: 'physical',
+      addedAt: '2026-01-01T00:00:00.000Z',
+      readingStatus: 'unset',
+    };
+    useEntityCacheStore.getState().hydrateLibraryBooks('lib-1', [sampleBook]);
+
+    const {store, utils} = createMockCacheUtils({
+      bookGet: sampleBook,
+      bookList: {books: [sampleBook]},
+      shelfAll: {
+        items: [],
+        counts: {
+          all: 0,
+          want_to_read: 0,
+          reading: 0,
+          finished: 0,
+          abandoned: 0,
+        },
+      },
+      libraryName: 'Home Library',
+    });
+
+    const staleRollback = applyOptimisticReadingStatusPatch(utils, {
+      libraryId: 'lib-1',
+      bookId: 'book-race',
+      status: 'reading',
+    });
+
+    // Newer mutation succeeds and commits 'finished'
+    commitReadingStatusDelta(utils, {
+      libraryId: 'lib-1',
+      bookId: 'book-race',
+      status: 'finished',
+    });
+
+    // Earlier in-flight mutation errors out and attempts rollback
+    staleRollback();
+
+    expect(store.bookGet?.readingStatus).toBe('finished');
+    expect(store.bookList?.books[0]?.readingStatus).toBe('finished');
+    expect(
+      selectBookWithOverlay(
+        useEntityCacheStore.getState(),
+        'lib-1',
+        'book-race',
+      )?.readingStatus,
+    ).toBe('finished');
+  });
+
+  it('patches single-book edits optimistically across entity store and query caches with version-guarded rollback', () => {
+    const sampleBook: Book = {
+      id: 'book-edit',
+      libraryId: 'lib-1',
+      title: 'The Tombs of Atuan',
+      author: 'Ursula K. Le Guin',
+      format: 'physical',
+      addedAt: '2026-01-01T00:00:00.000Z',
+      readingStatus: 'reading',
+    };
+    const trackedItem: TrackedBookItem = {
+      ...sampleBook,
+      libraryId: 'lib-1',
+      libraryName: 'Main Study',
+      isVirtual: false,
+      ownershipStatus: 'owned',
+      readingStatus: 'reading',
+    };
+    useEntityCacheStore.getState().hydrateLibraryBooks('lib-1', [sampleBook]);
+
+    const {store, utils} = createMockCacheUtils({
+      bookGet: sampleBook,
+      bookList: {books: [sampleBook]},
+      shelfAll: {
+        items: [trackedItem],
+        counts: recalculateShelfCounts([trackedItem]),
+      },
+      libraryName: 'Main Study',
+    });
+
+    const rollbackEdit = applyOptimisticBookEditPatch(utils, {
+      libraryId: 'lib-1',
+      bookId: 'book-edit',
+      patch: {
+        title: 'The Tombs of Atuan (Illustrated)',
+        series: 'Earthsea Cycle',
+      },
+      bookHint: sampleBook,
+    });
+
+    expect(store.bookGet?.title).toBe('The Tombs of Atuan (Illustrated)');
+    expect(store.bookList?.books[0]?.series).toBe('Earthsea Cycle');
+    expect(store.shelfAll?.items[0]?.title).toBe(
+      'The Tombs of Atuan (Illustrated)',
+    );
+    expect(
+      selectBookWithOverlay(
+        useEntityCacheStore.getState(),
+        'lib-1',
+        'book-edit',
+      )?.title,
+    ).toBe('The Tombs of Atuan (Illustrated)');
+
+    // Supersede with authoritative server upsert
+    commitBookUpsertDelta(utils, {
+      libraryId: 'lib-1',
+      book: {
+        id: 'book-edit',
+        title: 'The Tombs of Atuan (Restored Edition)',
+        author: 'Ursula K. Le Guin',
+        series: 'Earthsea Cycle',
+        readingStatus: 'reading',
+      },
+      libraryName: 'Main Study',
+    });
+
+    // Stale rollback must not overwrite authoritative upsert
+    rollbackEdit();
+    expect(store.bookGet?.title).toBe('The Tombs of Atuan (Restored Edition)');
+    expect(
+      selectBookWithOverlay(
+        useEntityCacheStore.getState(),
+        'lib-1',
+        'book-edit',
+      )?.title,
+    ).toBe('The Tombs of Atuan (Restored Edition)');
   });
 
   it('commits authoritative status, book upsert, review, and delete deltas with zero invalidations', () => {
@@ -292,6 +452,10 @@ describe('readingStatusCache', () => {
     expect(store.bookList?.totalCount).toBe(1);
     expect(store.libraryGet?.bookCount).toBe(1);
     expect(store.shelfAll?.counts.reading).toBe(1);
+    expect(
+      selectBookWithOverlay(useEntityCacheStore.getState(), 'lib-1', 'book-10')
+        ?.title,
+    ).toBe('Exhalation');
 
     commitReadingStatusDelta(utils, {
       libraryId: 'lib-1',
@@ -320,6 +484,10 @@ describe('readingStatusCache', () => {
     expect(store.reviews?.reviews[0]?.id).toBe('u-1');
     expect(store.bookList?.books[0]?.userRating).toBe(5);
     expect(store.shelfAll?.items[0]?.userRating).toBe(5);
+    expect(
+      selectBookWithOverlay(useEntityCacheStore.getState(), 'lib-1', 'book-10')
+        ?.userRating,
+    ).toBe(5);
 
     commitBookDeleteDelta(utils, {
       libraryId: 'lib-1',
@@ -329,6 +497,9 @@ describe('readingStatusCache', () => {
     expect(store.bookList?.totalCount).toBe(0);
     expect(store.libraryGet?.bookCount).toBe(0);
     expect(store.shelfAll?.items).toHaveLength(0);
+    expect(
+      selectBookWithOverlay(useEntityCacheStore.getState(), 'lib-1', 'book-10'),
+    ).toBeUndefined();
 
     expect(invalidations.bookList).not.toHaveBeenCalled();
     expect(invalidations.shelf).not.toHaveBeenCalled();

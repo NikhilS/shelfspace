@@ -1,19 +1,12 @@
 import {z} from 'zod';
 import {router, protectedProcedure, aiProtectedProcedure} from '../trpc';
-import {safeIdSchema} from '../../../schemas/common';
 import {
   extractBooksFromImage,
   extractBooksFromCsv,
   generateLibraryHeroImage,
-  generateClusterNames,
   generateClusterThemes,
-  generateBookEmbeddings,
-  generateLibraryRecommendations,
   generateBookInsights,
   getPickOfTheDay,
-  classifyBooks,
-  extractBookGeoMetadataBatch,
-  extractBookTemporalMetadataBatch,
 } from '../../services/gemini';
 
 const ALLOWED_VISION_MIME_TYPES = z.enum([
@@ -24,13 +17,6 @@ const ALLOWED_VISION_MIME_TYPES = z.enum([
   'image/heic',
   'image/heif',
 ]);
-
-const bookGenreSchema = z.object({
-  id: safeIdSchema,
-  title: z.string().trim().min(1).max(500),
-  author: z.string().trim().max(500),
-  synopsis: z.string().max(10000).optional(),
-});
 
 const libraryBookInputSchema = z.object({
   title: z.string().trim().min(1).max(500),
@@ -97,16 +83,6 @@ export const geminiRouter = router({
       return await generateLibraryHeroImage(input.libraryName);
     }),
 
-  generateClusterNames: aiProtectedProcedure
-    .input(
-      z.object({
-        clusters: clusterInputSchema,
-      }),
-    )
-    .mutation(async ({input}) => {
-      return await generateClusterNames(input.clusters);
-    }),
-
   generateClusterThemes: aiProtectedProcedure
     .input(
       z.object({
@@ -115,18 +91,6 @@ export const geminiRouter = router({
     )
     .mutation(async ({input}) => {
       return await generateClusterThemes(input.clusters);
-    }),
-
-  generateBookEmbeddings: aiProtectedProcedure
-    .input(
-      z.object({
-        texts: z
-          .array(z.string().min(1).max(8000))
-          .max(100, 'Maximum 100 embedding texts per request'),
-      }),
-    )
-    .mutation(async ({input}) => {
-      return await generateBookEmbeddings(input.texts);
     }),
 
   getPickOfTheDay: aiProtectedProcedure
@@ -150,58 +114,12 @@ export const geminiRouter = router({
           'summary',
           'catchup',
           'similar',
-          'author_bio',
+          'authorBio',
           'synopsis',
         ]),
       }),
     )
     .mutation(async ({input}) => {
       return await generateBookInsights(input.title, input.author, input.type);
-    }),
-
-  generateLibraryRecommendations: aiProtectedProcedure
-    .input(
-      z.object({
-        books: z
-          .array(libraryBookInputSchema)
-          .max(500, 'Maximum 500 books in context'),
-      }),
-    )
-    .mutation(async ({input}) => {
-      return await generateLibraryRecommendations(input.books);
-    }),
-
-  classifyBooks: aiProtectedProcedure
-    .input(
-      z.object({
-        books: z.array(bookGenreSchema).max(100),
-        customGenres: z.array(z.string().max(200)).max(100).optional(),
-        libraryId: safeIdSchema.optional(),
-      }),
-    )
-    .mutation(async ({input}) => {
-      return await classifyBooks(input.books, {
-        customGenres: input.customGenres,
-      });
-    }),
-
-  extractBookGeoMetadataBatch: aiProtectedProcedure
-    .input(
-      z.object({
-        books: z.array(bookGenreSchema).max(100, 'Maximum 100 books per batch'),
-      }),
-    )
-    .mutation(async ({input}) => {
-      return await extractBookGeoMetadataBatch(input.books);
-    }),
-
-  extractBookTemporalMetadataBatch: aiProtectedProcedure
-    .input(
-      z.object({
-        books: z.array(bookGenreSchema).max(100, 'Maximum 100 books per batch'),
-      }),
-    )
-    .mutation(async ({input}) => {
-      return await extractBookTemporalMetadataBatch(input.books);
     }),
 });

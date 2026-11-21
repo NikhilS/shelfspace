@@ -94,10 +94,10 @@ For deep runtime visibility into cache hit rates, network latency, and memory co
 - **Service Worker & Tiered Asset Caching (`public/sw.js`):**
   - **App Shell (`bookish-shell-v1`):** HTML navigation requests (`request.mode === 'navigate'`) use Network-First with an offline fallback to the precached `/` app shell so deep links (`/library/:id`, `/library/:id/book/:bookId`, `/reading/timeline`, etc.) boot cleanly without a network connection.
   - **Static Bundles & Web Workers (`bookish-static-v1`):** Hashed `/assets/*` bundles, scripts, stylesheets, and Web Workers (`umap.worker`, `duplicateDetection.worker`) are cached via Cache-First / Network-First fallback and warmed during browser idle periods via `preloadAllRouteChunks()`.
-  - **Typography (`bookish-fonts-v1`):** Google Fonts CSS (`fonts.googleapis.com`) and WOFF2 binaries (`fonts.gstatic.com`) use Cache-First to preserve `Manrope` and `Playfair Display` offline.
+  - **Typography (`bookish-fonts-v2`):** Google Fonts CSS (`fonts.googleapis.com`) and WOFF2 binaries (`fonts.gstatic.com`) use Cache-First to preserve `Plus Jakarta Sans`, `Manrope`, `JetBrains Mono`, and `Playfair Display` offline.
   - **Book Covers (`bookish-covers-v1`):** Cross-origin book cover images use Stale-While-Revalidate with a bounded 500-entry FIFO cache. Uncached covers fall back to `<MonographCoverFallback />` via `onError` handlers.
-- **Two-Phase Sharded IndexedDB Hydration & Fast Offline Short-Circuit:**
-  - `src/lib/idbQueryShardPersister.ts` and `src/lib/queryClient.ts` store TanStack Query state in native structured-clone IndexedDB shards (`bookish-cache-v2` -> `core-shell`, `reading-room`, `editorial-daily`, `library:<id>`, `book-detail:<libId>:<bookId>`) with two-phase restoration: Phase 1 hydrates priority shards for `window.location.pathname` (`150ms` online / `600ms` offline safety cap) before `PrivateRoute` evaluates optimistic/offline guards, and Phase 2 hydrates remaining shards in `requestIdleCallback`.
+- **Two-Phase UID-Indexed Sharded IndexedDB Hydration & Fast Offline Short-Circuit:**
+  - `src/lib/idbQueryShardPersister.ts` and `src/lib/queryClient.ts` store TanStack Query state in native structured-clone IndexedDB shards (`bookish-cache-v3` with `by_uid` index -> `core-shell`, `reading-room`, `editorial-daily`, `library:<id>`, `book-detail:<libId>:<bookId>`) with two-phase restoration: Phase 1 hydrates priority shards for `window.location.pathname` (`150ms` online / `600ms` offline safety cap) before `PrivateRoute` evaluates optimistic/offline guards, and Phase 2 hydrates remaining user shards via `IDBKeyRange.only(uid)` in `requestIdleCallback`.
   - `src/lib/trpc.ts` reads the synchronous in-memory JWT cache (`0ms`) and immediately short-circuits outbound `/trpc` fetches when `navigator.onLine === false` so React Query never spins in retry loops offline.
 - **Graceful Read-Only Degradation:** When `navigator.onLine === false`:
   - Cached library data, book details, and spatial visualizers (Timeline, World Map, Constellation Map) remain browsable via TanStack Query's IndexedDB persistence.
@@ -112,12 +112,12 @@ For deep runtime visibility into cache hit rates, network latency, and memory co
 `src/lib/queryClient.ts` configures TanStack Query for zero-spinner navigation and instant warm boots:
 - **`staleTime: 1000 * 60 * 5` (5 minutes default; 60 minutes for warm `book.list` backed by `book.syncChanges`; 24 hours for daily editorial queries):** Mounted components serve warm data in `0ms` without redundant network refetches.
 - **`refetchOnWindowFocus: false`:** Focusing the browser tab does not trigger background revalidation.
-- **7-Day Sharded Structured-Clone IndexedDB Persistence (`bookish-cache-v2`):** Dirty shards flush independently after a 250ms debounce with `embedding` vectors stripped and zero `JSON.stringify`.
+- **7-Day UID-Indexed Sharded Structured-Clone IndexedDB Persistence (`bookish-cache-v3`):** Dirty shards flush independently after a 250ms debounce with `embedding` vectors stripped and zero `JSON.stringify`.
 
-### Mandatory Cross-Query Surgical Patching
-Because React Query treats `staleTime` as a trust window unless a query key is updated via `setData`, every mutation modifying an entity rendered across multiple query keys **must** synchronize the entire query family via `src/lib/readingStatusCache.ts`:
-1. **Optimistic + Surgical Delta Helpers (`src/lib/readingStatusCache.ts`):**
-   - Apply `applyOptimisticReadingStatusPatch` / `removeBookFromReadingCaches` before the network call and commit the server's authoritative delta via `commitReadingStatusDelta`, `commitBookUpsertDelta`, `commitBookDeleteDelta`, or `commitBookReviewDelta` on success—eliminating post-mutation full-collection refetch storms.
+### Mandatory Normalized Entity & Cross-Query Patching
+Because React Query treats `staleTime` as a trust window unless a query key is updated via `setData`, every mutation modifying an entity rendered across multiple query keys **must** synchronize `useEntityCacheStore` (`src/stores/entityCacheStore.ts`) and the entire query family via `src/lib/readingStatusCache/`:
+1. **Optimistic + Surgical Delta Helpers (`src/lib/readingStatusCache/`):**
+   - Apply `applyOptimisticReadingStatusPatch`, `applyOptimisticBookEditPatch`, or `removeBookFromReadingCaches` before the network call (with monotonic version guards against stale rollbacks) and commit the server's authoritative delta via `commitReadingStatusDelta`, `commitBookUpsertDelta`, `commitBookDeleteDelta`, `commitBookReviewDelta`, or `clearLibraryEnrichmentField` on success—eliminating post-mutation full-collection refetch storms.
 2. **Synchronized Query Keys for Reading Status & Books:**
    - `readingTracker.getShelf({ shelf: 'all' })` (Personal Reading Room Bento, Currently Reading Card, Reading Lists, Stats, Timeline, World Map, Constellation Map)
    - `readingTracker.getUnreadLibraryBooks()` (Start Reading from Your Shelves & Swipe Review queue)

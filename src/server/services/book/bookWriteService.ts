@@ -13,6 +13,7 @@ import {
 import {storedLibraryDocSchema} from '../../../schemas/libraryApi';
 import type {
   Book,
+  StoredBookDoc,
   UserReadingState,
   UserReadingStateBookSnapshot,
 } from '../../../types';
@@ -26,6 +27,10 @@ import {
   bookDocConverter,
   HEAVY_FIELDS,
 } from './bookPartitioner';
+import {
+  clearBookTombstoneInBatch,
+  stageBookTombstoneInBatch,
+} from './bookTombstoneLedger';
 import {
   assertSafeBookOrStateId,
   assertSafeDocId,
@@ -48,7 +53,7 @@ export {
 
 /**
  * Creates a single book and stores heavy metadata (synopsis, embeddings) in bookDetails.
- * Atomically increments parent library volume counter.
+ * Atomically increments parent library book counter and clears any prior delete tombstone.
  */
 export async function createBook(
   userId: string,
@@ -62,22 +67,15 @@ export async function createBook(
   const libraryId = assertSafeDocId(input.libraryId, 'libraryId');
 
   const db = getAdminDb();
-  const booksCollection = db
-    .collection('libraries')
-    .doc(libraryId)
-    .collection('books');
+  const libraryRef = db.collection('libraries').doc(libraryId);
+  const booksCollection = libraryRef.collection('books');
   const rawBookId = input.bookId || input.id;
   const bookId = rawBookId
     ? assertSafeDocId(rawBookId, 'bookId')
     : booksCollection.doc().id;
 
   const bookRef = booksCollection.doc(bookId);
-  const detailRef = db
-    .collection('libraries')
-    .doc(libraryId)
-    .collection('bookDetails')
-    .doc(bookId);
-  const libraryRef = db.collection('libraries').doc(libraryId);
+  const detailRef = libraryRef.collection('bookDetails').doc(bookId);
 
   const {cleanCore, cleanHeavy} = BookPartitioner.partitionCreatePayload(
     input,
@@ -88,6 +86,7 @@ export async function createBook(
 
   const batch = db.batch();
   batch.set(bookRef, cleanCore);
+  clearBookTombstoneInBatch(batch, libraryRef, bookId);
 
   if (Object.keys(cleanHeavy).length > 0) {
     batch.set(
@@ -132,10 +131,7 @@ export async function createBook(
             ? cleanCore.cleanIsbn
             : undefined,
         status: input.readingStatus,
-        bookData: {
-          ...cleanCore,
-          ...cleanHeavy,
-        },
+        bookData: cleanCore,
       });
       batch.set(readingStatesCol.doc(stateKey), payload, {merge: true});
     }
@@ -179,14 +175,13 @@ export async function createBook(
       id: bookId,
       hasSearchTokens: Array.isArray(cleanCore.searchTokens),
       ...(input.readingStatus ? {readingStatus: input.readingStatus} : {}),
-      ...(Object.keys(cleanHeavy).length > 0 ? {heavyDetails: cleanHeavy} : {}),
     },
   };
 }
 
 /**
  * Updates an existing book, propagates heavy updates to bookDetails,
- * and keeps the caller's `/users/{userId}/readingStates` snapshot and key in sync.
+ * and keeps the caller's `/users/{userId}/readingStates` stub in sync on its canonical key.
  */
 export async function updateBook(
   userId: string,
@@ -197,49 +192,24 @@ export async function updateBook(
   const {updates} = input;
 
   const db = getAdminDb();
-  const bookRef = db
-    .collection('libraries')
-    .doc(libraryId)
-    .collection('books')
-    .doc(bookId);
-  const detailRef = db
-    .collection('libraries')
-    .doc(libraryId)
-    .collection('bookDetails')
-    .doc(bookId);
   const libraryRef = db.collection('libraries').doc(libraryId);
+  const bookRef = libraryRef.collection('books').doc(bookId);
+  const detailRef = libraryRef.collection('bookDetails').doc(bookId);
 
-  let existingBook:
-    | {title?: string; author?: string; isbn?: string; series?: string}
-    | undefined;
-  let existingFullBookData: Record<string, unknown> | undefined;
-
-  if (typeof bookRef.get === 'function') {
-    try {
-      const existingSnap = await bookRef.get();
-      if (existingSnap?.exists) {
-        const parsedExisting = bookDocConverter.fromFirestore(
-          bookId,
-          existingSnap.data() || {},
-          `/libraries/${libraryId}/books/${bookId}`,
-        );
-        existingBook = {
-          title: parsedExisting.title,
-          author: parsedExisting.author,
-          isbn: parsedExisting.isbn,
-          series: parsedExisting.series ?? undefined,
-        };
-        existingFullBookData = parsedExisting;
-      }
-    } catch {
-      // Non-fatal in test mocks where bookRef.get is unconfigured
-    }
+  let parsedExisting: StoredBookDoc | undefined;
+  const existingSnap = await bookRef.get();
+  if (existingSnap.exists) {
+    parsedExisting = bookDocConverter.fromFirestore(
+      bookId,
+      existingSnap.data() || {},
+      `/libraries/${libraryId}/books/${bookId}`,
+    );
   }
 
   const {coreUpdates, heavyUpdates} = BookPartitioner.partitionUpdatePayload(
     updates,
     FieldValue.serverTimestamp(),
-    {callerUserId: userId, existingBook},
+    {callerUserId: userId, existingBook: parsedExisting},
   );
 
   const batch = db.batch();
@@ -263,7 +233,7 @@ export async function updateBook(
 
   if (userId) {
     const readingStatesCol = getReadingStatesCollection(db, userId);
-    if (readingStatesCol && typeof readingStatesCol.doc === 'function') {
+    if (readingStatesCol) {
       const cleanCoreFieldsForSnapshot: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(coreUpdates)) {
         if (k.includes('.') || isFirestoreFieldValueSentinel(v)) {
@@ -271,33 +241,14 @@ export async function updateBook(
         }
         cleanCoreFieldsForSnapshot[k] = v;
       }
-      const cleanHeavyFieldsForSnapshot: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(heavyUpdates)) {
-        if (!isFirestoreFieldValueSentinel(v)) {
-          cleanHeavyFieldsForSnapshot[k] = v;
-        }
-      }
 
       const mergedForSnapshot: Record<string, unknown> = {
-        ...(existingFullBookData || {}),
+        ...(parsedExisting || {}),
         ...cleanCoreFieldsForSnapshot,
-        ...cleanHeavyFieldsForSnapshot,
       };
 
-      const oldStateKey = existingFullBookData
-        ? computeReadingStateKey({
-            isbn:
-              typeof existingFullBookData.isbn === 'string'
-                ? existingFullBookData.isbn
-                : undefined,
-            cleanIsbn:
-              typeof existingFullBookData.cleanIsbn === 'string'
-                ? existingFullBookData.cleanIsbn
-                : undefined,
-            bookId,
-          })
-        : `bookid:${bookId}`;
-      const newStateKey = computeReadingStateKey({
+      const canonicalKey = computeReadingStateKey({
+        libraryId,
         isbn:
           typeof mergedForSnapshot.isbn === 'string'
             ? mergedForSnapshot.isbn
@@ -309,37 +260,32 @@ export async function updateBook(
         bookId,
       });
 
+      const candidateExistingKeys = new Set<string>([canonicalKey]);
+      if (parsedExisting?.cleanIsbn) {
+        candidateExistingKeys.add(`ext:${parsedExisting.cleanIsbn}`);
+      }
+      if (typeof mergedForSnapshot.cleanIsbn === 'string') {
+        candidateExistingKeys.add(`ext:${mergedForSnapshot.cleanIsbn}`);
+      }
+
       let existingReadingState: Partial<UserReadingState> | undefined;
-      let existingReadingStateKey: string | undefined;
-      try {
-        const oldDocRef = readingStatesCol.doc(oldStateKey);
-        if (typeof oldDocRef?.get === 'function') {
-          const oldSnap = await oldDocRef.get();
-          if (oldSnap?.exists) {
-            existingReadingState = normalizeReadingStateDoc(
-              oldSnap.id || oldStateKey,
-              oldSnap.data() || {},
-              userId,
-            );
-            existingReadingStateKey = oldStateKey;
+      const supersededExtKeys: string[] = [];
+
+      for (const key of candidateExistingKeys) {
+        const snap = await readingStatesCol.doc(key).get();
+        if (snap.exists) {
+          const parsed = normalizeReadingStateDoc(
+            snap.id || key,
+            snap.data() || {},
+            userId,
+          );
+          if (!existingReadingState) {
+            existingReadingState = parsed;
+          }
+          if (key !== canonicalKey) {
+            supersededExtKeys.push(key);
           }
         }
-        if (!existingReadingState && newStateKey !== oldStateKey) {
-          const newDocRef = readingStatesCol.doc(newStateKey);
-          if (typeof newDocRef?.get === 'function') {
-            const newSnap = await newDocRef.get();
-            if (newSnap?.exists) {
-              existingReadingState = normalizeReadingStateDoc(
-                newSnap.id || newStateKey,
-                newSnap.data() || {},
-                userId,
-              );
-              existingReadingStateKey = newStateKey;
-            }
-          }
-        }
-      } catch {
-        // Non-fatal in test mocks where readingStates.doc().get is unconfigured
       }
 
       const explicitReadingStatus =
@@ -375,8 +321,10 @@ export async function updateBook(
               : undefined,
         });
         batch.set(readingStatesCol.doc(stateKey), payload, {merge: true});
-        if (existingReadingStateKey && existingReadingStateKey !== stateKey) {
-          batch.delete(readingStatesCol.doc(existingReadingStateKey));
+        for (const extKey of supersededExtKeys) {
+          if (extKey !== stateKey) {
+            batch.delete(readingStatesCol.doc(extKey));
+          }
         }
       }
     }
@@ -418,13 +366,7 @@ export async function updateBookStatus(
   userId: string,
   libraryIdRaw: string,
   bookIdRaw: string,
-  status:
-    | 'unset'
-    | 'want_to_read'
-    | 'reading'
-    | 'finished'
-    | 'completed'
-    | 'abandoned',
+  status: 'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned',
   options?: {
     skipAccessCheck?: boolean;
     rating?: number;
@@ -476,9 +418,7 @@ export async function updateBookStatus(
   const hasExplicitOverride = options?.reviewedAtOverride !== undefined;
   const shouldRecordReview =
     !hasExplicitOverride &&
-    (Boolean(options?.recordReadStatusReview) ||
-      status === 'finished' ||
-      status === 'completed');
+    (Boolean(options?.recordReadStatusReview) || status === 'finished');
 
   const {stateKey, payload} = buildReadingStateUpsertPayload({
     userId,
@@ -510,7 +450,23 @@ export async function updateBookStatus(
     if (!readingStatesCol) {
       throw new Error('Could not resolve user readingStates collection');
     }
-    await readingStatesCol.doc(stateKey).set(payload, {merge: true});
+    const supersededExtKey =
+      stateKey.startsWith('book:') && typeof payload.cleanIsbn === 'string'
+        ? `ext:${payload.cleanIsbn}`
+        : undefined;
+    if (supersededExtKey && supersededExtKey !== stateKey) {
+      const extSnap = await readingStatesCol.doc(supersededExtKey).get();
+      if (extSnap.exists) {
+        const batch = db.batch();
+        batch.set(readingStatesCol.doc(stateKey), payload, {merge: true});
+        batch.delete(readingStatesCol.doc(supersededExtKey));
+        await batch.commit();
+      } else {
+        await readingStatesCol.doc(stateKey).set(payload, {merge: true});
+      }
+    } else {
+      await readingStatesCol.doc(stateKey).set(payload, {merge: true});
+    }
   } catch (err: unknown) {
     const errMsg = formatFirestoreAdminError(err);
     console.error(
@@ -643,50 +599,31 @@ export async function recordReadSwipeReview(
 
 /**
  * Atomically deletes a book, its heavy metadata sub-record, associated reviews,
- * and decrements the library bookCount.
+ * stages a durable Firestore tombstone, and decrements the library bookCount.
  */
 export async function deleteBook(
-  _userId: string,
+  userId: string,
   input: BookDeleteInput,
 ): Promise<{success: true; id?: string; libraryBookCountDelta: number}> {
   const libraryId = assertSafeDocId(input.libraryId, 'libraryId');
   const bookId = assertSafeDocId(input.bookId, 'bookId');
 
   const db = getAdminDb();
-  const bookRef = db
-    .collection('libraries')
-    .doc(libraryId)
-    .collection('books')
-    .doc(bookId);
-  const detailRef = db
-    .collection('libraries')
-    .doc(libraryId)
-    .collection('bookDetails')
-    .doc(bookId);
   const libraryRef = db.collection('libraries').doc(libraryId);
+  const bookRef = libraryRef.collection('books').doc(bookId);
+  const detailRef = libraryRef.collection('bookDetails').doc(bookId);
 
   const batch = db.batch();
   batch.delete(bookRef);
   batch.delete(detailRef);
+  stageBookTombstoneInBatch(batch, libraryRef, libraryId, bookId, {
+    deletedBy: userId || undefined,
+  });
 
-  try {
-    const reviewsSnap = await db
-      .collection('libraries')
-      .doc(libraryId)
-      .collection('books')
-      .doc(bookId)
-      .collection('reviews')
-      .get();
-
-    reviewsSnap.forEach(docSnap => {
-      batch.delete(docSnap.ref);
-    });
-  } catch (e) {
-    console.warn(
-      `[BookService.deleteBook] Could not load reviews for cascade delete on book '${bookId}':`,
-      e,
-    );
-  }
+  const reviewsSnap = await bookRef.collection('reviews').get();
+  reviewsSnap.forEach(docSnap => {
+    batch.delete(docSnap.ref);
+  });
 
   const libDeleteUpdate = {
     bookCount: FieldValue.increment(-1),

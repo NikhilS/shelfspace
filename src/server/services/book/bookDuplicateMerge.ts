@@ -18,6 +18,7 @@ import {
   bookDocConverter,
 } from './bookPartitioner';
 import {reviewDocConverter} from './bookReviewService';
+import {stageBookTombstoneInBatch} from './bookTombstoneLedger';
 import {assertSafeDocId} from './bookWriteIds';
 import {
   buildReadingStateUpsertPayload,
@@ -30,8 +31,8 @@ import {
  * Atomically merges a duplicate book group into a single survivor book:
  * 1. Migrates any `reviews` subcollection documents from duplicate books onto the survivor.
  * 2. Updates `books/{survivorBookId}` and `bookDetails/{survivorBookId}` with the user-selected `mergedFields`.
- * 3. Migrates/updates the caller's `/users/{userId}/readingStates` entry if any duplicate or the survivor was tracked.
- * 4. Deletes all `duplicateBookIds` (plus their `bookDetails` and `reviews`) and decrements `bookCount`.
+ * 3. Migrates/updates the caller's `/users/{userId}/readingStates` entry onto `book:<libraryId>:<survivorBookId>`.
+ * 4. Deletes all `duplicateBookIds` (plus their `bookDetails` and `reviews`), stages durable tombstones, and decrements `bookCount`.
  */
 export async function mergeDuplicates(
   userId: string,
@@ -93,12 +94,7 @@ export async function mergeDuplicates(
     combinedUpdates,
     FieldValue.serverTimestamp(),
     {
-      existingBook: {
-        title: survivorData.title,
-        author: survivorData.author,
-        isbn: survivorData.isbn,
-        series: survivorData.series ?? undefined,
-      },
+      existingBook: survivorData,
     },
   );
 
@@ -159,36 +155,31 @@ export async function mergeDuplicates(
     batchOps++;
   }
 
-  // Migrate/sync caller's readingStates across survivor and duplicate books
   if (userId) {
     const readingStatesCol = getReadingStatesCollection(db, userId);
-    if (readingStatesCol && typeof readingStatesCol.doc === 'function') {
+    if (readingStatesCol) {
       const candidateStateKeys = new Set<string>();
       candidateStateKeys.add(
         computeReadingStateKey({
+          libraryId,
           isbn: survivorData.isbn,
           cleanIsbn: survivorData.cleanIsbn,
           bookId: survivorBookId,
         }),
       );
-      candidateStateKeys.add(`bookid:${survivorBookId}`);
+      if (survivorData.cleanIsbn) {
+        candidateStateKeys.add(`ext:${survivorData.cleanIsbn}`);
+      }
 
       for (let i = 0; i < cleanDupIds.length; i++) {
         const dupId = cleanDupIds[i];
         const dupSnap = bookDocs[i + 1];
-        candidateStateKeys.add(`bookid:${dupId}`);
+        candidateStateKeys.add(`book:${libraryId}:${dupId}`);
         if (dupSnap?.exists) {
           const dupRaw = (dupSnap.data() || {}) as Record<string, unknown>;
-          candidateStateKeys.add(
-            computeReadingStateKey({
-              isbn: typeof dupRaw.isbn === 'string' ? dupRaw.isbn : undefined,
-              cleanIsbn:
-                typeof dupRaw.cleanIsbn === 'string'
-                  ? dupRaw.cleanIsbn
-                  : undefined,
-              bookId: dupId,
-            }),
-          );
+          if (typeof dupRaw.cleanIsbn === 'string' && dupRaw.cleanIsbn) {
+            candidateStateKeys.add(`ext:${dupRaw.cleanIsbn}`);
+          }
         }
       }
 
@@ -197,21 +188,14 @@ export async function mergeDuplicates(
         state: Partial<UserReadingState>;
       }> = [];
       for (const key of candidateStateKeys) {
-        try {
-          const stateRef = readingStatesCol.doc(key);
-          if (typeof stateRef?.get === 'function') {
-            const stateSnap = await stateRef.get();
-            if (stateSnap?.exists) {
-              const parsed = normalizeReadingStateDoc(
-                stateSnap.id || key,
-                stateSnap.data() || {},
-                userId,
-              );
-              foundStates.push({key, state: parsed});
-            }
-          }
-        } catch {
-          // Non-fatal in test mocks where readingStates.doc().get is unconfigured
+        const stateSnap = await readingStatesCol.doc(key).get();
+        if (stateSnap.exists) {
+          const parsed = normalizeReadingStateDoc(
+            stateSnap.id || key,
+            stateSnap.data() || {},
+            userId,
+          );
+          foundStates.push({key, state: parsed});
         }
       }
 
@@ -222,12 +206,6 @@ export async function mergeDuplicates(
             continue;
           }
           cleanSurvivorCoreForSnapshot[k] = v;
-        }
-        const cleanSurvivorHeavyForSnapshot: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(heavyUpdates)) {
-          if (!isFirestoreFieldValueSentinel(v)) {
-            cleanSurvivorHeavyForSnapshot[k] = v;
-          }
         }
 
         const primaryState =
@@ -241,7 +219,6 @@ export async function mergeDuplicates(
           ...(primaryState.bookSnapshot || {}),
           ...(survivorData as unknown as Record<string, unknown>),
           ...cleanSurvivorCoreForSnapshot,
-          ...cleanSurvivorHeavyForSnapshot,
         };
 
         const {stateKey: targetStateKey, payload: statePayload} =
@@ -283,19 +260,8 @@ export async function mergeDuplicates(
     }
   }
 
-  // Pre-fetch reviews subcollections for all duplicate books in parallel
   const dupReviewSnaps = await Promise.all(
-    cleanDupIds.map(async dupId => {
-      try {
-        const dupBookRef = booksCol.doc(dupId);
-        if (typeof dupBookRef?.collection === 'function') {
-          return await dupBookRef.collection('reviews').get();
-        }
-      } catch {
-        // Non-fatal if reviews subcollection is empty or mocked
-      }
-      return undefined;
-    }),
+    cleanDupIds.map(dupId => booksCol.doc(dupId).collection('reviews').get()),
   );
 
   let deletedCount = 0;
@@ -306,10 +272,10 @@ export async function mergeDuplicates(
       const dupDetailRef = detailsCol.doc(dupId);
 
       const reviewsSnap = dupReviewSnaps[i];
-      if (reviewsSnap && typeof survivorBookRef?.collection === 'function') {
+      if (reviewsSnap) {
         const reviewDocs: Array<{
           id: string;
-          data: () => Record<string, unknown>;
+          data: () => Record<string, unknown> | undefined;
           ref: FirebaseFirestore.DocumentReference;
         }> = [];
         reviewsSnap.forEach(reviewDoc => {
@@ -341,7 +307,10 @@ export async function mergeDuplicates(
 
       batch.delete(dupBookRef);
       batch.delete(dupDetailRef);
-      batchOps += 2;
+      stageBookTombstoneInBatch(batch, libraryRef, libraryId, dupId, {
+        deletedBy: userId || undefined,
+      });
+      batchOps += 3;
       deletedCount++;
       await commitBatchIfNeeded();
     }

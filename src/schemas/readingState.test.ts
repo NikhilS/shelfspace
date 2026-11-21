@@ -1,72 +1,149 @@
 import {describe, it, expect} from 'vitest';
 import {
+  bookStatusEnum,
+  bookTemporalMetadataSchema,
+  geoLocationReferenceSchema,
   readingStateKeySchema,
+  minimalBookStubSchema,
   userReadingStateBookSnapshotSchema,
   storedUserReadingStateDocSchema,
   userReadingStateSchema,
   computeReadingStateKey,
+  resolveReadingStateKeyType,
 } from './readingState';
 
 describe('Reading State Ledger Schemas (src/schemas/readingState.ts)', () => {
   describe('computeReadingStateKey & readingStateKeySchema', () => {
-    it('formats normalized ISBN keys as isbn:<NORMALIZED_ISBN> and validates them', () => {
+    it('formats library-backed books stably as book:<libraryId>:<bookId> regardless of ISBN changes', () => {
+      const keyWithoutIsbn = computeReadingStateKey({
+        libraryId: 'lib_household',
+        bookId: 'book_123',
+      });
+      const keyAfterIsbnAdded = computeReadingStateKey({
+        libraryId: 'lib_household',
+        isbn: '978-0-441-47812-5',
+        bookId: 'book_123',
+      });
+
+      expect(keyWithoutIsbn).toBe('book:lib_household:book_123');
+      expect(keyAfterIsbnAdded).toBe('book:lib_household:book_123');
+      expect(readingStateKeySchema.safeParse(keyAfterIsbnAdded).success).toBe(
+        true,
+      );
+      expect(resolveReadingStateKeyType(keyAfterIsbnAdded)).toBe('book');
+    });
+
+    it('formats standalone external books with ISBNs as ext:<NORMALIZED_ISBN>', () => {
       const key = computeReadingStateKey({
         isbn: '978-0-441-47812-5',
         bookId: 'book_123',
       });
-      expect(key).toBe('isbn:9780441478125');
+      expect(key).toBe('ext:9780441478125');
       expect(readingStateKeySchema.safeParse(key).success).toBe(true);
+      expect(resolveReadingStateKeyType(key)).toBe('ext');
 
       const isbn10X = computeReadingStateKey({
         isbn: '0-8044-2957-x',
         bookId: 'book_456',
       });
-      expect(isbn10X).toBe('isbn:080442957X');
+      expect(isbn10X).toBe('ext:080442957X');
       expect(readingStateKeySchema.safeParse(isbn10X).success).toBe(true);
     });
 
-    it('falls back to bookid:<BOOK_ID> when ISBN is absent or empty', () => {
+    it('falls back to ext:<BOOK_ID> when both libraryId and ISBN are absent', () => {
       const key = computeReadingStateKey({
         isbn: '   ',
         bookId: 'book_internal_99',
       });
-      expect(key).toBe('bookid:book_internal_99');
+      expect(key).toBe('ext:book_internal_99');
       expect(readingStateKeySchema.safeParse(key).success).toBe(true);
+      expect(resolveReadingStateKeyType(key)).toBe('ext');
     });
 
-    it('rejects malformed or path-traversal readingState keys', () => {
+    it('strictly rejects legacy isbn: and bookid: prefixes as well as path traversal keys', () => {
+      expect(
+        readingStateKeySchema.safeParse('isbn:9780553573398').success,
+      ).toBe(false);
+      expect(readingStateKeySchema.safeParse('bookid:book_abc').success).toBe(
+        false,
+      );
       expect(readingStateKeySchema.safeParse('isbn:978-0-441').success).toBe(
         false,
       );
-      expect(
-        readingStateKeySchema.safeParse('bookid:../other_user').success,
-      ).toBe(false);
+      expect(readingStateKeySchema.safeParse('ext:../other_user').success).toBe(
+        false,
+      );
+      expect(readingStateKeySchema.safeParse('book:lib_1:../bad').success).toBe(
+        false,
+      );
       expect(readingStateKeySchema.safeParse('title::author').success).toBe(
         false,
       );
     });
 
-    it('is idempotent when bookId already starts with isbn: or bookid:', () => {
+    it('is idempotent when bookId already starts with book: or ext:', () => {
       expect(
         computeReadingStateKey({
-          bookId: 'isbn:9780553573398',
+          bookId: 'book:lib_1:book_abc',
         }),
-      ).toBe('isbn:9780553573398');
+      ).toBe('book:lib_1:book_abc');
 
       expect(
         computeReadingStateKey({
-          bookId: 'bookid:book_abc_123',
+          bookId: 'ext:9780553573398',
         }),
-      ).toBe('bookid:book_abc_123');
+      ).toBe('ext:9780553573398');
     });
   });
 
-  describe('storedUserReadingStateDocSchema & userReadingStateSchema', () => {
-    it('validates a complete stored reading state document with typed geoMetadata and temporalMetadata', () => {
+  describe('strict clean-break enum and metadata schemas', () => {
+    it('rejects legacy completed reading status, capitalized geo adminLevel, top-level lat/lng, and eraLabel', () => {
+      expect(bookStatusEnum.safeParse('finished').success).toBe(true);
+      expect(bookStatusEnum.safeParse('completed').success).toBe(false);
+
+      expect(
+        geoLocationReferenceSchema.safeParse({
+          name: 'Cairo',
+          adminLevel: 'city',
+          coordinates: {lat: 30.04, lng: 31.23},
+        }).success,
+      ).toBe(true);
+      expect(
+        geoLocationReferenceSchema.safeParse({
+          name: 'Cairo',
+          adminLevel: 'City',
+          coordinates: {lat: 30.04, lng: 31.23},
+        }).success,
+      ).toBe(false);
+      expect(
+        geoLocationReferenceSchema.safeParse({
+          name: 'Cairo',
+          lat: 30.04,
+          lng: 31.23,
+        }).success,
+      ).toBe(false);
+
+      expect(
+        bookTemporalMetadataSchema.safeParse({
+          startYear: 1920,
+          eraName: 'Interwar Period',
+        }).success,
+      ).toBe(true);
+      expect(
+        bookTemporalMetadataSchema.safeParse({
+          startYear: 1920,
+          eraLabel: 'Interwar Period',
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe('storedUserReadingStateDocSchema & minimalBookStubSchema', () => {
+    it('validates a slim reading state document and rejects 50KB prose/vector bloat in bookSnapshot', () => {
       const doc = {
-        id: 'isbn:9780441478125',
+        id: 'book:lib_1:book_1',
         userId: 'user_1',
-        keyType: 'isbn' as const,
+        keyType: 'book' as const,
         cleanIsbn: '9780441478125',
         bookId: 'book_1',
         libraryId: 'lib_1',
@@ -82,34 +159,30 @@ describe('Reading State Ledger Schemas (src/schemas/readingState.ts)', () => {
           isbn: '978-0-441-47812-5',
           cleanIsbn: '9780441478125',
           primaryGenre: 'Science Fiction',
-          subgenres: ['Anthropological Sci-Fi'],
           format: 'physical' as const,
-          geoMetadata: {
-            isNonEarth: true,
-            locations: [],
-            lastSyncedAt: '2026-10-25T00:00:00.000Z',
-          },
-          temporalMetadata: {
-            isNonHistorical: true,
-            lastProcessedAt: '2026-10-25T00:00:00.000Z',
-          },
         },
         updatedAt: '2026-10-25T00:00:00.000Z',
       };
 
       expect(storedUserReadingStateDocSchema.safeParse(doc).success).toBe(true);
       expect(userReadingStateSchema.safeParse(doc).success).toBe(true);
+      expect(minimalBookStubSchema.safeParse(doc.bookSnapshot).success).toBe(
+        true,
+      );
       expect(
-        userReadingStateBookSnapshotSchema.safeParse(doc.bookSnapshot).success,
-      ).toBe(true);
+        userReadingStateBookSnapshotSchema.safeParse({
+          ...doc.bookSnapshot,
+          synopsis: 'Bloated 50KB synopsis no longer allowed in readingStates',
+        }).success,
+      ).toBe(false);
     });
 
     it('rejects out-of-range star ratings', () => {
       expect(
         storedUserReadingStateDocSchema.safeParse({
-          id: 'bookid:book_1',
+          id: 'book:lib_1:book_1',
           userId: 'user_1',
-          keyType: 'bookid',
+          keyType: 'book',
           rating: 6,
         }).success,
       ).toBe(false);

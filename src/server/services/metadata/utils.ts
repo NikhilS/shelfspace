@@ -47,7 +47,7 @@ export async function resolveBookSynopses(
   const missingSynopsisBooks: CoreBookData[] = [];
 
   for (const b of books) {
-    const rawSynopsis = b.synopsis || b.description;
+    const rawSynopsis = b.synopsis;
     if (typeof rawSynopsis === 'string' && rawSynopsis.trim().length > 0) {
       synopsisMap.set(b.id, rawSynopsis.trim());
     } else {

@@ -143,17 +143,6 @@ export function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function hexToRgb01(hex: string): [number, number, number] {
-  const clean = hex.replace('#', '');
-  if (clean.length !== 6) {
-    return [0.47, 0.42, 0.36];
-  }
-  const r = parseInt(clean.slice(0, 2), 16) / 255;
-  const g = parseInt(clean.slice(2, 4), 16) / 255;
-  const b = parseInt(clean.slice(4, 6), 16) / 255;
-  return [r, g, b];
-}
-
 /**
  * Blends two hex pigments by weightB in [0, 1] so transitional border books
  * reflect both their primary and runner-up constellation hues.

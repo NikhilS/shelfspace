@@ -149,16 +149,6 @@ export const libraryApiRouter = router({
       );
     }),
 
-  getUserRole: protectedProcedure
-    .input(z.object({libraryId: safeIdSchema}))
-    .query(async ({ctx, input}) => {
-      return await LibraryService.getUserRole(
-        ctx.user.uid,
-        ctx.user.email,
-        input.libraryId,
-      );
-    }),
-
   listAllowedDuplicates: libraryProcedure('viewer')
     .input(z.object({libraryId: safeIdSchema}))
     .query(async ({input}) => {

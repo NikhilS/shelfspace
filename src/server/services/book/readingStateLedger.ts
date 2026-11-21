@@ -1,18 +1,20 @@
 import {FieldValue} from 'firebase-admin/firestore';
 import {getAdminDb} from '../firebaseAdmin';
 import {
-  SchemaValidationError,
   safeIdSchema,
   validateFirestoreReadPayload,
   validateFirestoreWritePayload,
 } from '../../../schemas/common';
 import {
   computeReadingStateKey,
+  resolveReadingStateKeyType,
   storedUserReadingStateDocSchema,
   userReadingStateBookSnapshotSchema,
+  type ReadingStateKeyType,
 } from '../../../schemas/readingState';
 import {normalizeIsbnForDedupe} from '../../../lib/duplicateDetection';
 import {normalizeFirestoreTimestamp} from './bookPartitioner';
+import {canRunBackgroundSelfHeal} from './bookLegacySelfHealer';
 import type {
   Book,
   ReadingStatusValue,
@@ -21,27 +23,75 @@ import type {
   UserReadingStateBookSnapshot,
 } from '../../../types';
 
-export {computeReadingStateKey};
+export {computeReadingStateKey, resolveReadingStateKeyType};
+
+const MAX_SNAPSHOT_COVER_URL_LENGTH = 2048;
+
+const DEPRECATED_BOOK_SNAPSHOT_KEYS = new Set([
+  'id',
+  'synopsis',
+  'description',
+  'summary',
+  'authorBio',
+  'subgenres',
+  'genres',
+  'genre',
+  'isCustomPrimary',
+  'geoMetadata',
+  'temporalMetadata',
+  'clusterCoordinates',
+  'embedding',
+  'enrichmentStatus',
+  'bookDetailsMetadata',
+  'missingFlags',
+  'primaryGenreLower',
+  'dedupeKey',
+  'searchTokens',
+  'coverUrlRaw',
+  'coverCandidates',
+  'sources',
+  'fieldSources',
+  'skippedProviders',
+  'addedBy',
+  'addedAt',
+  'updatedAt',
+  'createdAt',
+  'isVirtual',
+  'readingStatus',
+  'userRating',
+]);
+
+const inFlightReadingStateHeals = new Set<string>();
 
 /**
  * Normalizes a book identifier that may either be a raw Firestore document ID (`abc123`)
- * or a `readingStates` key (`isbn:9780553573398` / `bookid:abc123`).
+ * or a canonical `readingStates` key (`book:<libId>:<bookId>` or `ext:<isbn>`).
  */
 export function parseBookOrStateIdentifier(rawId: string): {
   cleanBookId: string;
+  libraryIdFromId?: string;
   isbnFromId?: string;
 } {
   const trimmed = (rawId || '').trim();
-  if (trimmed.startsWith('bookid:')) {
-    return {
-      cleanBookId: trimmed.slice('bookid:'.length),
-    };
+  if (trimmed.startsWith('book:')) {
+    const parts = trimmed.split(':');
+    if (parts.length === 3 && parts[1] && parts[2]) {
+      return {
+        cleanBookId: parts[2],
+        libraryIdFromId: parts[1],
+      };
+    }
   }
-  if (trimmed.startsWith('isbn:')) {
-    const cleanIsbn = normalizeIsbnForDedupe(trimmed.slice('isbn:'.length));
+  if (trimmed.startsWith('ext:')) {
+    const extValue = trimmed.slice('ext:'.length).trim();
+    const cleanIsbn = normalizeIsbnForDedupe(extValue);
+    const isNumericOrIsbn = /^[0-9X]+$/i.test(extValue);
     return {
-      cleanBookId: cleanIsbn ? `isbn_${cleanIsbn}` : 'unknown_book',
-      ...(cleanIsbn ? {isbnFromId: cleanIsbn} : {}),
+      cleanBookId:
+        cleanIsbn && isNumericOrIsbn
+          ? `ext_${cleanIsbn}`
+          : extValue || 'unknown_book',
+      ...(cleanIsbn && isNumericOrIsbn ? {isbnFromId: cleanIsbn} : {}),
     };
   }
   return {
@@ -69,6 +119,20 @@ function resolveSafeBookId(
   return 'unknown_book';
 }
 
+function sanitizeCoverUrlForStub(rawCoverUrl: unknown): string | undefined {
+  if (typeof rawCoverUrl !== 'string') {
+    return undefined;
+  }
+  const trimmed = rawCoverUrl.trim();
+  if (!trimmed || trimmed.length > MAX_SNAPSHOT_COVER_URL_LENGTH) {
+    return undefined;
+  }
+  if (trimmed.toLowerCase().startsWith('data:') && trimmed.length > 1500) {
+    return undefined;
+  }
+  return trimmed;
+}
+
 /**
  * Strongly typed Firestore write payload for `/users/{userId}/readingStates/{stateKey}`.
  * Extends `StoredUserReadingStateDoc` while allowing `FieldValue.serverTimestamp()` and `FieldValue.delete()`.
@@ -79,7 +143,7 @@ export interface StoredUserReadingStateWritePayload extends Omit<
 > {
   id: string;
   userId: string;
-  keyType: 'isbn' | 'bookid';
+  keyType: ReadingStateKeyType;
   bookId: string;
   updatedAt: unknown;
   readStatusReviewedAt?: string | null | unknown;
@@ -92,20 +156,7 @@ export function getReadingStatesCollection(
   if (!userId) {
     return undefined;
   }
-  try {
-    const usersCol = db.collection('users') as
-      FirebaseFirestore.CollectionReference | undefined;
-    if (!usersCol || typeof usersCol.doc !== 'function') {
-      return undefined;
-    }
-    const userDoc = usersCol.doc(userId);
-    if (!userDoc || typeof userDoc.collection !== 'function') {
-      return undefined;
-    }
-    return userDoc.collection('readingStates');
-  } catch {
-    return undefined;
-  }
+  return db.collection('users').doc(userId).collection('readingStates');
 }
 
 export function buildBookSnapshotFromData(
@@ -116,23 +167,25 @@ export function buildBookSnapshotFromData(
     libraryName?: string;
   },
 ): UserReadingStateBookSnapshot {
-  const title =
+  const title = (
     typeof bookData.title === 'string' && bookData.title.trim().length > 0
       ? bookData.title.trim()
-      : 'Untitled Book';
-  const author =
+      : 'Untitled Book'
+  ).slice(0, 300);
+  const author = (
     typeof bookData.author === 'string' && bookData.author.trim().length > 0
       ? bookData.author.trim()
-      : 'Unknown Author';
+      : 'Unknown Author'
+  ).slice(0, 300);
   const isbn =
     typeof bookData.isbn === 'string' && bookData.isbn.trim().length > 0
-      ? bookData.isbn.trim()
+      ? bookData.isbn.trim().slice(0, 64)
       : undefined;
   const cleanIsbn =
     typeof bookData.cleanIsbn === 'string' &&
     bookData.cleanIsbn.trim().length > 0
-      ? bookData.cleanIsbn.trim()
-      : normalizeIsbnForDedupe(isbn) || undefined;
+      ? bookData.cleanIsbn.trim().slice(0, 64)
+      : normalizeIsbnForDedupe(isbn)?.slice(0, 64) || undefined;
 
   const rawBookIdCandidate =
     options?.bookId ||
@@ -145,58 +198,44 @@ export function buildBookSnapshotFromData(
     ? resolveSafeBookId(rawBookIdCandidate, bookData)
     : undefined;
 
+  const rawLibId =
+    options?.libraryId ||
+    (typeof bookData.libraryId === 'string' ? bookData.libraryId : undefined);
+  const safeLibraryId =
+    rawLibId &&
+    rawLibId !== 'external' &&
+    safeIdSchema.safeParse(rawLibId).success
+      ? rawLibId
+      : undefined;
+
+  const rawLibName =
+    options?.libraryName ||
+    (typeof bookData.libraryName === 'string'
+      ? bookData.libraryName
+      : undefined);
+  const safeCoverUrl = sanitizeCoverUrlForStub(bookData.coverUrl);
+
   const candidate: UserReadingStateBookSnapshot = {
     title,
     author,
     ...(isbn ? {isbn} : {}),
     ...(cleanIsbn ? {cleanIsbn} : {}),
-    ...(typeof bookData.coverUrl === 'string' && bookData.coverUrl
-      ? {coverUrl: bookData.coverUrl}
-      : {}),
+    ...(safeCoverUrl ? {coverUrl: safeCoverUrl} : {}),
     ...(typeof bookData.publishedDate === 'string' && bookData.publishedDate
-      ? {publishedDate: bookData.publishedDate}
+      ? {publishedDate: bookData.publishedDate.slice(0, 100)}
       : {}),
     ...(typeof bookData.primaryGenre === 'string' && bookData.primaryGenre
-      ? {primaryGenre: bookData.primaryGenre}
-      : {}),
-    ...(Array.isArray(bookData.subgenres) && bookData.subgenres.length > 0
-      ? {subgenres: bookData.subgenres as string[]}
+      ? {primaryGenre: bookData.primaryGenre.slice(0, 200)}
       : {}),
     ...(typeof bookData.series === 'string' && bookData.series
-      ? {series: bookData.series}
+      ? {series: bookData.series.slice(0, 200)}
       : {}),
     ...(bookData.format === 'physical' || bookData.format === 'digital'
       ? {format: bookData.format}
       : {}),
-    ...(typeof bookData.synopsis === 'string' && bookData.synopsis
-      ? {synopsis: bookData.synopsis}
-      : {}),
-    ...(typeof bookData.authorBio === 'string' && bookData.authorBio
-      ? {authorBio: bookData.authorBio}
-      : {}),
-    ...(bookData.geoMetadata && typeof bookData.geoMetadata === 'object'
-      ? {
-          geoMetadata: bookData.geoMetadata,
-        }
-      : {}),
-    ...(bookData.temporalMetadata &&
-    typeof bookData.temporalMetadata === 'object'
-      ? {
-          temporalMetadata: bookData.temporalMetadata,
-        }
-      : {}),
-    ...(bookData.clusterCoordinates &&
-    typeof bookData.clusterCoordinates === 'object'
-      ? {
-          clusterCoordinates:
-            bookData.clusterCoordinates as UserReadingStateBookSnapshot['clusterCoordinates'],
-        }
-      : {}),
-    ...(options?.libraryId || typeof bookData.libraryId === 'string'
-      ? {libraryId: options?.libraryId || (bookData.libraryId as string)}
-      : {}),
-    ...(options?.libraryName || typeof bookData.libraryName === 'string'
-      ? {libraryName: options?.libraryName || (bookData.libraryName as string)}
+    ...(safeLibraryId ? {libraryId: safeLibraryId} : {}),
+    ...(typeof rawLibName === 'string' && rawLibName.trim().length > 0
+      ? {libraryName: rawLibName.trim().slice(0, 200)}
       : {}),
     ...(safeSnapshotBookId ? {bookId: safeSnapshotBookId} : {}),
     ...(bookData.ownershipStatus === 'owned' ||
@@ -226,6 +265,8 @@ export interface BuildReadingStateMutationOptions {
   rating?: number;
   reviewText?: string;
   reviewedAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
   readStatusReviewedAt?: string | null;
   clearReadStatusReviewedAt?: boolean;
   bookData?: Record<string, unknown>;
@@ -239,8 +280,16 @@ export const readingStateConverter = {
     stateKey: string;
     payload: StoredUserReadingStateWritePayload;
   } {
-    const {isbnFromId} = parseBookOrStateIdentifier(options.bookId);
+    const {isbnFromId, libraryIdFromId} = parseBookOrStateIdentifier(
+      options.bookId,
+    );
     const safeBookId = resolveSafeBookId(options.bookId, options.bookData);
+    const effectiveLibraryId =
+      options.libraryId ||
+      libraryIdFromId ||
+      (typeof options.bookData?.libraryId === 'string'
+        ? options.bookData.libraryId
+        : undefined);
     const normalizedIsbn = normalizeIsbnForDedupe(
       options.cleanIsbn ||
         options.isbn ||
@@ -252,11 +301,11 @@ export const readingStateConverter = {
             : undefined),
     );
     const stateKey = computeReadingStateKey({
+      libraryId: effectiveLibraryId,
       cleanIsbn: normalizedIsbn,
       bookId: safeBookId,
     });
-    const keyType: 'isbn' | 'bookid' =
-      normalizedIsbn.length > 0 ? 'isbn' : 'bookid';
+    const keyType = resolveReadingStateKeyType(stateKey);
     const nowIso = new Date().toISOString();
 
     const payload: StoredUserReadingStateWritePayload = {
@@ -265,20 +314,27 @@ export const readingStateConverter = {
       keyType,
       ...(normalizedIsbn.length > 0 ? {cleanIsbn: normalizedIsbn} : {}),
       bookId: safeBookId,
-      ...(options.libraryId ? {libraryId: options.libraryId} : {}),
+      ...(effectiveLibraryId && effectiveLibraryId !== 'external'
+        ? {libraryId: effectiveLibraryId}
+        : {}),
       updatedAt: FieldValue.serverTimestamp(),
     };
 
     if (options.status !== undefined) {
       payload.status = options.status;
-      if (options.status === 'reading') {
+      if (options.startedAt === undefined && options.status === 'reading') {
         payload.startedAt = nowIso;
-      } else if (
-        options.status === 'finished' ||
-        options.status === 'completed'
-      ) {
+      }
+      if (options.finishedAt === undefined && options.status === 'finished') {
         payload.finishedAt = nowIso;
       }
+    }
+
+    if (options.startedAt !== undefined) {
+      payload.startedAt = options.startedAt;
+    }
+    if (options.finishedAt !== undefined) {
+      payload.finishedAt = options.finishedAt;
     }
 
     if (typeof options.rating === 'number' && options.rating >= 1) {
@@ -291,10 +347,7 @@ export const readingStateConverter = {
     }
 
     if (options.clearReadStatusReviewedAt) {
-      payload.readStatusReviewedAt =
-        typeof (FieldValue as {delete?: () => unknown}).delete === 'function'
-          ? FieldValue.delete()
-          : null;
+      payload.readStatusReviewedAt = FieldValue.delete();
     } else if (options.readStatusReviewedAt !== undefined) {
       payload.readStatusReviewedAt = options.readStatusReviewedAt;
     }
@@ -302,7 +355,7 @@ export const readingStateConverter = {
     if (options.bookData && Object.keys(options.bookData).length > 0) {
       payload.bookSnapshot = buildBookSnapshotFromData(options.bookData, {
         bookId: safeBookId,
-        libraryId: options.libraryId,
+        libraryId: effectiveLibraryId,
         libraryName: options.libraryName,
       });
     }
@@ -321,10 +374,13 @@ export const readingStateConverter = {
     raw: Record<string, unknown>,
     fallbackUserId = 'unknown_user',
   ): StoredUserReadingStateDoc {
-    const status =
-      typeof raw.status === 'string'
-        ? (raw.status as ReadingStatusValue)
-        : undefined;
+    let needsSelfHeal = false;
+    const rawStatusStr =
+      typeof raw.status === 'string' ? raw.status : undefined;
+    const status: ReadingStatusValue | undefined =
+      rawStatusStr === 'completed'
+        ? ((needsSelfHeal = true), 'finished')
+        : (rawStatusStr as ReadingStatusValue | undefined);
     const rating =
       typeof raw.rating === 'number' && raw.rating >= 1
         ? raw.rating
@@ -345,8 +401,14 @@ export const readingStateConverter = {
         ...(raw.bookSnapshot as Record<string, unknown>),
       };
       for (const k of Object.keys(snapCopy)) {
-        if (snapCopy[k] === undefined) {
+        if (snapCopy[k] === undefined || snapCopy[k] === null) {
+          if (snapCopy[k] === null) {
+            needsSelfHeal = true;
+          }
           delete snapCopy[k];
+        } else if (DEPRECATED_BOOK_SNAPSHOT_KEYS.has(k)) {
+          delete snapCopy[k];
+          needsSelfHeal = true;
         }
       }
       normalizedSnapshot = validateFirestoreReadPayload(
@@ -364,12 +426,10 @@ export const readingStateConverter = {
       typeof raw.userId === 'string' && raw.userId.trim().length > 0
         ? raw.userId
         : fallbackUserId;
-    const resolvedKeyType: 'isbn' | 'bookid' =
-      raw.keyType === 'isbn' || raw.keyType === 'bookid'
+    const resolvedKeyType: ReadingStateKeyType =
+      raw.keyType === 'book' || raw.keyType === 'ext'
         ? raw.keyType
-        : docId.startsWith('isbn:')
-          ? 'isbn'
-          : 'bookid';
+        : resolveReadingStateKeyType(docId);
 
     const candidate: Record<string, unknown> = {
       ...raw,
@@ -453,7 +513,7 @@ export const readingStateConverter = {
       }
     }
 
-    return validateFirestoreReadPayload(
+    const parsedState = validateFirestoreReadPayload(
       storedUserReadingStateDocSchema,
       candidate,
       {
@@ -462,6 +522,49 @@ export const readingStateConverter = {
         operation: 'read',
       },
     );
+
+    if (
+      needsSelfHeal &&
+      resolvedUserId !== 'unknown_user' &&
+      canRunBackgroundSelfHeal()
+    ) {
+      const healKey = `${resolvedUserId}:${docId}`;
+      if (!inFlightReadingStateHeals.has(healKey)) {
+        inFlightReadingStateHeals.add(healKey);
+        const healPatch: Record<string, unknown> = {};
+        if (parsedState.status !== undefined) {
+          healPatch.status = parsedState.status;
+        }
+        if (parsedState.bookSnapshot !== undefined) {
+          healPatch.bookSnapshot = parsedState.bookSnapshot;
+        }
+        if (Object.keys(healPatch).length > 0) {
+          validateFirestoreWritePayload(
+            storedUserReadingStateDocSchema.partial(),
+            healPatch,
+            {
+              entity: 'StoredUserReadingStateDoc',
+              documentPath: `/users/${resolvedUserId}/readingStates/${docId}`,
+              operation: 'update',
+            },
+          );
+          void getAdminDb()
+            .collection('users')
+            .doc(resolvedUserId)
+            .collection('readingStates')
+            .doc(docId)
+            .update(healPatch)
+            .catch(() => {})
+            .finally(() => {
+              inFlightReadingStateHeals.delete(healKey);
+            });
+        } else {
+          inFlightReadingStateHeals.delete(healKey);
+        }
+      }
+    }
+
+    return parsedState;
   },
 };
 
@@ -483,51 +586,98 @@ export function normalizeReadingStateDoc(
 }
 
 /**
- * Fetches a single reading state document for a book using the strict single-lookup key rule:
- * - If the book has an ISBN, ONLY looks up `isbn:<NORMALIZED_ISBN>`.
- * - If the book does not have an ISBN, ONLY looks up `bookid:<BOOK_ID>`.
+ * Resolves a user's reading state from an in-memory map across canonical `book:<lib>:<id>` keys,
+ * standalone `ext:<isbn>` keys, and cross-edition `cleanIsbn` matches.
+ */
+export function resolveReadingStateFromMap(
+  readingStatesMap: Map<string, Partial<UserReadingState>>,
+  target: {
+    libraryId?: string;
+    bookId: string;
+    isbn?: string;
+    cleanIsbn?: string;
+  },
+): Partial<UserReadingState> | undefined {
+  if (readingStatesMap.size === 0) {
+    return undefined;
+  }
+
+  const canonicalKey = computeReadingStateKey({
+    libraryId: target.libraryId,
+    isbn: target.isbn,
+    cleanIsbn: target.cleanIsbn,
+    bookId: target.bookId,
+  });
+  const directHit = readingStatesMap.get(canonicalKey);
+  if (directHit) {
+    return directHit;
+  }
+
+  const normalizedIsbn = normalizeIsbnForDedupe(
+    target.cleanIsbn || target.isbn,
+  );
+  if (normalizedIsbn) {
+    const extHit = readingStatesMap.get(`ext:${normalizedIsbn}`);
+    if (extHit) {
+      return extHit;
+    }
+    for (const entry of readingStatesMap.values()) {
+      if (entry.cleanIsbn === normalizedIsbn) {
+        return entry;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Fetches the reading state document for a book using its canonical `book:<libraryId>:<bookId>` key
+ * (with optional `ext:<cleanIsbn>` check when tracked as an external edition).
  */
 export async function fetchUserReadingStateForBook(
   db: FirebaseFirestore.Firestore,
   userId: string,
-  book: {id: string; isbn?: string; cleanIsbn?: string},
+  book: {id: string; libraryId?: string; isbn?: string; cleanIsbn?: string},
 ): Promise<Partial<UserReadingState> | undefined> {
   const readingStatesCol = getReadingStatesCollection(db, userId);
-  if (!readingStatesCol || typeof readingStatesCol.doc !== 'function') {
+  if (!readingStatesCol) {
     return undefined;
   }
 
-  const stateKey = computeReadingStateKey({
+  const candidateKeys: string[] = [];
+  const primaryKey = computeReadingStateKey({
+    libraryId: book.libraryId,
     isbn: book.isbn,
     cleanIsbn: book.cleanIsbn,
     bookId: book.id,
   });
+  candidateKeys.push(primaryKey);
 
-  try {
-    const docRef = readingStatesCol.doc(stateKey);
-    if (!docRef || typeof docRef.get !== 'function') {
-      return undefined;
+  const normalizedIsbn = normalizeIsbnForDedupe(book.cleanIsbn || book.isbn);
+  if (normalizedIsbn) {
+    const extKey = `ext:${normalizedIsbn}`;
+    if (!candidateKeys.includes(extKey)) {
+      candidateKeys.push(extKey);
     }
-    const snap = await docRef.get();
-    if (!snap || !snap.exists) {
-      return undefined;
-    }
-    return normalizeReadingStateDoc(
-      snap.id || stateKey,
-      snap.data() || {},
-      userId,
-    );
-  } catch (err) {
-    if (err instanceof SchemaValidationError) {
-      throw err;
-    }
-    return undefined;
   }
+
+  for (const key of candidateKeys) {
+    const snap = await readingStatesCol.doc(key).get();
+    if (snap.exists) {
+      return normalizeReadingStateDoc(
+        snap.id || key,
+        snap.data() || {},
+        userId,
+      );
+    }
+  }
+
+  return undefined;
 }
 
 /**
- * Loads all reading state documents for a user into an O(1) lookup Map keyed by `stateKey`
- * (`isbn:<NORMALIZED_ISBN>` or `bookid:<BOOK_ID>`).
+ * Loads all reading state documents for a user into a lookup Map keyed by `stateKey`.
  */
 export async function fetchUserReadingStatesMap(
   db: FirebaseFirestore.Firestore,
@@ -535,25 +685,58 @@ export async function fetchUserReadingStatesMap(
 ): Promise<Map<string, Partial<UserReadingState>>> {
   const map = new Map<string, Partial<UserReadingState>>();
   const readingStatesCol = getReadingStatesCollection(db, userId);
-  if (!readingStatesCol || typeof readingStatesCol.get !== 'function') {
+  if (!readingStatesCol) {
     return map;
   }
 
-  try {
-    const snap = await readingStatesCol.get();
-    for (const doc of snap?.docs || []) {
-      const normalized = normalizeReadingStateDoc(
-        doc.id,
-        doc.data() || {},
-        userId,
-      );
-      map.set(doc.id, normalized);
-    }
-  } catch (err) {
-    if (err instanceof SchemaValidationError) {
-      throw err;
-    }
-    // Return empty map if readingStates collection is not yet populated or mocked
+  const snap = await readingStatesCol.get();
+  for (const doc of snap.docs) {
+    const normalized = normalizeReadingStateDoc(
+      doc.id,
+      doc.data() || {},
+      userId,
+    );
+    map.set(doc.id, normalized);
+  }
+
+  return map;
+}
+
+/**
+ * Loads lightweight reading-state overlay fields via Firestore `.select(...)` projection,
+ * omitting `bookSnapshot` and `reviewText` wire bytes on catalog list/sync paths.
+ */
+export async function fetchUserReadingStatesProjection(
+  db: FirebaseFirestore.Firestore,
+  userId: string,
+): Promise<Map<string, Partial<UserReadingState>>> {
+  const map = new Map<string, Partial<UserReadingState>>();
+  const readingStatesCol = getReadingStatesCollection(db, userId);
+  if (!readingStatesCol) {
+    return map;
+  }
+
+  const projectedQuery = readingStatesCol.select(
+    'userId',
+    'keyType',
+    'cleanIsbn',
+    'bookId',
+    'libraryId',
+    'status',
+    'rating',
+    'startedAt',
+    'finishedAt',
+    'readStatusReviewedAt',
+    'updatedAt',
+  );
+  const snap = await projectedQuery.get();
+  for (const doc of snap.docs) {
+    const normalized = normalizeReadingStateDoc(
+      doc.id,
+      doc.data() || {},
+      userId,
+    );
+    map.set(doc.id, normalized);
   }
 
   return map;
@@ -569,7 +752,7 @@ export async function loadUserReadingStatesMap(
 }
 
 /**
- * Overlays caller-scoped reading state fields onto a Book DTO using the strict single-lookup key.
+ * Overlays caller-scoped reading state fields onto a Book DTO.
  */
 export function overlayReadingStateOnBook(
   book: Book,

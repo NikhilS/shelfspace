@@ -28,7 +28,7 @@ function extractExistingSynopsis(book?: CoreBookData): string | undefined {
   if (!book) {
     return undefined;
   }
-  const raw = book.synopsis || book.description;
+  const raw = book.synopsis;
   return typeof raw === 'string' && raw.trim().length > 0
     ? raw.trim()
     : undefined;
@@ -37,14 +37,14 @@ function extractExistingSynopsis(book?: CoreBookData): string | undefined {
 const EFFECTIVE_TEMPORAL_CONFIDENCE_THRESHOLD = TEMPORAL_CONFIDENCE_THRESHOLD;
 
 function toTemporalMetadataRecord(
-  item: TemporalBookResult & {eraLabel?: string},
+  item: TemporalBookResult,
 ): BookTemporalMetadata {
-  const era = item.eraName || item.eraLabel;
+  const era = item.eraName;
   return {
     isNonHistorical: item.isNonHistorical,
     ...(item.startYear !== undefined ? {startYear: item.startYear} : {}),
     ...(item.endYear !== undefined ? {endYear: item.endYear} : {}),
-    ...(era ? {eraLabel: era, eraName: era} : {}),
+    ...(era ? {eraName: era} : {}),
     ...(item.rationale ? {rationale: item.rationale} : {}),
     lastSyncedAt: new Date().toISOString(),
   };
@@ -106,9 +106,7 @@ export class TemporalMetadataProvider implements MetadataPlugin<BookTemporalMeta
             );
 
             if (temporalResult && temporalResult.enrichment) {
-              for (const item of temporalResult.enrichment as Array<
-                TemporalBookResult & {eraLabel?: string}
-              >) {
+              for (const item of temporalResult.enrichment) {
                 if (!item.id) {
                   continue;
                 }
@@ -220,10 +218,7 @@ export class TemporalMetadataProvider implements MetadataPlugin<BookTemporalMeta
               );
 
               const repassById = new Map(
-                (repassResult?.enrichment ?? []).map(item => [
-                  item.id,
-                  item as TemporalBookResult & {eraLabel?: string},
-                ]),
+                (repassResult?.enrichment ?? []).map(item => [item.id, item]),
               );
 
               for (const b of chunk) {

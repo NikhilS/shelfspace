@@ -68,45 +68,26 @@ export function useAppPermissions() {
 
   const cached = readCachedPermissions(email);
 
-  let data:
-    | {
-        isAppAllowed: boolean;
-        isAdmin: boolean;
-        hasAiPlan?: boolean;
-        user?: unknown;
-      }
-    | undefined;
-  let isLoading = false;
-  let refetch: () => Promise<unknown> = async () => {};
+  const queryResult = trpc.auth.getPermissions.useQuery(undefined, {
+    enabled: Boolean(isAuthReady && email && !isSuperAdmin),
+    initialData: () =>
+      cached?.isAppAllowed && user?.uid && email
+        ? {
+            isAppAllowed: cached.isAppAllowed,
+            isAdmin: cached.isAdmin,
+            hasAiPlan: Boolean(cached.isAdmin || cached.hasAiPlan),
+            user: {
+              uid: user.uid,
+              email,
+            },
+          }
+        : undefined,
+    staleTime: 1000 * 60 * 5,
+  });
 
-  const usePermissionsQuery = trpc?.auth?.getPermissions?.useQuery;
-  if (typeof usePermissionsQuery === 'function') {
-    try {
-      const queryResult = usePermissionsQuery(undefined, {
-        enabled: Boolean(isAuthReady && email && !isSuperAdmin),
-        initialData: () =>
-          cached?.isAppAllowed && user?.uid && email
-            ? {
-                isAppAllowed: cached.isAppAllowed,
-                isAdmin: cached.isAdmin,
-                hasAiPlan: Boolean(cached.isAdmin || cached.hasAiPlan),
-                user: {
-                  uid: user.uid,
-                  email,
-                },
-              }
-            : undefined,
-        staleTime: 1000 * 60 * 5,
-      });
-      data = queryResult?.data;
-      isLoading = Boolean(queryResult?.isLoading);
-      if (queryResult?.refetch) {
-        refetch = queryResult.refetch;
-      }
-    } catch {
-      // Fallback when rendered outside tRPC Provider in isolated unit tests
-    }
-  }
+  const data = queryResult.data;
+  const isLoading = Boolean(queryResult.isLoading);
+  const refetch = queryResult.refetch;
 
   useEffect(() => {
     if (email && data && typeof data.isAppAllowed === 'boolean') {
@@ -132,11 +113,7 @@ export function useAppPermissions() {
   const resolvedIsAdmin = effectiveData?.isAdmin ?? false;
   const resolvedHasAiPlan = effectiveData
     ? Boolean(resolvedIsAdmin || effectiveData.hasAiPlan)
-    : Boolean(
-        resolvedIsAdmin ||
-        typeof usePermissionsQuery !== 'function' ||
-        !isAuthReady,
-      );
+    : Boolean(resolvedIsAdmin || !isAuthReady);
 
   return {
     isAppAllowed: effectiveData?.isAppAllowed ?? false,

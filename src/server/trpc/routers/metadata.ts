@@ -1,130 +1,9 @@
 import {z} from 'zod';
-import {TRPCError} from '@trpc/server';
 import {router, protectedProcedure, adminProcedure} from '../trpc';
-import {MetadataRegistry} from '../../services/metadata';
-import {MetadataKey} from '../../../types/metadata';
-import {catalogOrchestrator, wikipediaProvider} from '../../services/catalog';
+import {catalogOrchestrator} from '../../services/catalog';
 import {serverTelemetryBuffer} from '../../services/telemetry/serverTelemetryBuffer';
-import {requiresAiPlanForEnrichment} from '../../../constants/enrichmentDescriptors';
-import {safeIdSchema, safeImageUrlSchema} from '../../../schemas/common';
-
-const coreBookSchema = z
-  .object({
-    id: safeIdSchema,
-    title: z.string().trim().min(1).max(500),
-    author: z.string().trim().max(500),
-    isbn: z.string().trim().max(64).optional(),
-    primaryGenre: z.string().trim().max(200).optional(),
-    subgenres: z.array(z.string().trim().max(200)).max(50).optional(),
-    synopsis: z.string().max(50000).optional(),
-    description: z.string().max(50000).optional(),
-    publishedDate: z.string().max(100).optional(),
-    coverUrl: safeImageUrlSchema.optional(),
-    series: z.string().max(300).optional(),
-  })
-  .strict();
 
 export const metadataRouter = router({
-  /**
-   * Enriches newly created books across all on-create metadata providers.
-   */
-  enrichCreate: protectedProcedure
-    .input(
-      z.object({
-        books: z
-          .array(coreBookSchema)
-          .max(100, 'Maximum 100 books per enrichment batch'),
-      }),
-    )
-    .mutation(async ({ctx, input}) => {
-      const allowAiFallback = Boolean(ctx.isAdmin || ctx.hasAiPlan !== false);
-      const registry = MetadataRegistry.getInstance();
-      const createProviders = registry
-        .getAllProviders()
-        .filter(p => p.shouldFetchOnCreate() && p.isAvailable());
-
-      const enrichedResults: Record<string, Record<string, unknown>> = {};
-      for (const b of input.books) {
-        enrichedResults[b.id] = {};
-      }
-
-      const providerPromises = createProviders.map(async provider => {
-        const key = provider.getKey();
-        if (!allowAiFallback && requiresAiPlanForEnrichment(key)) {
-          return;
-        }
-        try {
-          const batchResult = await provider.bulkFetch(input.books, {
-            allowAiFallback,
-          });
-          for (const [bookId, metadata] of Object.entries(batchResult)) {
-            if (metadata !== null && metadata !== undefined) {
-              if (!enrichedResults[bookId]) {
-                enrichedResults[bookId] = {};
-              }
-              enrichedResults[bookId][key] = metadata;
-            }
-          }
-        } catch (error) {
-          console.error(
-            `Error running on-create provider for key ${key}:`,
-            error,
-          );
-        }
-      });
-
-      await Promise.all(providerPromises);
-      return enrichedResults;
-    }),
-
-  /**
-   * Enriches existing books for a specific MetadataKey.
-   */
-  enrichSpruceUp: protectedProcedure
-    .input(
-      z.object({
-        providerKey: z.nativeEnum(MetadataKey),
-        books: z
-          .array(coreBookSchema)
-          .max(100, 'Maximum 100 books per enrichment batch'),
-      }),
-    )
-    .mutation(async ({ctx, input}) => {
-      const allowAiFallback = Boolean(ctx.isAdmin || ctx.hasAiPlan !== false);
-      if (!allowAiFallback && requiresAiPlanForEnrichment(input.providerKey)) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message:
-            'AI Plan required: Your account does not have an active AI Plan for AI metadata enrichment.',
-        });
-      }
-
-      const registry = MetadataRegistry.getInstance();
-      const provider = registry.getProvider(input.providerKey);
-
-      if (!provider) {
-        throw new Error(`No provider registered for key: ${input.providerKey}`);
-      }
-
-      if (!provider.isAvailable()) {
-        throw new Error(
-          `Provider for key ${input.providerKey} is currently unavailable`,
-        );
-      }
-
-      try {
-        return await provider.bulkFetch(input.books, {
-          allowAiFallback,
-        });
-      } catch (error) {
-        console.error(
-          `Error running spruce-up provider for key ${input.providerKey}:`,
-          error,
-        );
-        throw error;
-      }
-    }),
-
   /**
    * Priority-preempted ISBN lookup across all 8 federated catalog providers.
    */
@@ -218,17 +97,6 @@ export const metadataRouter = router({
           verifyCovers: true,
         },
       );
-    }),
-
-  /**
-   * Server-side author biography lookup via WikipediaProvider.
-   */
-  fetchAuthorBio: protectedProcedure
-    .input(z.object({author: z.string().trim().min(1).max(500)}))
-    .mutation(async ({input}) => {
-      return wikipediaProvider.fetchAuthorBio(input.author, {
-        priority: 'INTERACTIVE',
-      });
     }),
 
   /**

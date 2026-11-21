@@ -3,6 +3,7 @@ import {MapPin, ChevronRight, BookOpen, X} from 'lucide-react';
 import {Badge} from '@/components/ui/badge';
 import {CartographyCompassIllustration} from '@/components/ui/empty-state-illustrations';
 import {MonographCoverFallback} from '../../components/book/MonographCoverFallback';
+import {toTitleCase} from '../../lib/utils';
 import {Book} from '../../types';
 import {FlattenedLocationPin, MapCluster} from './types';
 
@@ -25,58 +26,72 @@ export function WorldMapInspector({
   onClearSelection,
   onNavigateToBook,
 }: WorldMapInspectorProps) {
+  const uniqueBookCount = selectedCluster
+    ? new Set(selectedCluster.pins.map(p => p.book.id)).size
+    : 0;
+
   return (
     <div className="lg:col-span-4 space-y-4">
-      {/* Context/Selected Location info Panel */}
+      {/* Context / Selected Location Inspector Panel */}
       <div
-        className="bg-surface-container border border-outline-variant rounded-3xl p-5 shadow-sm min-h-[300px] flex flex-col justify-between"
+        className="bento-card p-5 min-h-[300px] flex flex-col justify-between"
         id="literary-context-panel"
       >
         {selectedCluster ? (
           <div className="space-y-4 flex-1">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-base font-bold text-on-surface flex items-center gap-2">
-                  <MapPin className="text-primary w-5 h-5 flex-shrink-0" />
-                  {selectedSinglePin
-                    ? selectedSinglePin.name
-                    : 'Geographical Cluster'}
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-outline-variant/50">
+              <div className="min-w-0">
+                <span className="metadata-eyebrow block mb-1">
+                  Selected Place
+                </span>
+                <h3 className="font-serif text-lg font-semibold text-on-surface flex items-center gap-2">
+                  <MapPin className="text-tertiary w-4 h-4 flex-shrink-0" />
+                  <span className="truncate">
+                    {selectedSinglePin
+                      ? selectedSinglePin.name
+                      : 'Geographical Cluster'}
+                  </span>
                 </h3>
-                <p className="text-xs text-on-surface-variant font-medium mt-1">
-                  Contains{' '}
-                  {new Set(selectedCluster.pins.map(p => p.book.id)).size}{' '}
-                  unique book
-                  {new Set(selectedCluster.pins.map(p => p.book.id)).size !== 1
-                    ? 's'
-                    : ''}{' '}
-                  ({selectedCluster.pins.length} distinct setting reference
-                  {selectedCluster.pins.length !== 1 ? 's' : ''})
+                <p className="text-xs text-on-surface-variant font-sans mt-1">
+                  <span className="font-mono tabular-nums font-semibold text-on-surface">
+                    {uniqueBookCount}
+                  </span>{' '}
+                  {uniqueBookCount === 1 ? 'book' : 'books'} &middot;{' '}
+                  <span className="font-mono tabular-nums">
+                    {selectedCluster.pins.length}
+                  </span>{' '}
+                  setting{' '}
+                  {selectedCluster.pins.length === 1
+                    ? 'reference'
+                    : 'references'}
                 </p>
               </div>
               <button
+                type="button"
+                aria-label="Clear selected location"
                 onClick={onClearSelection}
-                className="p-1 hover:bg-surface-variant/50 rounded-full transition"
+                className="p-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-lg transition-colors cursor-pointer shrink-0"
               >
                 <X size={16} />
               </button>
             </div>
 
             {/* List of book settings within this cluster */}
-            <div className="space-y-3.5 max-h-[350px] overflow-y-auto pr-1">
+            <div className="divide-y divide-outline-variant/50 max-h-[360px] overflow-y-auto pr-1">
               {selectedCluster.pins.map((pin, i) => (
                 <div
-                  key={i}
-                  className="bg-surface/50 border border-outline-variant/60 rounded-2xl p-3.5 space-y-3 hover:border-primary/50 transition cursor-pointer"
+                  key={`${pin.book.id}-${pin.name}-${i}`}
+                  className="py-3.5 first:pt-0 last:pb-0 space-y-2.5 group cursor-pointer"
                   onClick={() =>
                     onNavigateToBook(pin.book.id, pin.book.libraryId)
                   }
                 >
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 items-start">
                     {pin.book.coverUrl ? (
                       <img
                         src={pin.book.coverUrl}
                         alt={pin.book.title}
-                        className="w-12 h-16 object-cover rounded-lg shadow-sm bg-surface-container flex-shrink-0"
+                        className="w-12 h-18 object-cover rounded-md book-cover-shadow border border-outline-variant/50 bg-surface-container flex-shrink-0"
                         referrerPolicy="no-referrer"
                         loading="lazy"
                       />
@@ -85,21 +100,21 @@ export function WorldMapInspector({
                         title={pin.book.title}
                         author={pin.book.author}
                         variant="micro"
-                        className="w-12 h-16 rounded-lg flex-shrink-0"
+                        className="w-12 h-18 rounded-md flex-shrink-0"
                       />
                     )}
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-bold text-on-surface leading-tight truncate">
-                        {pin.book.title}
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-serif text-sm font-semibold text-on-surface group-hover:text-primary leading-snug truncate transition-colors">
+                        {toTitleCase(pin.book.title)}
                       </h4>
-                      <p className="text-xs text-on-surface-variant truncate mt-0.5">
-                        by {pin.book.author || 'Unknown'}
+                      <p className="font-sans text-xs text-on-surface-variant truncate mt-0.5">
+                        by {toTitleCase(pin.book.author || 'Unknown')}
                       </p>
-                      <div className="mt-2">
+                      <div className="mt-2 flex items-center gap-1.5">
                         <Badge
-                          variant="status-read"
+                          variant="outline"
                           size="sm"
-                          className="uppercase tracking-wider font-label-caps-xs text-label-caps-xs"
+                          className="uppercase tracking-wider text-[10px] font-semibold bg-tertiary/10 text-tertiary border-tertiary/25"
                         >
                           {pin.adminLevel}
                         </Badge>
@@ -107,9 +122,9 @@ export function WorldMapInspector({
                     </div>
                   </div>
                   {pin.rationale && (
-                    <div className="bg-neutral-50/70 border-l-2 border-stone-300 pl-2.5 py-1 text-xs text-stone-600 italic leading-relaxed">
+                    <p className="pt-2 border-t border-outline-variant/40 font-sans text-xs text-on-surface-variant leading-relaxed">
                       &ldquo;{pin.rationale}&rdquo;
-                    </div>
+                    </p>
                   )}
                 </div>
               ))}
@@ -125,7 +140,7 @@ export function WorldMapInspector({
               <h3 className="font-serif text-base font-semibold text-on-surface">
                 Explore a Place on the Map
               </h3>
-              <p className="text-xs text-on-surface-variant max-w-xs mx-auto leading-relaxed mt-1">
+              <p className="font-sans text-xs text-on-surface-variant max-w-xs mx-auto leading-relaxed mt-1">
                 Select any pin or cluster on the map to see the books set there
                 and why that place matters to the story.
               </p>
@@ -135,54 +150,55 @@ export function WorldMapInspector({
       </div>
 
       {/* Non-Earth Archive accordion block */}
-      <div
-        className="bg-surface-container border border-outline-variant rounded-2xl overflow-hidden shadow-sm"
-        id="non-earth-archive"
-      >
+      <div className="bento-card overflow-hidden" id="non-earth-archive">
         <button
+          type="button"
           onClick={onToggleNonEarthExpanded}
-          className="w-full px-5 py-4 flex items-center justify-between hover:bg-surface-variant/20 transition"
+          className="w-full px-5 py-4 flex items-center justify-between hover:bg-surface-container-low transition-colors cursor-pointer"
         >
-          <div className="flex items-center gap-2">
-            <BookOpen className="text-amber-600 w-5 h-5" />
-            <span className="text-sm font-bold text-on-surface">
-              Non-Earth Archive ({nonEarthBooks.length})
+          <div className="flex items-center gap-2.5">
+            <BookOpen className="text-tertiary w-4 h-4 shrink-0" />
+            <span className="font-serif text-sm font-semibold text-on-surface">
+              Non-Earth Archive
+            </span>
+            <span className="font-mono tabular-nums text-xs text-on-surface-variant">
+              ({nonEarthBooks.length})
             </span>
           </div>
           <ChevronRight
             size={16}
-            className={`text-on-surface-variant transition-transform duration-300 ${isNonEarthExpanded ? 'rotate-90' : ''}`}
+            className={`text-on-surface-variant transition-transform duration-200 ${isNonEarthExpanded ? 'rotate-90' : ''}`}
           />
         </button>
 
         {isNonEarthExpanded && (
-          <div className="px-5 pb-5 border-t border-outline-variant bg-surface/30">
+          <div className="px-5 pb-4 border-t border-outline-variant/50 bg-surface-container-low/40">
             {nonEarthBooks.length === 0 ? (
-              <p className="text-xs text-on-surface-variant py-3 italic">
+              <p className="font-sans text-xs text-on-surface-variant py-3 italic">
                 No fictional or otherworldly settings on this shelf yet.
               </p>
             ) : (
-              <div className="space-y-2 mt-3.5 max-h-[220px] overflow-y-auto pr-1">
+              <div className="divide-y divide-outline-variant/45 pt-1 max-h-[220px] overflow-y-auto pr-1">
                 {nonEarthBooks.map(b => (
                   <div
                     key={b.id}
-                    className="flex items-center justify-between text-xs py-2 px-3 bg-surface/50 border rounded-xl hover:border-primary/50 cursor-pointer transition"
+                    className="flex items-center justify-between gap-3 text-xs py-2.5 cursor-pointer group"
                     onClick={() => onNavigateToBook(b.id, b.libraryId)}
                   >
                     <div className="min-w-0 pr-2">
-                      <p className="font-bold text-on-surface truncate leading-tight">
-                        {b.title}
+                      <p className="font-serif font-semibold text-sm text-on-surface group-hover:text-primary truncate leading-tight transition-colors">
+                        {toTitleCase(b.title)}
                       </p>
-                      <p className="text-on-surface-variant truncate mt-0.5">
-                        by {b.author || 'Unknown'}
+                      <p className="font-sans text-on-surface-variant truncate mt-0.5">
+                        by {toTitleCase(b.author || 'Unknown')}
                       </p>
                     </div>
                     <Badge
                       variant="outline"
                       size="sm"
-                      className="font-label-caps-xs text-label-caps-xs font-semibold tracking-wide whitespace-nowrap bg-stone-100 text-stone-600 border-stone-200"
+                      className="text-[10px] font-semibold tracking-wider uppercase whitespace-nowrap bg-surface-container text-on-surface-variant border-outline-variant/60 shrink-0"
                     >
-                      Fictional / Sci-Fi
+                      Fictional
                     </Badge>
                   </div>
                 ))}

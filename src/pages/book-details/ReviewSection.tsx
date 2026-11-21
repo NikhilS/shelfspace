@@ -72,18 +72,28 @@ export function ReviewSection({
   };
 
   return (
-    <section className="mt-8 border-t border-surface-dim pt-12">
-      <div className="flex items-center justify-between flex-wrap gap-4 mb-6 sm:mb-8">
-        <h3 className="font-headline-md text-headline-md text-primary">
-          Reviews
-        </h3>
+    <section className="bento-card p-5 sm:p-6">
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
+        <div className="flex items-baseline gap-2.5">
+          <h3 className="font-serif text-xl font-semibold text-primary">
+            Reviews &amp; Reader Notes
+          </h3>
+          {reviews.length > 0 && (
+            <span className="font-mono tabular-nums text-xs text-on-surface-variant">
+              ({reviews.length})
+            </span>
+          )}
+        </div>
         {Boolean(user) &&
           !isReviewing &&
           !reviews.some(r => r.userId === user?.uid) && (
             <Button
+              size="sm"
+              variant="outline"
               disabled={!isOnline}
               title={!isOnline ? 'Unavailable while offline' : undefined}
               onClick={() => isOnline && setIsReviewing(true)}
+              className="h-8 px-3.5 text-xs font-sans font-semibold rounded-lg"
             >
               Write Review
             </Button>
@@ -91,8 +101,8 @@ export function ReviewSection({
       </div>
 
       {Boolean(user) && isReviewing && (
-        <div className="bg-surface-container rounded-lg p-6 mb-8 border border-surface-variant swiper-no-swiping">
-          <div className="mb-4 swiper-no-swiping">
+        <div className="bg-surface-container-low rounded-xl p-4 sm:p-5 mb-5 border border-outline-variant/60 swiper-no-swiping">
+          <div className="mb-3.5 swiper-no-swiping">
             <StarRating
               interactive
               rating={reviewRating}
@@ -104,11 +114,12 @@ export function ReviewSection({
             value={reviewText}
             onChange={e => setReviewText(e.target.value)}
             placeholder="What did you think of this book?"
-            className="w-full bg-surface-container-lowest border-outline-variant/60 rounded-md p-4 text-body-md text-on-surface min-h-[120px] mb-6 resize-y swiper-no-swiping"
+            className="w-full bg-surface border-outline-variant/60 rounded-lg p-3.5 text-sm text-on-surface min-h-[110px] mb-4 resize-y swiper-no-swiping"
           />
           <div className="flex justify-end gap-2">
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 setIsReviewing(false);
                 setReviewRating(0);
@@ -118,6 +129,7 @@ export function ReviewSection({
               Cancel
             </Button>
             <Button
+              size="sm"
               onClick={handleSaveReview}
               disabled={!isOnline || isSavingReview}
               title={!isOnline ? 'Unavailable while offline' : undefined}
@@ -128,32 +140,29 @@ export function ReviewSection({
         </div>
       )}
 
-      <div className="space-y-6">
-        {reviews.length === 0 ? (
-          <p className="text-on-surface-variant italic text-sm">
-            No notes or reviews yet. Share your thoughts when you&apos;re ready.
-          </p>
-        ) : (
-          reviews.map(review => (
-            <div
-              key={review.id}
-              className="bg-surface-container-lowest rounded-lg p-6 border border-surface-variant architectural-shadow"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+      {reviews.length === 0 ? (
+        <p className="text-on-surface-variant italic text-sm font-sans">
+          No notes or reviews yet. Share your thoughts when you&apos;re ready.
+        </p>
+      ) : (
+        <div className="divide-y divide-outline-variant/50">
+          {reviews.map(review => (
+            <div key={review.id} className="py-4 first:pt-1 last:pb-0">
+              <div className="flex items-center justify-between gap-3 mb-2.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-tertiary/12 border border-tertiary/25 flex items-center justify-center text-tertiary font-serif font-semibold text-sm shrink-0">
                     {review.userName?.charAt(0)?.toUpperCase() || 'U'}
                   </div>
-                  <div>
-                    <p className="font-medium text-primary">
+                  <div className="min-w-0">
+                    <p className="font-sans text-sm font-semibold text-on-surface truncate">
                       {review.userName}
                     </p>
-                    <div className="flex items-center gap-1 mt-1 text-secondary swiper-no-swiping">
+                    <div className="flex items-center gap-1 mt-0.5 text-tertiary swiper-no-swiping">
                       <StarRating rating={review.rating} size="sm" />
                     </div>
                   </div>
                 </div>
-                <span className="text-xs text-on-surface-variant uppercase tracking-wider">
+                <span className="font-mono tabular-nums text-[11px] text-on-surface-variant uppercase tracking-wider shrink-0">
                   {typeof review.createdAt === 'string' &&
                   !isNaN(new Date(review.createdAt).getTime())
                     ? formatShortDate(new Date(review.createdAt))
@@ -171,13 +180,15 @@ export function ReviewSection({
                         : 'Just now'}
                 </span>
               </div>
-              <p className="text-on-surface leading-relaxed text-body-md whitespace-pre-wrap">
-                {review.text}
-              </p>
+              {review.text && (
+                <p className="text-on-surface/90 font-sans leading-relaxed text-sm whitespace-pre-wrap pl-12">
+                  {review.text}
+                </p>
+              )}
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

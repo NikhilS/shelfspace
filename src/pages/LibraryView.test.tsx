@@ -42,6 +42,15 @@ vi.mock('../lib/trpc', () => ({
         get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
       },
     }),
+    auth: {
+      getPermissions: {
+        useQuery: () => ({
+          data: {isAppAllowed: true, isAdmin: false, hasAiPlan: true},
+          isLoading: false,
+          refetch: vi.fn(),
+        }),
+      },
+    },
     library: {
       get: {
         useQuery: () => ({
@@ -115,6 +124,18 @@ vi.mock('../lib/trpc', () => ({
   trpcVanilla: {
     libraryApi: {
       list: {query: vi.fn()},
+    },
+    metadata: {
+      searchByTitleAndAuthor: {mutate: vi.fn().mockResolvedValue(null)},
+    },
+    book: {
+      syncChanges: {
+        query: vi.fn().mockResolvedValue({
+          books: [],
+          deletedBookIds: [],
+          serverTimestampMs: Date.now(),
+        }),
+      },
     },
   },
 }));

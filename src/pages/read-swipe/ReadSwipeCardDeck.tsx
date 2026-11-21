@@ -295,7 +295,7 @@ export function ReadSwipeStatusBanner({
             transition={{duration: 0.16}}
             role="status"
             aria-live="polite"
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-destructive/30 bg-destructive/10 text-xs font-sans font-medium text-destructive shadow-2xs"
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-error/30 bg-error/10 text-xs font-sans font-medium text-error shadow-2xs"
           >
             <span>{mutationError}</span>
           </motion.div>
@@ -357,8 +357,8 @@ export function ReadSwipeStatusBanner({
               onClick={onUndoLastSwipe}
               className={
                 lastSwipe.action === 'read'
-                  ? 'inline-flex items-center gap-1 font-sans text-xs font-semibold text-emerald-900 dark:text-emerald-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 rounded px-1 shrink-0 cursor-pointer'
-                  : 'inline-flex items-center gap-1 font-sans text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 rounded px-1 shrink-0 cursor-pointer'
+                  ? 'inline-flex items-center gap-1 font-sans text-xs font-semibold text-emerald-900 dark:text-emerald-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded px-1 shrink-0 cursor-pointer'
+                  : 'inline-flex items-center gap-1 font-sans text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded px-1 shrink-0 cursor-pointer'
               }
             >
               <RotateCcw className="w-3 h-3" />

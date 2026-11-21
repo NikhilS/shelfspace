@@ -44,7 +44,7 @@ export function Login() {
               aria-hidden="true"
             />
             <span className="hidden sm:inline-flex items-center font-sans font-semibold text-[11px] tracking-widest uppercase text-on-surface-variant select-none leading-none">
-              Shelves & Reading Life
+              Shelves &amp; Reading Life
             </span>
           </div>
 
@@ -53,7 +53,7 @@ export function Login() {
               type="button"
               onClick={signIn}
               variant="editorial"
-              className="bg-primary text-on-primary hover:bg-primary/90 font-sans text-xs sm:text-sm font-semibold px-4 sm:px-5 rounded-lg shadow-elevation-1"
+              className="bg-primary text-on-primary hover:bg-primary/90 font-sans text-xs sm:text-sm font-semibold px-4 sm:px-5 rounded-lg shadow-elevation-1 whitespace-nowrap shrink-0"
             >
               <span>Sign In</span>
               <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -64,41 +64,56 @@ export function Login() {
 
       <main className="flex-grow flex flex-col items-center w-full">
         {/* SECTION 1: HERO + INTERACTIVE MINI BENTO PREVIEW */}
-        <section className="w-full max-w-[1200px] px-6 sm:px-12 pt-12 sm:pt-16 pb-14 sm:pb-20 flex flex-col items-center text-center">
+        <section className="w-full max-w-[1200px] px-6 sm:px-12 pt-12 sm:pt-18 pb-14 sm:pb-20 flex flex-col items-center text-center">
           <motion.div
-            initial={{opacity: 0, y: 14}}
+            initial={{opacity: 0, y: 12}}
             animate={{opacity: 1, y: 0}}
-            transition={{duration: 0.45, ease: 'easeOut'}}
+            transition={{duration: 0.35, ease: [0.22, 1, 0.36, 1]}}
             className="flex flex-col items-center w-full"
           >
-            {/* Light, Informal Headline */}
-            <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold text-on-surface leading-[1.08] tracking-tight max-w-3xl">
+            <span className="metadata-eyebrow text-tertiary mb-3">
+              A Quiet Sanctuary for Readers &amp; Collectors
+            </span>
+
+            {/* Crisp Geometric Display Headline */}
+            <h1 className="font-serif text-4xl sm:text-5xl lg:text-[56px] font-bold text-on-surface leading-[1.08] tracking-tight max-w-3xl [text-wrap:balance]">
               Your physical bookshelves and your reading life,{' '}
-              <span className="font-brand italic font-bold text-primary">
-                finally in the same room.
-              </span>
+              <span className="text-tertiary">finally in the same room.</span>
             </h1>
 
             {/* Crisp Subtitle */}
-            <p className="font-sans text-base sm:text-lg text-on-surface-variant max-w-2xl leading-relaxed mt-4">
+            <p className="font-sans text-base sm:text-lg text-on-surface-variant max-w-2xl leading-relaxed mt-5">
               Catalog the books on your shelves at home and track everything
               you’re reading, borrowing, or saving for later—with 1-click
               search, shelf photo scanning, and visual maps of your books.
             </p>
 
-            {/* Quick Capability Strip */}
-            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mt-6 text-xs text-on-surface-variant font-sans font-medium">
+            {/* Primary CTA + Quick Capability Strip */}
+            <div className="mt-7 flex flex-col sm:flex-row items-center gap-3">
+              <Button
+                type="button"
+                onClick={signIn}
+                variant="editorial"
+                size="lg"
+                className="bg-primary text-on-primary hover:bg-primary/90 h-11 px-6 rounded-lg font-sans text-sm font-semibold flex items-center gap-2 shadow-elevation-2 whitespace-nowrap shrink-0"
+              >
+                <span>Enter Your Reading Room</span>
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mt-7 text-xs text-on-surface-variant font-sans font-medium">
               <span className="inline-flex items-center gap-1.5">
-                <Library className="w-3.5 h-3.5 text-primary" />
+                <Library className="w-3.5 h-3.5 text-tertiary" />
                 Physical libraries + personal reading list
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Camera className="w-3.5 h-3.5 text-primary" />
-                Search, barcode scan & shelf camera
+                <Camera className="w-3.5 h-3.5 text-tertiary" />
+                Search, barcode scan &amp; shelf camera
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Compass className="w-3.5 h-3.5 text-primary" />
-                3D stack, constellations, map & timeline
+                <Compass className="w-3.5 h-3.5 text-tertiary" />
+                3D stack, constellations, map &amp; timeline
               </span>
             </div>
 
@@ -111,16 +126,16 @@ export function Login() {
         <DimensionsBento />
 
         {/* SECTION 3: CLOSING SIGN-IN CTA */}
-        <section className="w-full py-16 sm:py-20 border-t border-outline-variant/40">
+        <section className="w-full py-16 sm:py-20 border-t border-outline-variant/50">
           <div className="max-w-3xl mx-auto px-6 sm:px-12">
-            <div className="rounded-2xl bg-surface border border-outline-variant/60 p-8 sm:p-10 text-center shadow-elevation-2 flex flex-col items-center">
-              <div className="w-11 h-11 rounded-xl bg-surface-container border border-outline-variant/50 flex items-center justify-center text-primary mb-4">
+            <div className="bento-card rounded-2xl p-8 sm:p-11 text-center shadow-elevation-2 flex flex-col items-center">
+              <div className="w-11 h-11 rounded-xl bg-surface-container border border-outline-variant/60 flex items-center justify-center text-tertiary mb-4">
                 <BookOpen className="w-5 h-5" />
               </div>
-              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-on-surface tracking-tight">
+              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-on-surface tracking-tight [text-wrap:balance]">
                 Start your first shelf in 30 seconds.
               </h2>
-              <p className="font-sans text-sm sm:text-base text-on-surface-variant max-w-md mt-2 leading-relaxed">
+              <p className="font-sans text-sm sm:text-base text-on-surface-variant max-w-md mt-2.5 leading-relaxed">
                 Sign in with Google to track what you’re reading right now,
                 search for a book, or snap a photo of a bookshelf.
               </p>
@@ -130,7 +145,7 @@ export function Login() {
                   onClick={signIn}
                   variant="editorial"
                   size="lg"
-                  className="bg-primary text-on-primary hover:bg-primary/90 h-12 px-7 rounded-xl font-sans text-sm font-semibold flex items-center gap-2 shadow-elevation-1"
+                  className="bg-primary text-on-primary hover:bg-primary/90 h-11 px-7 rounded-lg font-sans text-sm font-semibold flex items-center gap-2 shadow-elevation-1 whitespace-nowrap shrink-0"
                 >
                   <span>Get Started</span>
                   <ArrowRight className="w-4 h-4" />
@@ -142,7 +157,7 @@ export function Login() {
       </main>
 
       {/* Minimal Footer */}
-      <footer className="py-8 border-t border-outline-variant/40 bg-surface-container-low/50">
+      <footer className="py-8 border-t border-outline-variant/50 bg-surface-container-low/50">
         <div className="max-w-[1280px] mx-auto px-6 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-sans text-on-surface-variant">
           <div className="flex items-center gap-2.5">
             <span className="font-brand italic text-lg font-bold text-primary leading-none">
@@ -151,7 +166,9 @@ export function Login() {
             <span className="text-outline-variant">·</span>
             <span>For people who love their bookshelves</span>
           </div>
-          <span>© {new Date().getFullYear()} book(ish)</span>
+          <span className="font-mono tabular-nums">
+            © {new Date().getFullYear()} book(ish)
+          </span>
         </div>
       </footer>
     </div>

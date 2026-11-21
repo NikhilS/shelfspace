@@ -5,6 +5,8 @@ import {
   bookDocConverter,
   computeReadingStateKey,
   fetchUserReadingStatesMap,
+  parseBookOrStateIdentifier,
+  resolveReadingStateFromMap,
 } from '../book';
 import {catalogOrchestrator} from '../catalog';
 import {extractPrimarySearchToken} from '../../../lib/duplicateDetection';
@@ -122,80 +124,50 @@ export async function searchUnifiedCatalog(
     const [snaps, readingStatesMap] = await Promise.all([
       Promise.all(
         libEntries.map(async libMeta => {
-          try {
-            const booksRef = db
-              .collection('libraries')
-              .doc(libMeta.id)
-              .collection('books');
+          const booksRef = db
+            .collection('libraries')
+            .doc(libMeta.id)
+            .collection('books');
 
-            let ranIndexedTokenQuery = false;
-
-            if (typeof (booksRef as {where?: unknown}).where === 'function') {
-              if (isLikelyIsbn) {
-                const isbnSnap = await booksRef
-                  .where('cleanIsbn', '==', queryIsbn)
-                  .limit(25)
-                  .get();
-                const matchedIsbnDocs = (isbnSnap?.docs || []).filter(docSnap =>
-                  matchesSearchCriteria(
-                    bookDocConverter.fromFirestore(
-                      docSnap.id,
-                      (docSnap.data() || {}) as Record<string, unknown>,
-                    ),
-                  ),
-                );
-                if (matchedIsbnDocs.length > 0) {
-                  return {libMeta, docs: matchedIsbnDocs};
-                }
-                if (libMeta.bookCount === 0) {
-                  return {libMeta, docs: []};
-                }
-              } else if (primarySearchToken) {
-                ranIndexedTokenQuery = true;
-                const tokenSnap = await booksRef
-                  .where('searchTokens', 'array-contains', primarySearchToken)
-                  .limit(100)
-                  .get();
-                const matchedTokenDocs = (tokenSnap?.docs || []).filter(
-                  docSnap =>
-                    matchesSearchCriteria(
-                      bookDocConverter.fromFirestore(
-                        docSnap.id,
-                        (docSnap.data() || {}) as Record<string, unknown>,
-                      ),
-                    ),
-                );
-                if (matchedTokenDocs.length > 0) {
-                  return {libMeta, docs: matchedTokenDocs};
-                }
-                if (libMeta.bookCount === 0) {
-                  return {libMeta, docs: []};
-                }
-              }
-            }
-
-            const snap =
-              typeof (booksRef as {limit?: unknown}).limit === 'function'
-                ? await booksRef.limit(200).get()
-                : await booksRef.get();
-            const fallbackDocs = (snap.docs || []).filter(docSnap => {
-              const data = bookDocConverter.fromFirestore(
-                docSnap.id,
-                docSnap.data() || {},
-              );
-              if (
-                ranIndexedTokenQuery &&
-                Array.isArray(data.searchTokens) &&
-                data.searchTokens.length > 0
-              ) {
-                return false;
-              }
-              return matchesSearchCriteria(data);
-            });
-            return {libMeta, docs: fallbackDocs};
-          } catch {
+          if (libMeta.bookCount === 0) {
             return {libMeta, docs: []};
           }
+
+          if (isLikelyIsbn) {
+            const isbnSnap = await booksRef
+              .where('cleanIsbn', '==', queryIsbn)
+              .limit(25)
+              .get();
+            const matchedIsbnDocs = (isbnSnap.docs || []).filter(docSnap =>
+              matchesSearchCriteria(
+                bookDocConverter.fromFirestore(
+                  docSnap.id,
+                  (docSnap.data() || {}) as Record<string, unknown>,
+                  `/libraries/${libMeta.id}/books/${docSnap.id}`,
+                ),
+              ),
+            );
+            return {libMeta, docs: matchedIsbnDocs};
+          }
+
+          if (primarySearchToken) {
+            const tokenSnap = await booksRef
+              .where('searchTokens', 'array-contains', primarySearchToken)
+              .limit(100)
+              .get();
+            const matchedTokenDocs = (tokenSnap.docs || []).filter(docSnap =>
+              matchesSearchCriteria(
+                bookDocConverter.fromFirestore(
+                  docSnap.id,
+                  (docSnap.data() || {}) as Record<string, unknown>,
+                  `/libraries/${libMeta.id}/books/${docSnap.id}`,
+                ),
+              ),
+            );
+            return {libMeta, docs: matchedTokenDocs};
+          }
+
+          return {libMeta, docs: []};
         }),
       ),
       fetchUserReadingStatesMap(db, userId),
@@ -206,17 +178,30 @@ export async function searchUnifiedCatalog(
     for (const {libMeta, docs} of snaps) {
       for (const docSnap of docs) {
         const raw = (docSnap.data() || {}) as Record<string, unknown>;
-        const data = bookDocConverter.fromFirestore(docSnap.id, raw);
+        const data = bookDocConverter.fromFirestore(
+          docSnap.id,
+          raw,
+          `/libraries/${libMeta.id}/books/${docSnap.id}`,
+        );
         const title = data.title || 'Untitled Book';
         const author = data.author || 'Unknown Author';
 
         const stateKey = computeReadingStateKey({
+          libraryId: libMeta.id,
           isbn: data.isbn,
           cleanIsbn: data.cleanIsbn,
           bookId: docSnap.id,
         });
         seenStateKeys.add(stateKey);
-        const state = readingStatesMap.get(stateKey);
+        const state = resolveReadingStateFromMap(readingStatesMap, {
+          libraryId: libMeta.id,
+          bookId: docSnap.id,
+          isbn: data.isbn,
+          cleanIsbn: data.cleanIsbn,
+        });
+        if (state?.id) {
+          seenStateKeys.add(state.id);
+        }
         const rawStatus =
           state?.status ?? (libMeta.isVirtual ? 'want_to_read' : 'unset');
         const readingStatus = normalizeShelfStatus(rawStatus);
@@ -238,10 +223,6 @@ export async function searchUnifiedCatalog(
           coverUrl: data.coverUrl,
           publishedDate: data.publishedDate,
           primaryGenre: data.primaryGenre || undefined,
-          synopsis:
-            typeof raw.synopsis === 'string' && raw.synopsis.length > 0
-              ? raw.synopsis
-              : undefined,
           readingStatus,
           userRating: state?.rating,
         });
@@ -256,18 +237,18 @@ export async function searchUnifiedCatalog(
         continue;
       }
       const snap = state.bookSnapshot;
+      const parsedKey = parseBookOrStateIdentifier(stateKey);
       const resolvedLibraryId =
-        state.libraryId || snap.libraryId || virtualLibraryId;
+        state.libraryId ||
+        parsedKey.libraryIdFromId ||
+        snap.libraryId ||
+        virtualLibraryId;
       const isVirtual =
         resolvedLibraryId.startsWith('virtual_') ||
         snap.ownershipStatus === 'unowned';
       matches.push({
         bookId:
-          state.bookId ||
-          snap.bookId ||
-          (stateKey.startsWith('bookid:')
-            ? stateKey.slice('bookid:'.length)
-            : stateKey),
+          state.bookId || snap.bookId || parsedKey.cleanBookId || stateKey,
         libraryId: resolvedLibraryId,
         libraryName:
           snap.libraryName ||
@@ -281,7 +262,6 @@ export async function searchUnifiedCatalog(
         coverUrl: snap.coverUrl,
         publishedDate: snap.publishedDate,
         primaryGenre: snap.primaryGenre,
-        synopsis: snap.synopsis,
         readingStatus: normalizeShelfStatus(state.status),
         userRating: state.rating,
       });

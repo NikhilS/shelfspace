@@ -10,12 +10,12 @@ import {
   type MetadataPlugin,
   type StageBookOutcome,
 } from '../../../../types/metadata';
-import * as geminiService from '../../gemini';
-import {hydrateCatalogForResidualBooks} from '../bonusCatalogPatcher';
 import {
-  getOptionalModuleFunction,
-  runPluginStagesToRecord,
-} from '../stageRunner';
+  extractBookSeriesBatch,
+  gateSeriesCandidatesWithDecisions,
+} from '../../gemini';
+import {hydrateCatalogForResidualBooks} from '../bonusCatalogPatcher';
+import {runPluginStagesToRecord} from '../stageRunner';
 
 const seriesPluginOutputSchema: z.ZodType<string | null> = z
   .string()
@@ -25,7 +25,7 @@ function extractExistingSynopsis(book?: CoreBookData): string | undefined {
   if (!book) {
     return undefined;
   }
-  const raw = book.synopsis || book.description;
+  const raw = book.synopsis;
   return typeof raw === 'string' && raw.trim().length > 0
     ? raw.trim()
     : undefined;
@@ -47,15 +47,11 @@ export class SeriesMetadataProvider implements MetadataPlugin<string | null> {
           return outcomes;
         }
 
-        const gateSeriesFn = getOptionalModuleFunction<
-          typeof geminiService.gateSeriesCandidatesWithDecisions
-        >(geminiService, 'gateSeriesCandidatesWithDecisions');
         const canUseDecisionGate =
           options?.allowAiFallback !== false &&
-          Boolean(process.env.GEMINI_API_KEY) &&
-          Boolean(gateSeriesFn);
+          Boolean(process.env.GEMINI_API_KEY);
 
-        if (!canUseDecisionGate || !gateSeriesFn) {
+        if (!canUseDecisionGate) {
           for (const book of books) {
             outcomes.set(book.id, {status: 'escalate'});
           }
@@ -73,7 +69,7 @@ export class SeriesMetadataProvider implements MetadataPlugin<string | null> {
             if (options?.signal?.aborted) {
               return;
             }
-            const passedIds = await gateSeriesFn(
+            const passedIds = await gateSeriesCandidatesWithDecisions(
               chunk.map(b => ({
                 id: b.id,
                 title: b.title,
@@ -117,13 +113,9 @@ export class SeriesMetadataProvider implements MetadataPlugin<string | null> {
           preferField: 'series',
         });
 
-        const extractSeriesFn = getOptionalModuleFunction<
-          typeof geminiService.extractBookSeriesBatch
-        >(geminiService, 'extractBookSeriesBatch');
         const canEscalateToGenerative =
           options?.allowAiFallback !== false &&
-          Boolean(process.env.GEMINI_API_KEY) &&
-          Boolean(extractSeriesFn);
+          Boolean(process.env.GEMINI_API_KEY);
 
         for (const book of books) {
           const catalogHit = catalogMap.get(book.id);
@@ -160,15 +152,11 @@ export class SeriesMetadataProvider implements MetadataPlugin<string | null> {
       tier: 'generative',
       execute: async ({books, options}) => {
         const outcomes = new Map<string, StageBookOutcome<string | null>>();
-        const extractSeriesFn = getOptionalModuleFunction<
-          typeof geminiService.extractBookSeriesBatch
-        >(geminiService, 'extractBookSeriesBatch');
         if (
           books.length === 0 ||
           options?.signal?.aborted ||
           options?.allowAiFallback === false ||
-          !process.env.GEMINI_API_KEY ||
-          !extractSeriesFn
+          !process.env.GEMINI_API_KEY
         ) {
           return outcomes;
         }
@@ -185,7 +173,7 @@ export class SeriesMetadataProvider implements MetadataPlugin<string | null> {
               return;
             }
             try {
-              const aiSeriesMap = await extractSeriesFn(
+              const aiSeriesMap = await extractBookSeriesBatch(
                 chunk.map(b => ({
                   id: b.id,
                   title: b.title,

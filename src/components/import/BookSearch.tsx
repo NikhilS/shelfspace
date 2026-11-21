@@ -95,10 +95,7 @@ export function BookSearch({
     setHasSearched(false);
     setLastSearchedQuery(cleanQuery);
     try {
-      if (
-        mode === 'reading' &&
-        typeof trpcVanilla.readingTracker?.searchUnified?.query === 'function'
-      ) {
+      if (mode === 'reading') {
         const res = await trpcVanilla.readingTracker.searchUnified.query({
           query: cleanQuery,
         });

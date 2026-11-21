@@ -35,7 +35,8 @@ The **book(ish)** monorepo follows a strict, layered folder structure with clear
         ├── trpc/
         │   ├── trpc.ts               # tRPC initialization & procedure re-exports
         │   └── routers/              # 1-to-1 domain routers + _app.ts root router (`readingTracker`, `enrichment`, `metadata`, etc.)
-        └── services/                 # Modular server domain service packages (`book/`, `library/`, `readingTracker/`, `catalog/`, `metadata/`, `gemini/`)
+        ├── testing/                  # Spec-compliant in-memory FakeFirestore engine (`fakeFirestore.ts`, `fakeFirestoreHelpers.ts`)
+        └── services/                 # Modular server domain service packages (`book/`, `library/`, `readingTracker/`, `enrichmentJobCoordinator/`, `catalog/`, `metadata/`, `gemini/`)
 ```
 
 ---
@@ -52,14 +53,14 @@ The **book(ish)** monorepo follows a strict, layered folder structure with clear
 | **Web Workers (`src/workers/`)** | `<domain>.worker.ts` | Message handler | `umap.worker.ts`, `duplicateDetection.worker.ts` |
 | **Schemas, Utilities & Routers** | `camelCase.ts` | `camelCase` / `PascalCase` | `libraryApi.ts`, `date.ts`, `securityGateway.ts` |
 | **Catalog Source Providers** | `<Vendor>Provider.ts` | `PascalCase` class | `OpenLibraryProvider.ts`, `GoogleBooksProvider.ts` |
-| **Service Orchestrators & Coordinators** | `camelCase.ts` | `PascalCase` class + `camelCase` singleton | `catalogOrchestrator.ts`, `enrichmentJobCoordinator.ts` |
+| **Service Orchestrators & Governors** | `camelCase.ts` | `PascalCase` class + `camelCase` singleton | `catalogOrchestrator.ts`, `globalProviderGovernor.ts` |
 
 ---
 
 ## 3. Module Resolution & Barrel Rules (No Sibling Shims)
 
 1. **Single Canonical Entry Point per Module & Provider Barrel Encapsulation:**
-   - When a domain service, math engine, or type module grows into a multi-file directory (e.g., `src/types/`, `src/lib/clustering/`, `src/lib/telemetry/`, `src/server/services/book/`, `src/server/services/library/`, `src/server/services/readingTracker/`, `src/server/services/gemini/`, `src/server/services/catalog/`, `src/server/services/metadata/`), expose its public surface via `index.ts` inside that directory and keep individual implementation modules focused (<1,000 LOC).
+   - When a domain service, math engine, or type module grows into a multi-file directory (e.g., `src/types/`, `src/lib/clustering/`, `src/lib/telemetry/`, `src/lib/readingStatusCache/`, `src/server/services/book/`, `src/server/services/library/`, `src/server/services/readingTracker/`, `src/server/services/enrichmentJobCoordinator/`, `src/server/services/gemini/`, `src/server/services/catalog/`, `src/server/services/metadata/`), expose its public surface via `index.ts` inside that directory and keep individual implementation modules focused (<1,000 LOC).
    - **Never** create a redundant 1-line sibling re-export file (such as `src/types.ts` next to `src/types/index.ts`, or `bookService.ts` next to `book/index.ts`). Every module must have exactly one import path.
    - External server callers must import metadata and catalog providers through `src/server/services/metadata` or `src/server/services/catalog` (deep imports into `providers/*` outside those packages are blocked by `eslint.config.cjs`).
 2. **Typed Plugin Registries (Open-Closed Extensibility):**
@@ -79,7 +80,7 @@ The **book(ish)** monorepo follows a strict, layered folder structure with clear
      - `gemini` → `gemini.ts`
 4. **Strict Client/Server Boundary (Enforced in `eslint.config.cjs`):**
    - Files under `src/server/` and `firebase-admin` may never be imported by browser components, hooks, or stores (except `import type {AppRouter}` in `src/lib/trpc.ts`). Shared DTOs (such as `src/types/readingTracker.ts`) must reside in `src/types/` or `src/schemas/`.
-   - Browser and server code must never import `firebase/firestore` or `@firebase/firestore`. Client-side mutation wrappers (`storage.ts`, `bookActions.ts`, `sanitizeStorage.ts`) live in `src/lib/` and delegate 100% of persistence to `trpc`.
+   - Browser and server code must never import `firebase/firestore` or `@firebase/firestore`. Client-side mutation wrappers (`storage.ts`, `bookActions.ts`, `readingStatusCache/`) live in `src/lib/` and delegate 100% of persistence to `trpc`.
 
 ---
 
@@ -135,7 +136,7 @@ The repository adheres to the official [Google TypeScript Style Guide](https://g
    - **Routers**: Every domain router in `src/server/trpc/routers/` (`auth.ts`, `user.ts`, `libraryApi.ts`, `bookApi.ts`, `enrichmentApi.ts`, `metadata.ts`, `gemini.ts`) must have a dedicated co-located `*.test.ts` file exercising its procedures via `createCaller`.
    - **Backend Services & Auth**: Every core server service (`book`, `library`, `catalog`, `gemini`, `metadata`, `scheduler`, `telemetry`, `enrichmentService`, `enrichmentJobCoordinator`, `userService`, `geolocation`) and auth module (`tokenVerifier`, `allowlistService`, `waitlistService`, `permissions`, `procedures`, `context`) must maintain a co-located unit test suite.
    - **Pure Mathematical & Spatial Engines**: All clustering, geometry, chronological, and spatial modules (`clustering.ts`, `timelineMath.ts`, `worldMapMath.ts`, `duplicateDetection.ts`, `isbn.ts`, `date.ts`) and Web Workers (`umap.worker.ts`, `duplicateDetection.worker.ts`) must have deterministic unit test suites.
-   - **Client RBAC, Gateway Helpers & Zustand Stores**: All client permission/gateway utilities (`permissions.ts`, `storage.ts`, `bookActions.ts`, `sanitizeStorage.ts`, `clientCache.ts`) and Zustand stores (`authStore.ts`, `appStore.ts`, `uiStore.ts`, `debugStore.ts`) must have co-located unit suites.
+   - **Client RBAC, Gateway Helpers & Zustand Stores**: All client permission/gateway utilities (`permissions.ts`, `storage.ts`, `bookActions.ts`, `readingStatusCache/`, `clientCache.ts`) and Zustand stores (`authStore.ts`, `appStore.ts`, `uiStore.ts`, `entityCacheStore.ts`, `coverTransitionStore.ts`, `debugStore.ts`) must have co-located unit suites.
 
 ---
 
@@ -149,7 +150,8 @@ Every pull request or feature addition must satisfy three verification pillars b
    - Stochastic algorithms (K-Means++, silhouette optimal-$K$, force-directed layout relaxation, UMAP worker pipelines) must be tested with fixed PRNG seeds and assert strict geometric invariants (e.g., non-overlapping cluster bounding circles, $[-range, range]$ coordinate bounds, and $[-1, 1]$ silhouette bounds).
 3. **Asynchronous Resilience & Cancellation:**
    - Outbound provider orchestrators, rate-limit governors, and batch enrichment utilities must test both happy paths and degraded/cancelled paths (`AbortSignal` propagation, 429 quota backoff, interactive slot reservation, and ring-buffer bounding).
-4. **100% Read/Write Schema & Test Fixture Compliance (`src/schemas/schemaCompliance.ts` & `src/lib/schema.test.ts`):**
-   - Every Firestore or disk read and write in `src/server/**` must route through a typed `*Converter` (`fromFirestore` / `toFirestoreWrite`) and shared strict validators (`validateFirestoreReadPayload`, `validateFirestoreWritePayload`, `validateIncomingApiData`).
-   - Unit and integration tests mocking Firestore snapshots (`doc.data()`) must return payloads that satisfy the corresponding `stored*DocSchema` (using the typed fixture builders in `src/schemas/schemaCompliance.ts`), and both `src/lib/schema.test.ts` and `src/schemas/schemaCompliance.test.ts` must pass with zero unvalidated collections or snapshot casts.
+4. **100% Read/Write Schema & Test Fixture Compliance (`src/schemas/schemaCompliance.ts`, `FakeFirestore` & `src/lib/schema.test.ts`):**
+   - Every Firestore read and write in `src/server/**` must route through a typed `*Converter` (`fromFirestore` / `toFirestoreWrite`) and shared strict validators (`validateFirestoreReadPayload`, `validateFirestoreWritePayload`, `validateIncomingApiData`).
+   - Production server services must never contain mock-appeasing runtime reflection guards (`typeof col.where === 'function'`) or silent `catch {}` blocks that swallow broken query chains. Instead, back unit and integration tests with `FakeFirestore` (`src/server/testing/fakeFirestore.ts`) and schema-compliant fixtures (`src/schemas/schemaCompliance.ts`), and ensure both `src/lib/schema.test.ts` and `src/schemas/schemaCompliance.test.ts` pass across all 12 Firestore collections.
+
 

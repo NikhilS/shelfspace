@@ -14,17 +14,10 @@ export function extractLocationPins(books: Book[]): FlattenedLocationPin[] {
           loc.coordinates?.lat !== undefined &&
           loc.coordinates?.lng !== undefined
         ) {
-          const normalizedAdmin = loc.adminLevel?.toLowerCase();
-          const adminLevel: 'city' | 'state' | 'country' | 'region' =
-            normalizedAdmin === 'state' ||
-            normalizedAdmin === 'country' ||
-            normalizedAdmin === 'region'
-              ? normalizedAdmin
-              : 'city';
           list.push({
             book: b,
             name: loc.name,
-            adminLevel,
+            adminLevel: loc.adminLevel ?? 'city',
             rationale: loc.rationale ?? '',
             lat: loc.coordinates.lat,
             lng: loc.coordinates.lng,

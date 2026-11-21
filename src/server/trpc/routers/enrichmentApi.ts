@@ -7,7 +7,6 @@ import {
   enrichmentJobStatusSchema,
   enrichmentStartJobSchema,
   enrichmentTriggerSchema,
-  normalizeEnrichmentType,
 } from '../../../schemas/libraryApi';
 import {EnrichmentService} from '../../services/enrichmentService';
 import {enrichmentJobCoordinator} from '../../services/enrichmentJobCoordinator';
@@ -35,32 +34,7 @@ export const enrichmentApiRouter = router({
   trigger: libraryProcedure('editor')
     .input(enrichmentTriggerSchema)
     .mutation(async ({ctx, input}) => {
-      const enrichmentType = normalizeEnrichmentType(
-        input.enrichmentType || input.flow,
-      );
-      const allowAiFallback = Boolean(ctx.isAdmin || ctx.hasAiPlan !== false);
-      assertEnrichmentAiPlanAccess(enrichmentType, allowAiFallback);
-      return await EnrichmentService.triggerBatchEnrichment(
-        ctx.user.uid,
-        ctx.user.email,
-        {
-          libraryId: input.libraryId,
-          enrichmentType,
-          bookIds: input.bookIds,
-          overwrite: input.overwrite ?? false,
-          customGenres: input.customGenres,
-          allowAiFallback,
-        },
-        {skipAccessCheck: true},
-      );
-    }),
-
-  triggerBatch: libraryProcedure('editor')
-    .input(enrichmentTriggerSchema)
-    .mutation(async ({ctx, input}) => {
-      const enrichmentType = normalizeEnrichmentType(
-        input.enrichmentType || input.flow,
-      );
+      const enrichmentType = input.enrichmentType;
       const allowAiFallback = Boolean(ctx.isAdmin || ctx.hasAiPlan !== false);
       assertEnrichmentAiPlanAccess(enrichmentType, allowAiFallback);
       return await EnrichmentService.triggerBatchEnrichment(
@@ -81,9 +55,7 @@ export const enrichmentApiRouter = router({
   startJob: libraryProcedure('editor')
     .input(enrichmentStartJobSchema)
     .mutation(async ({ctx, input}) => {
-      const enrichmentType = normalizeEnrichmentType(
-        input.enrichmentType || input.flow,
-      );
+      const enrichmentType = input.enrichmentType;
       const allowAiFallback = Boolean(ctx.isAdmin || ctx.hasAiPlan !== false);
       assertEnrichmentAiPlanAccess(enrichmentType, allowAiFallback);
       return await enrichmentJobCoordinator.startJob(
@@ -116,7 +88,7 @@ export const enrichmentApiRouter = router({
   getJobStatus: libraryProcedure('viewer')
     .input(enrichmentJobStatusSchema)
     .query(async ({input}) => {
-      return enrichmentJobCoordinator.getJobStatus(input.libraryId);
+      return await enrichmentJobCoordinator.getJobStatus(input.libraryId);
     }),
 
   auditPlaceholderCovers: libraryProcedure('editor')

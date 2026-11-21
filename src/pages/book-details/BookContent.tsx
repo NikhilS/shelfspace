@@ -1,6 +1,6 @@
 import {AnimatePresence, motion} from 'motion/react';
 import React, {useState, useEffect, useMemo} from 'react';
-import {useLocation, useNavigate} from 'react-router-dom';
+import {useLocation} from 'react-router-dom';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
 import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {toast} from 'sonner';
@@ -60,7 +60,6 @@ export function BookContent({
   onNavigateBack,
   canEdit: passedCanEdit,
 }: BookContentProps) {
-  const navigate = useNavigate();
   const {hasAiPlan} = useAppPermissions();
   const isOnline = useOnlineStatus();
 
@@ -274,8 +273,7 @@ export function BookContent({
                         ? 'status-to-read'
                         : book.readingStatus === 'reading'
                           ? 'status-reading'
-                          : book.readingStatus === 'finished' ||
-                              book.readingStatus === 'completed'
+                          : book.readingStatus === 'finished'
                             ? 'status-read'
                             : 'status-abandoned'
                     }
@@ -284,8 +282,7 @@ export function BookContent({
                       ? 'WANT TO READ'
                       : book.readingStatus === 'reading'
                         ? 'READING'
-                        : book.readingStatus === 'finished' ||
-                            book.readingStatus === 'completed'
+                        : book.readingStatus === 'finished'
                           ? 'FINISHED'
                           : 'ABANDONED'}
                   </Badge>
@@ -328,8 +325,7 @@ export function BookContent({
                         ? 'status-to-read'
                         : book.readingStatus === 'reading'
                           ? 'status-reading'
-                          : book.readingStatus === 'finished' ||
-                              book.readingStatus === 'completed'
+                          : book.readingStatus === 'finished'
                             ? 'status-read'
                             : 'status-abandoned'
                     }
@@ -338,8 +334,7 @@ export function BookContent({
                       ? 'WANT TO READ'
                       : book.readingStatus === 'reading'
                         ? 'READING'
-                        : book.readingStatus === 'finished' ||
-                            book.readingStatus === 'completed'
+                        : book.readingStatus === 'finished'
                           ? 'FINISHED'
                           : 'ABANDONED'}
                   </Badge>
@@ -442,7 +437,7 @@ export function BookContent({
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-3.5 h-3.5 text-primary" />
+                      <Sparkles className="w-3.5 h-3.5 text-tertiary" />
                       <span>
                         {hasAiPlan ? 'Generate Synopsis' : 'Fetch Synopsis'}
                       </span>
@@ -501,56 +496,6 @@ export function BookContent({
                 </p>
               )}
             </div>
-
-            {(book.primaryGenre ||
-              (book.subgenres && book.subgenres.length > 0)) && (
-              <div className="mt-5 pt-3.5 border-t border-outline-variant/50 flex items-center flex-wrap gap-2 swiper-no-swiping">
-                <span className="metadata-eyebrow mr-1">
-                  Genre & Subgenres:
-                </span>
-                {book.primaryGenre && (
-                  <Badge
-                    variant="genre"
-                    onClick={() =>
-                      void navigate(
-                        libraryId.startsWith('virtual_')
-                          ? '/'
-                          : `/library/${libraryId}/collection?genre=${encodeURIComponent(book.primaryGenre!)}`,
-                      )
-                    }
-                    className="cursor-pointer swiper-no-swiping"
-                    title={
-                      libraryId.startsWith('virtual_')
-                        ? 'Return to Reading Room'
-                        : `Filter library by ${book.primaryGenre}`
-                    }
-                  >
-                    {book.primaryGenre}
-                  </Badge>
-                )}
-                {book.subgenres?.map((sg, idx) => (
-                  <Badge
-                    key={idx}
-                    variant="subgenre"
-                    onClick={() =>
-                      void navigate(
-                        libraryId.startsWith('virtual_')
-                          ? '/'
-                          : `/library/${libraryId}/collection?genre=${encodeURIComponent(book.primaryGenre || '')}&subgenre=${encodeURIComponent(sg)}`,
-                      )
-                    }
-                    className="cursor-pointer swiper-no-swiping"
-                    title={
-                      libraryId.startsWith('virtual_')
-                        ? 'Return to Reading Room'
-                        : `Filter library by ${sg}`
-                    }
-                  >
-                    {sg}
-                  </Badge>
-                ))}
-              </div>
-            )}
           </section>
 
           {/* Narrative Setting Split-Row (Where & When) */}
@@ -567,7 +512,7 @@ export function BookContent({
               {book.geoMetadata && (
                 <section className="bento-card p-5 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center justify-between gap-2 mb-3.5">
+                    <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-outline-variant/50">
                       <h3 className="font-serif font-semibold text-base sm:text-lg text-primary truncate">
                         Literary Setting
                       </h3>
@@ -583,40 +528,40 @@ export function BookContent({
                     </div>
 
                     {book.geoMetadata.isNonEarth ? (
-                      <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-surface-container-low border border-outline-variant/50">
-                        <Compass className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                      <div className="flex items-start gap-2.5 py-1">
+                        <Compass className="w-4 h-4 text-tertiary shrink-0 mt-0.5" />
                         <div>
-                          <h4 className="font-semibold text-xs sm:text-sm text-on-surface">
+                          <h4 className="font-sans font-semibold text-xs sm:text-sm text-on-surface">
                             Fictional / Non-Earth Realm
                           </h4>
-                          <p className="font-body-xs text-xs text-on-surface-variant mt-1 leading-relaxed">
+                          <p className="font-sans text-xs text-on-surface-variant mt-1 leading-relaxed">
                             Set in an imagined, fantasy, or non-earth universe.
                           </p>
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-2.5">
+                      <div className="divide-y divide-outline-variant/45">
                         {book.geoMetadata.locations &&
                         book.geoMetadata.locations.length > 0 ? (
                           book.geoMetadata.locations.map((loc, idx) => {
-                            const getAdminBadgeClass = (level: string) => {
-                              switch (level?.toLowerCase()) {
+                            const getAdminBadgeClass = (level?: string) => {
+                              switch (level) {
                                 case 'city':
                                   return 'bg-primary/10 text-primary border-primary/20';
                                 case 'country':
-                                  return 'bg-tertiary/10 text-tertiary border-tertiary/20';
+                                  return 'bg-tertiary/12 text-tertiary border-tertiary/25';
                                 default:
-                                  return 'bg-surface-container text-on-surface border-outline-variant/50';
+                                  return 'bg-surface-container text-on-surface-variant border-outline-variant/50';
                               }
                             };
                             return (
                               <div
                                 key={idx}
-                                className="p-3 rounded-lg border border-outline-variant/50 bg-surface-container-low/60 flex flex-col justify-between"
+                                className="py-2.5 first:pt-0 last:pb-0 flex flex-col justify-between"
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <span className="font-sans font-semibold text-xs sm:text-sm text-on-surface flex items-center gap-1.5 truncate">
-                                    <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                                    <MapPin className="w-3.5 h-3.5 text-tertiary shrink-0" />
                                     {loc.name}
                                   </span>
                                   <Badge
@@ -630,7 +575,7 @@ export function BookContent({
                                   </Badge>
                                 </div>
                                 {loc.rationale && (
-                                  <p className="font-body-xs text-xs text-on-surface-variant mt-1.5 leading-relaxed line-clamp-2">
+                                  <p className="font-sans text-xs text-on-surface-variant mt-1 leading-relaxed line-clamp-2 pl-5">
                                     {loc.rationale}
                                   </p>
                                 )}
@@ -638,7 +583,7 @@ export function BookContent({
                             );
                           })
                         ) : (
-                          <p className="font-body-xs text-xs text-on-surface-variant italic py-2">
+                          <p className="font-sans text-xs text-on-surface-variant italic py-1">
                             No specific geographical locations mapped yet.
                           </p>
                         )}
@@ -655,7 +600,7 @@ export function BookContent({
                   className="bento-card p-5 flex flex-col justify-between"
                 >
                   <div>
-                    <div className="flex items-center justify-between gap-2 mb-3.5">
+                    <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-outline-variant/50">
                       <h3 className="font-serif font-semibold text-base sm:text-lg text-primary truncate">
                         Temporal Setting
                       </h3>
@@ -673,19 +618,19 @@ export function BookContent({
                     {book.temporalMetadata.isNonHistorical ? (
                       <div
                         id="temporal-non-historical-badge"
-                        className="flex items-start gap-2.5 p-3.5 rounded-lg bg-surface-container-low border border-outline-variant/50"
+                        className="flex items-start gap-2.5 py-1"
                       >
-                        <Clock className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <Clock className="w-4 h-4 text-tertiary shrink-0 mt-0.5" />
                         <div>
-                          <h4 className="font-semibold text-xs sm:text-sm text-on-surface">
+                          <h4 className="font-sans font-semibold text-xs sm:text-sm text-on-surface">
                             Contemporary Era
                           </h4>
-                          <p className="font-body-xs text-xs text-on-surface-variant mt-1 leading-relaxed">
+                          <p className="font-sans text-xs text-on-surface-variant mt-1 leading-relaxed">
                             Set in contemporary/modern times without a specific
                             historical era.
                           </p>
                           {book.temporalMetadata.rationale && (
-                            <p className="font-body-xs text-xs text-on-surface-variant/85 italic mt-2 pt-2 border-t border-outline-variant/40 leading-relaxed line-clamp-2">
+                            <p className="font-sans text-xs text-on-surface-variant/90 mt-2.5 pt-2.5 border-t border-outline-variant/45 leading-relaxed line-clamp-2">
                               &ldquo;{book.temporalMetadata.rationale}&rdquo;
                             </p>
                           )}
@@ -694,14 +639,13 @@ export function BookContent({
                     ) : (
                       <div
                         id="temporal-historical-details"
-                        className="p-3.5 rounded-lg border border-outline-variant/50 bg-surface-container-low/60 space-y-2"
+                        className="space-y-2.5 py-0.5"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          {(book.temporalMetadata.eraName ||
-                            book.temporalMetadata.eraLabel) && (
-                            <h4 className="font-sans font-semibold text-xs sm:text-sm text-on-surface">
-                              {book.temporalMetadata.eraName ||
-                                book.temporalMetadata.eraLabel}
+                          {book.temporalMetadata.eraName && (
+                            <h4 className="font-sans font-semibold text-xs sm:text-sm text-on-surface flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-tertiary shrink-0" />
+                              <span>{book.temporalMetadata.eraName}</span>
                             </h4>
                           )}
                           <div className="swiper-no-swiping">
@@ -722,8 +666,8 @@ export function BookContent({
                           </div>
                         </div>
                         {book.temporalMetadata.rationale && (
-                          <div className="pt-2 border-t border-outline-variant/40">
-                            <p className="font-body-xs text-xs text-on-surface-variant leading-relaxed italic">
+                          <div className="pt-2.5 border-t border-outline-variant/45">
+                            <p className="font-sans text-xs text-on-surface-variant leading-relaxed">
                               &ldquo;{book.temporalMetadata.rationale}&rdquo;
                             </p>
                           </div>
@@ -737,10 +681,16 @@ export function BookContent({
           )}
 
           {/* Author Bio Bento Box */}
-          <section className="bento-card p-5">
+          <section className="bento-card p-5 sm:p-6">
             <div className="flex items-start gap-3.5 sm:gap-4">
-              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden shrink-0 border border-outline-variant/60 bg-surface-container flex items-center justify-center">
-                <User className="w-5 h-5 text-on-surface-variant" />
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden shrink-0 border border-tertiary/25 bg-tertiary/10 flex items-center justify-center">
+                {book.author && book.author !== 'Unknown Author' ? (
+                  <span className="font-serif font-semibold text-base text-tertiary select-none">
+                    {toTitleCase(book.author).charAt(0)}
+                  </span>
+                ) : (
+                  <User className="w-5 h-5 text-tertiary" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -770,7 +720,7 @@ export function BookContent({
                           </>
                         ) : (
                           <>
-                            <Sparkles className="w-3 h-3 text-primary" />
+                            <Sparkles className="w-3 h-3 text-tertiary" />
                             <span>
                               {hasAiPlan ? 'Generate Bio' : 'Fetch Bio'}
                             </span>
@@ -800,7 +750,7 @@ export function BookContent({
                         </div>
                       </div>
                       {book.authorBio.length > 320 && !isBioExpanded && (
-                        <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-surface-container-lowest to-transparent pointer-events-none" />
+                        <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-surface via-surface/85 to-transparent pointer-events-none" />
                       )}
                       {book.authorBio.length > 320 && (
                         <button

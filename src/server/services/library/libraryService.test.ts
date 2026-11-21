@@ -1,96 +1,28 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {LibraryService} from './index';
 import {TRPCError} from '@trpc/server';
+import {LibraryService, LibraryMetadataCache} from './index';
+import {AllowlistService} from '../../auth/allowlistService';
+import * as adminModule from '../firebaseAdmin';
+import {
+  createFakeFirestore,
+  type FakeFirestore,
+} from '../../testing/fakeFirestore';
 
-const mockLibGet = vi.fn();
-const mockLibWhereGet = vi.fn();
-const mockLibWhere = vi.fn(() => ({
-  get: mockLibWhereGet,
-}));
-const mockBooksGet = vi.fn();
-const mockBookDocGet = vi.fn();
-const mockBatchUpdate = vi.fn();
-const mockBatchDelete = vi.fn();
-const mockBatchSet = vi.fn();
-const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
-const mockBatch = vi.fn(() => ({
-  update: mockBatchUpdate,
-  delete: mockBatchDelete,
-  set: mockBatchSet,
-  commit: mockBatchCommit,
-}));
-const mockGetAll = vi.fn<(...args: unknown[]) => Promise<unknown[]>>(
-  async () => [],
-);
+describe('LibraryService — FakeFirestore Integration & Collaborator Indexes', () => {
+  let fake: FakeFirestore;
 
-const mockCollection = vi.fn((path: string) => {
-  if (path === 'libraries') {
-    return {
-      doc: vi.fn((libId?: string) => ({
-        id: libId || 'lib1',
-        get: mockLibGet,
-        collection: vi.fn((subPath: string) => {
-          if (subPath === 'books') {
-            return {
-              get: mockBooksGet,
-              orderBy: vi.fn(() => ({
-                limit: vi.fn(() => ({
-                  get: mockBooksGet,
-                })),
-                startAfter: vi.fn(() => ({
-                  limit: vi.fn(() => ({
-                    get: mockBooksGet,
-                  })),
-                })),
-              })),
-              doc: vi.fn(() => ({
-                get: mockBookDocGet,
-              })),
-            };
-          }
-          if (subPath === 'bookDetails') {
-            return {
-              doc: vi.fn((id: string) => ({id})),
-            };
-          }
-          if (subPath === 'allowedDuplicates') {
-            return {
-              get: vi.fn().mockResolvedValue({docs: []}),
-            };
-          }
-          return {};
-        }),
-      })),
-      get: mockLibGet,
-      where: mockLibWhere,
-    };
-  }
-  return {};
-});
-
-vi.mock('../firebaseAdmin', () => ({
-  getAdminApp: () => ({}),
-  firebaseConfig: {
-    projectId: 'test-project',
-    storageBucket: 'test-project.firebasestorage.app',
-  },
-  getAdminDb: () => ({
-    collection: mockCollection,
-    doc: vi.fn((docPath: string) => ({path: docPath})),
-    getAll: mockGetAll,
-    batch: mockBatch,
-  }),
-  formatFirestoreAdminError: (err: unknown) =>
-    err instanceof Error ? err.message : String(err),
-}));
-
-describe('LibraryService', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    LibraryMetadataCache.clear();
+    AllowlistService.clearCache();
+    const created = createFakeFirestore();
+    fake = created.fake;
+    vi.spyOn(adminModule, 'getAdminDb').mockReturnValue(created.db);
   });
 
   describe('verifyLibraryAccess', () => {
-    it('grants access immediately to SUPERADMIN_EMAIL', async () => {
+    it('grants access immediately to SUPERADMIN_EMAIL without reading Firestore', async () => {
+      const colSpy = vi.spyOn(fake, 'collection');
       const result = await LibraryService.verifyLibraryAccess(
         'admin_uid',
         'nikhil.singhal@gmail.com',
@@ -98,13 +30,15 @@ describe('LibraryService', () => {
         'owner',
       );
       expect(result).toBe(true);
-      expect(mockLibGet).not.toHaveBeenCalled();
+      expect(colSpy).not.toHaveBeenCalled();
     });
 
     it('throws INTERNAL_SERVER_ERROR when Firestore throws PERMISSION_DENIED', async () => {
-      mockLibGet.mockRejectedValueOnce(
-        new Error('7 PERMISSION_DENIED: Missing or insufficient permissions.'),
-      );
+      vi.spyOn(fake, 'readDocSnapshot').mockImplementationOnce(() => {
+        throw new Error(
+          '7 PERMISSION_DENIED: Missing or insufficient permissions.',
+        );
+      });
 
       await expect(
         LibraryService.verifyLibraryAccess(
@@ -128,10 +62,6 @@ describe('LibraryService', () => {
     });
 
     it('throws NOT_FOUND if library document does not exist', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: false,
-      });
-
       await expect(
         LibraryService.verifyLibraryAccess(
           'u1',
@@ -142,75 +72,44 @@ describe('LibraryService', () => {
       ).rejects.toThrow("Library 'nonexistent' not found");
     });
 
-    it('grants access to library owner', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({
-          ownerId: 'owner_123',
-          access: {},
-        }),
+    it('grants access to library owner and case-insensitive collaborators, and enforces role hierarchy', async () => {
+      fake.seedDoc('libraries/lib1', {
+        name: 'Shared Archive',
+        ownerId: 'owner_123',
+        access: {
+          'editor@example.com': 'editor',
+          'viewer@example.com': 'viewer',
+        },
+        collaboratorEmails: ['editor@example.com', 'viewer@example.com'],
       });
 
-      const granted = await LibraryService.verifyLibraryAccess(
-        'owner_123',
-        'owner@example.com',
-        'lib1',
-        'editor',
-      );
-      expect(granted).toBe(true);
-    });
+      await expect(
+        LibraryService.verifyLibraryAccess(
+          'owner_123',
+          'owner@example.com',
+          'lib1',
+          'editor',
+        ),
+      ).resolves.toBe(true);
 
-    it('grants access via access map (case-insensitive email matching)', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({
-          ownerId: 'some_other_owner',
-          access: {
-            'editor@example.com': 'editor',
-          },
-        }),
-      });
+      await expect(
+        LibraryService.verifyLibraryAccess(
+          'user_456',
+          'Editor@Example.com',
+          'lib1',
+          'editor',
+        ),
+      ).resolves.toBe(true);
 
-      const granted = await LibraryService.verifyLibraryAccess(
-        'user_456',
-        'Editor@Example.com', // Uppercase test
-        'lib1',
-        'editor',
-      );
-      expect(granted).toBe(true);
-    });
-
-    it('denies access if user role in access map is below required role', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({
-          ownerId: 'some_other_owner',
-          access: {
-            'viewer@example.com': 'viewer',
-          },
-        }),
-      });
-
+      LibraryMetadataCache.clear();
       await expect(
         LibraryService.verifyLibraryAccess(
           'user_789',
           'viewer@example.com',
           'lib1',
-          'editor', // Requires editor, but user is viewer
+          'editor',
         ),
       ).rejects.toThrow("Required role 'editor', but caller has 'viewer'");
-    });
-
-    it('denies access if user is not owner and not in access map', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({
-          ownerId: 'owner_123',
-          access: {
-            'friend@example.com': 'viewer',
-          },
-        }),
-      });
 
       await expect(
         LibraryService.verifyLibraryAccess(
@@ -223,95 +122,88 @@ describe('LibraryService', () => {
         "Access denied: You do not have permission to access library 'lib1'",
       );
     });
+
+    it('auto-provisions virtual_<userId> personal reading shelf without mock guards', async () => {
+      const ok = await LibraryService.verifyLibraryAccess(
+        'u_virtual',
+        'reader@example.com',
+        'virtual_u_virtual',
+        'owner',
+      );
+      expect(ok).toBe(true);
+      expect(fake.inspectDoc('libraries/virtual_u_virtual')).toMatchObject({
+        ownerId: 'u_virtual',
+        isVirtual: true,
+      });
+    });
   });
 
-  describe('getUserLibraries', () => {
-    it('returns libraries accessible to caller with assigned callerRole', async () => {
-      const mockDocs = [
-        {
-          id: 'lib_owned',
-          data: () => ({
-            name: 'Owned Library',
-            ownerId: 'user_1',
-            access: {'user_1@example.com': 'owner'},
-            bookCount: 10,
-            createdAt: '2026-01-01T00:00:00.000Z',
-          }),
-        },
-        {
-          id: 'lib_shared',
-          data: () => ({
-            name: 'Shared Library',
-            ownerId: 'other_owner',
-            access: {'user_1@example.com': 'editor'},
-            bookCount: 5,
-            createdAt: '2026-02-01T00:00:00.000Z',
-          }),
-        },
-        {
-          id: 'lib_inaccessible',
-          data: () => ({
-            name: 'Private Library',
-            ownerId: 'stranger',
-            access: {},
-            bookCount: 100,
-          }),
-        },
-      ];
-
-      mockLibWhereGet
-        .mockResolvedValueOnce({
-          forEach: (cb: (doc: unknown) => void) => [mockDocs[0]].forEach(cb),
-        })
-        .mockResolvedValueOnce({
-          forEach: (cb: (doc: unknown) => void) => [mockDocs[1]].forEach(cb),
-        });
-
-      const result = await LibraryService.getUserLibraries(
-        'user_1',
-        'user_1@example.com',
+  describe('createLibrary, upsertCollaborator, removeCollaborator & getUserLibraries', () => {
+    it('maintains collaboratorEmails array on create/upsert/remove and queries shared libraries via array-contains', async () => {
+      const created = await LibraryService.createLibrary(
+        'owner_1',
+        'Owner@Example.com',
+        'Owner One',
+        {name: 'Main Library'},
       );
 
-      expect(result.libraries.length).toBe(2);
-      expect(result.libraries[0].id).toBe('lib_owned');
-      expect(result.libraries[0].callerRole).toBe('owner');
-      expect(result.libraries[0].ownershipType).toBe('owned');
-      expect(result.libraries[1].id).toBe('lib_shared');
-      expect(result.libraries[1].callerRole).toBe('editor');
-      expect(result.libraries[1].ownershipType).toBe('shared');
-      expect(mockLibWhere).toHaveBeenCalledWith(expect.anything(), 'in', [
-        'owner',
+      expect(
+        fake.inspectDoc(`libraries/${created.id}`)?.collaboratorEmails,
+      ).toEqual(['owner@example.com']);
+
+      fake.seedDoc('appSettings/allowlist/users/friend@example.com', {
+        email: 'friend@example.com',
+        role: 'user',
+      });
+
+      const upserted = await LibraryService.upsertCollaborator(
+        'owner_1',
+        'owner@example.com',
+        created.id,
+        'Friend@Example.com',
         'editor',
-        'viewer',
-      ]);
-      const sharedQueryFieldPath = (
-        mockLibWhere.mock.calls as unknown as Array<[unknown]>
-      )[1]?.[0];
-      expect(sharedQueryFieldPath).not.toBe('access.user_1@example.com');
+      );
+      expect(upserted.allowlistStatus).toBe('approved');
+      expect(
+        fake.inspectDoc(`libraries/${created.id}`)?.collaboratorEmails,
+      ).toEqual(
+        expect.arrayContaining(['owner@example.com', 'friend@example.com']),
+      );
+
+      const friendLibs = await LibraryService.getUserLibraries(
+        'friend_uid',
+        'Friend@Example.com',
+      );
+      expect(friendLibs.libraries).toHaveLength(1);
+      expect(friendLibs.libraries[0]).toMatchObject({
+        id: created.id,
+        callerRole: 'editor',
+        ownershipType: 'shared',
+      });
+
+      await LibraryService.removeCollaborator(
+        'owner_1',
+        'owner@example.com',
+        created.id,
+        'friend@example.com',
+      );
+      const afterRemove = await LibraryService.getUserLibraries(
+        'friend_uid',
+        'friend@example.com',
+      );
+      expect(afterRemove.libraries).toHaveLength(0);
     });
 
     it('returns all system libraries with global_admin type for super admin with scope all', async () => {
-      const mockDocs = [
-        {
-          id: 'lib_owned',
-          data: () => ({
-            name: 'Owned Library',
-            ownerId: 'superadmin_id',
-            access: {},
-          }),
-        },
-        {
-          id: 'lib_other',
-          data: () => ({
-            name: 'Other User Library',
-            ownerId: 'stranger_id',
-            access: {},
-          }),
-        },
-      ];
-
-      mockLibGet.mockResolvedValueOnce({
-        forEach: (cb: (doc: unknown) => void) => mockDocs.forEach(cb),
+      fake.seedDoc('libraries/lib_owned', {
+        name: 'Owned Library',
+        ownerId: 'superadmin_id',
+        access: {},
+      });
+      fake.seedDoc('libraries/lib_other', {
+        name: 'Other User Library',
+        ownerId: 'stranger_id',
+        access: {},
       });
 
       const result = await LibraryService.getUserLibraries(
@@ -322,16 +214,50 @@ describe('LibraryService', () => {
       );
 
       expect(result.libraries.length).toBe(2);
-      expect(result.libraries[0].id).toBe('lib_owned');
-      expect(result.libraries[0].ownershipType).toBe('owned');
-      expect(result.libraries[1].id).toBe('lib_other');
-      expect(result.libraries[1].callerRole).toBe('admin');
-      expect(result.libraries[1].ownershipType).toBe('global_admin');
+      expect(
+        result.libraries.find(l => l.id === 'lib_other')?.ownershipType,
+      ).toBe('global_admin');
+    });
+
+    it('self-heals residual deprecated sharedWith fields on Firestore library snapshots while still rejecting arbitrary unknown shadow fields', async () => {
+      fake.seedDoc('libraries/7Y8kXlJv96sjul1bXVT9', {
+        name: 'Primary Library',
+        ownerId: 'owner_1',
+        access: {'owner@example.com': 'owner'},
+        collaboratorEmails: ['owner@example.com'],
+        sharedWith: ['legacy-collab@example.com'],
+      });
+
+      const listed = await LibraryService.getUserLibraries(
+        'owner_1',
+        'owner@example.com',
+      );
+      expect(listed.libraries).toHaveLength(1);
+      expect(listed.libraries[0]?.id).toBe('7Y8kXlJv96sjul1bXVT9');
+
+      // Flush microtask queue so fire-and-forget FieldValue.delete() self-heal settles
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const healedOnDisk = fake.inspectDoc('libraries/7Y8kXlJv96sjul1bXVT9');
+      expect(healedOnDisk).toBeDefined();
+      expect(healedOnDisk && 'sharedWith' in healedOnDisk).toBe(false);
+
+      // Arbitrary unknown shadow fields must still fail strictStoredLibraryDoc validation
+      fake.seedDoc('libraries/lib_shadow_drift', {
+        name: 'Drifted Library',
+        ownerId: 'owner_1',
+        unexpectedShadowField: 'should-fail',
+      });
+
+      await expect(
+        LibraryService.getUserLibraries('owner_1', 'owner@example.com'),
+      ).rejects.toThrow(/Unrecognized key/);
     });
   });
 
   describe('getLibrary with prefetched context data', () => {
     it('reuses prefetched library data and callerRole without extra Firestore reads', async () => {
+      const readSpy = vi.spyOn(fake, 'readDocSnapshot');
       const lib = await LibraryService.getLibrary(
         'u1',
         'u1@example.com',
@@ -349,46 +275,34 @@ describe('LibraryService', () => {
         },
       );
 
-      expect(mockLibGet).not.toHaveBeenCalled();
-      expect(lib.id).toBe('lib1');
+      expect(readSpy).not.toHaveBeenCalled();
       expect(lib.name).toBe('Prefetched Archive');
-      expect(lib.callerRole).toBe('owner');
-      expect(lib.isOwner).toBe(true);
       expect(lib.canEdit).toBe(true);
     });
   });
 
-  describe('resetMetadata', () => {
-    it('resets genre taxonomy fields across all books using FieldValue.delete()', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({
-          ownerId: 'u1',
-        }),
+  describe('resetMetadata & uploadImage', () => {
+    it('resets genre taxonomy fields only on books that include genre, clears stale provenance, and stamps updatedAt', async () => {
+      fake.seedDoc('libraries/lib1', {
+        name: 'Test Lib',
+        ownerId: 'u1',
       });
-
-      const mockRef1 = {id: 'b1'};
-      const mockRef2 = {id: 'b2'};
-
-      mockBooksGet.mockResolvedValueOnce({
-        empty: false,
-        size: 2,
-        docs: [
-          {
-            ref: mockRef1,
-            data: () => ({
-              primaryGenre: 'Science Fiction',
-              subgenres: ['Cyberpunk'],
-            }),
-          },
-          {
-            ref: mockRef2,
-            data: () => ({
-              primaryGenre: 'History',
-              isCustomPrimary: false,
-            }),
-          },
-        ],
+      fake.seedDoc('libraries/lib1/books/b1', {
+        id: 'b1',
+        title: 'Book 1',
+        author: 'Author 1',
+        primaryGenre: 'Science Fiction',
+        primaryGenreLower: 'science fiction',
+        subgenres: ['Cyberpunk'],
+        fieldSources: {genre: 'Google Books', primaryGenre: 'Google Books'},
+        skippedProviders: ['Open Library'],
+        missingFlags: ['geo'],
+      });
+      fake.seedDoc('libraries/lib1/books/b2', {
+        id: 'b2',
+        title: 'Book 2 Without Genre',
+        author: 'Author 2',
+        missingFlags: ['genre', 'geo'],
       });
 
       const result = await LibraryService.resetMetadata(
@@ -396,76 +310,92 @@ describe('LibraryService', () => {
         'u1@example.com',
         'lib1',
         'genre',
-      );
-
-      expect(result.count).toBe(2);
-      expect(mockBatchUpdate).toHaveBeenCalledTimes(2);
-      expect(mockBatchCommit).toHaveBeenCalled();
-    });
-
-    it('resets specified metadata category across all books', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({
-          ownerId: 'u1',
-        }),
-      });
-
-      const mockRef = {id: 'b1'};
-
-      mockBooksGet.mockResolvedValueOnce({
-        empty: false,
-        size: 1,
-        docs: [{ref: mockRef, data: () => ({geoMetadata: {locations: []}})}],
-      });
-
-      const result = await LibraryService.resetMetadata(
-        'u1',
-        'u1@example.com',
-        'lib1',
-        'geo',
       );
 
       expect(result.count).toBe(1);
-      expect(mockBatchUpdate).toHaveBeenCalledWith(
-        mockRef,
-        expect.objectContaining({
-          geoMetadata: expect.anything() as unknown,
-          'enrichmentStatus.geo': expect.anything() as unknown,
-        }),
+      const b1 = fake.inspectDoc('libraries/lib1/books/b1');
+      expect(b1?.primaryGenre).toBeUndefined();
+      expect(b1?.primaryGenreLower).toBeUndefined();
+      expect(b1?.skippedProviders).toBeUndefined();
+      expect(
+        (b1?.fieldSources as Record<string, unknown> | undefined)?.genre,
+      ).toBeUndefined();
+      expect(b1?.updatedAt).toBeDefined();
+      expect(b1?.missingFlags).toEqual(
+        expect.arrayContaining(['geo', 'genre']),
       );
+
+      const b2 = fake.inspectDoc('libraries/lib1/books/b2');
+      expect(b2?.updatedAt).toBeUndefined();
     });
 
-    it('returns count 0 if library has no books', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({
-          ownerId: 'u1',
-        }),
+    it('self-heals missing collaboratorEmails on pre-migration shared libraries and backfills missing book index fields on read', async () => {
+      const {bookDocConverter} = await import('../book/bookPartitioner');
+      fake.seedDoc('libraries/lib_legacy_shared', {
+        name: 'Legacy Shared Shelf',
+        ownerId: 'owner_99',
+        access: {
+          'owner99@example.com': 'owner',
+          'CollabReader@Example.com': 'editor',
+        },
+      });
+      fake.seedDoc('libraries/lib_legacy_shared/books/b_legacy', {
+        title: 'Piranesi',
+        author: 'Susanna Clarke',
+        isbn: '978-1-63557-563-7',
+        primaryGenre: 'Fantasy',
+        addedAt: '2025-05-01T00:00:00.000Z',
       });
 
-      mockBooksGet.mockResolvedValueOnce({
-        empty: true,
-        size: 0,
-        docs: [],
-      });
-
-      const result = await LibraryService.resetMetadata(
-        'u1',
-        'u1@example.com',
-        'lib1',
-        'genre',
+      // Owner reads the library once -> self-heals collaboratorEmails onto Firestore
+      await LibraryService.getLibrary(
+        'owner_99',
+        'owner99@example.com',
+        'lib_legacy_shared',
       );
-      expect(result.count).toBe(0);
-      expect(mockBatchCommit).not.toHaveBeenCalled();
-    });
-  });
+      await new Promise(resolve => setTimeout(resolve, 10));
 
-  describe('uploadImage', () => {
-    it('rejects paths outside the target library directory', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({ownerId: 'u1'}),
+      const healedLib = fake.inspectDoc('libraries/lib_legacy_shared');
+      expect(healedLib?.collaboratorEmails).toEqual(
+        expect.arrayContaining([
+          'owner99@example.com',
+          'collabreader@example.com',
+        ]),
+      );
+
+      // Collaborator can now discover the shared library via array-contains
+      const collabLibs = await LibraryService.getUserLibraries(
+        'collab_uid',
+        'collabreader@example.com',
+      );
+      expect(collabLibs.libraries.map(l => l.id)).toContain(
+        'lib_legacy_shared',
+      );
+
+      // Reading the legacy book queues a background self-heal for all 5 index fields
+      const rawBook =
+        fake.inspectDoc('libraries/lib_legacy_shared/books/b_legacy') || {};
+      bookDocConverter.fromFirestore(
+        'b_legacy',
+        rawBook,
+        '/libraries/lib_legacy_shared/books/b_legacy',
+      );
+      await new Promise(resolve => setTimeout(resolve, 40));
+
+      const healedBook = fake.inspectDoc(
+        'libraries/lib_legacy_shared/books/b_legacy',
+      );
+      expect(healedBook?.cleanIsbn).toBe('9781635575637');
+      expect(healedBook?.dedupeKey).toBeTruthy();
+      expect(Array.isArray(healedBook?.searchTokens)).toBe(true);
+      expect(healedBook?.primaryGenreLower).toBe('fantasy');
+      expect(Array.isArray(healedBook?.missingFlags)).toBe(true);
+    });
+
+    it('rejects paths outside the target library directory and returns non-data http URLs directly', async () => {
+      fake.seedDoc('libraries/lib1', {
+        name: 'Test Lib',
+        ownerId: 'u1',
       });
 
       await expect(
@@ -477,13 +407,6 @@ describe('LibraryService', () => {
           'data:image/png;base64,iVBORw0KGgo=',
         ),
       ).rejects.toThrow("Invalid storage path 'libraries/other_lib/hero.png'");
-    });
-
-    it('returns non-data URLs directly without uploading', async () => {
-      mockLibGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({ownerId: 'u1'}),
-      });
 
       const res = await LibraryService.uploadImage(
         'u1',
@@ -496,20 +419,22 @@ describe('LibraryService', () => {
     });
   });
 
-  describe('getCollaboratorStatuses & deleteLibrary batching', () => {
-    it('resolves non-owner collaborator statuses in bulk via AllowlistService.getPermissionsBulk', async () => {
-      mockGetAll.mockResolvedValueOnce([
-        {exists: true, data: () => ({role: 'user'})},
-        {exists: false},
-      ]);
+  describe('getCollaboratorStatuses & deleteLibrary subcollection cleanup', () => {
+    it('resolves non-owner collaborator statuses in bulk and deletes books, bookDetails, reviews, allowedDuplicates, jobs, and tombstones on deleteLibrary', async () => {
+      fake.seedDoc('appSettings/allowlist/users/approved@example.com', {
+        email: 'approved@example.com',
+        role: 'user',
+      });
 
-      const res = await LibraryService.getCollaboratorStatuses(
+      const collabRes = await LibraryService.getCollaboratorStatuses(
         'u1',
         'owner@example.com',
         'lib1',
         {
           skipAccessCheck: true,
           prefetchedData: {
+            name: 'Lib 1',
+            ownerId: 'u1',
             access: {
               'owner@example.com': 'owner',
               'approved@example.com': 'editor',
@@ -518,9 +443,7 @@ describe('LibraryService', () => {
           },
         },
       );
-
-      expect(mockGetAll).toHaveBeenCalledTimes(1);
-      expect(res.collaborators).toEqual([
+      expect(collabRes.collaborators).toEqual([
         {
           email: 'owner@example.com',
           role: 'owner',
@@ -537,37 +460,60 @@ describe('LibraryService', () => {
           allowlistStatus: 'pending_approval',
         },
       ]);
-    });
 
-    it('deletes books, bookDetails, reviews, and parent library doc in a single batch commit', async () => {
-      mockBooksGet.mockResolvedValueOnce({
-        docs: [
-          {
-            id: 'b1',
-            ref: {
-              id: 'b1',
-              collection: vi.fn(() => ({
-                get: vi.fn().mockResolvedValue({
-                  forEach: (cb: (r: {ref: {id: string}}) => void) =>
-                    cb({ref: {id: 'rev1'}}),
-                }),
-              })),
-            },
-          },
-        ],
+      fake.seedDoc('libraries/lib1', {name: 'Lib 1', ownerId: 'u1'});
+      fake.seedDoc('libraries/lib1/books/b1', {
+        id: 'b1',
+        title: 'Book 1',
+        author: 'Author 1',
+      });
+      fake.seedDoc('libraries/lib1/bookDetails/b1', {synopsis: 'Text'});
+      fake.seedDoc('libraries/lib1/books/b1/reviews/rev1', {
+        userId: 'u1',
+        rating: 5,
+        text: 'Great',
+      });
+      fake.seedDoc('libraries/lib1/allowedDuplicates/dup1', {
+        bookIds: ['b1', 'b2'],
+      });
+      fake.seedDoc('libraries/lib1/jobs/job1', {
+        libraryId: 'lib1',
+        enrichmentType: 'genre',
+        status: 'completed',
+        totalBooks: 1,
+        completedBooks: 1,
+        failedBooks: 0,
+        skippedBooks: 0,
+        overwrite: false,
+        startedAt: 1,
+        updatedAtMs: 2,
+      });
+      fake.seedDoc('libraries/lib1/tombstones/old_book', {
+        id: 'old_book',
+        libraryId: 'lib1',
+        deletedAtMs: 100,
       });
 
-      const res = await LibraryService.deleteLibrary(
+      const delRes = await LibraryService.deleteLibrary(
         'u1',
         'owner@example.com',
         'lib1',
         {skipAccessCheck: true},
       );
-
-      expect(res.success).toBe(true);
-      // 1 book + 1 bookDetail + 1 review + 1 parent libRef = 4 deletes in 1 commit
-      expect(mockBatchDelete).toHaveBeenCalledTimes(4);
-      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+      expect(delRes.success).toBe(true);
+      expect(fake.inspectDoc('libraries/lib1')).toBeUndefined();
+      expect(fake.inspectDoc('libraries/lib1/books/b1')).toBeUndefined();
+      expect(fake.inspectDoc('libraries/lib1/bookDetails/b1')).toBeUndefined();
+      expect(
+        fake.inspectDoc('libraries/lib1/books/b1/reviews/rev1'),
+      ).toBeUndefined();
+      expect(
+        fake.inspectDoc('libraries/lib1/allowedDuplicates/dup1'),
+      ).toBeUndefined();
+      expect(fake.inspectDoc('libraries/lib1/jobs/job1')).toBeUndefined();
+      expect(
+        fake.inspectDoc('libraries/lib1/tombstones/old_book'),
+      ).toBeUndefined();
     });
   });
 });

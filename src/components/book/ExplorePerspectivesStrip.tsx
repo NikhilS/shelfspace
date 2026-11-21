@@ -1,7 +1,6 @@
 import React, {useMemo} from 'react';
 import {Link} from 'react-router-dom';
 import {Compass, ArrowRight} from 'lucide-react';
-import {Badge} from '@/components/ui/badge';
 import {
   getVisualizersForScope,
   type VisualizerId,
@@ -24,7 +23,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
     case 'timeline':
       return (
         <svg
-          className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/22 pointer-events-none group-hover:text-on-surface/35 transition-colors"
+          className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/20 pointer-events-none group-hover:text-on-surface/32 transition-colors"
           viewBox="0 0 144 80"
           fill="none"
           stroke="currentColor"
@@ -40,12 +39,18 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
             className="fill-surface stroke-current"
             strokeWidth="1.5"
           />
-          <line x1="76" y1="36" x2="76" y2="66" className="stroke-primary/60" />
+          <line
+            x1="76"
+            y1="36"
+            x2="76"
+            y2="66"
+            className="stroke-tertiary/70"
+          />
           <circle
             cx="76"
             cy="52"
             r="4.5"
-            className="fill-primary/20 stroke-primary"
+            className="fill-tertiary/25 stroke-tertiary"
             strokeWidth="1.6"
           />
           <line x1="120" y1="42" x2="120" y2="62" />
@@ -73,7 +78,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
             fontSize="8"
             textAnchor="middle"
             fontWeight="bold"
-            className="fill-primary"
+            className="fill-tertiary"
             stroke="none"
             fontFamily="monospace"
           >
@@ -96,7 +101,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
     case 'worldMap':
       return (
         <svg
-          className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/22 pointer-events-none group-hover:text-on-surface/35 transition-colors"
+          className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/20 pointer-events-none group-hover:text-on-surface/32 transition-colors"
           viewBox="0 0 144 80"
           fill="none"
           stroke="currentColor"
@@ -107,7 +112,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
             cx="108"
             cy="46"
             r="30"
-            className="fill-primary/8"
+            className="fill-tertiary/8"
             strokeDasharray="2.5 3"
           />
           <ellipse
@@ -130,7 +135,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
             cx="98"
             cy="40"
             r="4"
-            className="fill-primary/25 stroke-primary"
+            className="fill-tertiary/25 stroke-tertiary"
             strokeWidth="1.6"
           />
           <circle
@@ -157,7 +162,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
     case 'constellation':
       return (
         <svg
-          className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/22 pointer-events-none group-hover:text-on-surface/35 transition-colors"
+          className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/20 pointer-events-none group-hover:text-on-surface/32 transition-colors"
           viewBox="0 0 144 80"
           fill="none"
           stroke="currentColor"
@@ -187,7 +192,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
             cx="78"
             cy="34"
             r="4.2"
-            className="fill-primary/25 stroke-primary"
+            className="fill-tertiary/25 stroke-tertiary"
             strokeWidth="1.6"
           />
           <circle
@@ -201,7 +206,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
             cx="114"
             cy="48"
             r="3.5"
-            className="fill-primary/20 stroke-primary"
+            className="fill-tertiary/22 stroke-tertiary"
             strokeWidth="1.5"
           />
           <circle
@@ -217,7 +222,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
     case 'readSwipe':
       return (
         <svg
-          className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/22 pointer-events-none group-hover:text-on-surface/35 transition-colors"
+          className="absolute -right-2 -bottom-2 w-36 h-20 text-on-surface/20 pointer-events-none group-hover:text-on-surface/32 transition-colors"
           viewBox="0 0 144 80"
           fill="none"
           stroke="currentColor"
@@ -241,7 +246,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
               width="32"
               height="44"
               rx="3.5"
-              className="fill-primary/15 stroke-primary"
+              className="fill-tertiary/15 stroke-tertiary"
               strokeWidth="1.6"
             />
             <line
@@ -249,7 +254,7 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
               y1="30"
               x2="114"
               y2="30"
-              className="stroke-primary/60"
+              className="stroke-tertiary/65"
               strokeWidth="1.3"
             />
             <line
@@ -257,19 +262,19 @@ function VisualizerWatermark({id}: {id: VisualizerId}) {
               y1="35"
               x2="108"
               y2="35"
-              className="stroke-primary/45"
+              className="stroke-tertiary/45"
               strokeWidth="1.2"
             />
             <circle
               cx="106"
               cy="49"
               r="7"
-              className="fill-primary/25 stroke-primary"
+              className="fill-tertiary/25 stroke-tertiary"
               strokeWidth="1.5"
             />
             <path
               d="M102.8 49.2L105.1 51.5L109.5 46.8"
-              className="stroke-primary"
+              className="stroke-tertiary"
               strokeWidth="1.6"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -313,17 +318,13 @@ export function ExplorePerspectivesStrip({
 
   return (
     <section aria-label={ariaLabel}>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-3.5">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1.5 mb-4">
         <div className="flex items-center gap-2">
-          <Compass className="w-4 h-4 text-primary stroke-[1.75]" />
+          <Compass className="w-4 h-4 text-tertiary stroke-[1.75]" />
           <h2 className="section-heading">{heading}</h2>
-          <Badge
-            variant="outline"
-            size="sm"
-            className="hidden sm:inline-flex font-label-caps-sm text-label-caps-sm tracking-wider uppercase text-on-surface-variant/70 bg-surface-container-high/60 border-outline-variant/20"
-          >
-            {`${activeVisualizers.length} Perspectives`}
-          </Badge>
+          <span className="hidden sm:inline-flex font-mono tabular-nums text-[11px] font-medium text-on-surface-variant ml-1">
+            · {activeVisualizers.length} Perspectives
+          </span>
         </div>
         <p className="hidden md:block font-sans text-xs text-on-surface-variant">
           {subtitle}
@@ -333,8 +334,8 @@ export function ExplorePerspectivesStrip({
       <div
         className={
           activeVisualizers.length >= 4
-            ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5'
-            : 'grid grid-cols-1 md:grid-cols-3 gap-3.5'
+            ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4'
+            : 'grid grid-cols-1 md:grid-cols-3 gap-4'
         }
       >
         {activeVisualizers.map(({descriptor, readiness}) => (
@@ -344,31 +345,29 @@ export function ExplorePerspectivesStrip({
             onMouseEnter={() => preloadRouteChunk(descriptor.preloadKey)}
             onFocus={() => preloadRouteChunk(descriptor.preloadKey)}
             onTouchStart={() => preloadRouteChunk(descriptor.preloadKey)}
-            className="group relative flex flex-col justify-between p-4 rounded-xl bg-surface border border-outline-variant/40 hover:border-outline shadow-2xs hover:shadow-xs transition-all duration-200 overflow-hidden"
+            className="group relative flex flex-col justify-between p-4 sm:p-5 bento-card-interactive overflow-hidden"
           >
             <VisualizerWatermark id={descriptor.id} />
 
             <div className="relative z-10">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <h3 className="font-serif text-base font-semibold text-on-surface group-hover:text-primary transition-colors truncate">
+              <div className="flex items-baseline justify-between gap-2 mb-1">
+                <h3 className="font-serif text-base sm:text-lg font-semibold text-on-surface group-hover:text-primary transition-colors truncate">
                   {descriptor.title}
                 </h3>
-                <Badge
-                  variant="outline"
-                  size="sm"
-                  className={`font-medium text-on-surface-variant bg-surface-container border-outline-variant/40 flex-shrink-0 whitespace-nowrap${descriptor.tabularBadge ? ' tabular-nums' : ''}`}
+                <span
+                  className={`font-mono text-[11px] font-medium text-on-surface-variant flex-shrink-0 whitespace-nowrap${descriptor.tabularBadge ? ' tabular-nums' : ''}`}
                 >
                   {readiness.badgeLabel}
-                </Badge>
+                </span>
               </div>
               <p
-                className={`font-sans text-xs text-on-surface-variant line-clamp-1 leading-snug${descriptor.tabularSubtitle ? ' tabular-nums' : ''}`}
+                className={`font-sans text-xs text-on-surface-variant line-clamp-1 leading-relaxed${descriptor.tabularSubtitle ? ' tabular-nums' : ''}`}
               >
                 {readiness.subtitleText}
               </p>
             </div>
 
-            <div className="relative z-10 mt-3 pt-2.5 border-t border-outline-variant/15 flex items-center justify-between text-xs font-sans font-medium text-primary">
+            <div className="relative z-10 mt-3.5 pt-2.5 border-t border-outline-variant/45 flex items-center justify-between text-xs font-sans font-semibold text-primary">
               <span className="group-hover:underline">
                 {descriptor.ctaLabel}
               </span>

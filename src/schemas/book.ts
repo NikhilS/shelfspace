@@ -7,17 +7,22 @@ import {
   bookGeoMetadataSchema,
   bookTemporalMetadataSchema,
   clusterCoordinatesSchema,
+  readingStateKeyTypeEnum,
   readingStateKeySchema,
   safeBookOrStateIdSchema,
+  minimalBookStubSchema,
   userReadingStateBookSnapshotSchema,
   storedUserReadingStateDocSchema,
   userReadingStateSchema,
   computeReadingStateKey,
+  resolveReadingStateKeyType,
+  type ReadingStateKeyType,
   type OwnershipStatus,
   type GeoLocationReference,
   type BookGeoMetadata,
   type BookTemporalMetadata,
   type ClusterCoordinates,
+  type MinimalBookStub,
   type UserReadingStateBookSnapshot,
   type StoredUserReadingStateDoc,
   type UserReadingState,
@@ -30,17 +35,22 @@ export {
   bookGeoMetadataSchema,
   bookTemporalMetadataSchema,
   clusterCoordinatesSchema,
+  readingStateKeyTypeEnum,
   readingStateKeySchema,
   safeBookOrStateIdSchema,
+  minimalBookStubSchema,
   userReadingStateBookSnapshotSchema,
   storedUserReadingStateDocSchema,
   userReadingStateSchema,
   computeReadingStateKey,
+  resolveReadingStateKeyType,
+  type ReadingStateKeyType,
   type OwnershipStatus,
   type GeoLocationReference,
   type BookGeoMetadata,
   type BookTemporalMetadata,
   type ClusterCoordinates,
+  type MinimalBookStub,
   type UserReadingStateBookSnapshot,
   type StoredUserReadingStateDoc,
   type UserReadingState,
@@ -75,7 +85,6 @@ export const bookDetailsMetadataSchema = z
     hasSynopsis: z.boolean().optional(),
     hasAuthorBio: z.boolean().optional(),
     hasEmbedding: z.boolean().optional(),
-    hasDescription: z.boolean().optional(),
     hasClusterCoordinates: z.boolean().optional(),
   })
   .strict();
@@ -86,7 +95,6 @@ export const bookDetailsPayloadSchema = z
     authorBio: z.string().max(50000).nullable().optional(),
     embedding: z.array(z.number()).max(4096).nullable().optional(),
     clusterCoordinates: clusterCoordinatesSchema.nullable().optional(),
-    description: z.string().max(50000).nullable().optional(),
     updatedAt: z.string().max(100).optional(),
   })
   .strict();
@@ -106,6 +114,20 @@ export const storedReviewDocSchema = z
   .strict();
 
 export const bookReviewRecordSchema = storedReviewDocSchema;
+
+/**
+ * Stored Firestore document schema for `/libraries/{libraryId}/tombstones/{bookId}`.
+ * Persists hard-delete events across stateless multi-instance Cloud Run replicas.
+ */
+export const storedBookTombstoneDocSchema = z
+  .object({
+    id: safeIdSchema.optional(),
+    bookId: safeIdSchema,
+    deletedAtMs: z.number().int().nonnegative(),
+    deletedBy: safeIdSchema.optional(),
+    updatedAt: z.string().max(100).optional(),
+  })
+  .strict();
 
 export const coverCandidateSchema = z
   .object({
@@ -133,6 +155,8 @@ export const bookMutableFieldsSchema = z
     coverUrlRaw: safeUrlSchema.optional(),
     publishedDate: z.string().trim().max(100).optional(),
     primaryGenre: z.string().trim().max(200).nullable().optional(),
+    primaryGenreLower: z.string().trim().max(200).optional(),
+    missingFlags: z.array(z.string().trim().max(40)).max(16).optional(),
     subgenres: z.array(z.string().trim().max(200)).max(50).optional(),
     isCustomPrimary: z.boolean().optional(),
     series: z.string().trim().max(300).nullable().optional(),
@@ -140,10 +164,8 @@ export const bookMutableFieldsSchema = z
     ownershipStatus: ownershipStatusEnum.optional(),
     readingStatus: bookStatusEnum.optional(),
     synopsis: z.string().max(50000).nullable().optional(),
-    description: z.string().max(50000).nullable().optional(),
     authorBio: z.string().max(50000).nullable().optional(),
     embedding: z.array(z.number()).max(4096).nullable().optional(),
-    embeddings: z.array(z.number()).max(4096).nullable().optional(),
     clusterCoordinates: clusterCoordinatesSchema.nullable().optional(),
     geoMetadata: bookGeoMetadataSchema.partial().nullable().optional(),
     temporalMetadata: bookTemporalMetadataSchema
@@ -155,8 +177,6 @@ export const bookMutableFieldsSchema = z
     cleanIsbn: z.string().trim().max(64).optional(),
     dedupeKey: z.string().trim().max(1000).optional(),
     searchTokens: z.array(z.string().trim().max(100)).max(60).optional(),
-    heavyDetails: bookDetailsPayloadSchema.optional(),
-    heavyData: bookDetailsPayloadSchema.optional(),
     coverCandidates: z.array(coverCandidateSchema).max(50).optional(),
     sources: z.array(z.string().max(100)).max(30).optional(),
     fieldSources: z.record(safeIdSchema, z.string().max(100)).optional(),
@@ -210,7 +230,6 @@ export const bookBatchOperationSchema = z
       })
       .strict()
       .optional(),
-    heavyData: bookDetailsPayloadSchema.optional(),
     merge: z.boolean().optional(),
   })
   .strict();
@@ -267,10 +286,11 @@ export const bookListSchema = z.object({
           'geo',
           'temporal',
           'genre',
-          'primaryGenre',
           'synopsis',
+          'authorBio',
           'coverImage',
           'series',
+          'embedding',
         ])
         .optional(),
       primaryGenre: z.string().max(200).optional(),
@@ -316,7 +336,7 @@ export const bookMergeDuplicatesSchema = z
 
 /**
  * Stored Firestore document schema for `/libraries/{libraryId}/books/{bookId}`.
- * Contains lightweight catalog metadata and search/dedupe index fields.
+ * Contains lightweight catalog metadata and search/dedupe/filter index fields.
  * Heavy prose/vector fields live in `bookDetails/{bookId}` and per-user reading state
  * lives in `/users/{userId}/readingStates/{stateKey}`.
  */
@@ -333,6 +353,8 @@ export const storedBookDocSchema = z
     coverUrlRaw: safeImageUrlSchema.optional(),
     publishedDate: z.string().max(100).optional(),
     primaryGenre: z.string().max(200).nullable().optional(),
+    primaryGenreLower: z.string().max(200).optional(),
+    missingFlags: z.array(z.string().max(40)).max(16).optional(),
     subgenres: z.array(z.string().max(200)).max(50).optional(),
     isCustomPrimary: z.boolean().optional(),
     series: z.string().max(300).nullable().optional(),
@@ -365,6 +387,9 @@ export type StoredBookDetailsDoc = z.infer<typeof storedBookDetailsDocSchema>;
 export type StoredBookDoc = z.infer<typeof storedBookDocSchema>;
 export type StoredReviewDoc = z.infer<typeof storedReviewDocSchema>;
 export type BookReviewRecord = z.infer<typeof bookReviewRecordSchema>;
+export type StoredBookTombstoneDoc = z.infer<
+  typeof storedBookTombstoneDocSchema
+>;
 
 export type BookCreateInput = z.input<typeof bookCreateSchema>;
 export type BookUpdateInput = z.infer<typeof bookUpdateSchema>;

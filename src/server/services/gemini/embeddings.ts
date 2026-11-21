@@ -166,23 +166,6 @@ ${clusters
   }
 }
 
-export async function generateClusterNames(
-  clusters: Array<{
-    id: number;
-    totalCount?: number;
-    books: ClusterBookSample[];
-  }>,
-): Promise<Record<number, string>> {
-  const themes = await generateClusterThemes(clusters);
-  const names: Record<number, string> = {};
-  for (const [idStr, info] of Object.entries(themes)) {
-    if (info?.name) {
-      names[Number(idStr)] = info.name;
-    }
-  }
-  return names;
-}
-
 export async function generateBookEmbeddings(
   texts: string[],
   onProgress?: (completed: number, total: number) => void,

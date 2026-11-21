@@ -44,7 +44,7 @@ export function AdminAllowlistDialog({
     }
   }, [isOpen, initialEmail]);
 
-  const utils = trpc.useUtils ? trpc.useUtils() : trpc.useContext();
+  const utils = trpc.useUtils();
   const {data, isLoading: loading} = trpc.auth.listAllowlist.useQuery(
     undefined,
     {
@@ -56,8 +56,8 @@ export function AdminAllowlistDialog({
 
   const notifyAllowlistChanged = () => {
     void utils.auth.listAllowlist.invalidate();
-    void utils.auth.listWaitlist?.invalidate?.();
-    void utils.library?.getCollaborators?.invalidate?.();
+    void utils.auth.listWaitlist.invalidate();
+    void utils.library.getCollaborators.invalidate();
     onAllowlistUpdated?.();
   };
 
@@ -73,7 +73,7 @@ export function AdminAllowlistDialog({
     },
   });
 
-  const updateAiPlanMutation = trpc.auth.updateAllowlistAiPlan?.useMutation?.({
+  const updateAiPlanMutation = trpc.auth.updateAllowlistAiPlan.useMutation({
     onSuccess: () => {
       notifyAllowlistChanged();
     },

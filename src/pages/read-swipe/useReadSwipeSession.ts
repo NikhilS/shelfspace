@@ -314,7 +314,6 @@ export function useReadSwipeSession(
           ? options.nextStatus === 'reading' ||
             options.nextStatus === 'want_to_read' ||
             options.nextStatus === 'finished' ||
-            options.nextStatus === 'completed' ||
             options.nextStatus === 'abandoned'
             ? options.nextStatus
             : 'unset'

@@ -4,7 +4,7 @@ import {vi, describe, it, expect, beforeEach} from 'vitest';
 import {UserProfileDialog} from './UserProfileDialog';
 import {useAuth} from '../../stores/authStore';
 import {useAppPermissions} from '../../hooks/useAppPermissions';
-import {useDebugMode} from '../../hooks/useDebugMode';
+import {useDebug} from '../../stores/debugStore';
 
 vi.mock('../../stores/authStore', () => ({
   useAuth: vi.fn(),
@@ -14,8 +14,8 @@ vi.mock('../../hooks/useAppPermissions', () => ({
   useAppPermissions: vi.fn(),
 }));
 
-vi.mock('../../hooks/useDebugMode', () => ({
-  useDebugMode: vi.fn(),
+vi.mock('../../stores/debugStore', () => ({
+  useDebug: vi.fn(),
 }));
 
 describe('UserProfileDialog', () => {
@@ -35,7 +35,7 @@ describe('UserProfileDialog', () => {
       isAdmin: true,
       isAppAllowed: true,
     });
-    (useDebugMode as unknown as import('vitest').Mock).mockReturnValue({
+    (useDebug as unknown as import('vitest').Mock).mockReturnValue({
       isDebugMode: false,
       toggleDebugMode: mockToggleDebugMode,
     });
@@ -60,7 +60,7 @@ describe('UserProfileDialog', () => {
       isAdmin: false,
       isAppAllowed: true,
     });
-    (useDebugMode as unknown as import('vitest').Mock).mockReturnValue({
+    (useDebug as unknown as import('vitest').Mock).mockReturnValue({
       isDebugMode: false,
       toggleDebugMode: mockToggleDebugMode,
     });
@@ -80,7 +80,7 @@ describe('UserProfileDialog', () => {
       isAdmin: true,
       isAppAllowed: true,
     });
-    (useDebugMode as unknown as import('vitest').Mock).mockReturnValue({
+    (useDebug as unknown as import('vitest').Mock).mockReturnValue({
       isDebugMode: true,
       toggleDebugMode: mockToggleDebugMode,
     });

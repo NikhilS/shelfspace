@@ -169,7 +169,7 @@ export function GenreSelect({
         <div className="flex items-center justify-between">
           <Label
             htmlFor="primary-genre-select"
-            className="text-xs font-semibold text-ink"
+            className="text-xs font-semibold text-on-surface"
           >
             Primary Genre
           </Label>
@@ -207,7 +207,7 @@ export function GenreSelect({
         <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
           <Label
             htmlFor="custom-primary-genre-input"
-            className="text-xs font-semibold text-ink"
+            className="text-xs font-semibold text-on-surface"
           >
             Custom Genre Name
           </Label>
@@ -226,7 +226,7 @@ export function GenreSelect({
       {primaryGenre && (
         <div className="space-y-2 pt-1">
           <div className="flex items-center justify-between">
-            <Label className="text-xs font-semibold text-ink">
+            <Label className="text-xs font-semibold text-on-surface">
               Subgenres{' '}
               <span className="font-normal text-on-surface-variant/70">
                 (Optional, up to 3)

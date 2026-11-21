@@ -6,7 +6,6 @@ import type {SecurityContext} from '../../auth/types';
 vi.mock('../../services/userService', () => ({
   UserService: {
     syncProfile: vi.fn(),
-    getProfile: vi.fn(),
   },
 }));
 
@@ -23,27 +22,34 @@ const userCtx: SecurityContext = {
   isAppAllowed: true,
 };
 
-const adminCtx: SecurityContext = {
+const unauthCtx: SecurityContext = {
   req: {} as SecurityContext['req'],
   res: {} as SecurityContext['res'],
-  user: {
-    uid: 'admin-1',
-    email: 'admin@example.com',
-  },
-  isAdmin: true,
-  isAppAllowed: true,
+  user: null,
+  isAdmin: false,
+  isAppAllowed: false,
 };
 
-describe('userRouter tRPC procedures & IDOR protection', () => {
+describe('userRouter tRPC procedures & security boundaries', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('syncs the authenticated user profile using ctx.user.uid', async () => {
+  it('rejects unauthenticated callers with UNAUTHORIZED', async () => {
+    const caller = userRouter.createCaller(unauthCtx);
+    await expect(
+      caller.syncProfile({displayName: 'Anon'}),
+    ).rejects.toMatchObject({code: 'UNAUTHORIZED'});
+  });
+
+  it('syncs the authenticated user profile using ctx.user.uid even if a spoofed uid is passed', async () => {
     vi.mocked(UserService.syncProfile).mockResolvedValue({success: true});
     const caller = userRouter.createCaller(userCtx);
 
-    const res = await caller.syncProfile({displayName: 'Updated Name'});
+    const res = await caller.syncProfile({
+      uid: 'other-user-999',
+      displayName: 'Updated Name',
+    });
     expect(res).toEqual({success: true});
     expect(UserService.syncProfile).toHaveBeenCalledWith({
       uid: 'user-123',
@@ -51,31 +57,5 @@ describe('userRouter tRPC procedures & IDOR protection', () => {
       displayName: 'Updated Name',
       photoURL: 'https://example.com/avatar.png',
     });
-  });
-
-  it('allows self profile lookup and blocks non-admin cross-user lookup (IDOR protection)', async () => {
-    vi.mocked(UserService.getProfile).mockResolvedValue({
-      uid: 'user-123',
-      email: 'reader@example.com',
-    });
-    const caller = userRouter.createCaller(userCtx);
-
-    // Implicit self lookup
-    expect(await caller.getProfile()).toEqual({
-      uid: 'user-123',
-      email: 'reader@example.com',
-    });
-
-    // Cross-user lookup by non-admin throws FORBIDDEN
-    await expect(
-      caller.getProfile({uid: 'other-user-999'}),
-    ).rejects.toMatchObject({
-      code: 'FORBIDDEN',
-    });
-
-    // Admin can inspect another user profile
-    const adminCaller = userRouter.createCaller(adminCtx);
-    await adminCaller.getProfile({uid: 'other-user-999'});
-    expect(UserService.getProfile).toHaveBeenLastCalledWith('other-user-999');
   });
 });

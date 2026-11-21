@@ -19,8 +19,6 @@ import type {
 import {
   getPersonalReadingShelf,
   getUnreadLibraryBooks,
-  normalizeTrackerIsbnKey,
-  normalizeTrackerTextKey,
 } from './readingShelfHydrator';
 import {searchUnifiedCatalog} from './unifiedCatalogSearch';
 
@@ -51,7 +49,7 @@ export async function trackBook(
   success: true;
   libraryId: string;
   bookId: string;
-  status: string;
+  status: TrackedShelfStatus | 'unset';
   ownershipStatus: 'owned' | 'unowned';
   isVirtual: boolean;
   rating?: number;
@@ -125,101 +123,42 @@ export async function trackBook(
   };
 
   let existingBookId: string | undefined;
-  try {
-    const booksRef = db
-      .collection('libraries')
-      .doc(destinationLibraryId)
-      .collection('books');
-    const targetIsbn = normalizeIsbnForDedupe(bookData.isbn);
-    const targetDedupeKey = computeBookDedupeKey(
-      bookData.title,
-      bookData.author || 'Unknown Author',
+  const booksRef = db
+    .collection('libraries')
+    .doc(destinationLibraryId)
+    .collection('books');
+  const targetIsbn = normalizeIsbnForDedupe(bookData.isbn);
+  const targetDedupeKey = computeBookDedupeKey(
+    bookData.title,
+    bookData.author || 'Unknown Author',
+  );
+
+  const indexQueries: Array<Promise<FirebaseFirestore.QuerySnapshot>> = [];
+  if (targetIsbn) {
+    indexQueries.push(
+      booksRef.where('cleanIsbn', '==', targetIsbn).limit(1).get(),
     );
-    const targetKey = `${normalizeTrackerTextKey(bookData.title)}::${normalizeTrackerTextKey(bookData.author || 'Unknown Author')}`;
+  }
+  if (targetDedupeKey) {
+    indexQueries.push(
+      booksRef.where('dedupeKey', '==', targetDedupeKey).limit(1).get(),
+    );
+  }
 
-    if (typeof (booksRef as {where?: unknown}).where === 'function') {
-      const indexQueries: Array<Promise<FirebaseFirestore.QuerySnapshot>> = [];
-      if (targetIsbn) {
-        indexQueries.push(
-          booksRef.where('cleanIsbn', '==', targetIsbn).limit(1).get(),
+  if (indexQueries.length > 0) {
+    const indexSnaps = await Promise.all(indexQueries);
+    for (const snap of indexSnaps) {
+      const matchedDoc = snap?.docs?.[0];
+      if (matchedDoc?.id) {
+        const parsedBook = bookDocConverter.fromFirestore(
+          matchedDoc.id,
+          typeof matchedDoc.data === 'function' ? matchedDoc.data() || {} : {},
+          `/libraries/${destinationLibraryId}/books/${matchedDoc.id}`,
         );
-      }
-      if (targetDedupeKey) {
-        indexQueries.push(
-          booksRef.where('dedupeKey', '==', targetDedupeKey).limit(1).get(),
-        );
-      }
-
-      if (indexQueries.length > 0) {
-        const indexSnaps = await Promise.all(indexQueries);
-        for (const snap of indexSnaps) {
-          const matchedDoc = snap?.docs?.[0];
-          if (matchedDoc?.id) {
-            existingBookId = matchedDoc.id;
-            break;
-          }
-        }
-      }
-
-      if (!existingBookId) {
-        const legacyQueries: Array<Promise<FirebaseFirestore.QuerySnapshot>> =
-          [];
-        if (bookData.isbn?.trim()) {
-          legacyQueries.push(
-            booksRef.where('isbn', '==', bookData.isbn.trim()).limit(1).get(),
-          );
-        }
-        if (bookData.title?.trim()) {
-          legacyQueries.push(
-            booksRef.where('title', '==', bookData.title.trim()).limit(5).get(),
-          );
-        }
-        if (legacyQueries.length > 0) {
-          const legacySnaps = await Promise.all(legacyQueries);
-          for (const snap of legacySnaps) {
-            for (const docSnap of snap?.docs || []) {
-              const d = bookDocConverter.fromFirestore(
-                docSnap.id,
-                docSnap.data() || {},
-              );
-              const docIsbn = normalizeTrackerIsbnKey(d.isbn);
-              if (targetIsbn && docIsbn && targetIsbn === docIsbn) {
-                existingBookId = docSnap.id;
-                break;
-              }
-              const docKey = `${normalizeTrackerTextKey(d.title)}::${normalizeTrackerTextKey(d.author)}`;
-              if (targetKey === docKey) {
-                existingBookId = docSnap.id;
-                break;
-              }
-            }
-            if (existingBookId) {
-              break;
-            }
-          }
-        }
-      }
-    } else {
-      const existingSnap = await booksRef.get();
-      for (const docSnap of existingSnap.docs || []) {
-        const d = bookDocConverter.fromFirestore(
-          docSnap.id,
-          docSnap.data() || {},
-        );
-        const docIsbn = normalizeTrackerIsbnKey(d.isbn);
-        if (targetIsbn && docIsbn && targetIsbn === docIsbn) {
-          existingBookId = docSnap.id;
-          break;
-        }
-        const docKey = `${normalizeTrackerTextKey(d.title)}::${normalizeTrackerTextKey(d.author)}`;
-        if (targetKey === docKey) {
-          existingBookId = docSnap.id;
-          break;
-        }
+        existingBookId = parsedBook.id;
+        break;
       }
     }
-  } catch {
-    existingBookId = undefined;
   }
 
   let resolvedBookId: string;

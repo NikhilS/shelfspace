@@ -295,7 +295,7 @@ export function EditBookForm({
 
   return (
     <Dialog open={true} onOpenChange={open => !open && onClose()}>
-      <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-hidden flex flex-col p-0 bg-surface text-ink border border-outline-variant/30 transition-all shadow-elevation-3">
+      <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-hidden flex flex-col p-0 bg-surface text-on-surface border border-outline-variant/30 transition-all shadow-elevation-3">
         {/* INLINE DELETE CONFIRMATION SCREEN */}
         {showDeleteConfirmation ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-surface animate-in fade-in zoom-in duration-200">
@@ -339,7 +339,7 @@ export function EditBookForm({
           <>
             <DialogHeader className="px-6 py-4.5 border-b border-outline-variant/25 shrink-0 flex flex-row items-center justify-between">
               <div className="space-y-0.5">
-                <DialogTitle className="text-xl font-sans font-bold text-ink leading-tight tracking-tight">
+                <DialogTitle className="text-xl font-sans font-bold text-on-surface leading-tight tracking-tight">
                   Edit Book Details
                 </DialogTitle>
                 <p className="text-xs text-on-surface-variant">
@@ -390,7 +390,7 @@ export function EditBookForm({
                             <div className="absolute top-0 left-0 right-0 h-1.5 bg-yellow-400 opacity-90 shadow-[0_0_15px_#eab308] rounded-full animate-pulse" />
                             <Loader2 className="w-10 h-10 animate-spin text-primary" />
                             <div className="space-y-1">
-                              <p className="text-sm font-semibold tracking-tight text-ink">
+                              <p className="text-sm font-semibold tracking-tight text-on-surface">
                                 Curator Lens™ Active
                               </p>
                               <p className="text-xs text-on-surface-variant italic animate-pulse">
@@ -449,7 +449,7 @@ export function EditBookForm({
                           <Sparkles className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                           <div>
                             <Label
-                              className="text-sm font-medium text-ink block leading-tight cursor-pointer"
+                              className="text-sm font-medium text-on-surface block leading-tight cursor-pointer"
                               htmlFor="nanobanana-toggle"
                             >
                               Curator Lens™ Enhancer
@@ -507,7 +507,7 @@ export function EditBookForm({
                       <div className="space-y-1">
                         <Label
                           htmlFor="title"
-                          className="text-xs font-semibold text-ink"
+                          className="text-xs font-semibold text-on-surface"
                         >
                           Title
                         </Label>
@@ -527,7 +527,7 @@ export function EditBookForm({
                       <div className="space-y-1">
                         <Label
                           htmlFor="author"
-                          className="text-xs font-semibold text-ink"
+                          className="text-xs font-semibold text-on-surface"
                         >
                           Author
                         </Label>
@@ -546,7 +546,7 @@ export function EditBookForm({
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <Label className="text-xs font-semibold text-ink">
+                          <Label className="text-xs font-semibold text-on-surface">
                             Format
                           </Label>
                           <Select
@@ -571,7 +571,7 @@ export function EditBookForm({
                         <div className="space-y-1">
                           <Label
                             htmlFor="isbn"
-                            className="text-xs font-semibold text-ink"
+                            className="text-xs font-semibold text-on-surface"
                           >
                             ISBN Code
                           </Label>
@@ -600,7 +600,7 @@ export function EditBookForm({
                         <div className="space-y-1">
                           <Label
                             htmlFor="publishedDate"
-                            className="text-xs font-semibold text-ink"
+                            className="text-xs font-semibold text-on-surface"
                           >
                             Published Year / Date
                           </Label>
@@ -614,7 +614,7 @@ export function EditBookForm({
                         <div className="space-y-1">
                           <Label
                             htmlFor="series"
-                            className="text-xs font-semibold text-ink"
+                            className="text-xs font-semibold text-on-surface"
                           >
                             Series Name
                           </Label>

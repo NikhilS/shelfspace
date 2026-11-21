@@ -1,5 +1,5 @@
 import {getAdminDb, formatFirestoreAdminError} from '../firebaseAdmin';
-import {FieldValue, FieldPath} from 'firebase-admin/firestore';
+import {FieldValue} from 'firebase-admin/firestore';
 import {SUPERADMIN_EMAIL} from '../../../constants/auth';
 import {TRPCError} from '@trpc/server';
 import {
@@ -33,7 +33,125 @@ export interface LibraryApiRecord {
   updatedAt?: string;
 }
 
-const IGNORED_LEGACY_LIBRARY_FIELDS = new Set(['sharedWith']);
+export function computeCollaboratorEmails(
+  accessMap?: Record<string, string>,
+): string[] {
+  if (!accessMap || typeof accessMap !== 'object') {
+    return [];
+  }
+  const seen = new Set<string>();
+  for (const rawEmail of Object.keys(accessMap)) {
+    const clean = rawEmail.trim().toLowerCase();
+    if (clean.length > 0 && clean.length <= 254) {
+      seen.add(clean);
+    }
+  }
+  return Array.from(seen).slice(0, 200);
+}
+
+const DEPRECATED_LIBRARY_DOC_KEYS = [
+  'sharedWith',
+  'customGenres',
+  'description',
+  'collaborators',
+  'members',
+  'memberIds',
+  'bookIds',
+] as const;
+
+const inFlightLibrarySelfHeals = new Set<string>();
+
+/**
+ * Builds a `FieldValue.delete()` patch for any deprecated pre-migration library keys
+ * (such as `sharedWith` left on disk by earlier catalog index backfills) present on `raw`.
+ */
+export function collectDeprecatedLibraryFieldDeletes(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const deletes: Record<string, unknown> = {};
+  for (const key of DEPRECATED_LIBRARY_DOC_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(raw, key)) {
+      deletes[key] = FieldValue.delete();
+    }
+  }
+  return deletes;
+}
+
+/**
+ * Parses a `/libraries/{docId}` snapshot read from Firestore. If any deprecated
+ * pre-migration library keys (e.g., `sharedWith`) remain on disk or `collaboratorEmails`
+ * is missing entries present in `access`, normalizes the snapshot before strict
+ * `libraryDocConverter.fromFirestore` validation and asynchronously self-heals Firestore.
+ */
+export function parseAndSelfHealLibrarySnapshot(
+  docId: string,
+  raw: Record<string, unknown>,
+  fallbackOwnerId = 'unknown_owner',
+  docRef?: FirebaseFirestore.DocumentReference,
+): StoredLibraryDoc {
+  const healPatch = collectDeprecatedLibraryFieldDeletes(raw);
+  const deprecatedKeys = Object.keys(healPatch);
+
+  const rawAccess =
+    raw.access && typeof raw.access === 'object' && !Array.isArray(raw.access)
+      ? (raw.access as Record<string, string>)
+      : undefined;
+  const expectedCollaborators = computeCollaboratorEmails(rawAccess);
+  const existingCollaborators = Array.isArray(raw.collaboratorEmails)
+    ? raw.collaboratorEmails
+        .filter((e): e is string => typeof e === 'string')
+        .map(e => e.trim().toLowerCase())
+    : undefined;
+  const needsCollaboratorBackfill =
+    expectedCollaborators.length > 0 &&
+    (!existingCollaborators ||
+      expectedCollaborators.some(
+        email => !existingCollaborators.includes(email),
+      ));
+
+  let cleanedRaw = raw;
+  if (deprecatedKeys.length > 0 || needsCollaboratorBackfill) {
+    cleanedRaw = {...raw};
+    for (const key of deprecatedKeys) {
+      delete cleanedRaw[key];
+    }
+    if (needsCollaboratorBackfill) {
+      cleanedRaw.collaboratorEmails = expectedCollaborators;
+      healPatch.collaboratorEmails = expectedCollaborators;
+    }
+
+    if (
+      docRef &&
+      typeof docRef.update === 'function' &&
+      !docId.startsWith('virtual_') &&
+      !inFlightLibrarySelfHeals.has(docId)
+    ) {
+      inFlightLibrarySelfHeals.add(docId);
+      validateFirestoreWritePayload(
+        storedLibraryDocSchema.partial(),
+        healPatch,
+        {
+          entity: 'StoredLibraryDoc',
+          documentPath: `/libraries/${docId}`,
+          operation: 'update',
+        },
+      );
+      void docRef
+        .update(healPatch)
+        .catch(err => {
+          console.warn(
+            `[LibraryService] Failed to self-heal /libraries/${docId}:`,
+            formatFirestoreAdminError(err),
+          );
+        })
+        .finally(() => {
+          inFlightLibrarySelfHeals.delete(docId);
+        });
+    }
+  }
+
+  return libraryDocConverter.fromFirestore(docId, cleanedRaw, fallbackOwnerId);
+}
 
 export const libraryDocConverter = {
   fromFirestore(
@@ -49,6 +167,11 @@ export const libraryDocConverter = {
         ? raw.ownerId
         : fallbackOwnerId || 'unknown_owner';
 
+    const accessMap =
+      raw.access && typeof raw.access === 'object'
+        ? (raw.access as Record<string, string>)
+        : {};
+
     const candidate: Record<string, unknown> = {
       ...raw,
       id: docId,
@@ -59,11 +182,28 @@ export const libraryDocConverter = {
             ? 'Personal Reading Shelf'
             : 'Untitled Library',
       ownerId: resolvedOwnerId,
-      access: raw.access && typeof raw.access === 'object' ? raw.access : {},
+      access: accessMap,
     };
 
-    for (const legacyKey of IGNORED_LEGACY_LIBRARY_FIELDS) {
-      delete candidate[legacyKey];
+    if (Array.isArray(raw.collaboratorEmails)) {
+      candidate.collaboratorEmails = raw.collaboratorEmails
+        .filter((e): e is string => typeof e === 'string')
+        .map(e => e.trim().toLowerCase())
+        .filter(e => e.length > 0 && e.length <= 254)
+        .slice(0, 200);
+    } else {
+      delete candidate.collaboratorEmails;
+    }
+
+    if (
+      typeof raw.activeJobId === 'string' &&
+      raw.activeJobId.trim().length > 0
+    ) {
+      candidate.activeJobId = raw.activeJobId.trim();
+    } else if (raw.activeJobId === null) {
+      candidate.activeJobId = null;
+    } else {
+      delete candidate.activeJobId;
     }
 
     if (typeof raw.ownerName === 'string' && raw.ownerName) {
@@ -136,42 +276,36 @@ export async function getUserLibraries(
     const db = getAdminDb();
     const librariesRef = db.collection('libraries');
 
-    const queries: Array<Promise<FirebaseFirestore.QuerySnapshot>> = [];
+    const snapshots: FirebaseFirestore.QuerySnapshot[] = [];
 
     if (activeScopes.includes('all') && isCallerAdmin) {
-      queries.push(librariesRef.get());
+      snapshots.push(await librariesRef.get());
     } else {
-      if (activeScopes.includes('owned') && userId) {
-        queries.push(librariesRef.where('ownerId', '==', userId).get());
-      }
+      const wantOwned = activeScopes.includes('owned') && Boolean(userId);
+      const trimmedEmail = userEmail?.trim() || '';
+      const lowerEmail = trimmedEmail.toLowerCase();
+      const wantShared =
+        activeScopes.includes('shared') && lowerEmail.length > 0;
 
-      if (activeScopes.includes('shared') && userEmail) {
-        const email = userEmail.trim();
-        const lowerEmail = email.toLowerCase();
-        queries.push(
-          librariesRef
-            .where(new FieldPath('access', email), 'in', [
-              'owner',
-              'editor',
-              'viewer',
-            ])
-            .get(),
-        );
-        if (lowerEmail !== email) {
-          queries.push(
-            librariesRef
-              .where(new FieldPath('access', lowerEmail), 'in', [
-                'owner',
-                'editor',
-                'viewer',
-              ])
-              .get(),
-          );
-        }
+      const [ownedSnap, sharedIndexedSnap] = await Promise.all([
+        wantOwned
+          ? librariesRef.where('ownerId', '==', userId).get()
+          : Promise.resolve(undefined),
+        wantShared
+          ? librariesRef
+              .where('collaboratorEmails', 'array-contains', lowerEmail)
+              .get()
+          : Promise.resolve(undefined),
+      ]);
+
+      if (ownedSnap) {
+        snapshots.push(ownedSnap);
+      }
+      if (sharedIndexedSnap) {
+        snapshots.push(sharedIndexedSnap);
       }
     }
 
-    const snapshots = await Promise.all(queries);
     const seenIds = new Set<string>();
     const result: LibraryApiRecord[] = [];
 
@@ -186,10 +320,11 @@ export async function getUserLibraries(
         if (rawData.isVirtual === true || docSnap.id.startsWith('virtual_')) {
           return;
         }
-        const storedLib = libraryDocConverter.fromFirestore(
+        const storedLib = parseAndSelfHealLibrarySnapshot(
           docSnap.id,
           rawData,
           userId,
+          docSnap.ref,
         );
         LibraryMetadataCache.set(docSnap.id, storedLib);
         const ownerId = storedLib.ownerId;
@@ -199,17 +334,31 @@ export async function getUserLibraries(
         let callerRole: 'owner' | 'editor' | 'viewer' | 'admin' | null = null;
         let ownershipType: 'owned' | 'shared' | 'global_admin' = 'owned';
 
+        const matchedSharedRole = (() => {
+          if (!userEmail) {
+            return undefined;
+          }
+          if (accessMap[userEmail]) {
+            return accessMap[userEmail];
+          }
+          if (normalizedEmail && accessMap[normalizedEmail]) {
+            return accessMap[normalizedEmail];
+          }
+          if (normalizedEmail) {
+            for (const [rawKey, roleVal] of Object.entries(accessMap)) {
+              if (rawKey.trim().toLowerCase() === normalizedEmail) {
+                return roleVal;
+              }
+            }
+          }
+          return undefined;
+        })();
+
         if (ownerId === userId) {
           callerRole = 'owner';
           ownershipType = 'owned';
-        } else if (
-          userEmail &&
-          (accessMap[userEmail] ||
-            (normalizedEmail && accessMap[normalizedEmail]))
-        ) {
-          callerRole =
-            accessMap[userEmail] ||
-            (normalizedEmail ? accessMap[normalizedEmail] : 'viewer');
+        } else if (matchedSharedRole) {
+          callerRole = matchedSharedRole;
           ownershipType = 'shared';
         } else if (isCallerAdmin) {
           callerRole = 'admin';
@@ -264,6 +413,7 @@ export async function getLibrary(
 ): Promise<Library> {
   let data: Record<string, unknown>;
   let fetchedFromFirestore = false;
+  let fetchedRef: FirebaseFirestore.DocumentReference | undefined;
 
   if (options?.prefetchedData) {
     data = options.prefetchedData;
@@ -282,7 +432,8 @@ export async function getLibrary(
       data = cachedLib;
     } else {
       const db = getAdminDb();
-      const libSnap = await db.collection('libraries').doc(libraryId).get();
+      const libRef = db.collection('libraries').doc(libraryId);
+      const libSnap = await libRef.get();
       if (!libSnap.exists) {
         if (libraryId === `virtual_${userId}`) {
           data = {
@@ -301,11 +452,17 @@ export async function getLibrary(
       } else {
         data = libSnap.data() || {};
         fetchedFromFirestore = true;
+        fetchedRef = libRef;
       }
     }
   }
 
-  const storedLib = libraryDocConverter.fromFirestore(libraryId, data, userId);
+  const storedLib = parseAndSelfHealLibrarySnapshot(
+    libraryId,
+    data,
+    userId,
+    fetchedRef,
+  );
   if (fetchedFromFirestore && !libraryId.startsWith('virtual_')) {
     LibraryMetadataCache.set(libraryId, storedLib);
   }
@@ -317,10 +474,10 @@ export async function getLibrary(
     options?.callerRole ??
     (libraryId === `virtual_${userId}`
       ? 'owner'
-      : evaluateRoleFromLibraryData(userId, userEmail, data));
+      : evaluateRoleFromLibraryData(userId, userEmail, storedLib));
 
   return {
-    ...(data as unknown as Library),
+    ...storedLib,
     id: libraryId,
     name: storedLib.name,
     ownerId,
@@ -330,11 +487,8 @@ export async function getLibrary(
     callerRole,
     isOwner: callerRole === 'owner',
     canEdit: callerRole === 'owner' || callerRole === 'editor',
-    createdAt:
-      storedLib.createdAt ||
-      (data.createdAt as string) ||
-      new Date().toISOString(),
-    updatedAt: storedLib.updatedAt || (data.updatedAt as string | undefined),
+    createdAt: storedLib.createdAt || new Date().toISOString(),
+    updatedAt: storedLib.updatedAt,
   };
 }
 
@@ -358,11 +512,13 @@ export async function createLibrary(
   }
 
   const now = new Date().toISOString();
+  const collaboratorEmails = computeCollaboratorEmails(access);
   const payload = {
     name: input.name.trim(),
     ownerId: userId,
     ownerName: userName || userEmail || 'Anonymous',
     access,
+    collaboratorEmails,
     heroImageUrl: input.heroImageUrl || null,
     bookCount: 0,
     createdAt: now,
@@ -466,6 +622,8 @@ export async function updateLibrary(
       normalizedAccess[callerEmail] = 'owner';
     }
     updatePayload.access = normalizedAccess;
+    updatePayload.collaboratorEmails =
+      computeCollaboratorEmails(normalizedAccess);
 
     const nonOwnerEmails = Object.entries(normalizedAccess)
       .filter(([, role]) => role !== 'owner')
@@ -517,7 +675,7 @@ export async function updateLibrary(
 }
 
 /**
- * Deletes a library and all contained books, details, reviews, and allowedDuplicates.
+ * Deletes a library and all contained books, details, reviews, allowedDuplicates, jobs, and tombstones.
  */
 export async function deleteLibrary(
   userId: string,
@@ -537,32 +695,16 @@ export async function deleteLibrary(
   try {
     const db = getAdminDb();
     const libRef = db.collection('libraries').doc(libraryId);
-
-    const fetchCollectionRefs = async (
-      colRef: FirebaseFirestore.CollectionReference,
-    ): Promise<FirebaseFirestore.QuerySnapshot> => {
-      const selectable = colRef as unknown as {
-        select?: () => {get: () => Promise<FirebaseFirestore.QuerySnapshot>};
-      };
-      if (typeof selectable?.select === 'function') {
-        return selectable.select().get();
-      }
-      return colRef.get();
-    };
-
     const detailsCol = libRef.collection('bookDetails');
-    const canListDetails =
-      typeof (detailsCol as unknown as {get?: unknown})?.get === 'function' ||
-      typeof (detailsCol as unknown as {select?: unknown})?.select ===
-        'function';
 
-    const [booksSnap, dupSnap, detailsSnap] = await Promise.all([
-      fetchCollectionRefs(libRef.collection('books')),
-      fetchCollectionRefs(libRef.collection('allowedDuplicates')),
-      canListDetails
-        ? fetchCollectionRefs(detailsCol).catch(() => undefined)
-        : Promise.resolve(undefined),
-    ]);
+    const [booksSnap, dupSnap, detailsSnap, jobsSnap, tombstonesSnap] =
+      await Promise.all([
+        libRef.collection('books').select().get(),
+        libRef.collection('allowedDuplicates').select().get(),
+        detailsCol.select().get(),
+        libRef.collection('jobs').select().get(),
+        libRef.collection('tombstones').select().get(),
+      ]);
 
     // Pre-fetch reviews subcollections in bounded concurrency chunks of 25
     const REVIEW_FETCH_CONCURRENCY = 25;
@@ -579,18 +721,7 @@ export async function deleteLibrary(
         start + REVIEW_FETCH_CONCURRENCY,
       );
       const chunkResults = await Promise.all(
-        slice.map(async bookDoc => {
-          try {
-            if (typeof bookDoc.ref?.collection === 'function') {
-              return await fetchCollectionRefs(
-                bookDoc.ref.collection('reviews'),
-              );
-            }
-          } catch {
-            // Non-fatal if reviews subcollection is empty or mocked
-          }
-          return undefined;
-        }),
+        slice.map(bookDoc => bookDoc.ref.collection('reviews').select().get()),
       );
       for (let offset = 0; offset < chunkResults.length; offset++) {
         reviewSnaps[start + offset] = chunkResults[offset];
@@ -633,18 +764,28 @@ export async function deleteLibrary(
       }
     }
 
-    if (detailsSnap?.docs) {
-      for (const detailDoc of detailsSnap.docs) {
-        if (!deletedDetailIds.has(detailDoc.id)) {
-          batch.delete(detailDoc.ref);
-          count++;
-          await commitIfFull();
-        }
+    for (const detailDoc of detailsSnap.docs) {
+      if (!deletedDetailIds.has(detailDoc.id)) {
+        batch.delete(detailDoc.ref);
+        count++;
+        await commitIfFull();
       }
     }
 
     for (const dupDoc of dupSnap.docs) {
       batch.delete(dupDoc.ref);
+      count++;
+      await commitIfFull();
+    }
+
+    for (const jobDoc of jobsSnap.docs) {
+      batch.delete(jobDoc.ref);
+      count++;
+      await commitIfFull();
+    }
+
+    for (const tombstoneDoc of tombstonesSnap.docs) {
+      batch.delete(tombstoneDoc.ref);
       count++;
       await commitIfFull();
     }

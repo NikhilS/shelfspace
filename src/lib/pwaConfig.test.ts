@@ -7,7 +7,7 @@ describe('PWA & Offline Configuration', () => {
     const indexPath = path.resolve(process.cwd(), 'index.html');
     const html = fs.readFileSync(indexPath, 'utf-8');
 
-    expect(html).toContain('<meta name="theme-color" content="#fcf9f3" />');
+    expect(html).toContain('<meta name="theme-color" content="#faf7f2" />');
     expect(html).toContain('<link rel="apple-touch-icon" href="/icon.png" />');
   });
 

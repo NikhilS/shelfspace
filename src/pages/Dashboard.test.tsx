@@ -122,6 +122,15 @@ vi.mock('../lib/trpc', () => ({
       getUnreadLibraryBooks: {
         useQuery: () => mockGetUnreadLibraryBooksUseQuery(),
       },
+      getRecommendations: {
+        useQuery: vi.fn(() => ({
+          data: undefined,
+          isLoading: false,
+          isFetching: false,
+          error: null,
+          refetch: vi.fn(),
+        })),
+      },
     },
   },
   trpcVanilla: {

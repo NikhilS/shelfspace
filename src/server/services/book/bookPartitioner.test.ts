@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {BookPartitioner} from './bookPartitioner';
+import {BookPartitioner, bookDocConverter} from './bookPartitioner';
 import {
   captureLibraryAccess,
   verifyLibraryAccess,
@@ -233,6 +233,55 @@ describe('BookPartitioner & Multi-User Privilege Boundaries (SEC-01, SEC-04, SEC
       ).rejects.toMatchObject({
         code: 'BAD_REQUEST',
       });
+    });
+  });
+
+  describe('Read-Time Legacy Book Index Synthesis', () => {
+    it('synthesizes cleanIsbn, dedupeKey, searchTokens, primaryGenreLower, and missingFlags on full legacy book reads while sparing partial projections', () => {
+      const fullParsed = BookPartitioner.mergeBookAndDetails(
+        'legacy_1',
+        bookDocConverter.fromFirestore(
+          'legacy_1',
+          {
+            title: 'The Dispossessed',
+            author: 'Ursula K. Le Guin',
+            isbn: '978-0-06-105488-4',
+            primaryGenre: 'Science Fiction',
+            addedAt: '2025-01-01T00:00:00.000Z',
+          },
+          '/libraries/lib_1/books/legacy_1',
+          {skipSelfHeal: true},
+        ),
+      );
+
+      expect(fullParsed.cleanIsbn).toBe('9780061054884');
+      expect(fullParsed.dedupeKey).toBeTruthy();
+      expect(fullParsed.hasSearchTokens).toBe(true);
+      expect(fullParsed.primaryGenreLower).toBe('science fiction');
+      expect(fullParsed.missingFlags).toEqual(
+        expect.arrayContaining([
+          'geo',
+          'temporal',
+          'synopsis',
+          'authorBio',
+          'embedding',
+          'coverImage',
+          'series',
+        ]),
+      );
+      expect(fullParsed.missingFlags).not.toContain('genre');
+
+      const partialParsed = bookDocConverter.fromFirestore(
+        'legacy_partial',
+        {
+          title: 'The Dispossessed',
+          author: 'Ursula K. Le Guin',
+        },
+        '/libraries/lib_1/books/legacy_partial',
+        {skipSelfHeal: true, isPartialProjection: true},
+      );
+      expect(partialParsed.missingFlags).toBeUndefined();
+      expect(partialParsed.searchTokens).toBeUndefined();
     });
   });
 });

@@ -1,8 +1,6 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {metadataRouter} from './metadata';
-import {MetadataRegistry} from '../../services/metadata';
-import {MetadataKey} from '../../../types/metadata';
-import {catalogOrchestrator, wikipediaProvider} from '../../services/catalog';
+import {catalogOrchestrator} from '../../services/catalog';
 import {serverTelemetryBuffer} from '../../services/telemetry/serverTelemetryBuffer';
 import type {SecurityContext} from '../../auth/types';
 
@@ -12,9 +10,6 @@ vi.mock('../../services/catalog', () => ({
     searchByQuery: vi.fn(),
     fetchCoverCandidates: vi.fn(),
     inspectAllCapacities: vi.fn(),
-  },
-  wikipediaProvider: {
-    fetchAuthorBio: vi.fn(),
   },
 }));
 
@@ -39,71 +34,7 @@ describe('metadataRouter tRPC procedures', () => {
     vi.clearAllMocks();
   });
 
-  it('enriches books on create across available on-create providers', async () => {
-    const mockProvider = {
-      getKey: () => MetadataKey.GENRE,
-      shouldFetchOnCreate: () => true,
-      isAvailable: () => true,
-      bulkFetch: vi.fn().mockResolvedValue({
-        'b-1': {primaryGenre: 'Literary Fiction', subgenres: []},
-      }),
-    };
-
-    vi.spyOn(MetadataRegistry, 'getInstance').mockReturnValue({
-      getAllProviders: () => [mockProvider],
-    } as unknown as MetadataRegistry);
-
-    const caller = metadataRouter.createCaller(userCtx);
-    const res = await caller.enrichCreate({
-      books: [{id: 'b-1', title: 'Middlemarch', author: 'George Eliot'}],
-    });
-
-    expect(res['b-1'][MetadataKey.GENRE]).toEqual({
-      primaryGenre: 'Literary Fiction',
-      subgenres: [],
-    });
-  });
-
-  it('validates provider existence and availability in enrichSpruceUp', async () => {
-    const registryMock = {
-      getProvider: vi.fn(),
-    };
-    vi.spyOn(MetadataRegistry, 'getInstance').mockReturnValue(
-      registryMock as unknown as MetadataRegistry,
-    );
-
-    const caller = metadataRouter.createCaller(userCtx);
-
-    registryMock.getProvider.mockReturnValue(undefined);
-    await expect(
-      caller.enrichSpruceUp({
-        providerKey: MetadataKey.SYNOPSIS,
-        books: [{id: 'b-1', title: 'Book', author: 'Author'}],
-      }),
-    ).rejects.toThrow(/No provider registered/);
-
-    registryMock.getProvider.mockReturnValue({
-      isAvailable: () => false,
-    });
-    await expect(
-      caller.enrichSpruceUp({
-        providerKey: MetadataKey.SYNOPSIS,
-        books: [{id: 'b-1', title: 'Book', author: 'Author'}],
-      }),
-    ).rejects.toThrow(/currently unavailable/);
-
-    registryMock.getProvider.mockReturnValue({
-      isAvailable: () => true,
-      bulkFetch: vi.fn().mockResolvedValue({'b-1': 'A great synopsis'}),
-    });
-    const result = await caller.enrichSpruceUp({
-      providerKey: MetadataKey.SYNOPSIS,
-      books: [{id: 'b-1', title: 'Book', author: 'Author'}],
-    });
-    expect(result).toEqual({'b-1': 'A great synopsis'});
-  });
-
-  it('delegates searchByIsbn, searchByTitleAndAuthor, searchByTitle, fetchCoverCandidates, and fetchAuthorBio', async () => {
+  it('delegates searchByIsbn, searchByTitleAndAuthor, searchByTitle, and fetchCoverCandidates', async () => {
     const caller = metadataRouter.createCaller(userCtx);
 
     vi.mocked(catalogOrchestrator.searchByIsbn).mockResolvedValue({
@@ -167,13 +98,6 @@ describe('metadataRouter tRPC procedures', () => {
     expect(
       (await caller.fetchCoverCandidates({title: 'Dune'})).candidates,
     ).toHaveLength(1);
-
-    vi.mocked(wikipediaProvider.fetchAuthorBio).mockResolvedValue(
-      'Frank Herbert was an American science-fiction author.',
-    );
-    expect(await caller.fetchAuthorBio({author: 'Frank Herbert'})).toContain(
-      'Frank Herbert',
-    );
   });
 
   it('enforces admin-only access on providerCapacities and debugTelemetry', async () => {

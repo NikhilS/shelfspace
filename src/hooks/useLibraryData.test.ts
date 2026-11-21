@@ -2,7 +2,11 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
 import React from 'react';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {useLibraryData, mapDocToBook} from './useLibraryData';
+import {useLibraryData} from './useLibraryData';
+import {
+  selectBookWithOverlay,
+  useEntityCacheStore,
+} from '../stores/entityCacheStore';
 
 // Mock authStore
 vi.mock('../stores/authStore', () => ({
@@ -74,6 +78,7 @@ describe('Declarative TanStack React Query (useLibraryData)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useEntityCacheStore.getState().clearAllEntities();
     queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -124,44 +129,54 @@ describe('Declarative TanStack React Query (useLibraryData)', () => {
       React.createElement(QueryClientProvider, {client: queryClient}, children);
   };
 
-  describe('mapDocToBook', () => {
-    it('correctly maps raw snapshot fields to Book model', () => {
-      const mockDoc = {
-        id: 'book-1',
-        data: () => ({
-          title: 'Dune',
-          author: 'Frank Herbert',
-          primaryGenre: 'Science Fiction',
-          subgenres: ['Space Opera'],
-          isCustomPrimary: true,
-          temporalMetadata: {
-            startYear: 1965,
-          },
-        }),
-      };
+  describe('Warm Entity Store Hydration', () => {
+    it('serves warm books from useEntityCacheStore immediately while booksQuery is still loading', () => {
+      useEntityCacheStore.getState().upsertLibrary({
+        id: 'lib-warm-paint',
+        name: 'Warm Study',
+        ownerId: 'user123',
+        ownerName: 'Reader',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        bookCount: 1,
+      });
+      useEntityCacheStore.getState().hydrateLibraryBooks('lib-warm-paint', [
+        {
+          id: 'b-warm-1',
+          libraryId: 'lib-warm-paint',
+          title: 'Piranesi',
+          author: 'Susanna Clarke',
+          format: 'physical',
+          addedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ]);
 
-      const book = mapDocToBook(mockDoc);
-      expect(book.id).toBe('book-1');
-      expect(book.title).toBe('Dune');
-      expect(book.primaryGenre).toBe('Science Fiction');
-      expect(book.subgenres).toEqual(['Space Opera']);
-      expect(book.isCustomPrimary).toBe(true);
-      expect(book.temporalMetadata?.endYear).toBe(1965);
-    });
+      mockTrpcLibraryQuery.mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        isFetching: true,
+        isStale: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+      mockTrpcBooksQuery.mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        isFetching: true,
+        isStale: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
 
-    it('sanitizes out-of-range temporal metadata', () => {
-      const mockDoc = {
-        id: 'book-invalid-year',
-        data: () => ({
-          title: 'Ancient Tales',
-          temporalMetadata: {
-            startYear: 99999,
-          },
-        }),
-      };
+      const {result} = renderHook(
+        () => useLibraryData('lib-warm-paint', 'user123', navigate),
+        {wrapper: createWrapper()},
+      );
 
-      const book = mapDocToBook(mockDoc);
-      expect(book.temporalMetadata).toBeUndefined();
+      expect(result.current.library?.name).toBe('Warm Study');
+      expect(result.current.books).toHaveLength(1);
+      expect(result.current.books[0]?.title).toBe('Piranesi');
     });
   });
 
@@ -473,7 +488,7 @@ describe('Declarative TanStack React Query (useLibraryData)', () => {
         ],
         deletedBookIds: ['book-deleted'],
         readingStates: {
-          'isbn:9780441172719': {
+          'book:lib-warm:book-1': {
             status: 'reading',
             rating: 5,
           },
@@ -507,6 +522,20 @@ describe('Declarative TanStack React Query (useLibraryData)', () => {
         readingStatus: 'reading',
         userRating: 5,
       });
+      expect(
+        selectBookWithOverlay(
+          useEntityCacheStore.getState(),
+          'lib-warm',
+          'book-new',
+        )?.title,
+      ).toBe('Children of Dune');
+      expect(
+        selectBookWithOverlay(
+          useEntityCacheStore.getState(),
+          'lib-warm',
+          'book-deleted',
+        ),
+      ).toBeUndefined();
     });
   });
 });

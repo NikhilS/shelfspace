@@ -35,57 +35,23 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
   const [activeShelf, setActiveShelf] = useState<ShelfFilterTab>('all');
   const isEnabled = options?.enabled ?? true;
 
-  let utils: ReturnType<typeof trpc.useUtils> | undefined;
-  try {
-    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
-      utils = trpc.useUtils();
-    }
-  } catch {
-    utils = undefined;
-  }
+  const utils = trpc.useUtils();
 
-  let shelfQuery:
-    | {
-        data?: unknown;
-        isLoading?: boolean;
-        error?: unknown;
-        refetch?: () => Promise<unknown>;
-      }
-    | undefined;
-  try {
-    if (trpc?.readingTracker?.getShelf?.useQuery) {
-      shelfQuery = trpc.readingTracker.getShelf.useQuery(
-        {shelf: 'all'},
-        {
-          enabled: Boolean(user) && isEnabled,
-          staleTime: 1000 * 60 * 5,
-        },
-      );
-    }
-  } catch {
-    shelfQuery = undefined;
-  }
+  const shelfQuery = trpc.readingTracker.getShelf.useQuery(
+    {shelf: 'all'},
+    {
+      enabled: Boolean(user) && isEnabled,
+      staleTime: 1000 * 60 * 5,
+    },
+  );
 
-  let unreadQuery:
-    | {
-        data?: UnreadLibraryBookItem[] | {books?: UnreadLibraryBookItem[]};
-        isLoading?: boolean;
-        refetch?: () => Promise<unknown>;
-      }
-    | undefined;
-  try {
-    if (trpc?.readingTracker?.getUnreadLibraryBooks?.useQuery) {
-      unreadQuery = trpc.readingTracker.getUnreadLibraryBooks.useQuery(
-        undefined,
-        {
-          enabled: Boolean(user) && isEnabled,
-          staleTime: 1000 * 60 * 5,
-        },
-      );
-    }
-  } catch {
-    unreadQuery = undefined;
-  }
+  const unreadQuery = trpc.readingTracker.getUnreadLibraryBooks.useQuery(
+    undefined,
+    {
+      enabled: Boolean(user) && isEnabled,
+      staleTime: 1000 * 60 * 5,
+    },
+  );
 
   const summary: ReadingShelfSummary = useMemo(() => {
     const data = shelfQuery?.data as ReadingShelfSummary | undefined;
@@ -97,13 +63,7 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
 
   const unreadLibraryBooks = useMemo<UnreadLibraryBookItem[]>(() => {
     const raw = unreadQuery?.data;
-    if (Array.isArray(raw)) {
-      return raw;
-    }
-    if (raw && typeof raw === 'object' && Array.isArray(raw.books)) {
-      return raw.books;
-    }
-    return [];
+    return Array.isArray(raw) ? raw : [];
   }, [unreadQuery?.data]);
 
   const filteredItems = useMemo<TrackedBookItem[]>(() => {
@@ -142,39 +102,23 @@ export function useReadingShelf(options?: {enabled?: boolean}) {
         bookHint: existingItem,
       });
       try {
-        if (trpcVanilla?.book?.updateStatus?.mutate) {
-          const response = await trpcVanilla.book.updateStatus.mutate({
-            libraryId,
-            bookId,
-            status: nextStatus,
-            ...(snapshotHint ? {bookSnapshot: snapshotHint} : {}),
-          });
-          commitReadingStatusDelta(utils, {
-            libraryId,
-            bookId,
-            status: response?.status ?? nextStatus,
-            reviewedAt: response?.reviewedAt,
-            rating: response?.rating,
-            startedAt: response?.startedAt,
-            finishedAt: response?.finishedAt,
-            bookSnapshot: response?.bookSnapshot,
-            bookHint: existingItem,
-          });
-        } else if (trpcVanilla?.readingTracker?.trackBook?.mutate) {
-          const response = await trpcVanilla.readingTracker.trackBook.mutate({
-            source: 'library',
-            libraryId,
-            bookId,
-            status: nextStatus,
-          });
-          commitReadingStatusDelta(utils, {
-            libraryId,
-            bookId,
-            status: response?.status ?? nextStatus,
-            rating: response?.rating,
-            bookHint: existingItem,
-          });
-        }
+        const response = await trpcVanilla.book.updateStatus.mutate({
+          libraryId,
+          bookId,
+          status: nextStatus,
+          ...(snapshotHint ? {bookSnapshot: snapshotHint} : {}),
+        });
+        commitReadingStatusDelta(utils, {
+          libraryId,
+          bookId,
+          status: response?.status ?? nextStatus,
+          reviewedAt: response?.reviewedAt,
+          rating: response?.rating,
+          startedAt: response?.startedAt,
+          finishedAt: response?.finishedAt,
+          bookSnapshot: response?.bookSnapshot,
+          bookHint: existingItem,
+        });
         toast.success(
           nextStatus === 'unset'
             ? 'Removed from reading list'

@@ -1,10 +1,11 @@
 import React from 'react';
-import {MapPin, Globe, X} from 'lucide-react';
+import {MapPin, Globe, X, Compass} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {CartographyCompassIllustration} from '@/components/ui/empty-state-illustrations';
 import {BookLoader} from '../../components/book/BookLoader';
 import {APIProvider, Map, AdvancedMarker} from '@vis.gl/react-google-maps';
 import {FlattenedLocationPin, MapCluster, WorldMapMode} from './types';
+import {ArchivalWorldMapSvg} from './ArchivalWorldMapSvg';
 
 interface WorldMapCanvasProps {
   isBooksLoading: boolean;
@@ -45,101 +46,90 @@ export function WorldMapCanvas({
 }: WorldMapCanvasProps) {
   return (
     <div
-      className="lg:col-span-8 bg-surface-variant/30 rounded-3xl overflow-hidden border border-outline-variant h-[calc(100vh-14rem)] min-h-[500px]"
+      className="lg:col-span-8 bento-card overflow-hidden h-[calc(100vh-14rem)] min-h-[520px] flex flex-col"
       id="map-interaction-stage"
     >
       {isBooksLoading ? (
         <div className="w-full h-full flex flex-col items-center justify-center p-8">
           <BookLoader size="lg" className="mb-4" />
-          <p className="text-on-surface-variant text-sm font-medium">
-            Assembling cartographic assets...
+          <p className="text-on-surface-variant text-sm font-sans font-medium">
+            Charting literary geographies...
           </p>
         </div>
       ) : !hasMapsApiKey ? (
-        /* Interactive Fallback Map with plotted coordinates */
-        <div className="relative w-full h-full bg-surface p-6 flex flex-col justify-between overflow-hidden rounded-3xl border border-outline-variant select-none">
-          {/* Vintage map grid background */}
-          <div className="absolute inset-0 pointer-events-none opacity-[0.12]">
-            <div className="absolute inset-0 grid grid-cols-12 grid-rows-6">
-              {Array.from({length: 72}).map((_, i) => (
-                <div key={i} className="border-[0.5px] border-zinc-900/10" />
-              ))}
-            </div>
-            <div className="absolute left-1/2 top-0 bottom-0 border-l border-zinc-950/30 border-dashed" />
-            <div className="absolute top-1/2 left-0 right-0 border-t border-zinc-950/30 border-dashed" />
-            <span className="absolute left-4 top-[51%] font-label-caps-xs text-label-caps-xs font-mono font-medium text-stone-600 uppercase tracking-widest">
-              Equator
-            </span>
-            <span className="absolute left-[51%] top-4 font-label-caps-xs text-label-caps-xs font-mono font-medium text-stone-600 uppercase tracking-widest leading-none rotate-90 origin-top-left">
-              Prime Meridian
-            </span>
-          </div>
-
-          {/* Continent shapes as minimalist pastel vectors */}
-          <div className="absolute inset-0 pointer-events-none opacity-[0.22] flex items-center justify-center">
-            <div className="relative w-full h-full max-w-[800px] max-h-[400px]">
-              <div className="absolute left-[12%] top-[15%] w-[20%] h-[35%] bg-stone-500/30 rounded-[40px_20px_80px_40px] rotate-[10deg] blur-sm" />
-              <div className="absolute left-[24%] top-[50%] w-[14%] h-[40%] bg-stone-500/30 rounded-[20px_40px_80px_30px] rotate-[-5deg] blur-sm" />
-              <div className="absolute left-[45%] top-[10%] w-[45%] h-[45%] bg-stone-500/30 rounded-[50px_90px_60px_40px] rotate-[-2deg] blur-sm" />
-              <div className="absolute left-[46%] top-[45%] w-[16%] h-[38%] bg-stone-500/30 rounded-[30px_30px_90px_60px] blur-sm" />
-              <div className="absolute left-[75%] top-[65%] w-[12%] h-[20%] bg-stone-500/30 rounded-[40px_30px_60px_40px] blur-sm" />
-              <div className="absolute left-[28%] top-[5%] w-[8%] h-[10%] bg-stone-500/30 rounded-[10px_45px_10px_20px] blur-sm" />
-            </div>
-          </div>
-
-          {/* Top-level Banner overlay informing user they are running in fallback mode */}
-          <div className="absolute top-4 left-4 right-4 z-20 flex justify-between items-center bg-white/95 backdrop-blur-md border border-neutral-200/80 px-4 py-2.5 rounded-2xl shadow-elevation-2">
-            <div className="flex items-center gap-2">
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        /* Interactive Archival Vector World Map with Plotted Coordinates */
+        <div className="relative w-full h-full bg-surface flex flex-col justify-between overflow-hidden select-none">
+          {/* Clean Archival Cartouche Header Bar */}
+          <div className="z-20 flex flex-wrap justify-between items-center gap-2 bg-surface-container-low/90 border-b border-outline-variant/60 px-4 py-2.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <Compass className="w-4 h-4 text-tertiary shrink-0" />
+              <span className="text-xs font-sans font-medium text-on-surface truncate">
+                Archival Vector Atlas
               </span>
-              <span className="text-xs font-semibold text-stone-700 font-sans">
-                Viewing interactive literary geography fallback map
+              <span
+                aria-hidden="true"
+                className="text-outline-variant hidden sm:inline"
+              >
+                ·
+              </span>
+              <span className="text-xs font-sans text-on-surface-variant hidden sm:inline truncate">
+                Select any plotted pin to inspect literary settings
               </span>
             </div>
             <Button
               onClick={() => onSetShowApiSetupModal(true)}
               variant="outline"
+              size="sm"
               type="button"
-              className="font-label-caps-xs text-label-caps-xs h-7 px-3 py-1 font-bold rounded-xl border-zinc-200 hover:bg-neutral-50 active:bg-neutral-100 uppercase tracking-widest text-zinc-800"
+              className="h-7 px-2.5 text-[11px] font-sans font-semibold rounded-md"
             >
-              Set Google Maps Key
+              Connect Live Map
             </Button>
           </div>
 
-          {/* Render interactive coordinate plotted pins */}
-          <div className="relative w-full h-full pt-16 pb-6 pr-6">
+          {/* Equirectangular Vector Projection Stage */}
+          <div
+            className="relative flex-1 w-full overflow-hidden bg-surface-container-lowest"
+            onClick={onMapClick}
+          >
+            <ArchivalWorldMapSvg className="absolute inset-0 w-full h-full" />
+
             {filteredPins.length === 0 ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-surface/65 backdrop-blur-[1px]">
                 <CartographyCompassIllustration className="mb-3" />
-                <h4 className="font-serif text-base font-semibold text-on-surface">
+                <h4 className="font-serif text-lg font-semibold text-on-surface">
                   No Places Mapped Yet
                 </h4>
-                <p className="text-xs text-on-surface-variant max-w-sm mt-1 leading-relaxed">
+                <p className="text-xs text-on-surface-variant max-w-sm mt-1 leading-relaxed font-sans">
                   Try clearing your filters, or add books with real-world
-                  settings to see them pinned on the map.
+                  settings to see them pinned on the atlas.
                 </p>
               </div>
             ) : (
               filteredPins.map((pin, i) => {
                 const left = ((pin.lng + 180) / 360) * 100;
-                const top = ((72 - pin.lat) / 128) * 100;
+                const top = ((80 - pin.lat) / 140) * 100;
 
-                const boundedLeft = Math.max(4, Math.min(left, 96));
-                const boundedTop = Math.max(22, Math.min(top, 92));
+                const boundedLeft = Math.max(2.5, Math.min(left, 97.5));
+                const boundedTop = Math.max(4, Math.min(top, 95));
 
                 const isSelected =
                   selectedSinglePin?.name === pin.name &&
                   selectedSinglePin?.book.id === pin.book.id;
 
+                const isHeatMode = activeTab === 'heat';
+
                 return (
                   <button
-                    key={i}
+                    key={`${pin.book.id}-${pin.name}-${i}`}
                     type="button"
-                    onClick={() => onFallbackPinClick(pin, i)}
-                    className={`absolute group/pin -translate-x-1/2 -translate-y-1/2 p-2 transition-all duration-300 z-10 ${
-                      isSelected ? 'scale-125 z-20' : 'hover:scale-115'
+                    onClick={e => {
+                      e.stopPropagation();
+                      onFallbackPinClick(pin, i);
+                    }}
+                    aria-label={`${pin.name} — ${pin.book.title}`}
+                    className={`absolute group/pin -translate-x-1/2 -translate-y-1/2 p-2 transition-transform duration-200 cursor-pointer ${
+                      isSelected ? 'scale-125 z-20' : 'hover:scale-115 z-10'
                     }`}
                     style={{
                       left: `${boundedLeft}%`,
@@ -147,26 +137,42 @@ export function WorldMapCanvas({
                     }}
                   >
                     <div className="relative flex items-center justify-center">
-                      <div
-                        className={`absolute w-8 h-8 rounded-full opacity-35 ${
-                          isSelected
-                            ? 'bg-emerald-500 animate-ping'
-                            : 'bg-primary/25 group-hover/pin:bg-primary/45'
-                        }`}
-                      />
-                      <div
-                        className={`w-3.5 h-3.5 rounded-full border-2 border-white shadow-md transition-all ${
-                          isSelected
-                            ? 'bg-emerald-500 scale-110'
-                            : 'bg-primary group-hover/pin:bg-amber-500'
-                        }`}
-                      />
+                      {isHeatMode ? (
+                        <>
+                          <div className="absolute w-12 h-12 rounded-full bg-tertiary/16 dark:bg-tertiary/22 pointer-events-none" />
+                          <div className="absolute w-7 h-7 rounded-full bg-tertiary/28 dark:bg-tertiary/34 pointer-events-none" />
+                          <div
+                            className={`w-3 h-3 rounded-full border border-surface shadow-xs transition-all ${
+                              isSelected
+                                ? 'bg-tertiary scale-115'
+                                : 'bg-tertiary/90'
+                            }`}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <div
+                            className={`absolute w-7 h-7 rounded-full transition-colors ${
+                              isSelected
+                                ? 'bg-tertiary/28 ring-1 ring-tertiary/50'
+                                : 'bg-primary/15 group-hover/pin:bg-tertiary/22'
+                            }`}
+                          />
+                          <div
+                            className={`w-3 h-3 rounded-full border-[1.5px] border-surface shadow-sm transition-all ${
+                              isSelected
+                                ? 'bg-tertiary scale-115'
+                                : 'bg-primary group-hover/pin:bg-tertiary'
+                            }`}
+                          />
+                        </>
+                      )}
 
-                      <div className="pointer-events-none opacity-0 group-hover/pin:opacity-100 absolute bottom-6 bg-stone-900 text-white rounded-lg px-2.5 py-1.5 font-body-xs text-body-xs font-medium leading-none whitespace-nowrap shadow-xl z-30 transition border border-stone-800">
-                        <span className="font-bold text-emerald-400">
+                      <div className="pointer-events-none opacity-0 group-hover/pin:opacity-100 absolute bottom-6 bg-surface text-on-surface rounded-lg px-2.5 py-1.5 text-xs font-sans leading-snug whitespace-nowrap shadow-elevation-3 z-30 transition-opacity border border-outline-variant/80 text-left">
+                        <span className="font-semibold text-tertiary block">
                           {pin.name}
                         </span>
-                        <span className="text-stone-300 block mt-0.5 max-w-[120px] truncate">
+                        <span className="font-serif text-on-surface-variant block mt-0.5 max-w-[160px] truncate">
                           {pin.book.title}
                         </span>
                       </div>
@@ -177,89 +183,91 @@ export function WorldMapCanvas({
             )}
           </div>
 
-          <div className="absolute bottom-3 left-4 right-4 flex justify-between font-mono font-label-caps-xs text-label-caps-xs font-medium text-stone-500 select-none uppercase tracking-widest">
+          {/* Cartographic Scale & Projection Footer */}
+          <div className="z-20 px-4 py-2 border-t border-outline-variant/60 bg-surface-container-low/80 flex justify-between items-center font-mono tabular-nums text-[10px] text-on-surface-variant uppercase tracking-widest">
             <span>Plotted Settings: {filteredPins.length}</span>
-            <span>Projection: Equirectangular 1.0</span>
+            <span>Equirectangular · 80°N–60°S</span>
           </div>
 
           {showApiSetupModal && (
-            <div className="absolute inset-0 bg-zinc-950/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-              <div className="bg-white border border-stone-200 max-w-sm w-full rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+            <div
+              className="absolute inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+              onClick={() => onSetShowApiSetupModal(false)}
+            >
+              <div
+                className="bg-surface border border-outline-variant max-w-sm w-full rounded-2xl p-5 shadow-elevation-3 space-y-4"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 bg-tertiary/12 text-tertiary border border-tertiary/25 rounded-lg flex items-center justify-center shrink-0">
                       <Globe size={16} />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-stone-900 leading-none">
-                        Connect Google Maps API
+                      <h3 className="font-serif text-base font-semibold text-on-surface leading-tight">
+                        Connect Live Street Atlas
                       </h3>
-                      <p className="font-body-xs text-body-xs text-stone-500 mt-1">
-                        Unlock live map zoom &amp; coordinates
+                      <p className="text-xs text-on-surface-variant mt-0.5 font-sans">
+                        Enable interactive street-level zoom with Google Maps
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={e => {
-                      e.stopPropagation();
-                      onSetShowApiSetupModal(false);
-                    }}
-                    className="p-1 hover:bg-neutral-105 rounded-full transition"
+                    aria-label="Close setup dialog"
+                    onClick={() => onSetShowApiSetupModal(false)}
+                    className="p-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-lg transition-colors cursor-pointer"
                   >
                     <X size={14} />
                   </button>
                 </div>
 
-                <div className="space-y-3.5 text-xs text-stone-600 leading-relaxed">
-                  <p className="text-stone-600">
-                    To switch this offline fallback map into a production-ready
-                    global interactive canvas powered by Google Maps:
+                <div className="space-y-3 text-xs text-on-surface-variant leading-relaxed font-sans">
+                  <p>
+                    To upgrade the built-in archival vector atlas to live
+                    street-level tiles powered by Google Maps:
                   </p>
-                  <div className="bg-neutral-50 rounded-xl p-3 border border-neutral-100 space-y-2 text-stone-600">
-                    <p className="flex gap-1.5">
-                      <span className="font-bold text-primary">1.</span>
-                      Go to your workspace{' '}
-                      <span className="font-bold">Settings / Secrets</span> menu
-                      in Google AI Studio.
+                  <div className="bg-surface-container-low rounded-xl p-3.5 border border-outline-variant/60 space-y-2 text-on-surface">
+                    <p className="flex gap-2">
+                      <span className="font-mono font-bold text-tertiary">
+                        1.
+                      </span>
+                      <span>
+                        Open workspace <strong>Settings &rarr; Secrets</strong>{' '}
+                        in AI Studio.
+                      </span>
                     </p>
-                    <p className="flex gap-1.5">
-                      <span className="font-bold text-primary">2.</span>
-                      Add a new variable named{' '}
-                      <code className="font-mono bg-zinc-150 px-1 rounded font-bold">
-                        VITE_GOOGLE_MAPS_API_KEY
-                      </code>
-                      .
+                    <p className="flex gap-2">
+                      <span className="font-mono font-bold text-tertiary">
+                        2.
+                      </span>
+                      <span>
+                        Add{' '}
+                        <code className="font-mono bg-surface-container px-1.5 py-0.5 rounded text-[11px] font-semibold">
+                          VITE_GOOGLE_MAPS_API_KEY
+                        </code>
+                        .
+                      </span>
                     </p>
-                    <p className="flex gap-1.5">
-                      <span className="font-bold text-primary">3.</span>
-                      Paste your client-side valid Google Maps API Key in the
-                      field.
+                    <p className="flex gap-2">
+                      <span className="font-mono font-bold text-tertiary">
+                        3.
+                      </span>
+                      <span>
+                        Enable both <strong>Maps JavaScript API</strong> and{' '}
+                        <strong>Geocoding API</strong> in your Cloud project.
+                      </span>
                     </p>
                   </div>
-                  <p className="font-body-xs text-body-xs text-stone-500 bg-amber-50/50 border border-amber-100 rounded-xl p-3">
-                    ⚠️ Note: Server tasks require the{' '}
-                    <span className="font-semibold text-stone-700">
-                      Geocoding API
-                    </span>{' '}
-                    and client-side map calls require the{' '}
-                    <span className="font-semibold text-stone-700">
-                      Maps JavaScript API
-                    </span>{' '}
-                    to both be enabled inside your Google Cloud project Console.
-                  </p>
                 </div>
 
                 <div className="pt-1">
                   <Button
-                    onClick={e => {
-                      e.stopPropagation();
-                      onSetShowApiSetupModal(false);
-                    }}
+                    onClick={() => onSetShowApiSetupModal(false)}
                     type="button"
-                    className="w-full text-xs font-semibold rounded-xl"
+                    className="w-full text-xs font-sans font-semibold rounded-lg"
                   >
-                    Continue Browsing Fallback Map
+                    Continue with Archival Atlas
                   </Button>
                 </div>
               </div>
@@ -326,13 +334,13 @@ export function WorldMapCanvas({
                       id={cluster.id}
                     >
                       <div
-                        className={`absolute ${outerSize} bg-primary/20 rounded-full group-hover:scale-125 transition-transform`}
+                        className={`absolute ${outerSize} bg-tertiary/20 rounded-full group-hover:scale-125 transition-transform`}
                       />
                       <div
-                        className={`absolute ${middleSize} bg-primary/40 rounded-full transition-transform`}
+                        className={`absolute ${middleSize} bg-tertiary/38 rounded-full transition-transform`}
                       />
                       <div
-                        className={`${innerSize} bg-primary rounded-full border-2 border-background shadow-md shadow-primary/30`}
+                        className={`${innerSize} bg-tertiary rounded-full border-2 border-surface shadow-md`}
                       />
                     </div>
                   </AdvancedMarker>
@@ -345,10 +353,10 @@ export function WorldMapCanvas({
                     onClick={() => onClusterClick(cluster)}
                   >
                     <div
-                      className={`flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 text-white shadow-xl ${
+                      className={`flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 shadow-elevation-2 ${
                         uniqueBookCount > 1
-                          ? 'bg-zinc-900 border-2 border-emerald-500 rounded-full w-10 h-10 font-bold text-sm'
-                          : 'bg-primary border border-white rounded-full w-8 h-8 text-xs font-semibold'
+                          ? 'bg-primary text-on-primary border-2 border-tertiary rounded-full w-10 h-10 font-mono tabular-nums font-bold text-xs'
+                          : 'bg-tertiary text-white border-2 border-surface rounded-full w-8 h-8 text-xs font-semibold'
                       }`}
                       id={cluster.id}
                     >

@@ -9,6 +9,10 @@ vi.mock('../catalog', () => ({
   catalogOrchestrator: {
     searchByIsbn: vi.fn(),
     searchByQuery: vi.fn(),
+    fetchCoverCandidates: vi.fn(),
+  },
+  wikipediaProvider: {
+    fetchAuthorBio: vi.fn(),
   },
 }));
 
@@ -16,6 +20,13 @@ vi.mock('../gemini', () => ({
   GENRE_CONFIDENCE_THRESHOLD: 0.65,
   classifyBooks: vi.fn(),
   evaluateGenreAndSeriesGateCoalesced: vi.fn(),
+  extractBookGeoMetadataBatch: vi.fn(),
+  extractBookTemporalMetadataBatch: vi.fn(),
+  extractBookSeriesBatch: vi.fn(),
+  gateSeriesCandidatesWithDecisions: vi.fn(),
+  generateAuthorBiosBatch: vi.fn(),
+  generateBookSynopsesBatch: vi.fn(),
+  generateBookEmbeddings: vi.fn(),
 }));
 
 describe('MetadataRegistry & resolveBookSynopses unit suite', () => {
@@ -96,14 +107,13 @@ describe('MetadataRegistry & resolveBookSynopses unit suite', () => {
 
       const bookUpdates = updates.get('book-1');
       expect(bookUpdates).toMatchObject({
-        [MetadataKey.COVER_IMAGE]:
-          'https://covers.openlibrary.org/b/id/123-L.jpg',
-        [MetadataKey.SYNOPSIS]: 'Arrakis desert epic.',
+        coverUrl: 'https://covers.openlibrary.org/b/id/123-L.jpg',
+        synopsis: 'Arrakis desert epic.',
         publishedDate: '1965',
         series: 'Dune Chronicles #1',
         primaryGenre: 'Science Fiction',
         subgenres: ['Space Opera'],
-        [MetadataKey.EMBEDDING]: [0.5, 0.5],
+        embedding: [0.5, 0.5],
       });
     } finally {
       if (originalEmbedding) {
@@ -242,10 +252,8 @@ describe('MetadataRegistry & resolveBookSynopses unit suite', () => {
 
       // Series candidate gets catalog series + upgraded genre from synopsis re-pass
       expect(slowDelta.get('series-low-conf')).toMatchObject({
-        [MetadataKey.COVER_IMAGE]:
-          'https://covers.openlibrary.org/b/id/222-L.jpg',
-        [MetadataKey.SYNOPSIS]:
-          'Interplanetary conspiracy across the Asteroid Belt.',
+        coverUrl: 'https://covers.openlibrary.org/b/id/222-L.jpg',
+        synopsis: 'Interplanetary conspiracy across the Asteroid Belt.',
         series: 'The Expanse #1',
         primaryGenre: 'Science Fiction',
         subgenres: ['Space Opera'],

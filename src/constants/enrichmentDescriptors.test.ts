@@ -7,7 +7,6 @@ import {
   formatEnrichmentProviderList,
   formatEnrichmentProviderName,
   isEnrichmentMetadataPresent,
-  normalizeEnrichmentType,
   requiresAiPlanForEnrichment,
 } from './enrichmentDescriptors';
 
@@ -22,19 +21,36 @@ function createSampleBook(overrides: Partial<Book> = {}): Book {
 }
 
 describe('enrichmentDescriptors isomorphic manifest', () => {
-  it('resolves canonical keys, MetadataKey enums, and legacy aliases without ambiguity', () => {
+  it('resolves canonical statusKeys and MetadataKey enums while rejecting unknown or deprecated tokens', () => {
     expect(ENRICHMENT_DESCRIPTORS).toHaveLength(8);
-    expect(normalizeEnrichmentType('geoMetadata')).toBe('geo');
-    expect(normalizeEnrichmentType('temporalMetadata')).toBe('temporal');
-    expect(normalizeEnrichmentType('primaryGenre')).toBe('genre');
-    expect(normalizeEnrichmentType('coverUrl')).toBe('coverImage');
-    expect(normalizeEnrichmentType('embeddings')).toBe('embedding');
-    expect(normalizeEnrichmentType('unknown-flow')).toBe('genre');
-
-    expect(findEnrichmentDescriptor('unknown-flow')).toBeUndefined();
+    for (const descriptor of ENRICHMENT_DESCRIPTORS) {
+      expect(descriptor.key).toBe(descriptor.statusKey);
+    }
+    expect(findEnrichmentDescriptor('geo')?.statusKey).toBe('geo');
+    expect(findEnrichmentDescriptor(MetadataKey.GEO)?.statusKey).toBe('geo');
+    expect(findEnrichmentDescriptor(MetadataKey.TEMPORAL)?.statusKey).toBe(
+      'temporal',
+    );
+    expect(findEnrichmentDescriptor(MetadataKey.GENRE)?.statusKey).toBe(
+      'genre',
+    );
+    expect(findEnrichmentDescriptor(MetadataKey.COVER_IMAGE)?.statusKey).toBe(
+      'coverImage',
+    );
+    expect(findEnrichmentDescriptor(MetadataKey.EMBEDDING)?.statusKey).toBe(
+      'embedding',
+    );
     expect(findEnrichmentDescriptor(MetadataKey.AUTHOR_BIO)?.statusKey).toBe(
       'authorBio',
     );
+    expect(findEnrichmentDescriptor('geoMetadata')).toBeUndefined();
+    expect(findEnrichmentDescriptor('temporalMetadata')).toBeUndefined();
+    expect(findEnrichmentDescriptor('primaryGenre')).toBeUndefined();
+    expect(findEnrichmentDescriptor('embeddings')).toBeUndefined();
+    expect(findEnrichmentDescriptor('coverUrl')).toBeUndefined();
+    expect(findEnrichmentDescriptor('sanitize')).toBeUndefined();
+    expect(findEnrichmentDescriptor('heavyDetails')).toBeUndefined();
+    expect(findEnrichmentDescriptor('unknown-flow')).toBeUndefined();
   });
 
   it('flags AI-plan requirements accurately for pure-AI vs catalog-primary dimensions', () => {

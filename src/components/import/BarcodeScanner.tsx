@@ -53,13 +53,13 @@ export function BarcodeScanner({onScan, paused = false}: BarcodeScannerProps) {
   return (
     <div className="w-full h-48 bg-black rounded-xl overflow-hidden relative border-2 border-primary/50 flex items-center justify-center">
       {errorMsg ? (
-        <div className="p-4 text-center text-red-400 font-bold text-sm bg-surface/10 rounded-lg backdrop-blur-sm m-4 z-20 border border-red-500/30">
+        <div className="p-4 text-center text-error font-bold text-sm bg-surface/90 rounded-lg backdrop-blur-sm m-4 z-20 border border-error/30">
           {errorMsg}
         </div>
       ) : (
         <>
           <video ref={ref} className="w-full h-full object-cover" />
-          <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-red-500 bg-opacity-70 shadow-[0_0_8px_var(--color-error)] z-10 animate-pulse" />
+          <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-error/70 shadow-[0_0_8px_var(--color-error)] z-10 animate-pulse" />
           <div className="absolute top-0 bottom-0 left-12 right-12 border-x-2 border-white/20 z-10 pointer-events-none" />
         </>
       )}

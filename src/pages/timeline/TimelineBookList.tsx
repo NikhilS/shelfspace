@@ -123,8 +123,7 @@ export function TimelineDesktopEpochDrawer({
                           <span>{endY - startY} yr span</span>
                         </>
                       )}
-                      {(book.temporalMetadata?.eraName ||
-                        book.temporalMetadata?.eraLabel) && (
+                      {book.temporalMetadata?.eraName && (
                         <>
                           <span
                             aria-hidden="true"
@@ -133,8 +132,7 @@ export function TimelineDesktopEpochDrawer({
                             ·
                           </span>
                           <span className="font-sans truncate">
-                            {book.temporalMetadata.eraName ||
-                              book.temporalMetadata.eraLabel}
+                            {book.temporalMetadata.eraName}
                           </span>
                         </>
                       )}

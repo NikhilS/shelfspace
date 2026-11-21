@@ -6,13 +6,6 @@ import {safeIdSchema, safeImageUrlSchema} from '../../../schemas/common';
 import {safeBookOrStateIdSchema} from '../../../schemas/readingState';
 import {getRecommendationsInputSchema} from '../../../schemas/recommendation';
 
-export const trackedShelfEnum = z.enum([
-  'want_to_read',
-  'reading',
-  'finished',
-  'abandoned',
-]);
-
 export const readingTrackerRouter = router({
   getShelf: protectedProcedure
     .input(

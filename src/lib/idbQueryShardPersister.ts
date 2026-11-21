@@ -1,8 +1,11 @@
 import type {QueryClient} from '@tanstack/react-query';
+import {hydrateEntityStoreFromPersistedQuery} from '../stores/entityCacheHelpers';
+import {useEntityCacheStore} from '../stores/entityCacheStore';
 
-export const IDB_CACHE_DB_NAME = 'bookish-cache-v2';
+export const IDB_CACHE_DB_NAME = 'bookish-cache-v3';
 export const IDB_CACHE_STORE_NAME = 'shards';
-const IDB_CACHE_DB_VERSION = 1;
+export const IDB_CACHE_BY_UID_INDEX = 'by_uid';
+const IDB_CACHE_DB_VERSION = 3;
 const FLUSH_DEBOUNCE_MS = 250;
 
 export interface PersistedQueryEntry {
@@ -216,6 +219,21 @@ export function sanitizeQueryDataForPersistence(data: unknown): unknown {
 
 let sharedDbPromise: Promise<IDBDatabase | null> | null = null;
 
+export function ensureShardStoreSchema(
+  db: IDBDatabase,
+  upgradeTx: IDBTransaction | null,
+): void {
+  let store: IDBObjectStore | null = null;
+  if (!db.objectStoreNames.contains(IDB_CACHE_STORE_NAME)) {
+    store = db.createObjectStore(IDB_CACHE_STORE_NAME, {keyPath: 'id'});
+  } else if (upgradeTx) {
+    store = upgradeTx.objectStore(IDB_CACHE_STORE_NAME);
+  }
+  if (store && !store.indexNames.contains(IDB_CACHE_BY_UID_INDEX)) {
+    store.createIndex(IDB_CACHE_BY_UID_INDEX, 'uid', {unique: false});
+  }
+}
+
 function openShardDatabase(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined' || !indexedDB) {
     return Promise.resolve(null);
@@ -227,10 +245,7 @@ function openShardDatabase(): Promise<IDBDatabase | null> {
     try {
       const request = indexedDB.open(IDB_CACHE_DB_NAME, IDB_CACHE_DB_VERSION);
       request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(IDB_CACHE_STORE_NAME)) {
-          db.createObjectStore(IDB_CACHE_STORE_NAME, {keyPath: 'id'});
-        }
+        ensureShardStoreSchema(request.result, request.transaction);
       };
       request.onsuccess = () => {
         resolve(request.result);
@@ -290,7 +305,7 @@ function readShardRecordsByIds(
   });
 }
 
-function readAllShardRecordsForUid(
+export function readAllShardRecordsForUid(
   db: IDBDatabase,
   uid: string,
 ): Promise<PersistedQueryShardRecord[]> {
@@ -298,6 +313,26 @@ function readAllShardRecordsForUid(
     try {
       const tx = db.transaction(IDB_CACHE_STORE_NAME, 'readonly');
       const store = tx.objectStore(IDB_CACHE_STORE_NAME);
+      if (
+        store.indexNames.contains(IDB_CACHE_BY_UID_INDEX) &&
+        typeof IDBKeyRange !== 'undefined' &&
+        typeof IDBKeyRange.only === 'function'
+      ) {
+        const idxReq = store
+          .index(IDB_CACHE_BY_UID_INDEX)
+          .getAll(IDBKeyRange.only(uid));
+        idxReq.onsuccess = () => {
+          const raw = Array.isArray(idxReq.result)
+            ? (idxReq.result as PersistedQueryShardRecord[])
+            : [];
+          resolve(raw.filter(entry => Boolean(entry && entry.uid === uid)));
+        };
+        idxReq.onerror = () => {
+          resolve([]);
+        };
+        return;
+      }
+
       const req = store.getAll();
       req.onsuccess = () => {
         const raw = Array.isArray(req.result)
@@ -341,7 +376,7 @@ function writeShardRecords(
   });
 }
 
-function hydrateShardRecordIntoClient(
+export function hydrateShardRecordIntoClient(
   queryClient: QueryClient,
   record: PersistedQueryShardRecord,
   buster: string,
@@ -372,6 +407,15 @@ function hydrateShardRecordIntoClient(
     queryClient.setQueryData(entry.queryKey, entry.data, {
       updatedAt: entry.dataUpdatedAt,
     });
+    const {procedure, input} = extractProcedureAndInput(entry.queryKey);
+    if (procedure) {
+      hydrateEntityStoreFromPersistedQuery(
+        useEntityCacheStore.getState(),
+        procedure,
+        input,
+        entry.data,
+      );
+    }
     hydratedAny = true;
   }
   return hydratedAny;
@@ -391,6 +435,22 @@ export async function clearPersistedQueryShards(uid?: string): Promise<void> {
       const store = tx.objectStore(IDB_CACHE_STORE_NAME);
       if (!uid) {
         store.clear();
+      } else if (
+        store.indexNames.contains(IDB_CACHE_BY_UID_INDEX) &&
+        typeof IDBKeyRange !== 'undefined' &&
+        typeof IDBKeyRange.only === 'function'
+      ) {
+        const indexedKeysReq = store
+          .index(IDB_CACHE_BY_UID_INDEX)
+          .getAllKeys(IDBKeyRange.only(uid));
+        indexedKeysReq.onsuccess = () => {
+          const keys = Array.isArray(indexedKeysReq.result)
+            ? indexedKeysReq.result
+            : [];
+          for (const key of keys) {
+            store.delete(key);
+          }
+        };
       } else {
         const allKeysReq = store.getAllKeys();
         allKeysReq.onsuccess = () => {

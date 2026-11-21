@@ -6,6 +6,7 @@ import {App} from './App';
 vi.mock('./stores/authStore', () => ({
   useAuthStore: Object.assign(() => ({user: null, isAuthReady: true}), {
     getState: () => ({_initialize: vi.fn()}),
+    setState: vi.fn(),
   }),
   useAuth: () => ({user: null, isAuthReady: true}),
 }));

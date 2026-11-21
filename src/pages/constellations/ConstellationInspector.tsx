@@ -62,7 +62,7 @@ export function ConstellationInspector({
   return (
     <aside
       aria-label="Curatorial Constellation Inspector"
-      className="w-full bg-surface border border-outline-variant/80 rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-xs lg:shadow-lg lg:absolute lg:top-3 lg:right-3 lg:bottom-3 lg:z-30 lg:w-[396px] lg:rounded-xl lg:overflow-y-auto custom-scrollbar"
+      className="w-full bento-card bg-surface/95 backdrop-blur-md p-4 sm:p-5 flex flex-col justify-between lg:shadow-elevation-3 lg:absolute lg:top-3 lg:right-3 lg:bottom-3 lg:z-30 lg:w-[396px] lg:rounded-xl lg:overflow-y-auto custom-scrollbar"
     >
       {selectedStar ? (
         /* ===============================================================
@@ -71,7 +71,7 @@ export function ConstellationInspector({
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between border-b border-outline-variant/50 pb-3">
             <div className="flex items-center gap-2 min-w-0">
-              <Sparkles className="w-4 h-4 text-primary shrink-0" />
+              <Sparkles className="w-4 h-4 text-tertiary shrink-0" />
               <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant truncate">
                 Locked Star Inspector
               </span>
@@ -132,14 +132,6 @@ export function ConstellationInspector({
                     <span aria-hidden="true">·</span>
                     <span className="font-mono tabular-nums">
                       {selectedStar.book.publishedDate.slice(0, 4)}
-                    </span>
-                  </>
-                )}
-                {selectedStar.book.pageCount && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span className="font-mono tabular-nums">
-                      {selectedStar.book.pageCount} pp.
                     </span>
                   </>
                 )}
@@ -329,8 +321,8 @@ export function ConstellationInspector({
               )}
             </div>
             {activeCluster.thesis && (
-              <p className="mt-2.5 text-xs text-on-surface-variant leading-relaxed bg-surface-container/60 border border-outline-variant/40 rounded-lg p-2.5">
-                {activeCluster.thesis}
+              <p className="mt-2.5 pt-2.5 border-t border-outline-variant/45 font-sans text-xs text-on-surface-variant leading-relaxed">
+                &ldquo;{activeCluster.thesis}&rdquo;
               </p>
             )}
           </div>
@@ -338,7 +330,7 @@ export function ConstellationInspector({
           {activeClusterBridges.length > 0 && (
             <div className="border-t border-outline-variant/40 pt-3">
               <div className="flex items-center gap-1.5 mb-2">
-                <GitCompareArrows className="w-3.5 h-3.5 text-primary shrink-0" />
+                <GitCompareArrows className="w-3.5 h-3.5 text-tertiary shrink-0" />
                 <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
                   Cross-Constellation Bridges
                 </span>
@@ -432,7 +424,7 @@ export function ConstellationInspector({
           <div className="border-b border-outline-variant/50 pb-3">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2 min-w-0">
-                <Layers className="w-4 h-4 text-primary shrink-0" />
+                <Layers className="w-4 h-4 text-tertiary shrink-0" />
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant truncate">
                   Celestial Atlas Index
                 </h2>
@@ -492,7 +484,7 @@ export function ConstellationInspector({
           {crossClusterBridges.length > 0 && (
             <div className="border-t border-outline-variant/50 pt-3">
               <div className="flex items-center gap-1.5 mb-2">
-                <GitCompareArrows className="w-3.5 h-3.5 text-primary shrink-0" />
+                <GitCompareArrows className="w-3.5 h-3.5 text-tertiary shrink-0" />
                 <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
                   Unexpected Cross-Cluster Bridges
                 </span>

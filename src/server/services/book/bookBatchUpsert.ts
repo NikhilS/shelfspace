@@ -11,6 +11,10 @@ import {LibraryMetadataCache} from '../library/libraryMetadataCache';
 import {mergeOnCreateUpdateMaps, metadataRegistry} from '../metadata';
 import {BookPartitioner, bookDetailsDocConverter} from './bookPartitioner';
 import {
+  clearBookTombstoneInBatch,
+  stageBookTombstoneInBatch,
+} from './bookTombstoneLedger';
+import {
   assertSafeDocId,
   fetchExistingBookDataForSnapshot,
 } from './bookWriteIds';
@@ -48,6 +52,7 @@ async function persistBackgroundOnCreateUpdates(params: {
   const readingStatesCol = userId
     ? getReadingStatesCollection(db, userId)
     : undefined;
+  const libraryRef = db.collection('libraries').doc(libraryId);
 
   for (const [bookId, patch] of enrichedMap.entries()) {
     if (!patch || Object.keys(patch).length === 0) {
@@ -72,16 +77,8 @@ async function persistBackgroundOnCreateUpdates(params: {
         },
       },
     );
-    const bRef = db
-      .collection('libraries')
-      .doc(libraryId)
-      .collection('books')
-      .doc(bookId);
-    const dRef = db
-      .collection('libraries')
-      .doc(libraryId)
-      .collection('bookDetails')
-      .doc(bookId);
+    const bRef = libraryRef.collection('books').doc(bookId);
+    const dRef = libraryRef.collection('bookDetails').doc(bookId);
 
     const cleanCoreUpdates = Object.fromEntries(
       Object.entries(coreUpdates).filter(([, v]) => v !== undefined),
@@ -128,6 +125,7 @@ async function persistBackgroundOnCreateUpdates(params: {
         : undefined) ?? (isVirtualLib ? 'want_to_read' : undefined);
     if (userId && readingStatesCol && opStatus && opStatus !== 'unset') {
       const oldStateKey = computeReadingStateKey({
+        libraryId,
         isbn: typeof baseData.isbn === 'string' ? baseData.isbn : undefined,
         cleanIsbn:
           typeof baseData.cleanIsbn === 'string'
@@ -183,7 +181,7 @@ async function persistBackgroundOnCreateUpdates(params: {
 
 /**
  * Executes atomic batch mutations (create, update, delete) in chunks of up to 400 operations,
- * safely keeping track of parent library volume counter deltas.
+ * keeping parent library volume counter deltas and durable Firestore tombstones in sync.
  */
 export async function batchUpsert(
   userId: string,
@@ -223,8 +221,7 @@ export async function batchUpsert(
         const tempId =
           op.bookId ||
           op.data.id ||
-          db.collection('libraries').doc(libraryId).collection('books').doc()
-            .id ||
+          libraryRef.collection('books').doc().id ||
           `temp_${idx}`;
         op.bookId = tempId;
         opById.set(tempId, op);
@@ -246,9 +243,6 @@ export async function batchUpsert(
         typeof metadataRegistry.enrichBooksOnCreateSlowTier === 'function';
 
       if (supportsSplitTiers) {
-        // Fast coalesced Decision pass (Genre + Series standalone gate) runs in ~200-400ms,
-        // so up to 30 interactive creates can commit Genre + Series gate synchronously
-        // while external catalog & embedding hydration run asynchronously in the background.
         const FAST_SYNC_BUDGET_MS = booksToEnrich.length <= 30 ? 2500 : 0;
         const fastPromise = metadataRegistry.enrichBooksOnCreateFastTier(
           booksToEnrich,
@@ -338,7 +332,6 @@ export async function batchUpsert(
                     );
               });
 
-        // Prevent unhandled rejection before primary Firestore commit completes
         backgroundUpdatesPromise.catch(() => undefined);
 
         deferredBackgroundPersistence = () => {
@@ -438,8 +431,7 @@ export async function batchUpsert(
       const rawBookId = op.bookId || op.data?.id;
       const bookId = rawBookId
         ? assertSafeDocId(rawBookId, 'bookId')
-        : db.collection('libraries').doc(libraryId).collection('books').doc()
-            .id;
+        : libraryRef.collection('books').doc().id;
 
       if (op.type === 'delete') {
         ops.push({type: 'delete', bookId});
@@ -454,7 +446,6 @@ export async function batchUpsert(
           ...rawData,
           ownershipStatus:
             rawData.ownershipStatus || (isVirtualLib ? 'unowned' : 'owned'),
-          ...(op.heavyData ? {heavyData: op.heavyData} : {}),
         };
         const {cleanCore, cleanHeavy} = BookPartitioner.partitionCreatePayload(
           combinedInput,
@@ -467,7 +458,7 @@ export async function batchUpsert(
           bookId,
           coreData: cleanCore,
           heavyData:
-            Object.keys(cleanHeavy).length > 0 ? cleanHeavy : op.heavyData,
+            Object.keys(cleanHeavy).length > 0 ? cleanHeavy : undefined,
           ...(readingStatus ? {readingStatus} : {}),
           merge: op.merge,
         });
@@ -477,13 +468,9 @@ export async function batchUpsert(
           typeof rawData.readingStatus === 'string'
             ? (rawData.readingStatus as ReadingStatusValue)
             : undefined;
-        const combinedUpdates: Record<string, unknown> = {
-          ...rawData,
-          ...(op.heavyData ? {heavyData: op.heavyData} : {}),
-        };
         const {coreUpdates, heavyUpdates} =
           BookPartitioner.partitionUpdatePayload(
-            combinedUpdates,
+            rawData,
             FieldValue.serverTimestamp(),
             {callerUserId: userId},
           );
@@ -492,7 +479,7 @@ export async function batchUpsert(
           bookId,
           coreData: coreUpdates,
           heavyData:
-            Object.keys(heavyUpdates).length > 0 ? heavyUpdates : op.heavyData,
+            Object.keys(heavyUpdates).length > 0 ? heavyUpdates : undefined,
           ...(readingStatus ? {readingStatus} : {}),
           merge: op.merge,
         });
@@ -503,8 +490,7 @@ export async function batchUpsert(
       const rawBookId = b.id || b.bookId;
       const bookId = rawBookId
         ? assertSafeDocId(rawBookId, 'bookId')
-        : db.collection('libraries').doc(libraryId).collection('books').doc()
-            .id;
+        : libraryRef.collection('books').doc().id;
       const action = b.action || b.operation || (b.id ? 'upsert' : 'create');
       const readingStatus = b.readingStatus;
 
@@ -567,19 +553,9 @@ export async function batchUpsert(
   if (deleteOps.length > 0) {
     await Promise.all(
       deleteOps.map(async op => {
-        try {
-          const bookRef = db
-            .collection('libraries')
-            .doc(libraryId)
-            .collection('books')
-            .doc(op.bookId);
-          if (typeof bookRef?.collection === 'function') {
-            const reviewsSnap = await bookRef.collection('reviews').get();
-            reviewsByDeletedBookId.set(op.bookId, reviewsSnap);
-          }
-        } catch {
-          // Non-fatal if reviews subcollection is empty or mocked
-        }
+        const bookRef = libraryRef.collection('books').doc(op.bookId);
+        const reviewsSnap = await bookRef.collection('reviews').get();
+        reviewsByDeletedBookId.set(op.bookId, reviewsSnap);
       }),
     );
   }
@@ -610,21 +586,22 @@ export async function batchUpsert(
   }
 
   for (const op of ops) {
-    const bookRef = db
-      .collection('libraries')
-      .doc(libraryId)
-      .collection('books')
-      .doc(op.bookId);
-    const detailRef = db
-      .collection('libraries')
-      .doc(libraryId)
-      .collection('bookDetails')
-      .doc(op.bookId);
+    const bookRef = libraryRef.collection('books').doc(op.bookId);
+    const detailRef = libraryRef.collection('bookDetails').doc(op.bookId);
 
     if (op.type === 'delete') {
       currentBatch.delete(bookRef);
       currentBatch.delete(detailRef);
-      currentBatchOps += 2;
+      stageBookTombstoneInBatch(
+        currentBatch,
+        libraryRef,
+        libraryId,
+        op.bookId,
+        {
+          deletedBy: userId || undefined,
+        },
+      );
+      currentBatchOps += 3;
       deletedCount++;
 
       const reviewsSnap = reviewsByDeletedBookId.get(op.bookId);
@@ -655,7 +632,8 @@ export async function batchUpsert(
       cleanCore.updatedAt = FieldValue.serverTimestamp();
 
       currentBatch.set(bookRef, cleanCore);
-      currentBatchOps++;
+      clearBookTombstoneInBatch(currentBatch, libraryRef, op.bookId);
+      currentBatchOps += 2;
       addedCount++;
 
       if (op.heavyData && Object.keys(op.heavyData).length > 0) {
@@ -743,10 +721,6 @@ export async function batchUpsert(
           ...existingData,
           ...cleanOpCore,
         };
-        const mergedBookData: Record<string, unknown> = {
-          ...baseData,
-          ...(op.heavyData || {}),
-        };
         const {stateKey, payload} = buildReadingStateUpsertPayload({
           userId,
           bookId: op.bookId,
@@ -757,10 +731,7 @@ export async function batchUpsert(
               ? baseData.cleanIsbn
               : undefined,
           status: op.readingStatus,
-          bookData:
-            typeof mergedBookData.title === 'string'
-              ? mergedBookData
-              : undefined,
+          bookData: typeof baseData.title === 'string' ? baseData : undefined,
         });
         currentBatch.set(readingStatesCol.doc(stateKey), payload, {
           merge: true,

@@ -49,6 +49,8 @@ vi.mock('./firebaseAdmin', () => ({
       commit: mockBatchCommit,
     }),
   }),
+  formatFirestoreAdminError: (err: unknown) =>
+    err instanceof Error ? err.message : String(err),
 }));
 
 describe('EnrichmentService', () => {
@@ -268,8 +270,8 @@ describe('EnrichmentService', () => {
     expect(mockBookUpdate).not.toHaveBeenCalled();
   });
 
-  it('supports alias keys like temporalMetadata and updates status to completed', async () => {
-    vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValueOnce(true);
+  it('resolves canonical temporal key, updates status to completed, and rejects legacy temporalMetadata alias', async () => {
+    vi.mocked(LibraryService.verifyLibraryAccess).mockResolvedValue(true);
 
     const mockProvider = {
       isAvailable: () => true,
@@ -296,12 +298,20 @@ describe('EnrichmentService', () => {
 
     mockBookUpdate.mockResolvedValue(undefined);
 
+    await expect(
+      EnrichmentService.triggerBatchEnrichment('u1', 'u1@example.com', {
+        libraryId: 'lib1',
+        enrichmentType: 'temporalMetadata',
+        bookIds: ['b2'],
+      }),
+    ).rejects.toThrow(/Unsupported enrichment type/);
+
     const res = await EnrichmentService.triggerBatchEnrichment(
       'u1',
       'u1@example.com',
       {
         libraryId: 'lib1',
-        enrichmentType: 'temporalMetadata',
+        enrichmentType: 'temporal',
         bookIds: ['b2'],
       },
     );

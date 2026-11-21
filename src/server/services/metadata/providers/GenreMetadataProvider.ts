@@ -25,7 +25,7 @@ function extractExistingSynopsis(book?: CoreBookData): string | undefined {
   if (!book) {
     return undefined;
   }
-  const raw = book.synopsis || book.description;
+  const raw = book.synopsis;
   return typeof raw === 'string' && raw.trim().length > 0
     ? raw.trim()
     : undefined;

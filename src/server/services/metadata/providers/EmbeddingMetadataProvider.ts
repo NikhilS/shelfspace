@@ -73,7 +73,7 @@ export class EmbeddingMetadataProvider implements MetadataPlugin<number[]> {
           : book.primaryGenre;
       parts.push(`[${genreStr}]`);
     }
-    const syn = book.synopsis || book.description;
+    const syn = book.synopsis;
     if (syn && typeof syn === 'string') {
       parts.push(syn);
     }

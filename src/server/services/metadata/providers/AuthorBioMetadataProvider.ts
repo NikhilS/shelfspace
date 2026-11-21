@@ -10,11 +10,8 @@ import {
   type StageBookOutcome,
 } from '../../../../types/metadata';
 import {wikipediaProvider} from '../../catalog';
-import * as geminiService from '../../gemini';
-import {
-  getOptionalModuleFunction,
-  runPluginStagesToRecord,
-} from '../stageRunner';
+import {generateAuthorBiosBatch} from '../../gemini';
+import {runPluginStagesToRecord} from '../stageRunner';
 
 const authorBioPluginOutputSchema: z.ZodType<string | null> = z
   .string()
@@ -39,13 +36,9 @@ export class AuthorBioMetadataProvider implements MetadataPlugin<
         }
 
         const inFlightByAuthor = new Map<string, Promise<string | null>>();
-        const generateBiosFn = getOptionalModuleFunction<
-          typeof geminiService.generateAuthorBiosBatch
-        >(geminiService, 'generateAuthorBiosBatch');
         const canEscalateToGenerative =
           options?.allowAiFallback !== false &&
-          Boolean(process.env.GEMINI_API_KEY) &&
-          Boolean(generateBiosFn);
+          Boolean(process.env.GEMINI_API_KEY);
 
         await Promise.all(
           books.map(async book => {
@@ -82,15 +75,11 @@ export class AuthorBioMetadataProvider implements MetadataPlugin<
       tier: 'generative',
       execute: async ({books, options}) => {
         const outcomes = new Map<string, StageBookOutcome<string | null>>();
-        const generateBiosFn = getOptionalModuleFunction<
-          typeof geminiService.generateAuthorBiosBatch
-        >(geminiService, 'generateAuthorBiosBatch');
         if (
           books.length === 0 ||
           options?.signal?.aborted ||
           options?.allowAiFallback === false ||
-          !process.env.GEMINI_API_KEY ||
-          !generateBiosFn
+          !process.env.GEMINI_API_KEY
         ) {
           return outcomes;
         }
@@ -115,7 +104,7 @@ export class AuthorBioMetadataProvider implements MetadataPlugin<
               return;
             }
             try {
-              const aiBios = await generateBiosFn(chunk, {
+              const aiBios = await generateAuthorBiosBatch(chunk, {
                 priority: 'BATCH',
                 signal: options?.signal,
               });

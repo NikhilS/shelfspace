@@ -79,10 +79,10 @@ export function buildTimelineClusters(
       );
 
       const eraNames = cBooks
-        .map(b => b.temporalMetadata?.eraName || b.temporalMetadata?.eraLabel)
-        .filter(Boolean) as string[];
+        .map(b => b.temporalMetadata?.eraName)
+        .filter((name): name is string => Boolean(name));
 
-      let eraLabel = '';
+      let clusterLabel = '';
       if (eraNames.length > 0) {
         const counts: Record<string, number> = {};
         let maxCount = 0;
@@ -90,17 +90,17 @@ export function buildTimelineClusters(
           counts[n] = (counts[n] || 0) + 1;
           if (counts[n] > maxCount) {
             maxCount = counts[n];
-            eraLabel = n;
+            clusterLabel = n;
           }
         });
       }
 
-      if (!eraLabel) {
+      if (!clusterLabel) {
         const interval = zoomLevel === 1 ? 500 : zoomLevel === 5 ? 100 : 10;
         if (zoomLevel === 20) {
-          eraLabel = `${formatYear(key)}s Era`;
+          clusterLabel = `${formatYear(key)}s Era`;
         } else {
-          eraLabel = `${formatYear(key)} – ${formatYear(key + interval - 1)}`;
+          clusterLabel = `${formatYear(key)} – ${formatYear(key + interval - 1)}`;
         }
       }
 
@@ -125,7 +125,7 @@ export function buildTimelineClusters(
 
       return {
         key,
-        label: eraLabel,
+        label: clusterLabel,
         books: cBooks,
         minYear,
         maxYear,

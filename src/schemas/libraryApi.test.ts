@@ -70,22 +70,22 @@ describe('Library API Zod Validation Schemas', () => {
   });
 
   describe('enrichmentTriggerSchema', () => {
-    it('validates enrichment flow and bookIds array', () => {
+    it('validates canonical enrichmentType and bookIds array', () => {
       const valid = enrichmentTriggerSchema.parse({
         libraryId: 'lib_123',
-        flow: 'geo',
+        enrichmentType: 'geo',
         bookIds: ['book1', 'book2'],
       });
 
-      expect(valid.flow).toBe('geo');
-      expect(valid.bookIds?.length).toBe(2);
+      expect(valid.enrichmentType).toBe('geo');
+      expect(valid.bookIds.length).toBe(2);
     });
 
     it('rejects empty bookIds array', () => {
       expect(() =>
         enrichmentTriggerSchema.parse({
           libraryId: 'lib_123',
-          flow: 'genre',
+          enrichmentType: 'genre',
           bookIds: [],
         }),
       ).toThrow();
@@ -96,21 +96,28 @@ describe('Library API Zod Validation Schemas', () => {
       expect(() =>
         enrichmentTriggerSchema.parse({
           libraryId: 'lib_123',
-          flow: 'synopsis',
+          enrichmentType: 'synopsis',
           bookIds: hugeList,
         }),
       ).toThrow();
     });
 
-    it('accepts primaryGenre as enrichmentType and normalizes it to genre', () => {
+    it('accepts canonical enrichmentType values and rejects deprecated aliases like primaryGenre or sanitize', () => {
       const parsed = enrichmentTriggerSchema.parse({
         libraryId: 'lib_123',
-        enrichmentType: 'primaryGenre',
+        enrichmentType: 'genre',
         bookIds: ['b1', 'b2'],
       });
       expect(parsed.enrichmentType).toBe('genre');
-      expect(parsed.flow).toBe('genre');
       expect(parsed.bookIds).toEqual(['b1', 'b2']);
+
+      expect(() =>
+        enrichmentTriggerSchema.parse({
+          libraryId: 'lib_123',
+          enrichmentType: 'primaryGenre' as unknown as 'genre',
+          bookIds: ['b1'],
+        }),
+      ).toThrow();
     });
   });
 

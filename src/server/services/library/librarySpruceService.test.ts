@@ -45,6 +45,7 @@ vi.mock('../firebaseAdmin', () => ({
 vi.mock('firebase-admin/firestore', () => ({
   FieldValue: {
     delete: () => 'MOCK_DELETE_FIELD',
+    arrayUnion: (...elements: unknown[]) => ({_arrayUnion: elements}),
   },
 }));
 
@@ -171,7 +172,7 @@ describe('librarySpruceService — Image Upload & Magic-Byte Validation (SEC-02)
     ).toBe(true);
   });
 
-  it('backfills cleanIsbn, dedupeKey, and searchTokens and partitions heavy fields during resetMetadata sanitize', async () => {
+  it('clears synopsis in bookDetails, resets bookDetailsMetadata.hasSynopsis, and appends missingFlags during resetMetadata synopsis', async () => {
     mockBooksSnapshotGet.mockResolvedValueOnce({
       empty: false,
       docs: [
@@ -182,7 +183,15 @@ describe('librarySpruceService — Image Upload & Magic-Byte Validation (SEC-02)
             title: 'The Left Hand of Darkness',
             author: 'Ursula K. Le Guin',
             isbn: '978-0-441-47812-5',
-            synopsis: 'A winter planet story',
+            bookDetailsMetadata: {
+              hasSynopsis: true,
+              hasAuthorBio: false,
+              hasEmbedding: false,
+              hasClusterCoordinates: false,
+            },
+            enrichmentStatus: {
+              synopsis: 'completed',
+            },
           }),
         },
       ],
@@ -192,7 +201,7 @@ describe('librarySpruceService — Image Upload & Magic-Byte Validation (SEC-02)
       'u1',
       'u1@example.com',
       'lib1',
-      'sanitize',
+      'synopsis',
       {
         skipAccessCheck: true,
       },
@@ -202,22 +211,15 @@ describe('librarySpruceService — Image Upload & Magic-Byte Validation (SEC-02)
     expect(mockBatchUpdate).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        cleanIsbn: '9780441478125',
-        dedupeKey: 'left hand of darkness::ursula k le guin',
-        searchTokens: expect.arrayContaining([
-          'left',
-          'hand',
-          'darkness',
-          'ursula',
-          'guin',
-        ]) as unknown,
-        synopsis: 'MOCK_DELETE_FIELD',
+        'enrichmentStatus.synopsis': 'MOCK_DELETE_FIELD',
+        'bookDetailsMetadata.hasSynopsis': false,
+        missingFlags: {_arrayUnion: ['synopsis']},
       }),
     );
     expect(mockBatchSet).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        synopsis: 'A winter planet story',
+        synopsis: 'MOCK_DELETE_FIELD',
       }),
       {merge: true},
     );

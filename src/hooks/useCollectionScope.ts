@@ -116,9 +116,7 @@ export function useCollectionScope(
   }, [isReadingMode, scopedReadingBooks, libraryBooks, libraryId]);
 
   const safeRefetchShelf = useCallback(async () => {
-    if (typeof refetchShelf === 'function') {
-      await refetchShelf();
-    }
+    await refetchShelf?.();
   }, [refetchShelf]);
 
   return {

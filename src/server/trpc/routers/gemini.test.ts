@@ -7,15 +7,9 @@ vi.mock('../../services/gemini', () => ({
   extractBooksFromImage: vi.fn(),
   extractBooksFromCsv: vi.fn(),
   generateLibraryHeroImage: vi.fn(),
-  generateClusterNames: vi.fn(),
   generateClusterThemes: vi.fn(),
-  generateBookEmbeddings: vi.fn(),
   getPickOfTheDay: vi.fn(),
   generateBookInsights: vi.fn(),
-  generateLibraryRecommendations: vi.fn(),
-  classifyBooks: vi.fn(),
-  extractBookGeoMetadataBatch: vi.fn(),
-  extractBookTemporalMetadataBatch: vi.fn(),
 }));
 
 const authCtx: SecurityContext = {
@@ -98,41 +92,21 @@ describe('geminiRouter tRPC procedures & security boundaries', () => {
     ).rejects.toThrow(/500KB/);
   });
 
-  it('delegates generateLibraryHeroImage, generateClusterNames, generateClusterThemes, and generateBookEmbeddings', async () => {
+  it('delegates generateLibraryHeroImage and generateClusterThemes', async () => {
     const caller = geminiRouter.createCaller(authCtx);
     vi.mocked(geminiService.generateLibraryHeroImage).mockResolvedValue(
       'data:image/png;base64,hero',
     );
-    vi.mocked(geminiService.generateClusterNames).mockResolvedValue({
-      0: 'Cosmic Dread',
-    });
     vi.mocked(geminiService.generateClusterThemes).mockResolvedValue({
       0: {
         name: 'Cosmic Dread',
         thesis: 'Shared existential terror before ancient cosmic forces.',
       },
     });
-    vi.mocked(geminiService.generateBookEmbeddings).mockResolvedValue([
-      [0.1, 0.2],
-    ]);
 
     expect(
       await caller.generateLibraryHeroImage({libraryName: 'Archive'}),
     ).toBe('data:image/png;base64,hero');
-
-    expect(
-      await caller.generateClusterNames({
-        clusters: [
-          {
-            id: 0,
-            books: Array.from({length: 350}, (_, idx) => ({
-              title: `Book ${idx}`,
-              author: 'Stanislaw Lem',
-            })),
-          },
-        ],
-      }),
-    ).toEqual({0: 'Cosmic Dread'});
 
     expect(
       await caller.generateClusterThemes({
@@ -157,29 +131,15 @@ describe('geminiRouter tRPC procedures & security boundaries', () => {
         thesis: 'Shared existential terror before ancient cosmic forces.',
       },
     });
-
-    expect(
-      await caller.generateBookEmbeddings({texts: ['Solaris by Lem']}),
-    ).toEqual([[0.1, 0.2]]);
-
-    // Reject > 100 embedding texts
-    await expect(
-      caller.generateBookEmbeddings({
-        texts: Array.from({length: 101}, (_, i) => `Text ${i}`),
-      }),
-    ).rejects.toThrow(/Maximum 100/);
   });
 
-  it('delegates getPickOfTheDay, generateBookInsights, and generateLibraryRecommendations', async () => {
+  it('delegates getPickOfTheDay and generateBookInsights', async () => {
     const caller = geminiRouter.createCaller(authCtx);
     vi.mocked(geminiService.getPickOfTheDay).mockResolvedValue([
       {title: 'Piranesi', author: 'Susanna Clarke', reason: 'Labyrinthine'},
     ]);
     vi.mocked(geminiService.generateBookInsights).mockResolvedValue(
       'Detailed literary summary.',
-    );
-    vi.mocked(geminiService.generateLibraryRecommendations).mockResolvedValue(
-      '## Recommended Book',
     );
 
     expect(
@@ -195,44 +155,5 @@ describe('geminiRouter tRPC procedures & security boundaries', () => {
         type: 'summary',
       }),
     ).toBe('Detailed literary summary.');
-
-    expect(
-      await caller.generateLibraryRecommendations({
-        books: [{title: 'Piranesi', author: 'Susanna Clarke'}],
-      }),
-    ).toBe('## Recommended Book');
-  });
-
-  it('delegates classifyBooks, extractBookGeoMetadataBatch, and extractBookTemporalMetadataBatch', async () => {
-    const caller = geminiRouter.createCaller(authCtx);
-    vi.mocked(geminiService.classifyBooks).mockResolvedValue([
-      {id: 'book-1', primaryGenre: 'Science Fiction', subgenres: ['Cyberpunk']},
-    ]);
-    vi.mocked(geminiService.extractBookGeoMetadataBatch).mockResolvedValue({
-      enrichment: [{id: 'book-1', isNonEarth: false, locations: []}],
-    });
-    vi.mocked(geminiService.extractBookTemporalMetadataBatch).mockResolvedValue(
-      {
-        enrichment: [{id: 'book-1', isNonHistorical: false, startYear: 1984}],
-      },
-    );
-
-    const sampleBatch = [
-      {id: 'book-1', title: 'Neuromancer', author: 'William Gibson'},
-    ];
-
-    expect(await caller.classifyBooks({books: sampleBatch})).toEqual([
-      {id: 'book-1', primaryGenre: 'Science Fiction', subgenres: ['Cyberpunk']},
-    ]);
-    expect(
-      await caller.extractBookGeoMetadataBatch({books: sampleBatch}),
-    ).toEqual({
-      enrichment: [{id: 'book-1', isNonEarth: false, locations: []}],
-    });
-    expect(
-      await caller.extractBookTemporalMetadataBatch({books: sampleBatch}),
-    ).toEqual({
-      enrichment: [{id: 'book-1', isNonHistorical: false, startYear: 1984}],
-    });
   });
 });

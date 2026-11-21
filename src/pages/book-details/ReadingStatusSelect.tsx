@@ -37,8 +37,7 @@ export const ReadingStatusSelect = memo(
     const {user} = useAuth();
     const isOnline = useOnlineStatus();
 
-    const rawStatus = book.readingStatus || 'unset';
-    const currentStatus = rawStatus === 'completed' ? 'finished' : rawStatus;
+    const currentStatus = book.readingStatus || 'unset';
 
     return (
       <section className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bento-card p-3.5 sm:p-4 w-full sm:w-fit swiper-no-swiping">

@@ -32,6 +32,7 @@ vi.mock('../book', async importOriginal => {
       ),
     },
     fetchUserReadingStatesMap: vi.fn(),
+    fetchUserReadingStatesProjection: vi.fn(),
   };
 });
 
@@ -49,25 +50,33 @@ vi.mock('../firebaseAdmin', () => ({
 describe('ReadingTrackerService', () => {
   const mockCollectionGet = vi.fn();
   const mockWhere = vi.fn();
+  const mockOrderBy = vi.fn();
   const mockLimit = vi.fn();
   const mockDocGet = vi.fn();
   const mockDocSet = vi.fn();
+  const mockGetAll = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetAll.mockResolvedValue([]);
 
     const queryChain = {
       where: mockWhere,
+      orderBy: mockOrderBy,
       limit: mockLimit,
       get: mockCollectionGet,
-      doc: vi.fn(() => ({
+      doc: vi.fn((docId: string) => ({
+        id: docId,
+        get: mockDocGet,
         set: mockDocSet,
       })),
     };
     mockWhere.mockReturnValue(queryChain);
+    mockOrderBy.mockReturnValue(queryChain);
     mockLimit.mockReturnValue(queryChain);
 
     vi.mocked(getAdminDb).mockReturnValue({
+      getAll: mockGetAll,
       collection: vi.fn((colName: string) => {
         if (colName === 'libraries') {
           return {
@@ -85,7 +94,7 @@ describe('ReadingTrackerService', () => {
   });
 
   describe('getPersonalReadingShelf', () => {
-    it('loads tracked books directly from /users/{uid}/readingStates and resolves library names', async () => {
+    it('hydrates live catalog fields via db.getAll over slim readingStates stubs and falls back cleanly for unowned/deleted stubs', async () => {
       const {fetchUserReadingStatesMap} = await import('../book');
       vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
         libraries: [
@@ -104,11 +113,11 @@ describe('ReadingTrackerService', () => {
       vi.mocked(fetchUserReadingStatesMap).mockResolvedValueOnce(
         new Map([
           [
-            'isbn:9780441478125',
+            'book:lib-1:book-1',
             {
-              id: 'isbn:9780441478125',
+              id: 'book:lib-1:book-1',
               userId: 'u1',
-              keyType: 'isbn',
+              keyType: 'book',
               cleanIsbn: '9780441478125',
               bookId: 'book-1',
               libraryId: 'lib-1',
@@ -116,7 +125,7 @@ describe('ReadingTrackerService', () => {
               rating: 5,
               updatedAt: '2026-02-01T00:00:00.000Z',
               bookSnapshot: {
-                title: 'The Left Hand of Darkness',
+                title: 'Stale Snapshot Title',
                 author: 'Ursula K. Le Guin',
                 isbn: '9780441478125',
                 cleanIsbn: '9780441478125',
@@ -125,13 +134,13 @@ describe('ReadingTrackerService', () => {
             },
           ],
           [
-            'isbn:9780061054884',
+            'ext:9780061054884',
             {
-              id: 'isbn:9780061054884',
+              id: 'ext:9780061054884',
               userId: 'u1',
-              keyType: 'isbn',
+              keyType: 'ext',
               cleanIsbn: '9780061054884',
-              bookId: 'vbook-1',
+              bookId: 'ext_9780061054884',
               libraryId: 'virtual_u1',
               status: 'want_to_read',
               updatedAt: '2026-02-02T00:00:00.000Z',
@@ -147,26 +156,44 @@ describe('ReadingTrackerService', () => {
         ]),
       );
 
+      mockGetAll.mockResolvedValueOnce([
+        {
+          exists: true,
+          id: 'book-1',
+          data: () => ({
+            title: 'The Left Hand of Darkness',
+            author: 'Ursula K. Le Guin',
+            isbn: '9780441478125',
+            cleanIsbn: '9780441478125',
+            primaryGenre: 'Science Fiction',
+            subgenres: ['Anthropological Sci-Fi'],
+            ownershipStatus: 'owned',
+          }),
+        },
+      ]);
+
       const summary = await ReadingTrackerService.getPersonalReadingShelf(
         'u1',
         'u1@example.com',
         {shelf: 'all'},
       );
 
+      expect(mockGetAll).toHaveBeenCalledTimes(1);
       expect(summary.counts.all).toBe(2);
       expect(summary.counts.reading).toBe(1);
       expect(summary.counts.want_to_read).toBe(1);
       expect(summary.items[0].title).toBe('The Dispossessed');
       expect(summary.items[0].ownershipStatus).toBe('unowned');
       expect(summary.items[1].title).toBe('The Left Hand of Darkness');
+      expect(summary.items[1].subgenres).toEqual(['Anthropological Sci-Fi']);
       expect(summary.items[1].userRating).toBe(5);
       expect(summary.items[1].libraryName).toBe('Home Library');
     });
   });
 
   describe('getUnreadLibraryBooks', () => {
-    it('returns unset and want_to_read books across non-virtual libraries using strict single-lookup key (isbn:<ISBN> vs bookid:<ID>)', async () => {
-      const {fetchUserReadingStatesMap} = await import('../book');
+    it('returns unset and want_to_read books across non-virtual libraries using canonical book: and ext: lookup keys', async () => {
+      const {fetchUserReadingStatesProjection} = await import('../book');
       vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
         libraries: [
           {
@@ -239,20 +266,20 @@ describe('ReadingTrackerService', () => {
           ],
         });
 
-      vi.mocked(fetchUserReadingStatesMap).mockResolvedValueOnce(
+      vi.mocked(fetchUserReadingStatesProjection).mockResolvedValueOnce(
         new Map([
-          ['bookid:b1-reading', {id: 'bookid:b1-reading', status: 'reading'}],
           [
-            'isbn:9781635575637',
-            {id: 'isbn:9781635575637', status: 'finished'},
+            'book:lib-1:b1-reading',
+            {id: 'book:lib-1:b1-reading', status: 'reading'},
+          ],
+          ['ext:9781635575637', {id: 'ext:9781635575637', status: 'finished'}],
+          [
+            'book:lib-2:b2-want-to-read',
+            {id: 'book:lib-2:b2-want-to-read', status: 'want_to_read'},
           ],
           [
-            'bookid:b2-want-to-read',
-            {id: 'bookid:b2-want-to-read', status: 'want_to_read'},
-          ],
-          [
-            'bookid:b2-abandoned',
-            {id: 'bookid:b2-abandoned', status: 'abandoned'},
+            'book:lib-2:b2-abandoned',
+            {id: 'book:lib-2:b2-abandoned', status: 'abandoned'},
           ],
         ]),
       );
@@ -311,8 +338,8 @@ describe('ReadingTrackerService', () => {
       vi.mocked(fetchUserReadingStatesMap).mockResolvedValueOnce(
         new Map([
           [
-            'isbn:9780441172719',
-            {id: 'isbn:9780441172719', status: 'finished', rating: 5},
+            'ext:9780441172719',
+            {id: 'ext:9780441172719', status: 'finished', rating: 5},
           ],
         ]),
       );
@@ -362,7 +389,7 @@ describe('ReadingTrackerService', () => {
       expect(result.externalMatches[1].existingMatch).toBeUndefined();
     });
 
-    it('matches multi-word title+author queries, series names, and falls back to unindexed docs when indexed prefix match is a false positive', async () => {
+    it('matches multi-word title+author queries and series names via indexed searchTokens while filtering prefix false positives without fallback scans', async () => {
       const {fetchUserReadingStatesMap} = await import('../book');
       vi.mocked(LibraryService.getUserLibraries).mockResolvedValue({
         libraries: [
@@ -379,20 +406,7 @@ describe('ReadingTrackerService', () => {
       });
 
       mockCollectionGet
-        // 1. Indexed searchTokens query on lib-mixed returns a false-positive prefix hit ('herber' -> 'Herbarium')
-        .mockResolvedValueOnce({
-          docs: [
-            {
-              id: 'book-false-pos',
-              data: () => ({
-                title: 'The Royal Herbarium',
-                author: 'Jane Botanist',
-                searchTokens: ['royal', 'herber', 'herbarium'],
-              }),
-            },
-          ],
-        })
-        // 2. Fallback scan on lib-mixed returns both the indexed false positive and an unindexed legacy book
+        // 1. Indexed searchTokens query on lib-mixed returns both a prefix false positive ('herber' -> 'Herbarium') and the canonical indexed match
         .mockResolvedValueOnce({
           docs: [
             {
@@ -404,18 +418,17 @@ describe('ReadingTrackerService', () => {
               }),
             },
             {
-              id: 'book-legacy-dune',
+              id: 'book-indexed-dune',
               data: () => ({
                 title: 'Dune',
                 author: 'Frank Herbert',
                 series: 'Dune Chronicles',
+                searchTokens: ['dune', 'frank', 'herber', 'herbert'],
               }),
             },
           ],
         })
-        // 3. virtual_u1 indexed query
-        .mockResolvedValueOnce({docs: []})
-        // 4. virtual_u1 fallback scan
+        // 2. virtual_u1 indexed query
         .mockResolvedValueOnce({docs: []});
 
       vi.mocked(fetchUserReadingStatesMap).mockResolvedValueOnce(new Map());
@@ -431,8 +444,9 @@ describe('ReadingTrackerService', () => {
         'Dune Herbert',
       );
 
+      expect(mockCollectionGet).toHaveBeenCalledTimes(2);
       expect(result.libraryMatches).toHaveLength(1);
-      expect(result.libraryMatches[0].bookId).toBe('book-legacy-dune');
+      expect(result.libraryMatches[0].bookId).toBe('book-indexed-dune');
       expect(result.libraryMatches[0].series).toBe('Dune Chronicles');
     });
 
@@ -486,6 +500,10 @@ describe('ReadingTrackerService', () => {
       vi.mocked(BookService.addReview).mockResolvedValue({
         success: true,
         id: 'u1',
+        rating: 4,
+        reviewText: 'Excited to read',
+        reviewedAt: '2026-11-15T00:00:00.000Z',
+        userName: 'Reader',
       });
 
       const res = await ReadingTrackerService.trackBook(
@@ -525,7 +543,7 @@ describe('ReadingTrackerService', () => {
         success: true,
         id: 'book-1',
         status: 'finished',
-        stateKey: 'bookid:book-1',
+        stateKey: 'book:lib-shared:book-1',
       });
 
       const res = await ReadingTrackerService.trackBook(
@@ -558,6 +576,7 @@ describe('ReadingTrackerService', () => {
       vi.mocked(BookService.createBook).mockResolvedValue({
         success: true,
         id: 'vbook-99',
+        libraryBookCountDelta: 1,
       });
 
       const res = await ReadingTrackerService.trackBook(
@@ -610,7 +629,7 @@ describe('ReadingTrackerService', () => {
         success: true,
         id: 'existing-book-42',
         status: 'finished',
-        stateKey: 'isbn:9781635575637',
+        stateKey: 'book:lib-home:existing-book-42',
       });
 
       const res = await ReadingTrackerService.trackBook(

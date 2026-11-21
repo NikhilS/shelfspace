@@ -11,7 +11,6 @@ import type {
   TelemetryBaseline,
   TelemetryLog,
   TelemetryMetrics,
-  TelemetryPlugin,
   TelemetryProfilingLevel,
 } from './types';
 
@@ -124,7 +123,6 @@ export class DebugTelemetryEngine {
 
   private latencies: number[] = [];
   private writeLatencies: number[] = [];
-  private plugins: Map<string, TelemetryPlugin> = new Map();
 
   private constructor() {}
 
@@ -490,14 +488,6 @@ export class DebugTelemetryEngine {
       }
     }
 
-    this.plugins.forEach(plugin => {
-      try {
-        plugin.onLog?.(entry, this);
-      } catch (err) {
-        console.error(`Error in telemetry plugin ${plugin.id} onLog:`, err);
-      }
-    });
-
     this.notifySubscribers();
   }
 
@@ -546,30 +536,6 @@ export class DebugTelemetryEngine {
     );
   }
 
-  registerPlugin(plugin: TelemetryPlugin): () => void {
-    this.plugins.set(plugin.id, plugin);
-    this.notifySubscribers();
-    return () => {
-      this.plugins.delete(plugin.id);
-      this.notifySubscribers();
-    };
-  }
-
-  unregisterPlugin(pluginId: string): void {
-    this.plugins.delete(pluginId);
-    this.notifySubscribers();
-  }
-
-  getPlugins(): TelemetryPlugin[] {
-    return Array.from(this.plugins.values()).sort(
-      (a, b) => (a.order ?? 100) - (b.order ?? 100),
-    );
-  }
-
-  getPlugin(id: string): TelemetryPlugin | undefined {
-    return this.plugins.get(id);
-  }
-
   getLogs(): TelemetryLog[] {
     return [...this.logs];
   }
@@ -592,13 +558,6 @@ export class DebugTelemetryEngine {
         sub();
       } catch {
         // Safe protection from unmounted subscribers
-      }
-    });
-    this.plugins.forEach(p => {
-      try {
-        p.onMetricUpdate?.(this.metrics);
-      } catch {
-        // Safe protection from plugin failures
       }
     });
   }

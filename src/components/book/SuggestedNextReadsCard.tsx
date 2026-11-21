@@ -1,4 +1,5 @@
 import React, {useState, useRef, useMemo, useLayoutEffect} from 'react';
+import {motion} from 'motion/react';
 import {useNavigate} from 'react-router-dom';
 import {
   Sparkles,
@@ -312,7 +313,7 @@ export function SuggestedNextReadsCard({
           </p>
 
           <div className="mt-2.5 pt-2.5 border-t border-outline-variant/40 text-left">
-            <p className="font-serif text-xs sm:text-sm text-on-surface leading-relaxed italic line-clamp-2">
+            <p className="font-sans text-xs sm:text-sm text-on-surface leading-relaxed line-clamp-2">
               &ldquo;{item.reason}&rdquo;
             </p>
           </div>
@@ -399,7 +400,7 @@ export function SuggestedNextReadsCard({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4 z-10">
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className="metadata-eyebrow flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-primary" />
+            <Sparkles className="w-3.5 h-3.5 text-tertiary" />
             <span>Suggested Next Reads</span>
           </span>
           {totalCount > 0 && (
@@ -425,13 +426,20 @@ export function SuggestedNextReadsCard({
                   role="tab"
                   aria-selected={isActive}
                   onClick={() => handleFilterSelect(tab.id)}
-                  className={`px-2.5 py-1 rounded text-xs font-sans font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                  className={`relative px-2.5 py-1 rounded-md text-xs font-sans font-medium whitespace-nowrap transition-colors cursor-pointer ${
                     isActive
-                      ? 'bg-surface text-primary font-semibold shadow-2xs'
+                      ? 'text-primary font-semibold'
                       : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
-                  {tab.label}
+                  {isActive && (
+                    <motion.span
+                      layoutId="suggestions-filter-pill"
+                      transition={{type: 'spring', stiffness: 500, damping: 38}}
+                      className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/50"
+                    />
+                  )}
+                  <span className="relative z-10">{tab.label}</span>
                 </button>
               );
             })}

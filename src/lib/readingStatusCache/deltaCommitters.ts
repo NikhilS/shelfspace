@@ -1,493 +1,47 @@
 import {
-  userReadingStateBookSnapshotSchema,
-  type UserReadingStateBookSnapshot,
-} from '../schemas/readingState';
+  useEntityCacheStore,
+  type EntityRollbackSnapshot,
+} from '../../stores/entityCacheStore';
 import type {
   Book,
-  Library,
   ReadingShelfSummary,
-  ReadingStatusValue,
   TrackedBookItem,
-  TrackedShelfStatus,
   UnreadLibraryBookItem,
-} from '../types';
-
-export type CanonicalReadingStatus = TrackedShelfStatus | 'unset';
-
-export interface TrpcCacheSlot<Input, Data> {
-  getData?(input?: Input): Data | undefined;
-  setData?(
-    input: Input,
-    updater: Data | ((old: Data | undefined) => Data | undefined),
-  ): void;
-  invalidate?(input?: Input): Promise<unknown> | unknown;
-}
-
-export interface ReadingStatusCacheUtils {
-  book?: {
-    get?: TrpcCacheSlot<{libraryId: string; bookId: string}, unknown>;
-    list?: TrpcCacheSlot<{libraryId: string}, unknown>;
-    listReviews?: TrpcCacheSlot<{libraryId: string; bookId: string}, unknown>;
-  };
-  readingTracker?: {
-    getShelf?: TrpcCacheSlot<
-      {shelf?: TrackedShelfStatus | 'all'} | undefined,
-      unknown
-    >;
-    getUnreadLibraryBooks?: TrpcCacheSlot<undefined, unknown>;
-    getRecommendations?: TrpcCacheSlot<undefined, unknown>;
-  };
-  library?: {
-    get?: TrpcCacheSlot<{libraryId: string}, unknown>;
-    list?: TrpcCacheSlot<
-      {scopes?: Array<'owned' | 'shared' | 'all'>} | undefined,
-      unknown
-    >;
-  };
-}
-
-export interface OptimisticReadingStatusParams {
-  libraryId: string;
-  bookId: string;
-  status: ReadingStatusValue | string | null | undefined;
-  reviewedAtIso?: string | null;
-  bookHint?: Partial<Book> & {libraryName?: string};
-}
-
-export interface CommitReadingStatusDeltaParams {
-  libraryId: string;
-  bookId: string;
-  status: ReadingStatusValue | string | null | undefined;
-  reviewedAt?: string | null;
-  rating?: number;
-  startedAt?: string | null;
-  finishedAt?: string | null;
-  bookSnapshot?: Partial<UserReadingStateBookSnapshot>;
-  bookHint?: Partial<Book> & {libraryName?: string};
-}
-
-export interface CommitBookUpsertDeltaParams {
-  libraryId: string;
-  book: Partial<Book> & {id: string; title: string; author: string};
-  libraryName?: string;
-  bookCountDelta?: number;
-}
-
-export interface CommitBookDeleteDeltaParams {
-  libraryId: string;
-  bookId: string;
-  bookCountDelta?: number;
-}
-
-export interface CommitBookReviewDeltaParams {
-  libraryId: string;
-  bookId: string;
-  review: {
-    id: string;
-    userId: string;
-    userName: string;
-    rating: number;
-    text: string;
-    createdAt: string;
-  };
-}
+} from '../../types';
+import {
+  adjustLibraryBookCountInCaches,
+  normalizeReadingStatus,
+  patchBookInListCache,
+  recalculateShelfCounts,
+  resolveBookRecordFromCaches,
+  resolveLibraryNameFromCache,
+} from './snapshotHelpers';
+import type {
+  CommitBookDeleteDeltaParams,
+  CommitBookReviewDeltaParams,
+  CommitBookUpsertDeltaParams,
+  CommitReadingStatusDeltaParams,
+  ReadingStatusCacheUtils,
+} from './types';
 
 /**
- * Builds a strict-schema-validated `UserReadingStateBookSnapshot` hint from a
- * client-cached book record so `book.updateStatus` and `book.recordReadSwipeReview`
- * skip pre-write Firestore reads (`0` pre-write server reads).
- */
-export function buildBookSnapshotHint(
-  book: (Partial<Book> & {libraryName?: string}) | null | undefined,
-  options?: {libraryId?: string; libraryName?: string; bookId?: string},
-): UserReadingStateBookSnapshot | undefined {
-  if (!book || !book.title) {
-    return undefined;
-  }
-
-  const title = String(book.title).trim().slice(0, 500);
-  if (!title) {
-    return undefined;
-  }
-  const author = String(book.author || 'Unknown Author')
-    .trim()
-    .slice(0, 500);
-  const rawIsbn = typeof book.isbn === 'string' ? book.isbn.trim() : '';
-  const cleanIsbn = rawIsbn.replace(/[^0-9X]/gi, '').toUpperCase();
-  const resolvedLibraryId = options?.libraryId || book.libraryId;
-  const resolvedBookId = options?.bookId || book.id;
-  const resolvedLibraryName = options?.libraryName || book.libraryName;
-
-  const candidate: Record<string, unknown> = {
-    title,
-    author,
-    ...(rawIsbn ? {isbn: rawIsbn.slice(0, 64)} : {}),
-    ...(cleanIsbn ? {cleanIsbn: cleanIsbn.slice(0, 64)} : {}),
-    ...(typeof book.coverUrl === 'string' && book.coverUrl.trim().length > 0
-      ? {coverUrl: book.coverUrl.trim()}
-      : {}),
-    ...(typeof book.publishedDate === 'string' && book.publishedDate.length > 0
-      ? {publishedDate: book.publishedDate.slice(0, 100)}
-      : {}),
-    ...(typeof book.primaryGenre === 'string' && book.primaryGenre.length > 0
-      ? {primaryGenre: book.primaryGenre.slice(0, 200)}
-      : {}),
-    ...(Array.isArray(book.subgenres) && book.subgenres.length > 0
-      ? {
-          subgenres: book.subgenres
-            .filter((s): s is string => typeof s === 'string' && s.length > 0)
-            .map(s => s.slice(0, 200))
-            .slice(0, 50),
-        }
-      : {}),
-    ...(typeof book.series === 'string' && book.series.length > 0
-      ? {series: book.series.slice(0, 300)}
-      : {}),
-    ...(book.format === 'physical' || book.format === 'digital'
-      ? {format: book.format}
-      : {}),
-    ...(typeof book.synopsis === 'string' && book.synopsis.length > 0
-      ? {synopsis: book.synopsis.slice(0, 50000)}
-      : {}),
-    ...(typeof book.authorBio === 'string' && book.authorBio.length > 0
-      ? {authorBio: book.authorBio.slice(0, 50000)}
-      : {}),
-    ...(resolvedLibraryId ? {libraryId: resolvedLibraryId} : {}),
-    ...(typeof resolvedLibraryName === 'string' &&
-    resolvedLibraryName.length > 0
-      ? {libraryName: resolvedLibraryName.slice(0, 200)}
-      : {}),
-    ...(resolvedBookId && !resolvedBookId.includes(':')
-      ? {bookId: resolvedBookId}
-      : {}),
-    ...(book.ownershipStatus === 'owned' || book.ownershipStatus === 'unowned'
-      ? {ownershipStatus: book.ownershipStatus}
-      : {}),
-  };
-
-  const parsed = userReadingStateBookSnapshotSchema.safeParse(candidate);
-  if (parsed.success) {
-    return parsed.data;
-  }
-
-  // Fallback minimal snapshot if optional URL/ID failed strict schema check
-  const minimal = userReadingStateBookSnapshotSchema.safeParse({
-    title,
-    author,
-    ...(rawIsbn ? {isbn: rawIsbn.slice(0, 64)} : {}),
-    ...(cleanIsbn ? {cleanIsbn: cleanIsbn.slice(0, 64)} : {}),
-  });
-  return minimal.success ? minimal.data : undefined;
-}
-
-export function normalizeReadingStatus(
-  raw: ReadingStatusValue | string | null | undefined,
-): CanonicalReadingStatus {
-  if (!raw || raw === 'unset') {
-    return 'unset';
-  }
-  if (raw === 'completed' || raw === 'finished') {
-    return 'finished';
-  }
-  if (raw === 'reading') {
-    return 'reading';
-  }
-  if (raw === 'want_to_read') {
-    return 'want_to_read';
-  }
-  if (raw === 'abandoned') {
-    return 'abandoned';
-  }
-  return 'unset';
-}
-
-export function recalculateShelfCounts(
-  items: TrackedBookItem[],
-): ReadingShelfSummary['counts'] {
-  const counts: ReadingShelfSummary['counts'] = {
-    all: items.length,
-    want_to_read: 0,
-    reading: 0,
-    finished: 0,
-    abandoned: 0,
-  };
-  for (const item of items) {
-    if (item.readingStatus === 'want_to_read') {
-      counts.want_to_read += 1;
-    } else if (item.readingStatus === 'reading') {
-      counts.reading += 1;
-    } else if (item.readingStatus === 'finished') {
-      counts.finished += 1;
-    } else if (item.readingStatus === 'abandoned') {
-      counts.abandoned += 1;
-    }
-  }
-  return counts;
-}
-
-function extractBooksFromListCache(cachedData: unknown): Book[] | undefined {
-  if (Array.isArray(cachedData)) {
-    return cachedData as Book[];
-  }
-  if (
-    cachedData &&
-    typeof cachedData === 'object' &&
-    Array.isArray((cachedData as {books?: unknown}).books)
-  ) {
-    return (cachedData as {books: Book[]}).books;
-  }
-  return undefined;
-}
-
-export function patchBookInListCache(
-  oldData: unknown,
-  bookId: string,
-  updater: (book: Book) => Book | null,
-): unknown {
-  if (!oldData) {
-    return oldData;
-  }
-  if (Array.isArray(oldData)) {
-    return (oldData as Book[])
-      .map(b => (b.id === bookId ? updater(b) : b))
-      .filter((b): b is Book => b !== null);
-  }
-  if (
-    typeof oldData === 'object' &&
-    Array.isArray((oldData as {books?: unknown}).books)
-  ) {
-    const container = oldData as {
-      books: Book[];
-      totalCount?: number;
-      [k: string]: unknown;
-    };
-    const nextBooks = container.books
-      .map(b => (b.id === bookId ? updater(b) : b))
-      .filter((b): b is Book => b !== null);
-    const lengthDelta = nextBooks.length - container.books.length;
-    return {
-      ...container,
-      books: nextBooks,
-      ...(typeof container.totalCount === 'number' && lengthDelta !== 0
-        ? {totalCount: Math.max(0, container.totalCount + lengthDelta)}
-        : {}),
-    };
-  }
-  return oldData;
-}
-
-function adjustLibraryBookCountInCaches(
-  utils: ReadingStatusCacheUtils,
-  libraryId: string,
-  delta: number,
-): void {
-  if (!delta || !libraryId || libraryId.startsWith('virtual_')) {
-    return;
-  }
-
-  utils.library?.get?.setData?.({libraryId}, (old: unknown) => {
-    if (!old || typeof old !== 'object') {
-      return old;
-    }
-    const lib = old as Library;
-    const current = typeof lib.bookCount === 'number' ? lib.bookCount : 0;
-    return {
-      ...lib,
-      bookCount: Math.max(0, current + delta),
-    };
-  });
-
-  const patchLibraryList = (old: unknown): unknown => {
-    if (!old) {
-      return old;
-    }
-    const updateLib = (lib: Library): Library => {
-      if (lib.id !== libraryId) {
-        return lib;
-      }
-      const current = typeof lib.bookCount === 'number' ? lib.bookCount : 0;
-      return {
-        ...lib,
-        bookCount: Math.max(0, current + delta),
-      };
-    };
-    if (Array.isArray(old)) {
-      return (old as Library[]).map(updateLib);
-    }
-    if (
-      typeof old === 'object' &&
-      Array.isArray((old as {libraries?: unknown}).libraries)
-    ) {
-      const container = old as {libraries: Library[]; [k: string]: unknown};
-      return {
-        ...container,
-        libraries: container.libraries.map(updateLib),
-      };
-    }
-    return old;
-  };
-
-  const listInputs: Array<
-    {scopes?: Array<'owned' | 'shared' | 'all'>} | undefined
-  > = [undefined, {scopes: ['owned', 'shared']}, {scopes: ['all']}];
-
-  for (const listInput of listInputs) {
-    try {
-      utils.library?.list?.setData?.(listInput, patchLibraryList);
-    } catch {
-      // Ignore unmounted input variants in isolated test mocks
-    }
-  }
-}
-
-function resolveLibraryNameFromCache(
-  utils: ReadingStatusCacheUtils,
-  libraryId: string,
-  fallback?: string,
-): string {
-  if (fallback && fallback.trim().length > 0) {
-    return fallback;
-  }
-  if (libraryId.startsWith('virtual_')) {
-    return 'Reading Shelf';
-  }
-  const singleLib = utils.library?.get?.getData?.({libraryId}) as
-    Partial<Library> | undefined;
-  if (singleLib?.name) {
-    return singleLib.name;
-  }
-  const libListRaw =
-    utils.library?.list?.getData?.(undefined) ??
-    utils.library?.list?.getData?.({scopes: ['owned', 'shared']});
-  const libList: Library[] | undefined = Array.isArray(libListRaw)
-    ? (libListRaw as Library[])
-    : libListRaw &&
-        typeof libListRaw === 'object' &&
-        Array.isArray((libListRaw as {libraries?: unknown}).libraries)
-      ? (libListRaw as {libraries: Library[]}).libraries
-      : undefined;
-  const matched = libList?.find(l => l.id === libraryId);
-  if (matched?.name) {
-    return matched.name;
-  }
-  return 'Library';
-}
-
-function resolveBookRecordFromCaches(
-  utils: ReadingStatusCacheUtils,
-  libraryId: string,
-  bookId: string,
-  bookHint?: Partial<Book> & {libraryName?: string},
-): (Partial<Book> & {libraryName?: string}) | undefined {
-  const fromGet = utils.book?.get?.getData?.({libraryId, bookId}) as
-    Partial<Book> | undefined;
-  const fromList = extractBooksFromListCache(
-    utils.book?.list?.getData?.({libraryId}),
-  )?.find(b => b.id === bookId);
-
-  const shelfSummary = utils.readingTracker?.getShelf?.getData?.({
-    shelf: 'all',
-  }) as ReadingShelfSummary | undefined;
-  const fromShelf =
-    shelfSummary?.items?.find(
-      item => item.id === bookId && item.libraryId === libraryId,
-    ) ?? shelfSummary?.items?.find(item => item.id === bookId);
-
-  const unreadRaw =
-    utils.readingTracker?.getUnreadLibraryBooks?.getData?.(undefined);
-  const unreadList: UnreadLibraryBookItem[] | undefined = Array.isArray(
-    unreadRaw,
-  )
-    ? (unreadRaw as UnreadLibraryBookItem[])
-    : unreadRaw &&
-        typeof unreadRaw === 'object' &&
-        Array.isArray((unreadRaw as {books?: unknown}).books)
-      ? (unreadRaw as {books: UnreadLibraryBookItem[]}).books
-      : undefined;
-  const fromUnread = unreadList?.find(
-    item => item.id === bookId && item.libraryId === libraryId,
-  );
-
-  if (!fromGet && !fromList && !fromShelf && !fromUnread && !bookHint) {
-    return undefined;
-  }
-
-  return {
-    ...fromUnread,
-    ...fromShelf,
-    ...fromList,
-    ...fromGet,
-    ...bookHint,
-    id: bookId,
-    libraryId,
-  };
-}
-
-/**
- * Optimistically synchronizes a reading status change across all client caches:
- * - `book.get({ libraryId, bookId })`
- * - `book.list({ libraryId })`
- * - `readingTracker.getShelf({ shelf: 'all' })`
- * - `readingTracker.getUnreadLibraryBooks(undefined)`
- *
- * Returns a rollback function that restores all four caches to their pre-mutation state.
- */
-export function applyOptimisticReadingStatusPatch(
-  utils: ReadingStatusCacheUtils | undefined,
-  params: OptimisticReadingStatusParams,
-): () => void {
-  if (!utils || !params.libraryId || !params.bookId) {
-    return () => {};
-  }
-
-  const {libraryId, bookId, reviewedAtIso, bookHint} = params;
-  const normalizedStatus = normalizeReadingStatus(params.status);
-
-  const prevBookGet = utils.book?.get?.getData?.({libraryId, bookId});
-  const prevBookList = utils.book?.list?.getData?.({libraryId});
-  const prevShelfAll = utils.readingTracker?.getShelf?.getData?.({
-    shelf: 'all',
-  });
-  const prevUnread =
-    utils.readingTracker?.getUnreadLibraryBooks?.getData?.(undefined);
-
-  commitReadingStatusDelta(utils, {
-    libraryId,
-    bookId,
-    status: normalizedStatus,
-    reviewedAt: reviewedAtIso,
-    bookHint,
-  });
-
-  return () => {
-    if (prevBookGet !== undefined) {
-      utils.book?.get?.setData?.({libraryId, bookId}, prevBookGet);
-    }
-    if (prevBookList !== undefined) {
-      utils.book?.list?.setData?.({libraryId}, prevBookList);
-    }
-    if (prevShelfAll !== undefined) {
-      utils.readingTracker?.getShelf?.setData?.({shelf: 'all'}, prevShelfAll);
-    }
-    if (prevUnread !== undefined) {
-      utils.readingTracker?.getUnreadLibraryBooks?.setData?.(
-        undefined,
-        prevUnread,
-      );
-    }
-  };
-}
-
-/**
- * Commits an authoritative reading-status mutation response into all coupled
- * client caches via `setData` without triggering full-collection network refetches.
+ * Commits an authoritative reading-status mutation response into the normalized
+ * `useEntityCacheStore` and coupled TanStack Query views without full-collection refetches.
  */
 export function commitReadingStatusDelta(
   utils: ReadingStatusCacheUtils | undefined,
   params: CommitReadingStatusDeltaParams,
 ): void {
+  commitReadingStatusDeltaInternal(utils, params, {isOptimistic: false});
+}
+
+export function commitReadingStatusDeltaInternal(
+  utils: ReadingStatusCacheUtils | undefined,
+  params: CommitReadingStatusDeltaParams,
+  options?: {isOptimistic?: boolean; skipEntityPatch?: boolean},
+): {version: number; snapshot: EntityRollbackSnapshot} | undefined {
   if (!utils || !params.libraryId || !params.bookId) {
-    return;
+    return undefined;
   }
 
   const {
@@ -511,14 +65,15 @@ export function commitReadingStatusDelta(
                 title: bookSnapshot.title ?? bookHint?.title,
                 author: bookSnapshot.author ?? bookHint?.author,
                 isbn: bookSnapshot.isbn ?? bookHint?.isbn,
+                cleanIsbn: bookSnapshot.cleanIsbn ?? bookHint?.cleanIsbn,
                 coverUrl: bookSnapshot.coverUrl ?? bookHint?.coverUrl,
                 publishedDate:
                   bookSnapshot.publishedDate ?? bookHint?.publishedDate,
                 primaryGenre:
                   bookSnapshot.primaryGenre ?? bookHint?.primaryGenre,
-                subgenres: bookSnapshot.subgenres ?? bookHint?.subgenres,
+                subgenres: bookHint?.subgenres,
                 series: bookSnapshot.series ?? bookHint?.series,
-                synopsis: bookSnapshot.synopsis ?? bookHint?.synopsis,
+                synopsis: bookHint?.synopsis,
                 format: bookSnapshot.format ?? bookHint?.format,
                 ownershipStatus:
                   bookSnapshot.ownershipStatus ?? bookHint?.ownershipStatus,
@@ -534,6 +89,21 @@ export function commitReadingStatusDelta(
     bookId,
     mergedHint,
   );
+
+  const entityPatch = options?.skipEntityPatch
+    ? undefined
+    : useEntityCacheStore.getState().patchReadingState({
+        libraryId,
+        bookId,
+        status: normalizedStatus,
+        reviewedAt,
+        rating,
+        startedAt,
+        finishedAt,
+        isbn: resolvedBook?.isbn ?? bookSnapshot?.isbn,
+        cleanIsbn: resolvedBook?.cleanIsbn ?? bookSnapshot?.cleanIsbn,
+        isOptimistic: Boolean(options?.isOptimistic),
+      });
 
   // 1. Patch `book.get`
   utils.book?.get?.setData?.({libraryId, bookId}, (old: unknown) => {
@@ -763,11 +333,14 @@ export function commitReadingStatusDelta(
       },
     );
   }
+
+  return entityPatch;
 }
 
 /**
- * Surgically upserts a newly created or edited book into `book.get`, `book.list`,
- * `readingTracker.getShelf`, `readingTracker.getUnreadLibraryBooks`, and library counts.
+ * Surgically upserts a newly created or edited book into `useEntityCacheStore`,
+ * `book.get`, `book.list`, `readingTracker.getShelf`, `readingTracker.getUnreadLibraryBooks`,
+ * and library counts.
  */
 export function commitBookUpsertDelta(
   utils: ReadingStatusCacheUtils | undefined,
@@ -786,6 +359,10 @@ export function commitBookUpsertDelta(
     id: bookId,
     libraryId,
   };
+
+  useEntityCacheStore.getState().upsertBooksDelta(libraryId, [normalizedBook], {
+    bookCountDelta,
+  });
 
   // 1. Upsert `book.get`
   utils.book?.get?.setData?.({libraryId, bookId}, (old: unknown) => {
@@ -848,14 +425,17 @@ export function commitBookUpsertDelta(
   // 3. Synchronize reading shelf & unread shelf if status is set or item already tracked
   const effectiveStatus = normalizeReadingStatus(normalizedBook.readingStatus);
   if (effectiveStatus !== 'unset') {
-    commitReadingStatusDelta(utils, {
-      libraryId,
-      bookId,
-      status: effectiveStatus,
-      bookHint: {...normalizedBook, libraryName},
-    });
+    commitReadingStatusDeltaInternal(
+      utils,
+      {
+        libraryId,
+        bookId,
+        status: effectiveStatus,
+        bookHint: {...normalizedBook, libraryName},
+      },
+      {isOptimistic: false},
+    );
   } else {
-    // Patch metadata in getShelf if item exists, or insert into unread library books if new
     utils.readingTracker?.getShelf?.setData?.(
       {shelf: 'all'},
       (old: unknown) => {
@@ -898,12 +478,16 @@ export function commitBookUpsertDelta(
       !libraryId.startsWith('virtual_') &&
       normalizedBook.ownershipStatus !== 'unowned'
     ) {
-      commitReadingStatusDelta(utils, {
-        libraryId,
-        bookId,
-        status: 'unset',
-        bookHint: {...normalizedBook, libraryName},
-      });
+      commitReadingStatusDeltaInternal(
+        utils,
+        {
+          libraryId,
+          bookId,
+          status: 'unset',
+          bookHint: {...normalizedBook, libraryName},
+        },
+        {isOptimistic: false, skipEntityPatch: true},
+      );
     }
   }
 
@@ -914,8 +498,8 @@ export function commitBookUpsertDelta(
 }
 
 /**
- * Commits a book deletion across `book.get`, `book.list`, `readingTracker.getShelf`,
- * `readingTracker.getUnreadLibraryBooks`, and library counts without refetching.
+ * Commits a book deletion across `useEntityCacheStore`, `book.get`, `book.list`,
+ * `readingTracker.getShelf`, `readingTracker.getUnreadLibraryBooks`, and library counts.
  */
 export function commitBookDeleteDelta(
   utils: ReadingStatusCacheUtils | undefined,
@@ -924,16 +508,28 @@ export function commitBookDeleteDelta(
   if (!utils || !params.libraryId || !params.bookId) {
     return;
   }
-  const {libraryId, bookId, bookCountDelta = -1} = params;
-  removeBookFromReadingCaches(utils, {libraryId, bookId});
+  const {
+    libraryId,
+    bookId,
+    bookCountDelta = -1,
+    alreadyRemovedOptimistically = false,
+  } = params;
+  if (!alreadyRemovedOptimistically) {
+    removeBookFromReadingCaches(utils, {libraryId, bookId});
+  }
   utils.book?.get?.setData?.({libraryId, bookId}, undefined);
-  adjustLibraryBookCountInCaches(utils, libraryId, bookCountDelta);
+  if (bookCountDelta !== 0) {
+    useEntityCacheStore
+      .getState()
+      .adjustLibraryBookCount(libraryId, bookCountDelta);
+    adjustLibraryBookCountInCaches(utils, libraryId, bookCountDelta);
+  }
 }
 
 /**
- * Commits a newly saved book review into `book.listReviews` (replacing any optimistic
- * `temp-*` entry or existing review by the same `userId`) and synchronizes `userRating`
- * across `book.get`, `book.list`, and `readingTracker.getShelf`.
+ * Commits a newly saved book review into `useEntityCacheStore` and `book.listReviews`
+ * (replacing any optimistic `temp-*` entry or existing review by the same `userId`)
+ * and synchronizes `userRating` across `book.get`, `book.list`, and `readingTracker.getShelf`.
  */
 export function commitBookReviewDelta(
   utils: ReadingStatusCacheUtils | undefined,
@@ -943,6 +539,8 @@ export function commitBookReviewDelta(
     return;
   }
   const {libraryId, bookId, review} = params;
+
+  useEntityCacheStore.getState().upsertBookReview(libraryId, bookId, review);
 
   utils.book?.listReviews?.setData?.({libraryId, bookId}, (old: unknown) => {
     const existingList: Array<{
@@ -1030,8 +628,9 @@ export function commitBookReviewDelta(
 }
 
 /**
- * Optimistically removes a deleted book across `book.list`, `readingTracker.getShelf`,
- * and `readingTracker.getUnreadLibraryBooks`, returning a rollback function.
+ * Optimistically removes a deleted book across `useEntityCacheStore`, `book.list`,
+ * `readingTracker.getShelf`, and `readingTracker.getUnreadLibraryBooks`, returning
+ * a version-guarded rollback function.
  */
 export function removeBookFromReadingCaches(
   utils: ReadingStatusCacheUtils | undefined,
@@ -1048,6 +647,12 @@ export function removeBookFromReadingCaches(
   });
   const prevUnread =
     utils.readingTracker?.getUnreadLibraryBooks?.getData?.(undefined);
+
+  const removeExpectedVersion =
+    useEntityCacheStore.getState().nextMutationVersion;
+  const [entitySnapshot] = useEntityCacheStore
+    .getState()
+    .removeBooks(libraryId, [bookId]);
 
   utils.book?.list?.setData?.({libraryId}, (old: unknown) =>
     patchBookInListCache(old, bookId, () => null),
@@ -1105,6 +710,14 @@ export function removeBookFromReadingCaches(
   );
 
   return () => {
+    if (entitySnapshot) {
+      const didRollback = useEntityCacheStore
+        .getState()
+        .rollbackEntitySnapshot(entitySnapshot, removeExpectedVersion);
+      if (!didRollback) {
+        return;
+      }
+    }
     if (prevBookGet !== undefined) {
       utils.book?.get?.setData?.({libraryId, bookId}, prevBookGet);
     }

@@ -19,7 +19,7 @@ export function AdminDashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [togglingAiEmail, setTogglingAiEmail] = useState<string | null>(null);
 
-  const utils = trpc.useUtils ? trpc.useUtils() : trpc.useContext();
+  const utils = trpc.useUtils();
   const {data, isLoading: loading} = trpc.auth.listAllowlist.useQuery(
     undefined,
     {
@@ -41,7 +41,7 @@ export function AdminDashboard() {
     },
   });
 
-  const updateAiPlanMutation = trpc.auth.updateAllowlistAiPlan?.useMutation?.({
+  const updateAiPlanMutation = trpc.auth.updateAllowlistAiPlan.useMutation({
     onSuccess: () => {
       void utils.auth.listAllowlist.invalidate();
     },

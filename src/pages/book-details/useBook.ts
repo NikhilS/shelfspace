@@ -8,6 +8,7 @@ import {deleteBookAtomic} from '../../lib/bookActions';
 import {trpc, trpcVanilla} from '../../lib/trpc';
 import {instrumentMutation} from '../../lib/telemetry';
 import {
+  applyOptimisticBookEditPatch,
   applyOptimisticReadingStatusPatch,
   buildBookSnapshotHint,
   commitBookDeleteDelta,
@@ -17,6 +18,10 @@ import {
   removeBookFromReadingCaches,
 } from '../../lib/readingStatusCache';
 import {useCoverTransitionStore} from '../../stores/coverTransitionStore';
+import {
+  selectBookWithOverlay,
+  useEntityCacheStore,
+} from '../../stores/entityCacheStore';
 
 export interface Review {
   id: string;
@@ -45,34 +50,6 @@ function extractBookList(cachedData: unknown): FullBookRecord[] | undefined {
     }
   }
   return undefined;
-}
-
-function patchBookInListCache(
-  oldData: unknown,
-  bookId: string,
-  updater: (book: Book) => Book | null,
-): unknown {
-  if (!oldData) {
-    return oldData;
-  }
-  if (Array.isArray(oldData)) {
-    return (oldData as Book[])
-      .map(b => (b.id === bookId ? updater(b) : b))
-      .filter((b): b is Book => b !== null);
-  }
-  if (
-    typeof oldData === 'object' &&
-    Array.isArray((oldData as {books?: unknown}).books)
-  ) {
-    const container = oldData as {books: Book[]; [k: string]: unknown};
-    return {
-      ...container,
-      books: container.books
-        .map(b => (b.id === bookId ? updater(b) : b))
-        .filter((b): b is Book => b !== null),
-    };
-  }
-  return oldData;
 }
 
 export function useBook(
@@ -124,8 +101,27 @@ export function useBook(
       libraryId,
       bookId,
     }) as FullBookRecord | undefined;
+    const fromEntityStore = selectBookWithOverlay(
+      useEntityCacheStore.getState(),
+      libraryId,
+      bookId,
+    ) as FullBookRecord | undefined;
     if (cachedDetail) {
-      return cachedDetail;
+      if (!fromEntityStore) {
+        return cachedDetail;
+      }
+      return {
+        ...cachedDetail,
+        ...fromEntityStore,
+        synopsis: fromEntityStore.synopsis ?? cachedDetail.synopsis,
+        authorBio: fromEntityStore.authorBio ?? cachedDetail.authorBio,
+        embedding: fromEntityStore.embedding ?? cachedDetail.embedding,
+        clusterCoordinates:
+          fromEntityStore.clusterCoordinates ?? cachedDetail.clusterCoordinates,
+      };
+    }
+    if (fromEntityStore) {
+      return fromEntityStore;
     }
     const cachedData = utils.book?.list?.getData?.({libraryId});
     const cachedBooks = extractBookList(cachedData);
@@ -235,7 +231,6 @@ export function useBook(
     delete base.authorBio;
     delete base.embedding;
     delete base.clusterCoordinates;
-    delete base.description;
     return base as Book;
   }, [rawBook]);
 
@@ -248,11 +243,10 @@ export function useBook(
       authorBio: rawBook.authorBio,
       embedding: rawBook.embedding,
       clusterCoordinates: rawBook.clusterCoordinates,
-      description: rawBook.description,
     };
   }, [rawBook]);
 
-  const book = useMemo<(Book & {description?: string}) | null>(() => {
+  const book = useMemo<Book | null>(() => {
     if (!rawBook) {
       return null;
     }
@@ -262,7 +256,6 @@ export function useBook(
       authorBio: rawBook.authorBio ?? undefined,
       embedding: rawBook.embedding ?? undefined,
       clusterCoordinates: rawBook.clusterCoordinates ?? undefined,
-      description: rawBook.description ?? undefined,
     };
   }, [rawBook]);
 
@@ -281,44 +274,18 @@ export function useBook(
   const isLoading = trpcBookQuery.isLoading && !book;
 
   const applyOptimisticBookPatch = useCallback(
-    (partialBook: OptimisticBookPatch) => {
+    (partialBook: OptimisticBookPatch): (() => void) => {
       if (!libraryId || !bookId) {
-        return;
+        return () => {};
       }
-
-      utils.book?.get?.setData?.({libraryId, bookId}, old => {
-        if (!old) {
-          return old;
-        }
-        return {...old, ...partialBook} as typeof old;
+      return applyOptimisticBookEditPatch(utils, {
+        libraryId,
+        bookId,
+        patch: partialBook as Partial<Book>,
+        bookHint: book ?? undefined,
       });
-
-      utils.book?.list?.setData?.(
-        {libraryId},
-        old =>
-          patchBookInListCache(old, bookId, existing => ({
-            ...existing,
-            ...partialBook,
-            synopsis:
-              partialBook.synopsis !== undefined
-                ? (partialBook.synopsis ?? undefined)
-                : existing.synopsis,
-            authorBio:
-              partialBook.authorBio !== undefined
-                ? (partialBook.authorBio ?? undefined)
-                : existing.authorBio,
-            embedding:
-              partialBook.embedding !== undefined
-                ? (partialBook.embedding ?? undefined)
-                : existing.embedding,
-            clusterCoordinates:
-              partialBook.clusterCoordinates !== undefined
-                ? (partialBook.clusterCoordinates ?? undefined)
-                : existing.clusterCoordinates,
-          })) as typeof old,
-      );
     },
-    [libraryId, bookId, utils.book],
+    [libraryId, bookId, utils, book],
   );
 
   // Mutations
@@ -508,7 +475,6 @@ export function useBook(
         authorBio: cleanForm.authorBio ?? undefined,
         embedding: cleanForm.embedding ?? undefined,
         clusterCoordinates: cleanForm.clusterCoordinates ?? undefined,
-        description: cleanForm.description ?? undefined,
         updatedAt:
           typeof cleanForm.updatedAt === 'string'
             ? cleanForm.updatedAt
@@ -545,34 +511,11 @@ export function useBook(
       if (!libraryId || !bookId) {
         return {};
       }
-      const prevBook = utils.book?.get?.getData?.({libraryId, bookId});
-      const prevList = utils.book?.list?.getData?.({libraryId});
-
-      const rollbackStatus =
-        partialBook.readingStatus !== undefined
-          ? applyOptimisticReadingStatusPatch(utils, {
-              libraryId,
-              bookId,
-              status: partialBook.readingStatus,
-              bookHint: book ?? undefined,
-            })
-          : undefined;
-
-      applyOptimisticBookPatch(partialBook);
-
-      return {prevBook, prevList, rollbackStatus};
+      const rollback = applyOptimisticBookPatch(partialBook);
+      return {rollback};
     },
     onError: (_err, _newBook, context) => {
-      if (!libraryId || !bookId || !context) {
-        return;
-      }
-      context.rollbackStatus?.();
-      if (context.prevBook !== undefined) {
-        utils.book?.get?.setData?.({libraryId, bookId}, context.prevBook);
-      }
-      if (context.prevList !== undefined) {
-        utils.book?.list?.setData?.({libraryId}, context.prevList);
-      }
+      context?.rollback?.();
     },
     onSuccess: payload => {
       if (!libraryId || !bookId || !book || !payload) {
@@ -602,14 +545,20 @@ export function useBook(
     reviews,
     isLoading,
     canEdit,
-    deleteBook: () => deleteBookMutation.mutateAsync(),
-    updateReadingStatus: (
+    deleteBook: async (): Promise<void> => {
+      await deleteBookMutation.mutateAsync();
+    },
+    updateReadingStatus: async (
       status: 'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned',
-    ) => updateReadingStatusMutation.mutateAsync(status),
-    addReview: (rating: number, text: string) =>
-      addReviewMutation.mutateAsync({rating, text}),
-    updateBook: (cleanForm: Partial<FullBookRecord>) =>
-      updateBookMutation.mutateAsync(cleanForm),
+    ): Promise<void> => {
+      await updateReadingStatusMutation.mutateAsync(status);
+    },
+    addReview: async (rating: number, text: string): Promise<void> => {
+      await addReviewMutation.mutateAsync({rating, text});
+    },
+    updateBook: async (cleanForm: Partial<FullBookRecord>): Promise<void> => {
+      await updateBookMutation.mutateAsync(cleanForm);
+    },
     updateBookOptimistically: (partialBook: Partial<FullBookRecord>) => {
       applyOptimisticBookPatch(partialBook);
     },

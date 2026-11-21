@@ -28,6 +28,29 @@ vi.mock('../hooks/useLibraryData', () => ({
 
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    useUtils: () => ({
+      book: {
+        list: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        get: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+      },
+      readingTracker: {
+        getShelf: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        getUnreadLibraryBooks: {
+          invalidate: vi.fn(),
+          setData: vi.fn(),
+          getData: vi.fn(),
+        },
+      },
+    }),
+    auth: {
+      getPermissions: {
+        useQuery: () => ({
+          data: {isAppAllowed: true, isAdmin: false, hasAiPlan: true},
+          isLoading: false,
+          refetch: vi.fn(),
+        }),
+      },
+    },
     readingTracker: {
       getShelf: {
         useQuery: () => ({
@@ -35,18 +58,14 @@ vi.mock('../lib/trpc', () => ({
           isLoading: true,
         }),
       },
+      getUnreadLibraryBooks: {
+        useQuery: () => ({
+          data: [],
+          isLoading: false,
+        }),
+      },
     },
     gemini: {
-      generateBookEmbeddings: {
-        useMutation: () => ({
-          mutateAsync: vi.fn().mockResolvedValue([]),
-        }),
-      },
-      generateClusterNames: {
-        useMutation: () => ({
-          mutateAsync: vi.fn().mockResolvedValue({}),
-        }),
-      },
       generateClusterThemes: {
         useMutation: () => ({
           mutateAsync: vi.fn().mockResolvedValue({}),

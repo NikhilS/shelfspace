@@ -112,7 +112,7 @@ export async function listReviews(
   const db = getAdminDb();
   const {cleanBookId, isbnFromId} = parseBookOrStateIdentifier(bookIdRaw);
   let targetBookId = cleanBookId;
-  if (bookIdRaw.startsWith('isbn:') && isbnFromId) {
+  if (bookIdRaw.startsWith('ext:') && isbnFromId) {
     const resolved = await fetchExistingBookDataForSnapshot(
       db,
       libraryId,

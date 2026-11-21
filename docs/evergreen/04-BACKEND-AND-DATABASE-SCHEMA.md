@@ -18,11 +18,11 @@ The database follows a hierarchical subcollection structure designed to guarante
   ├── role: "admin" | "user"
   ├── createdAt: Timestamp
   └── /readingStates/{stateKey} (Subcollection - Pure User-Centric Reading Ledger)
-        ├── id: "isbn:<NORMALIZED_ISBN>" | "bookid:<BOOK_ID>" (Deterministic single-lookup key)
+        ├── id: "book:<LIBRARY_ID>:<BOOK_ID>" | "ext:<IDENTIFIER>" (Immutable canonical key)
         ├── userId: string (Firebase Auth UID)
-        ├── keyType: "isbn" | "bookid"
-        ├── cleanIsbn?: string (Present when keyType === "isbn")
-        ├── bookId?: string (Present when keyType === "bookid")
+        ├── keyType: "book" | "ext"
+        ├── cleanIsbn?: string
+        ├── bookId?: string
         ├── libraryId?: string
         ├── status: "unset" | "want_to_read" | "reading" | "finished" | "abandoned"
         ├── rating?: number (1 to 5 stars)
@@ -31,7 +31,7 @@ The database follows a hierarchical subcollection structure designed to guarante
         ├── startedAt?: string (ISO-8601 timestamp)
         ├── finishedAt?: string (ISO-8601 timestamp)
         ├── readStatusReviewedAt?: string (ISO-8601 timestamp when last triaged in Have You Read It)
-        ├── bookSnapshot?: { title, author, isbn?, cleanIsbn?, coverUrl?, primaryGenre?, subgenres?, publishedDate?, synopsis?, authorBio?, series?, format?, ownershipStatus?, libraryId?, libraryName?, bookId?, geoMetadata?, temporalMetadata?, clusterCoordinates? }
+        ├── bookSnapshot?: MinimalBookStub (< 2KB fallback stub: title, author, isbn?, cleanIsbn?, coverUrl?, publishedDate?, primaryGenre?, series?, format?, libraryId?, libraryName?, bookId?, ownershipStatus?)
         └── updatedAt: string (ISO-8601 timestamp)
 
 /libraries/{libraryId}  (Standard collections or deterministic virtual_{userId} personal reading shelf)
@@ -41,6 +41,7 @@ The database follows a hierarchical subcollection structure designed to guarante
   ├── ownerName: string
   ├── isVirtual?: boolean (true for virtual_{userId} personal reading shelves)
   ├── access: { [email: string]: "owner" | "editor" | "viewer" }
+  ├── collaboratorEmails: string[] (Lowercased collaborator emails for O(1) array-contains shared-library lookup)
   ├── heroImageUrl: string | null
   ├── bookCount: number
   ├── createdAt: Timestamp / ISO date string
@@ -57,10 +58,12 @@ The database follows a hierarchical subcollection structure designed to guarante
   │     ├── publishedDate: string
   │     ├── coverUrl: string
   │     ├── primaryGenre: string
+  │     ├── primaryGenreLower?: string (Lowercased genre for case-insensitive indexed equality)
+  │     ├── missingFlags?: Array<"cover" | "genre" | "synopsis" | "isbn" | "series" | "geo" | "temporal"> (Write-time missing metadata flags)
   │     ├── subgenres: string[]
   │     ├── isCustomPrimary: boolean
   │     ├── series: string
-  │     ├── format: "physical" | "digital" | "audiobook"
+  │     ├── format: "physical" | "digital"
   │     ├── ownershipStatus?: "owned" | "unowned"
   │     ├── geoMetadata: { isNonEarth, lastSyncedAt, locations: [{ name, adminLevel, rationale, coordinates }] }
   │     ├── addedAt: Timestamp / ISO date string
@@ -74,7 +77,8 @@ The database follows a hierarchical subcollection structure designed to guarante
   │     └── embedding: number[] (Semantic vector embedding for clustering)
   │
   ├── /allowedDuplicates/{allowedId} (Subcollection: dismissed duplicate book groupings)
-  └── /jobs/{jobId} (Subcollection: background processing task progress)
+  ├── /jobs/{jobId} (Subcollection: durable multi-instance enrichment job state, lease heartbeat & recentBatches)
+  └── /tombstones/{bookId} (Subcollection: durable hard-delete tombstones for incremental book.syncChanges)
 
 /geolocationCache/{locationKey}
   ├── locationName: string
@@ -92,15 +96,15 @@ The database follows a hierarchical subcollection structure designed to guarante
 
 Because Firestore is accessed via `firebase-admin` on the server, the backend TypeScript layer must strictly enforce all relational and security invariants:
 
-| Invariant | Attack / Failure Mode | Backend Defense |
-| :--- | :--- | :--- |
-| **No Orphaned Books** | Creating books under a non-existent `libraryId`. | Verify parent library exists prior to inserting books. |
-| **Immutable Ownership** | Changing `ownerId` during library update. | Strip `ownerId` from update schemas; only owner can delete the library. |
-| **Shadow Field Injection** | Inserting hidden fields (e.g. `{ isAdmin: true }`). | Parse all payloads with strict Zod schemas (`z.object(...).strict()`). |
-| **Denial of Wallet** | Uploading $10\text{MB}$ title or summary string. | Max string length bounds: `title: z.string().min(1).max(300)`. |
-| **Duplicate ID Bombing** | Submitting arrays of 50,000 duplicate IDs. | Array length bounds: `z.array(...).max(500)`. |
-| **Type Poisoning** | Setting dates/timestamps as booleans or raw numbers. | Parse with `z.coerce.date()` and write as Firestore `Timestamp`. |
-| **Subcollection Leaks** | Reading books from unshared libraries. | Mandatory ABAC verification before constructing Firestore subcollection query. |
+| Invariant                  | Attack / Failure Mode                                | Backend Defense                                                                |
+| :------------------------- | :--------------------------------------------------- | :----------------------------------------------------------------------------- |
+| **No Orphaned Books**      | Creating books under a non-existent `libraryId`.     | Verify parent library exists prior to inserting books.                         |
+| **Immutable Ownership**    | Changing `ownerId` during library update.            | Strip `ownerId` from update schemas; only owner can delete the library.        |
+| **Shadow Field Injection** | Inserting hidden fields (e.g. `{ isAdmin: true }`).  | Parse all payloads with strict Zod schemas (`z.object(...).strict()`).         |
+| **Denial of Wallet**       | Uploading $10\text{MB}$ title or summary string.     | Max string length bounds: `title: z.string().min(1).max(300)`.                 |
+| **Duplicate ID Bombing**   | Submitting arrays of 50,000 duplicate IDs.           | Array length bounds: `z.array(...).max(500)`.                                  |
+| **Type Poisoning**         | Setting dates/timestamps as booleans or raw numbers. | Parse with `z.coerce.date()` and write as Firestore `Timestamp`.               |
+| **Subcollection Leaks**    | Reading books from unshared libraries.               | Mandatory ABAC verification before constructing Firestore subcollection query. |
 
 ---
 
@@ -110,30 +114,35 @@ Because Firestore is accessed via `firebase-admin` on the server, the backend Ty
 
 ### 3.1 Three-Layer Schema Taxonomy (100% Read/Write Compliance)
 
-All 10 persisted collections and disk caches have canonical `.strict()` Zod definitions located in `src/schemas/` and enforce a strict three-layer separation between:
-1. **Stored Document Schemas (`stored*DocSchema` / `Stored*Doc`):** The exact on-disk shape persisted in Cloud Firestore or local cache files, validated on every read and write.
+All 12 persisted Firestore collections have canonical `.strict()` Zod definitions located in `src/schemas/` and enforce a strict three-layer separation between:
+
+1. **Stored Document Schemas (`stored*DocSchema` / `Stored*Doc`):** The exact on-disk shape persisted in Cloud Firestore, validated on every read and write.
 2. **Mutation & API Input Schemas (`*InputSchema`):** Strictly bounded request payloads accepted by tRPC v11 procedures (stripping immutable server-owned fields like `ownerId` or `createdAt`).
 3. **Hydrated Client DTOs (`src/types/`):** The domain models returned to the React application after server-side partitioning or ledger overlay (for example, merging `StoredBookDoc` + `StoredBookDetailsDoc` + the caller's `StoredUserReadingStateDoc`).
 
-| Domain Entity / Store | Stored Document Schema (`src/schemas/` / `src/lib/schema.ts` layer) | Typed Firestore Converter (`src/server/`) | Hydrated Client DTO (`src/types/`) |
-| :--- | :--- | :--- | :--- |
-| **User Reading State** (`/users/{uid}/readingStates/{key}`) | `storedUserReadingStateDocSchema` (`src/schemas/readingState.ts`) | `readingStateConverter` (`readingStateLedger.ts`) | `UserReadingState` |
-| **Book Catalog** (`/libraries/{id}/books/{bookId}`) | `storedBookDocSchema` (`src/schemas/book.ts`) | `bookDocConverter` & `BookPartitioner` (`bookPartitioner.ts`) | `Book` (merges `StoredBookDoc` + `StoredBookDetailsDoc` + overlaid `UserReadingState`) |
-| **Heavy Book Details** (`/libraries/{id}/bookDetails/{bookId}`) | `storedBookDetailsDocSchema` (`src/schemas/book.ts`) | `bookDetailsDocConverter` & `BookPartitioner` (`bookPartitioner.ts`) | `BookDetailsPayload` |
-| **Book Review** (`/books/{bookId}/reviews/{userId}`) | `storedReviewDocSchema` (`src/schemas/book.ts`) | `reviewDocConverter` (`bookReviewService.ts`) | `BookReviewRecord` |
-| **Library** (`/libraries/{libraryId}`) | `storedLibraryDocSchema` (`src/schemas/libraryApi.ts`) | `libraryDocConverter` (`libraryCrudService.ts`) | `Library` / `LibraryApiRecord` |
-| **Allowed Duplicates** (`/libraries/{id}/allowedDuplicates/{groupId}`) | `storedAllowedDuplicateDocSchema` (`src/schemas/libraryApi.ts`) | `allowedDuplicateConverter` (`librarySpruceService.ts`) | `StoredAllowedDuplicateDoc` |
-| **User Profile** (`/users/{userId}`) | `storedUserProfileDocSchema` (`src/schemas/libraryApi.ts`) | `userProfileConverter` (`userService.ts`) | `UserProfile` |
-| **Access Allowlist** (`/appSettings/allowlist/users/{email}`) | `storedAllowlistUserDocSchema` (`src/schemas/waitlist.ts`) | `allowlistDocConverter` (`allowlistService.ts`) | `StoredAllowlistUserDoc` |
-| **Access Waitlist** (`/appSettings/waitlist/entries/{email}`) | `storedWaitlistEntryDocSchema` (`src/schemas/waitlist.ts`) | `waitlistDocConverter` (`waitlistService.ts`) | `WaitlistEntry` |
-| **Geolocation Cache** (`/geolocationCache/{slug}` & `.cache/geocache.json`) | `storedGeolocationCacheDocSchema` & `diskGeolocationCacheSchema` (`src/schemas/geolocation.ts`) | `geolocationCacheConverter` (`geolocation.ts`) | `GeolocationCoordinates` |
+| Domain Entity / Store                                                  | Stored Document Schema (`src/schemas/` / `src/lib/schema.ts` layer) | Typed Firestore Converter (`src/server/`)                            | Hydrated Client DTO (`src/types/`)                                                     |
+| :--------------------------------------------------------------------- | :------------------------------------------------------------------ | :------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
+| **User Reading State** (`/users/{uid}/readingStates/{key}`)            | `storedUserReadingStateDocSchema` (`src/schemas/readingState.ts`)   | `readingStateConverter` (`readingStateLedger.ts`)                    | `UserReadingState`                                                                     |
+| **Book Catalog** (`/libraries/{id}/books/{bookId}`)                    | `storedBookDocSchema` (`src/schemas/book.ts`)                       | `bookDocConverter` & `BookPartitioner` (`bookPartitioner.ts`)        | `Book` (merges `StoredBookDoc` + `StoredBookDetailsDoc` + overlaid `UserReadingState`) |
+| **Heavy Book Details** (`/libraries/{id}/bookDetails/{bookId}`)        | `storedBookDetailsDocSchema` (`src/schemas/book.ts`)                | `bookDetailsDocConverter` & `BookPartitioner` (`bookPartitioner.ts`) | `BookDetailsPayload`                                                                   |
+| **Book Review** (`/books/{bookId}/reviews/{userId}`)                   | `storedReviewDocSchema` (`src/schemas/book.ts`)                     | `reviewDocConverter` (`bookReviewService.ts`)                        | `BookReviewRecord`                                                                     |
+| **Library** (`/libraries/{libraryId}`)                                 | `storedLibraryDocSchema` (`src/schemas/libraryApi.ts`)              | `libraryDocConverter` (`libraryCrudService.ts`)                      | `Library` / `LibraryApiRecord`                                                         |
+| **Allowed Duplicates** (`/libraries/{id}/allowedDuplicates/{groupId}`) | `storedAllowedDuplicateDocSchema` (`src/schemas/libraryApi.ts`)     | `allowedDuplicateConverter` (`librarySpruceService.ts`)              | `StoredAllowedDuplicateDoc`                                                            |
+| **Enrichment Job** (`/libraries/{id}/jobs/{jobId}`)                    | `storedEnrichmentJobDocSchema` (`src/schemas/libraryApi.ts`)        | `enrichmentJobDocConverter` (`enrichmentJobCoordinator/jobStore.ts`) | `EnrichmentJobProgress`                                                                |
+| **Delete Tombstone** (`/libraries/{id}/tombstones/{bookId}`)           | `storedBookTombstoneDocSchema` (`src/schemas/book.ts`)              | `bookTombstoneDocConverter` (`bookTombstoneLedger.ts`)               | `string` (`deletedBookIds`)                                                            |
+| **User Profile** (`/users/{userId}`)                                   | `storedUserProfileDocSchema` (`src/schemas/libraryApi.ts`)          | `userProfileConverter` (`userService.ts`)                            | `UserProfile`                                                                          |
+| **Access Allowlist** (`/appSettings/allowlist/users/{email}`)          | `storedAllowlistUserDocSchema` (`src/schemas/waitlist.ts`)          | `allowlistDocConverter` (`allowlistService.ts`)                      | `StoredAllowlistUserDoc`                                                               |
+| **Access Waitlist** (`/appSettings/waitlist/entries/{email}`)          | `storedWaitlistEntryDocSchema` (`src/schemas/waitlist.ts`)          | `waitlistDocConverter` (`waitlistService.ts`)                        | `WaitlistEntry`                                                                        |
+| **Geolocation Cache** (`/geolocationCache/{slug}`)                     | `storedGeolocationCacheDocSchema` (`src/schemas/geolocation.ts`)    | `geolocationCacheConverter` (`geolocation.ts`)                       | `GeolocationCoordinates`                                                               |
 
 ---
 
 ### 3.2 How to Use the Schemas (`src/lib/schema.ts` / `src/schemas/`)
 
 #### Defining or Extending a Stored Document Schema
+
 Every persisted document schema in `src/schemas/` must:
+
 - Use `z.object({...}).strict()` so unknown keys are rejected immediately.
 - Bound every string (`.min()` / `.max()`), number (`.min()` / `.max()`), and array (`.max()`) to prevent Denial-of-Wallet payloads.
 - Reuse shared security primitives from `src/schemas/common.ts` (`safeIdSchema`, `safeEmailSchema`, `safeUrlSchema`) and date/metadata primitives from `src/schemas/book.ts` (`firestoreDateSchema`, `bookGeoMetadataSchema`, `bookTemporalMetadataSchema`).
@@ -159,6 +168,7 @@ export type StoredAllowedDuplicateDoc = z.infer<
 ```
 
 #### Shared Runtime Validation Helpers (`src/schemas/common.ts`)
+
 Never call raw `.parse()` without context or cast Firestore data with `as`. Always use the three context-aware validation helpers in `src/schemas/common.ts`:
 
 1. **`validateIncomingApiData(schema, data, context)`**: Validates external or client-supplied payloads before business logic runs. Throws a `SchemaValidationError` with structured `issues` (`path`, `message`, `code`) on failure.
@@ -166,6 +176,7 @@ Never call raw `.parse()` without context or cast Firestore data with `as`. Alwa
 3. **`validateFirestoreWritePayload(schema, payload, context)`**: Used inside `toCreatePayload` / `toUpdatePayload` / `toFirestoreWrite` converter methods prior to calling `.set()` or `.update()`. Automatically strips `firebase-admin/firestore` `FieldValue` sentinels (`FieldValue.serverTimestamp()`, `FieldValue.delete()`, `FieldValue.increment()`, `FieldValue.arrayUnion()`) and dot-notation keys on a validation clone before running `.strict()` validation (`strict: true` by default), while returning the original sentinel-bearing payload for Firestore persistence.
 
 #### Using Schema-Validated Fixtures in Tests (`src/schemas/schemaCompliance.ts`)
+
 Because `fromFirestore` enforces strict Zod validation on every read, unit and integration tests that mock Firestore `doc.data()` snapshots must return schema-compliant payloads. Always construct mock documents using the typed fixture builders in `src/schemas/schemaCompliance.ts`:
 
 ```typescript
@@ -283,8 +294,9 @@ export const userProfileConverter = {
 ```
 
 #### Specialized Multi-Collection Converter Patterns
-- **Partitioned Book Persistence (`BookPartitioner` in `src/server/services/book/bookPartitioner.ts`):** Splits a single domain `Book` into lightweight catalog metadata (`storedBookDocSchema` at `/libraries/{libraryId}/books/{bookId}`, including computed index fields `cleanIsbn`, `dedupeKey`, and `searchTokens`) and heavy semantic details (`storedBookDetailsDocSchema` at `/libraries/{libraryId}/bookDetails/{bookId}` for `synopsis`, `authorBio`, `embedding`, and `clusterCoordinates`). Both partitions are independently validated via `validateFirestoreWritePayload` on write and `validateFirestoreReadPayload` on read before being merged into the client `Book` DTO.
-- **User-Centric Reading Ledger (`readingStateConverter` in `src/server/services/book/readingStateLedger.ts`):** Persists per-user reading state at `/users/{userId}/readingStates/{stateKey}` using a deterministic single-lookup key (`isbn:<CLEAN_ISBN>` when the book has an ISBN, or `bookid:<BOOK_ID>` otherwise) and validates both the ledger state and its embedded `bookSnapshot` via `storedUserReadingStateDocSchema`.
+
+- **Partitioned Book Persistence (`BookPartitioner` in `src/server/services/book/bookPartitioner.ts`):** Splits a single domain `Book` into lightweight catalog metadata (`storedBookDocSchema` at `/libraries/{libraryId}/books/{bookId}`, including computed index fields `cleanIsbn`, `dedupeKey`, `searchTokens`, `primaryGenreLower`, and `missingFlags`) and heavy semantic details (`storedBookDetailsDocSchema` at `/libraries/{libraryId}/bookDetails/{bookId}` for `synopsis`, `authorBio`, `embedding`, and `clusterCoordinates`). Both partitions are independently validated via `validateFirestoreWritePayload` on write and `validateFirestoreReadPayload` on read before being merged into the client `Book` DTO.
+- **User-Centric Reading Ledger (`readingStateConverter` in `src/server/services/book/readingStateLedger.ts`):** Persists per-user reading state at `/users/{userId}/readingStates/{stateKey}` using an immutable canonical key (`book:<libraryId>:<bookId>` for library books, `ext:<identifier>` for standalone external tracks), embeds at most a `< 2KB` `MinimalBookStub`, hydrates live `books` + `bookDetails` via `db.getAll` in `getPersonalReadingShelf`, and uses `.select(...)` field projections when overlaying status onto catalog lists.
 
 ---
 
@@ -299,20 +311,23 @@ Because the browser never talks directly to Firestore (`firestore.rules` is perm
 3. **Denial-of-Wallet & Resource Exhaustion Protection:**
    Strict string, numeric, and array bounds on both input and stored schemas prevent oversized embeddings, unbounded synopses, or 50,000-element array bombs from inflating Firestore storage costs or exhausting Node/browser memory.
 4. **Seamless Compatibility with Firestore Atomic Sentinels:**
-   By stripping `FieldValue` transforms (`serverTimestamp()`, `delete()`, `increment()`, `arrayUnion()`) on an ephemeral clone inside `validateFirestoreWritePayload`, we retain 100% `.strict()` schema checking on domain fields without sacrificing native Firestore atomic operations.
+   By stripping `FieldValue` transforms (`serverTimestamp()`, `delete()`, `increment()`, `arrayUnion()`, `arrayRemove()`) on an ephemeral clone inside `validateFirestoreWritePayload`, we retain 100% `.strict()` schema checking on domain fields without sacrificing native Firestore atomic operations.
 5. **Automated Architectural Regression Enforcement (`src/lib/schema.test.ts` & `src/schemas/schemaCompliance.test.ts`):**
-   Our architectural test suites iterate through all 10 Firestore collections, verify converter round-trips (`fromFirestore` / `toFirestore*`) against `STORED_DOCUMENT_SCHEMAS`, reject schema drift on both read and write, and statically scan `src/server/**` to ensure every `getAdminDb()` and `.collection(...)` call maps to a registered strict Zod schema and typed converter.
+   Our architectural test suites iterate through all 12 Firestore collections, verify converter round-trips (`fromFirestore` / `toFirestore*`) against `STORED_DOCUMENT_SCHEMAS`, reject schema drift on both read and write, and statically scan `src/server/**` to ensure every `getAdminDb()` and `.collection(...)` call maps to a registered strict Zod schema and typed converter.
 
 ---
 
 ## 4. Background Processing & Cloud Run Scalability
 
 ### Multi-Container Statelessness
-The application deploys to Google Cloud Run containers that scale from zero to multiple active instances. 
-- **Rule:** **Never store stateful job queues in local Node memory.** In-memory arrays or maps will be wiped during cold starts or container auto-scaling.
-- **Background Tasks:** Long-running AI enrichments must record their progress in Firestore documents or emit progress chunks back to the client via streaming or polling queries.
+
+The application deploys to Google Cloud Run containers that scale from zero to multiple active instances without sticky session affinity.
+
+- **Rule:** **Never store authoritative job queues, delete tombstones, or geocoding caches in local Node memory or container disk.** Container filesystems and maps are wiped during cold starts and diverge across instances.
+- **Durable Jobs & Tombstones:** Background enrichment jobs persist to `/libraries/{libraryId}/jobs/{jobId}` (`src/server/services/enrichmentJobCoordinator/` with a 15s `unref()`'d lease heartbeat, 45s lease TTL, transactional lease fencing on batch/terminal writes, automatic cross-instance takeover of remaining `queued` books when a worker lease expires, and direct `jobsQuery.onSnapshot` SSE relay), hard-delete tombstones persist to `/libraries/{libraryId}/tombstones/{bookId}` (`BookTombstoneLedger`), and geocoding uses bounded L1 LRU + `/geolocationCache`.
 
 ### Firestore Batch Limits (The 500-Write Rule)
+
 - Firestore transactions and atomic batches are strictly capped by Google Cloud at **500 operations per commit**.
 - When bulk-importing books or performing bulk deletions:
   ```typescript
@@ -321,7 +336,7 @@ The application deploys to Google Cloud Run containers that scale from zero to m
   for (let i = 0; i < operations.length; i += BATCH_SIZE) {
     const batch = db.batch();
     const chunk = operations.slice(i, i + BATCH_SIZE);
-    chunk.forEach((op) => op(batch));
+    chunk.forEach(op => op(batch));
     await batch.commit();
   }
   ```

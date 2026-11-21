@@ -51,7 +51,7 @@ export function LibraryHeader({
   return (
     <div
       className={`w-full min-h-[110px] sm:min-h-[180px] md:min-h-[220px] relative overflow-hidden flex flex-col justify-between transition-all duration-300 border-b border-outline-variant/50 ${
-        !showHeroImage ? 'bg-primary' : ''
+        !showHeroImage ? 'bg-[#1c1917]' : ''
       }`}
     >
       {showHeroImage && heroImageUrl && (

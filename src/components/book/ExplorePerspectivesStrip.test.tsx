@@ -14,7 +14,13 @@ const sampleBooks: Book[] = [
     publishedDate: '1965',
     addedAt: '2026-01-01',
     geoMetadata: {
-      locations: [{name: 'Cairo', lat: 30.04, lng: 31.23, adminLevel: 'City'}],
+      locations: [
+        {
+          name: 'Cairo',
+          coordinates: {lat: 30.04, lng: 31.23},
+          adminLevel: 'city',
+        },
+      ],
     },
   },
   {

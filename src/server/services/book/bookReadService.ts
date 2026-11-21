@@ -12,21 +12,25 @@ import {
   BookPartitioner,
   bookDocConverter,
   bookDetailsDocConverter,
+  computePrimaryGenreLower,
 } from './bookPartitioner';
+import {extractRescuedLegacyBookDetails} from './bookLegacyNormalizers';
 import {
   computeReadingStateKey,
   fetchUserReadingStateForBook,
-  fetchUserReadingStatesMap,
+  fetchUserReadingStatesProjection,
   getReadingStatesCollection,
   normalizeReadingStateDoc,
   overlayReadingStateOnBook,
   parseBookOrStateIdentifier,
+  resolveReadingStateFromMap,
 } from './readingStateLedger';
+import {queryDeletedBookIdsSince} from './bookTombstoneLedger';
 import {validateFirestoreWritePayload} from '../../../schemas/common';
 import {storedLibraryDocSchema} from '../../../schemas/libraryApi';
 
 /**
- * Retrieves a single book by ID, optionally merging partitioned heavy metadata
+ * Retrieves a single book by ID, merging partitioned heavy metadata
  * and overlaying the caller's personal reading state from `/users/{userId}/readingStates/{stateKey}`.
  */
 export async function getBook(
@@ -37,98 +41,85 @@ export async function getBook(
 ): Promise<Book> {
   const db = getAdminDb();
   const {cleanBookId, isbnFromId} = parseBookOrStateIdentifier(bookIdRaw);
-  const booksCol = db
-    .collection('libraries')
-    .doc(libraryId)
-    .collection('books');
-  const detailsCol = db
-    .collection('libraries')
-    .doc(libraryId)
-    .collection('bookDetails');
+  const libraryRef = db.collection('libraries').doc(libraryId);
+  const booksCol = libraryRef.collection('books');
+  const detailsCol = libraryRef.collection('bookDetails');
 
   let bookSnap: FirebaseFirestore.DocumentSnapshot | undefined;
   let detailSnap: FirebaseFirestore.DocumentSnapshot | undefined;
   let prefetchedStateSnap: FirebaseFirestore.DocumentSnapshot | undefined;
   let predictedStateKey: string | undefined;
 
-  if (!bookIdRaw.startsWith('isbn:')) {
+  const isExtPrefixed = bookIdRaw.startsWith('ext:');
+
+  if (!isExtPrefixed) {
     const bookRef = booksCol.doc(cleanBookId);
     const detailRef = detailsCol.doc(cleanBookId);
     const readingStatesCol = userId
       ? getReadingStatesCollection(db, userId)
       : undefined;
 
-    if (typeof (db as {getAll?: unknown}).getAll === 'function') {
-      if (readingStatesCol && typeof readingStatesCol.doc === 'function') {
-        predictedStateKey = computeReadingStateKey({
-          cleanIsbn: options?.cleanIsbn,
-          bookId: cleanBookId,
-        });
-        const predictedStateRef = readingStatesCol.doc(predictedStateKey);
-        const [bSnap, dSnap, sSnap] = await db.getAll(
-          bookRef,
-          detailRef,
-          predictedStateRef,
-        );
-        bookSnap = bSnap;
-        detailSnap = dSnap;
-        prefetchedStateSnap = sSnap;
-      } else {
-        const [bSnap, dSnap] = await db.getAll(bookRef, detailRef);
-        bookSnap = bSnap;
-        detailSnap = dSnap;
-      }
+    if (readingStatesCol) {
+      predictedStateKey = computeReadingStateKey({
+        libraryId,
+        cleanIsbn: options?.cleanIsbn,
+        bookId: cleanBookId,
+      });
+      const predictedStateRef = readingStatesCol.doc(predictedStateKey);
+      const [bSnap, dSnap, sSnap] = await db.getAll(
+        bookRef,
+        detailRef,
+        predictedStateRef,
+      );
+      bookSnap = bSnap;
+      detailSnap = dSnap;
+      prefetchedStateSnap = sSnap;
     } else {
-      bookSnap = await bookRef.get();
-      try {
-        detailSnap = await detailRef.get();
-      } catch {
-        detailSnap = undefined;
-      }
+      const [bSnap, dSnap] = await db.getAll(bookRef, detailRef);
+      bookSnap = bSnap;
+      detailSnap = dSnap;
     }
   }
 
-  // If bookIdRaw was `isbn:<cleanIsbn>` (or not found by direct doc ID when ISBN is known),
-  // resolve the matching book document by `cleanIsbn` in the target library.
-  if (
-    (!bookSnap || !bookSnap.exists) &&
-    isbnFromId &&
-    typeof (booksCol as {where?: unknown}).where === 'function'
-  ) {
-    try {
-      const isbnQuerySnap = await booksCol
-        .where('cleanIsbn', '==', isbnFromId)
-        .limit(1)
-        .get();
-      const matchedDoc = isbnQuerySnap?.docs?.[0];
-      if (matchedDoc?.exists) {
-        bookSnap = matchedDoc;
-        try {
-          detailSnap = await detailsCol.doc(matchedDoc.id).get();
-        } catch {
-          detailSnap = undefined;
-        }
-      }
-    } catch {
-      // Non-fatal if query is unconfigured in mocks
+  if ((!bookSnap || !bookSnap.exists) && isbnFromId) {
+    const isbnQuerySnap = await booksCol
+      .where('cleanIsbn', '==', isbnFromId)
+      .limit(1)
+      .get();
+    const matchedDoc = isbnQuerySnap.docs[0];
+    if (matchedDoc?.exists) {
+      bookSnap = matchedDoc;
+      detailSnap = await detailsCol.doc(matchedDoc.id).get();
     }
   }
 
   if (!bookSnap || !bookSnap.exists) {
-    // Fallback to the caller's readingStates snapshot when navigating from the Personal Reading Room
     if (userId) {
       const readingStatesCol = getReadingStatesCollection(db, userId);
-      if (readingStatesCol && typeof readingStatesCol.doc === 'function') {
-        const candidateKey = computeReadingStateKey({
-          cleanIsbn: isbnFromId,
-          bookId: cleanBookId,
-        });
-        try {
+      if (readingStatesCol) {
+        const candidateKeys: string[] = [];
+        if (!isExtPrefixed) {
+          candidateKeys.push(
+            computeReadingStateKey({
+              libraryId,
+              cleanIsbn: isbnFromId,
+              bookId: cleanBookId,
+            }),
+          );
+        }
+        if (isbnFromId) {
+          const extKey = `ext:${isbnFromId}`;
+          if (!candidateKeys.includes(extKey)) {
+            candidateKeys.push(extKey);
+          }
+        }
+
+        for (const candidateKey of candidateKeys) {
           const stateSnap =
             predictedStateKey === candidateKey && prefetchedStateSnap
               ? prefetchedStateSnap
               : await readingStatesCol.doc(candidateKey).get();
-          if (stateSnap?.exists) {
+          if (stateSnap.exists) {
             const state = normalizeReadingStateDoc(
               stateSnap.id || candidateKey,
               stateSnap.data() || {},
@@ -151,21 +142,12 @@ export async function getBook(
                   ? {publishedDate: snap.publishedDate}
                   : {}),
                 ...(snap.primaryGenre ? {primaryGenre: snap.primaryGenre} : {}),
-                subgenres: Array.isArray(snap.subgenres) ? snap.subgenres : [],
+                subgenres: [],
                 isCustomPrimary: false,
                 ...(snap.series ? {series: snap.series} : {}),
                 format: snap.format || 'physical',
                 ...(snap.ownershipStatus
                   ? {ownershipStatus: snap.ownershipStatus}
-                  : {}),
-                ...(snap.synopsis ? {synopsis: snap.synopsis} : {}),
-                ...(snap.authorBio ? {authorBio: snap.authorBio} : {}),
-                ...(snap.geoMetadata ? {geoMetadata: snap.geoMetadata} : {}),
-                ...(snap.temporalMetadata
-                  ? {temporalMetadata: snap.temporalMetadata}
-                  : {}),
-                ...(snap.clusterCoordinates
-                  ? {clusterCoordinates: snap.clusterCoordinates}
                   : {}),
                 addedBy: userId,
                 addedAt: state.updatedAt || new Date().toISOString(),
@@ -174,8 +156,6 @@ export async function getBook(
               return overlayReadingStateOnBook(fallbackBook, state);
             }
           }
-        } catch {
-          // Proceed to NOT_FOUND below
         }
       }
     }
@@ -192,7 +172,8 @@ export async function getBook(
     rawBookData,
     `/libraries/${libraryId}/books/${bookSnap.id}`,
   );
-  const heavyData: StoredBookDetailsDoc =
+  const rescuedHeavy = extractRescuedLegacyBookDetails(rawBookData);
+  const persistedHeavy: StoredBookDetailsDoc =
     detailSnap && detailSnap.exists
       ? bookDetailsDocConverter.fromFirestore(
           bookSnap.id,
@@ -200,6 +181,10 @@ export async function getBook(
           `/libraries/${libraryId}/bookDetails/${bookSnap.id}`,
         )
       : {};
+  const heavyData: StoredBookDetailsDoc = {
+    ...rescuedHeavy,
+    ...persistedHeavy,
+  };
 
   const merged = BookPartitioner.mergeBookAndDetails(
     bookSnap.id,
@@ -207,30 +192,35 @@ export async function getBook(
     heavyData,
   );
   const actualStateKey = computeReadingStateKey({
+    libraryId,
     isbn: merged.isbn,
     cleanIsbn: merged.cleanIsbn,
     bookId: merged.id,
   });
   if (
     predictedStateKey === actualStateKey &&
-    prefetchedStateSnap !== undefined
+    prefetchedStateSnap !== undefined &&
+    prefetchedStateSnap.exists
   ) {
-    const prefetchedState = prefetchedStateSnap.exists
-      ? normalizeReadingStateDoc(
-          prefetchedStateSnap.id || actualStateKey,
-          prefetchedStateSnap.data() || {},
-          userId,
-        )
-      : undefined;
+    const prefetchedState = normalizeReadingStateDoc(
+      prefetchedStateSnap.id || actualStateKey,
+      prefetchedStateSnap.data() || {},
+      userId,
+    );
     return overlayReadingStateOnBook(merged, prefetchedState);
   }
-  const state = await fetchUserReadingStateForBook(db, userId, merged);
+  const state = await fetchUserReadingStateForBook(db, userId, {
+    id: merged.id,
+    libraryId,
+    isbn: merged.isbn,
+    cleanIsbn: merged.cleanIsbn,
+  });
   return overlayReadingStateOnBook(merged, state);
 }
 
-export interface ReadingStateSyncEntry {
-  stateKey: string;
+export interface ReadingStateSyncOverlay {
   bookId?: string;
+  libraryId?: string;
   cleanIsbn?: string;
   status?: ReadingStatusValue;
   rating?: number;
@@ -249,7 +239,7 @@ export interface SyncBookChangesResult {
   upsertedBooks: Book[];
   deletedBookIds: string[];
   activeBookIds?: string[];
-  readingStates: ReadingStateSyncEntry[];
+  readingStates: Record<string, ReadingStateSyncOverlay>;
   syncCursorMs: number;
   totalCount?: number;
 }
@@ -257,7 +247,7 @@ export interface SyncBookChangesResult {
 /**
  * Incrementally synchronizes warm client library caches by fetching only book documents
  * modified after `sinceUpdatedAtMs`, overlaying the caller's personal reading states,
- * and reconciling hard-deleted book IDs via L1 tombstones or zero-field ID projection.
+ * and reconciling hard-deleted book IDs via durable Firestore tombstones across all replicas.
  */
 export async function syncChanges(
   userId: string,
@@ -266,11 +256,12 @@ export async function syncChanges(
 ): Promise<SyncBookChangesResult> {
   const db = getAdminDb();
   const syncCursorMs = Date.now();
-  const effectiveSinceMs = Math.max(0, options.sinceUpdatedAtMs - 2000);
-  const booksCol = db
-    .collection('libraries')
-    .doc(libraryId)
-    .collection('books');
+  const rawSinceMs = Number.isFinite(options.sinceUpdatedAtMs)
+    ? Math.floor(options.sinceUpdatedAtMs)
+    : 0;
+  const effectiveSinceMs = Math.max(0, rawSinceMs - 2000);
+  const libraryRef = db.collection('libraries').doc(libraryId);
+  const booksCol = libraryRef.collection('books');
 
   const timestampCtor = (
     firestoreAdmin as {Timestamp?: {fromMillis?: (ms: number) => unknown}}
@@ -280,32 +271,14 @@ export async function syncChanges(
       ? timestampCtor.fromMillis(effectiveSinceMs)
       : new Date(effectiveSinceMs).toISOString();
 
-  const fetchChangedDocs = async (): Promise<
-    FirebaseFirestore.QueryDocumentSnapshot[]
-  > => {
-    if (typeof (booksCol as {where?: unknown}).where !== 'function') {
-      return [];
-    }
-    try {
-      let deltaQuery: FirebaseFirestore.Query = booksCol.where(
-        'updatedAt',
-        '>',
-        cutoffValue,
-      );
-      if (typeof (deltaQuery as {limit?: unknown}).limit === 'function') {
-        deltaQuery = deltaQuery.limit(500);
-      }
-      const snap = await deltaQuery.get();
-      return snap.docs || [];
-    } catch {
-      return [];
-    }
-  };
+  const [changedSnap, readingStatesMap, firestoreTombstoneIds] =
+    await Promise.all([
+      booksCol.where('updatedAt', '>', cutoffValue).limit(500).get(),
+      fetchUserReadingStatesProjection(db, userId),
+      queryDeletedBookIdsSince(libraryRef, libraryId, effectiveSinceMs),
+    ]);
 
-  const [changedDocs, readingStatesMap] = await Promise.all([
-    fetchChangedDocs(),
-    fetchUserReadingStatesMap(db, userId),
-  ]);
+  const changedDocs = changedSnap.docs;
 
   const upsertedBooks: Book[] = changedDocs.map(doc => {
     const raw = (doc.data() || {}) as Record<string, unknown>;
@@ -315,19 +288,20 @@ export async function syncChanges(
       `/libraries/${libraryId}/books/${doc.id}`,
     );
     const merged = BookPartitioner.mergeBookAndDetails(doc.id, data);
-    const stateKey = computeReadingStateKey({
+    const state = resolveReadingStateFromMap(readingStatesMap, {
+      libraryId,
+      bookId: merged.id,
       isbn: merged.isbn,
       cleanIsbn: merged.cleanIsbn,
-      bookId: merged.id,
     });
-    return overlayReadingStateOnBook(merged, readingStatesMap.get(stateKey));
+    return overlayReadingStateOnBook(merged, state);
   });
 
-  const readingStates: ReadingStateSyncEntry[] = [];
+  const readingStates: Record<string, ReadingStateSyncOverlay> = {};
   for (const [stateKey, state] of readingStatesMap.entries()) {
-    readingStates.push({
-      stateKey,
+    readingStates[stateKey] = {
       ...(state.bookId ? {bookId: state.bookId} : {}),
+      ...(state.libraryId ? {libraryId: state.libraryId} : {}),
       ...(state.cleanIsbn ? {cleanIsbn: state.cleanIsbn} : {}),
       ...(state.status ? {status: state.status} : {}),
       ...(typeof state.rating === 'number' ? {rating: state.rating} : {}),
@@ -336,12 +310,15 @@ export async function syncChanges(
         : {}),
       ...(state.startedAt !== undefined ? {startedAt: state.startedAt} : {}),
       ...(state.finishedAt !== undefined ? {finishedAt: state.finishedAt} : {}),
-    });
+    };
   }
 
-  const deletedBookIds = LibraryMetadataCache.getDeletedBookIdsSince(
+  const l1Tombstones = LibraryMetadataCache.getDeletedBookIdsSince(
     libraryId,
     effectiveSinceMs,
+  );
+  const deletedBookIds = Array.from(
+    new Set([...firestoreTombstoneIds, ...l1Tombstones]),
   );
 
   const prefetchedCount =
@@ -356,17 +333,8 @@ export async function syncChanges(
     options.knownCount + upsertedBooks.length - deletedBookIds.length !==
       prefetchedCount
   ) {
-    try {
-      const selectable = booksCol as unknown as {
-        select?: () => {get: () => Promise<FirebaseFirestore.QuerySnapshot>};
-      };
-      if (typeof selectable?.select === 'function') {
-        const idSnap = await selectable.select().get();
-        activeBookIds = (idSnap.docs || []).map(d => d.id);
-      }
-    } catch {
-      activeBookIds = undefined;
-    }
+    const idSnap = await booksCol.select().get();
+    activeBookIds = idSnap.docs.map(d => d.id);
   }
 
   return {
@@ -395,9 +363,37 @@ export interface ListBooksOptions {
   prefetchedLibraryData?: Record<string, unknown>;
 }
 
+function matchesMissingMetadataPredicate(book: Book, missing: string): boolean {
+  if (missing === 'geo') {
+    return !book.geoMetadata;
+  }
+  if (missing === 'temporal') {
+    return !book.temporalMetadata;
+  }
+  if (missing === 'genre') {
+    return !book.primaryGenre;
+  }
+  if (missing === 'synopsis') {
+    return !book.synopsis && !book.bookDetailsMetadata?.hasSynopsis;
+  }
+  if (missing === 'authorBio') {
+    return !book.authorBio && !book.bookDetailsMetadata?.hasAuthorBio;
+  }
+  if (missing === 'embedding') {
+    return !book.embedding?.length && !book.bookDetailsMetadata?.hasEmbedding;
+  }
+  if (missing === 'coverImage') {
+    return !book.coverUrl;
+  }
+  if (missing === 'series') {
+    return !book.series;
+  }
+  return true;
+}
+
 /**
- * Lists books in a library, applying optional filters, lookahead cursor pagination,
- * and self-healing parent library bookCount reconciliation when out of sync.
+ * Lists books in a library, applying native indexed filters (`primaryGenreLower`, `missingFlags`),
+ * lookahead cursor pagination, and self-healing parent library bookCount reconciliation.
  */
 export async function listBooks(
   userId: string,
@@ -411,94 +407,65 @@ export async function listBooks(
     .collection('books');
   let query: FirebaseFirestore.Query = booksCollection;
 
-  let appliedNativeWhereFilter = false;
-  if (
-    typeof (query as {where?: unknown}).where === 'function' &&
-    options?.filters?.primaryGenre
-  ) {
-    query = query.where('primaryGenre', '==', options.filters.primaryGenre);
-    appliedNativeWhereFilter = true;
+  const targetGenreLower = computePrimaryGenreLower(
+    options?.filters?.primaryGenre,
+  );
+  const canonicalMissingFlag = options?.filters?.missingMetadata;
+  const hasStatusFilter = Boolean(options?.filters?.status);
+  const hasAnyFilter = Boolean(
+    canonicalMissingFlag || targetGenreLower || hasStatusFilter,
+  );
+
+  let appliedNativeGenreFilter = false;
+  let appliedNativeMissingFilter = false;
+
+  if (targetGenreLower) {
+    query = query.where('primaryGenreLower', '==', targetGenreLower);
+    appliedNativeGenreFilter = true;
+  }
+  if (canonicalMissingFlag) {
+    query = query.where('missingFlags', 'array-contains', canonicalMissingFlag);
+    appliedNativeMissingFilter = true;
   }
 
-  if (!appliedNativeWhereFilter) {
-    try {
-      query = query.orderBy('addedAt', 'desc');
-    } catch {
-      // In tests or if index not configured
-    }
+  const appliedAnyNativeWhere =
+    appliedNativeGenreFilter || appliedNativeMissingFilter;
 
-    if (options?.cursor && typeof query.startAfter === 'function') {
-      try {
-        const cursorSnap = await booksCollection.doc(options.cursor).get();
-        if (cursorSnap?.exists) {
-          query = query.startAfter(cursorSnap);
-        }
-      } catch {
-        // Fallback if cursor doc cannot be loaded in test mocks
-      }
+  if (!appliedAnyNativeWhere) {
+    query = query.orderBy('addedAt', 'desc');
+  }
+
+  if (options?.cursor && !appliedAnyNativeWhere) {
+    const cursorSnap = await booksCollection.doc(options.cursor).get();
+    if (cursorSnap.exists) {
+      query = query.startAfter(cursorSnap);
     }
   }
 
   const limitCount = options?.limit ?? 1000;
-  const hasMissingFilter = Boolean(options?.filters?.missingMetadata);
-  const hasStatusFilter = Boolean(options?.filters?.status);
-  const hasAnyFilter = Boolean(
-    hasMissingFilter || options?.filters?.primaryGenre || hasStatusFilter,
-  );
-  const fetchLimit =
-    hasMissingFilter || hasStatusFilter
-      ? Math.min(2000, limitCount * 3)
-      : limitCount + 1;
-  if (!appliedNativeWhereFilter) {
+  const fetchLimit = hasStatusFilter
+    ? Math.min(2000, limitCount * 3)
+    : limitCount + 1;
+  if (!appliedAnyNativeWhere) {
     query = query.limit(fetchLimit);
   }
 
   const countAggregatePromise =
-    !hasAnyFilter &&
-    !options?.cursor &&
-    typeof (
-      booksCollection as unknown as {
-        count?: () => {get: () => Promise<{data: () => {count?: number}}>};
-      }
-    ).count === 'function'
-      ? (
-          booksCollection as unknown as {
-            count: () => {get: () => Promise<{data: () => {count?: number}}>};
-          }
-        )
+    !hasAnyFilter && !options?.cursor
+      ? booksCollection
           .count()
           .get()
-          .then(res => res?.data?.()?.count)
-          .catch(() => undefined)
+          .then(res => res.data().count)
       : Promise.resolve(undefined);
 
   const [snapshot, aggregatedCount, readingStatesMap] = await Promise.all([
     query.get(),
     countAggregatePromise,
-    fetchUserReadingStatesMap(db, userId),
+    fetchUserReadingStatesProjection(db, userId),
   ]);
 
-  let rawDocs = snapshot.docs || [];
+  let rawDocs = snapshot.docs;
 
-  // If a native .where() filter on primaryGenre returned 0 docs, fall back for case-insensitive matching
-  if (
-    appliedNativeWhereFilter &&
-    rawDocs.length === 0 &&
-    options?.filters?.primaryGenre
-  ) {
-    try {
-      const fallbackSnap = await booksCollection.limit(fetchLimit).get();
-      if (fallbackSnap?.docs && fallbackSnap.docs.length > 0) {
-        rawDocs = fallbackSnap.docs;
-      }
-    } catch {
-      // Keep empty result if fallback fails
-    }
-  }
-
-  // If an unfiltered single-page query returned fewer documents than the collection's
-  // true count (e.g. legacy imported documents missing `addedAt` excluded by orderBy),
-  // fall back to an unordered collection read and sort in memory so zero books are lost.
   if (
     !hasAnyFilter &&
     !options?.cursor &&
@@ -507,13 +474,9 @@ export async function listBooks(
     aggregatedCount > rawDocs.length &&
     aggregatedCount <= limitCount
   ) {
-    try {
-      const fallbackSnap = await booksCollection.get();
-      if (fallbackSnap?.docs && fallbackSnap.docs.length > rawDocs.length) {
-        rawDocs = fallbackSnap.docs;
-      }
-    } catch {
-      // Keep ordered snapshot if fallback fails
+    const fallbackSnap = await booksCollection.get();
+    if (fallbackSnap.docs.length > rawDocs.length) {
+      rawDocs = fallbackSnap.docs;
     }
   }
 
@@ -525,15 +488,16 @@ export async function listBooks(
       `/libraries/${libraryId}/books/${doc.id}`,
     );
     const merged = BookPartitioner.mergeBookAndDetails(doc.id, data);
-    const stateKey = computeReadingStateKey({
+    const state = resolveReadingStateFromMap(readingStatesMap, {
+      libraryId,
+      bookId: merged.id,
       isbn: merged.isbn,
       cleanIsbn: merged.cleanIsbn,
-      bookId: merged.id,
     });
-    return overlayReadingStateOnBook(merged, readingStatesMap.get(stateKey));
+    return overlayReadingStateOnBook(merged, state);
   });
 
-  if (appliedNativeWhereFilter) {
+  if (appliedAnyNativeWhere) {
     books.sort((a, b) =>
       String(b.addedAt || '').localeCompare(String(a.addedAt || '')),
     );
@@ -545,10 +509,9 @@ export async function listBooks(
     }
   }
 
-  if (options?.filters?.primaryGenre) {
-    const targetGenre = options.filters.primaryGenre.toLowerCase();
+  if (targetGenreLower) {
     books = books.filter(
-      b => (b.primaryGenre || '').toLowerCase() === targetGenre,
+      b => (b.primaryGenre || '').trim().toLowerCase() === targetGenreLower,
     );
   }
 
@@ -557,51 +520,16 @@ export async function listBooks(
     books = books.filter(b => b.readingStatus === targetStatus);
   }
 
-  if (options?.filters?.missingMetadata) {
-    const missing = options.filters.missingMetadata;
-    books = books.filter(b => {
-      if (missing === 'geo') {
-        return !b.geoMetadata;
-      }
-      if (missing === 'temporal') {
-        return !b.temporalMetadata;
-      }
-      if (missing === 'genre' || missing === 'primaryGenre') {
-        return !b.primaryGenre;
-      }
-      if (missing === 'synopsis') {
-        return !b.synopsis && !b.bookDetailsMetadata?.hasSynopsis;
-      }
-      if (missing === 'authorBio') {
-        return !b.authorBio && !b.bookDetailsMetadata?.hasAuthorBio;
-      }
-      if (missing === 'embedding' || missing === 'embeddings') {
-        return !b.embedding?.length && !b.bookDetailsMetadata?.hasEmbedding;
-      }
-      if (missing === 'coverImage') {
-        return !b.coverUrl;
-      }
-      if (missing === 'series') {
-        return !b.series;
-      }
-      return true;
-    });
+  if (canonicalMissingFlag) {
+    books = books.filter(b =>
+      matchesMissingMetadataPredicate(b, canonicalMissingFlag),
+    );
   }
 
-  const hasMore = hasMissingFilter
-    ? books.length > limitCount || rawDocs.length >= fetchLimit
-    : books.length > limitCount;
+  const hasMore = books.length > limitCount;
   const slicedBooks = books.slice(0, limitCount);
   const nextCursor = hasMore
-    ? appliedNativeWhereFilter
-      ? slicedBooks[slicedBooks.length - 1]?.id
-      : hasMissingFilter
-        ? books.length > limitCount
-          ? slicedBooks[slicedBooks.length - 1]?.id
-          : rawDocs[rawDocs.length - 1]?.id ||
-            slicedBooks[slicedBooks.length - 1]?.id
-        : slicedBooks[slicedBooks.length - 1]?.id ||
-          rawDocs[rawDocs.length - 1]?.id
+    ? slicedBooks[slicedBooks.length - 1]?.id || rawDocs[rawDocs.length - 1]?.id
     : undefined;
 
   const authoritativeTotalCount =
@@ -613,33 +541,24 @@ export async function listBooks(
           : undefined
       : undefined;
 
-  // Self-heal parent library.bookCount asynchronously when an unfiltered read detects drift
   if (
     typeof authoritativeTotalCount === 'number' &&
     options?.prefetchedLibraryData &&
     !libraryId.startsWith('virtual_') &&
     options.prefetchedLibraryData.bookCount !== authoritativeTotalCount
   ) {
-    try {
-      const libRef = db.collection('libraries').doc(libraryId) as {
-        update?: (data: Record<string, unknown>) => Promise<unknown>;
-      };
-      if (typeof libRef?.update === 'function') {
-        const healPayload = {bookCount: authoritativeTotalCount};
-        validateFirestoreWritePayload(
-          storedLibraryDocSchema.partial(),
-          healPayload,
-          {
-            entity: 'StoredLibraryDoc',
-            documentPath: `/libraries/${libraryId}`,
-            operation: 'update',
-          },
-        );
-        void Promise.resolve(libRef.update(healPayload)).catch(() => {});
-      }
-    } catch {
-      // Non-fatal background reconciliation
-    }
+    const libRef = db.collection('libraries').doc(libraryId);
+    const healPayload = {bookCount: authoritativeTotalCount};
+    validateFirestoreWritePayload(
+      storedLibraryDocSchema.partial(),
+      healPayload,
+      {
+        entity: 'StoredLibraryDoc',
+        documentPath: `/libraries/${libraryId}`,
+        operation: 'update',
+      },
+    );
+    void libRef.update(healPayload).catch(() => {});
   }
 
   return {
@@ -681,10 +600,7 @@ export async function getBookDetailsChunk(
     .collection('bookDetails');
 
   const docRefs = bookIds.map(id => detailsCollection.doc(id));
-  const snaps =
-    typeof (db as {getAll?: unknown}).getAll === 'function'
-      ? await db.getAll(...docRefs)
-      : await Promise.all(docRefs.map(ref => ref.get()));
+  const snaps = await db.getAll(...docRefs);
 
   const details: Record<string, BookDetailsPayload> = {};
   snaps.forEach(snap => {

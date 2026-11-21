@@ -1,6 +1,6 @@
 /**
  * @fileoverview Architectural and unit compliance tests verifying that:
- * 1. All 10 persisted Firestore/disk document schemas strictly validate valid
+ * 1. All 12 persisted Firestore document schemas strictly validate valid
  *    fixtures and reject unknown or malformed fields on both read and write.
  * 2. Every production service file in `src/server/**` that interacts with
  *    Firestore (`getAdminDb()`) imports and routes reads/writes through typed
@@ -22,6 +22,8 @@ import {
   buildValidStoredAllowlistFixture,
   buildValidStoredBookDetailsFixture,
   buildValidStoredBookFixture,
+  buildValidStoredBookTombstoneFixture,
+  buildValidStoredEnrichmentJobFixture,
   buildValidStoredGeolocationFixture,
   buildValidStoredLibraryFixture,
   buildValidStoredReadingStateFixture,
@@ -49,7 +51,7 @@ function collectServerSourceFiles(dir: string): string[] {
 }
 
 describe('Schema Compliance & Strict Converter Enforcement', () => {
-  it('validates all 10 canonical collection fixtures and strictly rejects unknown fields', () => {
+  it('validates all 12 canonical collection fixtures and strictly rejects unknown fields', () => {
     const fixtures = {
       users: buildValidStoredUserProfileFixture(),
       readingStates: buildValidStoredReadingStateFixture(),
@@ -58,6 +60,8 @@ describe('Schema Compliance & Strict Converter Enforcement', () => {
       bookDetails: buildValidStoredBookDetailsFixture(),
       reviews: buildValidStoredReviewFixture(),
       allowedDuplicates: buildValidStoredAllowedDuplicateFixture(),
+      jobs: buildValidStoredEnrichmentJobFixture(),
+      tombstones: buildValidStoredBookTombstoneFixture(),
       allowlist: buildValidStoredAllowlistFixture(),
       waitlist: buildValidStoredWaitlistFixture(),
       geolocationCache: buildValidStoredGeolocationFixture(),
@@ -111,7 +115,10 @@ describe('Schema Compliance & Strict Converter Enforcement', () => {
 
     const dbConsumers = serverFiles.filter(filePath => {
       const content = fs.readFileSync(filePath, 'utf-8');
-      if (filePath.endsWith('firebaseAdmin.ts')) {
+      if (
+        filePath.endsWith('firebaseAdmin.ts') ||
+        filePath.includes(`${path.sep}testing${path.sep}`)
+      ) {
         return false;
       }
       return content.includes('getAdminDb(');

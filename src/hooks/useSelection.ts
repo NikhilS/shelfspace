@@ -52,12 +52,7 @@ export function useSelection(
     }
     const booksArray = Array.from(selectedBooks);
     const validStatus = newStatus as
-      | 'unset'
-      | 'want_to_read'
-      | 'reading'
-      | 'finished'
-      | 'completed'
-      | 'abandoned';
+      'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned';
     const rollbacks = booksArray.map(bookId =>
       applyOptimisticReadingStatusPatch(utils, {
         libraryId,
@@ -133,6 +128,7 @@ export function useSelection(
           libraryId,
           bookId,
           bookCountDelta: -1,
+          alreadyRemovedOptimistically: true,
         });
       }
       toast.success(`Deleted ${count} books`);

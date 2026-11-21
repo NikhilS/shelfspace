@@ -68,7 +68,12 @@ vi.mock('../../lib/trpc', () => ({
         list: {invalidate: vi.fn()},
       },
       readingTracker: {
-        getShelf: {invalidate: vi.fn()},
+        getShelf: {invalidate: vi.fn(), setData: vi.fn(), getData: vi.fn()},
+        getUnreadLibraryBooks: {
+          invalidate: vi.fn(),
+          setData: vi.fn(),
+          getData: vi.fn(),
+        },
       },
     }),
     book: {
@@ -92,6 +97,12 @@ vi.mock('../../lib/trpc', () => ({
               abandoned: 0,
             },
           },
+          isLoading: false,
+        })),
+      },
+      getUnreadLibraryBooks: {
+        useQuery: vi.fn(() => ({
+          data: [],
           isLoading: false,
         })),
       },

@@ -5,8 +5,8 @@
   "name": "book(ish) Library",
   "short_name": "book(ish)",
   "description": "Modern Archivist Personal Library Catalog",
-  "theme_color": "#fcf9f3",
-  "background_color": "#fcf9f3",
+  "theme_color": "#faf7f2",
+  "background_color": "#faf7f2",
   "display": "standalone",
   "icons": [
     {

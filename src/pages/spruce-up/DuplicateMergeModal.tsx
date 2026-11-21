@@ -26,7 +26,7 @@ export interface DuplicateMergePayload {
     primaryGenre?: string;
     subgenres?: string[];
     series?: string;
-    format?: 'physical' | 'ebook' | 'audiobook';
+    format?: 'physical' | 'digital';
   };
   mergedHeavyFields?: {
     synopsis?: string;
@@ -196,8 +196,7 @@ export function DuplicateMergeModal({
           subgenres: genreSource.subgenres || undefined,
           publishedDate: pickBook('publishedDate').publishedDate || undefined,
           format:
-            (pickBook('format').format as
-              'physical' | 'ebook' | 'audiobook' | undefined) || 'physical',
+            pickBook('format').format === 'digital' ? 'digital' : 'physical',
         },
         mergedHeavyFields: {
           ...(synopsisVal ? {synopsis: synopsisVal} : {}),

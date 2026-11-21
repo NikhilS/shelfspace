@@ -1,4 +1,5 @@
 import React from 'react';
+import {motion} from 'motion/react';
 import {Sliders, Compass} from 'lucide-react';
 import {Book} from '../../types';
 
@@ -57,22 +58,38 @@ export function TimelinePresetControls({
   return (
     <div className="flex items-center gap-2.5 flex-wrap shrink-0">
       {/* Segmented filter presets */}
-      <div className="bg-surface-container p-1 rounded-lg flex border border-outline-variant/60 text-xs font-sans font-semibold">
-        {PRESETS.map(p => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => onPresetSelect(p.id)}
-            className={`py-1.5 px-3 rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-              selectedPreset === p.id
-                ? 'bg-primary text-on-primary shadow-2xs font-semibold'
-                : 'text-on-surface-variant hover:text-on-surface'
-            }`}
-            title={p.text}
-          >
-            {p.label}
-          </button>
-        ))}
+      <div
+        className="bg-surface-container p-1 rounded-lg flex border border-outline-variant/60 text-xs font-sans font-semibold"
+        role="tablist"
+        aria-label="Timeline era focus"
+      >
+        {PRESETS.map(p => {
+          const isActive = selectedPreset === p.id;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => onPresetSelect(p.id)}
+              className={`relative py-1.5 px-3 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                isActive
+                  ? 'text-primary font-semibold'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+              title={p.text}
+            >
+              {isActive && (
+                <motion.span
+                  layoutId="timeline-preset-pill"
+                  transition={{type: 'spring', stiffness: 500, damping: 38}}
+                  className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/50"
+                />
+              )}
+              <span className="relative z-10">{p.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Slider controls */}
@@ -123,12 +140,12 @@ export function TimelineScrubber({
 
   return (
     <div
-      className="mb-6 bg-surface-container-low border border-outline-variant/50 rounded-2xl p-4"
+      className="mb-6 bento-card p-4"
       aria-label="Century scrubber navigation"
     >
       <div className="flex items-center justify-between gap-4 mb-2.5">
         <div className="flex items-center gap-2 text-xs font-sans font-semibold text-on-surface">
-          <Compass className="w-3.5 h-3.5 text-[#2d6d82] dark:text-[#6ab0c7] shrink-0" />
+          <Compass className="w-3.5 h-3.5 text-tertiary shrink-0" />
           <span>Hydrographic Century Scrubber</span>
           <span aria-hidden="true" className="text-outline-variant">
             ·

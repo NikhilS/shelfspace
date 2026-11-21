@@ -152,10 +152,3 @@ export class WikipediaProvider {
 }
 
 export const wikipediaProvider = WikipediaProvider.getInstance();
-
-export async function fetchAuthorBioFromWikipedia(
-  authorName: string,
-  signal?: AbortSignal,
-): Promise<string | null> {
-  return wikipediaProvider.fetchAuthorBio(authorName, {signal});
-}

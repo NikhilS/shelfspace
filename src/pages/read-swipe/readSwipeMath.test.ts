@@ -87,7 +87,7 @@ describe('readSwipeMath', () => {
       ).toBe(true);
     });
 
-    it('excludes books marked as finished, completed, or abandoned for the current user', () => {
+    it('excludes books marked as finished or abandoned for the current user', () => {
       expect(
         isBookEligibleForReadSwipe(
           createMockBook('1', {readingStatus: 'finished'}),
@@ -95,12 +95,7 @@ describe('readSwipeMath', () => {
       ).toBe(false);
       expect(
         isBookEligibleForReadSwipe(
-          createMockBook('2', {readingStatus: 'completed'}),
-        ),
-      ).toBe(false);
-      expect(
-        isBookEligibleForReadSwipe(
-          createMockBook('3', {readingStatus: 'abandoned'}),
+          createMockBook('2', {readingStatus: 'abandoned'}),
         ),
       ).toBe(false);
     });

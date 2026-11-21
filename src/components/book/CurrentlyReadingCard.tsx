@@ -35,9 +35,8 @@ export function normalizeToTrackedBookItem(
 ): TrackedBookItem | null {
   const rawStatus = item.readingStatus;
   let readingStatus: TrackedShelfStatus | 'unset' = 'unset';
-  if (rawStatus === 'completed' || rawStatus === 'finished') {
-    readingStatus = 'finished';
-  } else if (
+  if (
+    rawStatus === 'finished' ||
     rawStatus === 'reading' ||
     rawStatus === 'want_to_read' ||
     rawStatus === 'abandoned'

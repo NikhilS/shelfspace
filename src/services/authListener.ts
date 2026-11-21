@@ -18,9 +18,7 @@ import {useAuthStore, AuthState} from '../stores/authStore';
 const PROFILE_FINGERPRINT_PREFIX = 'bookish_profile_fp_';
 
 function updateAuthState(partial: Partial<AuthState>): void {
-  if (useAuthStore && typeof useAuthStore.setState === 'function') {
-    useAuthStore.setState(partial);
-  }
+  useAuthStore.setState(partial);
 }
 
 function buildProfileFingerprint(user: User): string {

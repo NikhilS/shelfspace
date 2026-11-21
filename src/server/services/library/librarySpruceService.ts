@@ -9,11 +9,7 @@ import crypto from 'crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {TRPCError} from '@trpc/server';
 import {LibraryService} from './index';
-import {
-  normalizeIsbnForDedupe,
-  computeBookDedupeKey,
-  computeBookSearchTokens,
-} from '../../../lib/duplicateDetection';
+import {LibraryMetadataCache} from './libraryMetadataCache';
 import {catalogOrchestrator} from '../catalog';
 import {geminiDecisionProvider, verifyCoverImageWithDecisions} from '../gemini';
 import {
@@ -24,6 +20,7 @@ import {
 import {storedBookDocSchema} from '../../../schemas/book';
 import {
   storedAllowedDuplicateDocSchema,
+  type CanonicalEnrichmentType,
   type StoredAllowedDuplicateDoc,
 } from '../../../schemas/libraryApi';
 import {
@@ -31,6 +28,7 @@ import {
   validateFirestoreReadPayload,
   validateFirestoreWritePayload,
 } from '../../../schemas/common';
+import type {StoredBookDoc} from '../../../types';
 
 export const allowedDuplicateConverter = {
   toFirestoreWrite(
@@ -82,15 +80,80 @@ export const allowedDuplicateConverter = {
   },
 };
 
+function doesStoredBookHaveResettableDetail(
+  book: StoredBookDoc,
+  metadataType: CanonicalEnrichmentType,
+): boolean {
+  const hasEnrichmentRecord = Boolean(book.enrichmentStatus?.[metadataType]);
+  const hasFieldSource = Boolean(book.fieldSources?.[metadataType]);
+
+  switch (metadataType) {
+    case 'genre':
+      return Boolean(
+        (typeof book.primaryGenre === 'string' &&
+          book.primaryGenre.trim().length > 0) ||
+        (Array.isArray(book.subgenres) && book.subgenres.length > 0) ||
+        book.isCustomPrimary ||
+        hasEnrichmentRecord ||
+        hasFieldSource ||
+        book.fieldSources?.primaryGenre,
+      );
+    case 'geo':
+      return Boolean(book.geoMetadata || hasEnrichmentRecord || hasFieldSource);
+    case 'temporal':
+      return Boolean(
+        book.temporalMetadata || hasEnrichmentRecord || hasFieldSource,
+      );
+    case 'synopsis':
+      return Boolean(
+        book.bookDetailsMetadata?.hasSynopsis ||
+        hasEnrichmentRecord ||
+        hasFieldSource,
+      );
+    case 'authorBio':
+      return Boolean(
+        book.bookDetailsMetadata?.hasAuthorBio ||
+        hasEnrichmentRecord ||
+        hasFieldSource,
+      );
+    case 'embedding':
+      return Boolean(
+        book.bookDetailsMetadata?.hasEmbedding ||
+        book.bookDetailsMetadata?.hasClusterCoordinates ||
+        hasEnrichmentRecord ||
+        hasFieldSource,
+      );
+    case 'coverImage':
+      return Boolean(
+        (typeof book.coverUrl === 'string' &&
+          book.coverUrl.trim().length > 0) ||
+        (typeof book.coverUrlRaw === 'string' &&
+          book.coverUrlRaw.trim().length > 0) ||
+        (Array.isArray(book.coverCandidates) &&
+          book.coverCandidates.length > 0) ||
+        hasEnrichmentRecord ||
+        hasFieldSource ||
+        book.fieldSources?.coverUrl,
+      );
+    case 'series':
+      return Boolean(
+        (typeof book.series === 'string' && book.series.trim().length > 0) ||
+        hasEnrichmentRecord ||
+        hasFieldSource,
+      );
+  }
+}
+
 /**
- * Generalized metadata reset: purges any supported metadata category from all books
- * and corresponding heavy bookDetails records.
+ * Generalized metadata reset: purges a supported metadata category only from books
+ * that currently carry that detail (or recorded enrichment state), stamping fresh
+ * `updatedAt` timestamps so warm incremental `book.syncChanges` clients observe the reset.
  */
 export async function resetMetadata(
   userId: string,
   userEmail: string | undefined,
   libraryId: string,
-  metadataType: string,
+  metadataType: CanonicalEnrichmentType,
   options?: {skipAccessCheck?: boolean},
 ): Promise<{count: number}> {
   if (!options?.skipAccessCheck) {
@@ -104,219 +167,111 @@ export async function resetMetadata(
 
   try {
     const db = getAdminDb();
-    const booksRef = db
-      .collection('libraries')
-      .doc(libraryId)
-      .collection('books');
+    const libRef = db.collection('libraries').doc(libraryId);
+    const booksRef = libRef.collection('books');
     const snapshot = await booksRef.get();
 
     if (snapshot.empty) {
       return {count: 0};
     }
 
+    const serverTs = FieldValue.serverTimestamp();
     let deletePayload: Record<string, unknown> = {};
     let detailDeletePayload: Record<string, unknown> | undefined;
 
-    if (metadataType === 'genre' || metadataType === 'primaryGenre') {
+    if (metadataType === 'genre') {
       deletePayload = {
         primaryGenre: FieldValue.delete(),
+        primaryGenreLower: FieldValue.delete(),
         subgenres: FieldValue.delete(),
         isCustomPrimary: FieldValue.delete(),
+        missingFlags: FieldValue.arrayUnion('genre'),
         'enrichmentStatus.genre': FieldValue.delete(),
+        'fieldSources.genre': FieldValue.delete(),
+        'fieldSources.primaryGenre': FieldValue.delete(),
+        skippedProviders: FieldValue.delete(),
+        updatedAt: serverTs,
       };
     } else if (metadataType === 'geo') {
       deletePayload = {
         geoMetadata: FieldValue.delete(),
+        missingFlags: FieldValue.arrayUnion('geo'),
         'enrichmentStatus.geo': FieldValue.delete(),
+        'fieldSources.geo': FieldValue.delete(),
+        skippedProviders: FieldValue.delete(),
+        updatedAt: serverTs,
       };
     } else if (metadataType === 'temporal') {
       deletePayload = {
         temporalMetadata: FieldValue.delete(),
+        missingFlags: FieldValue.arrayUnion('temporal'),
         'enrichmentStatus.temporal': FieldValue.delete(),
+        'fieldSources.temporal': FieldValue.delete(),
+        skippedProviders: FieldValue.delete(),
+        updatedAt: serverTs,
       };
     } else if (metadataType === 'synopsis') {
       deletePayload = {
-        synopsis: FieldValue.delete(),
-        description: FieldValue.delete(),
+        missingFlags: FieldValue.arrayUnion('synopsis'),
         'enrichmentStatus.synopsis': FieldValue.delete(),
+        'fieldSources.synopsis': FieldValue.delete(),
+        skippedProviders: FieldValue.delete(),
         'bookDetailsMetadata.hasSynopsis': false,
+        updatedAt: serverTs,
       };
       detailDeletePayload = {
         synopsis: FieldValue.delete(),
-        description: FieldValue.delete(),
+        updatedAt: serverTs,
       };
     } else if (metadataType === 'authorBio') {
       deletePayload = {
-        authorBio: FieldValue.delete(),
+        missingFlags: FieldValue.arrayUnion('authorBio'),
         'enrichmentStatus.authorBio': FieldValue.delete(),
+        'fieldSources.authorBio': FieldValue.delete(),
+        skippedProviders: FieldValue.delete(),
         'bookDetailsMetadata.hasAuthorBio': false,
+        updatedAt: serverTs,
       };
       detailDeletePayload = {
         authorBio: FieldValue.delete(),
+        updatedAt: serverTs,
       };
     } else if (metadataType === 'embedding') {
       deletePayload = {
-        embedding: FieldValue.delete(),
-        clusterCoordinates: FieldValue.delete(),
+        missingFlags: FieldValue.arrayUnion('embedding'),
         'enrichmentStatus.embedding': FieldValue.delete(),
+        'fieldSources.embedding': FieldValue.delete(),
+        skippedProviders: FieldValue.delete(),
         'bookDetailsMetadata.hasEmbedding': false,
         'bookDetailsMetadata.hasClusterCoordinates': false,
+        updatedAt: serverTs,
       };
       detailDeletePayload = {
         embedding: FieldValue.delete(),
         clusterCoordinates: FieldValue.delete(),
+        updatedAt: serverTs,
       };
     } else if (metadataType === 'coverImage') {
       deletePayload = {
         coverUrl: FieldValue.delete(),
         coverUrlRaw: FieldValue.delete(),
+        coverCandidates: FieldValue.delete(),
+        missingFlags: FieldValue.arrayUnion('coverImage'),
         'enrichmentStatus.coverImage': FieldValue.delete(),
+        'fieldSources.coverImage': FieldValue.delete(),
+        'fieldSources.coverUrl': FieldValue.delete(),
+        skippedProviders: FieldValue.delete(),
+        updatedAt: serverTs,
       };
     } else if (metadataType === 'series') {
       deletePayload = {
         series: FieldValue.delete(),
+        missingFlags: FieldValue.arrayUnion('series'),
         'enrichmentStatus.series': FieldValue.delete(),
+        'fieldSources.series': FieldValue.delete(),
+        skippedProviders: FieldValue.delete(),
+        updatedAt: serverTs,
       };
-    } else if (metadataType === 'sanitize') {
-      const batchSize = 400;
-      let batch = db.batch();
-      let count = 0;
-      let totalSanitized = 0;
-
-      for (const doc of snapshot.docs) {
-        const docId =
-          doc.id || (doc.ref as {id?: string})?.id || 'sanitized_book';
-        const raw = (doc.data() || {}) as Record<string, unknown>;
-        const {book, leakedDetails, hasLeaks} =
-          bookDocConverter.fromFirestoreWithLegacyLeaks(
-            docId,
-            raw,
-            `/libraries/${libraryId}/books/${docId}`,
-          );
-
-        const rawTitle =
-          typeof raw.title === 'string' && raw.title.trim()
-            ? raw.title
-            : undefined;
-        const rawAuthor =
-          typeof raw.author === 'string' && raw.author.trim()
-            ? raw.author
-            : undefined;
-
-        const computedCleanIsbn = normalizeIsbnForDedupe(book.isbn);
-        const computedDedupeKey = computeBookDedupeKey(rawTitle, rawAuthor);
-        const computedSearchTokens = computeBookSearchTokens({
-          title: rawTitle,
-          author: rawAuthor,
-          isbn: book.isbn,
-          series: book.series ?? undefined,
-        });
-
-        const needsIndexBackfill =
-          (Boolean(computedCleanIsbn) &&
-            book.cleanIsbn !== computedCleanIsbn) ||
-          (Boolean(computedDedupeKey) &&
-            book.dedupeKey !== computedDedupeKey) ||
-          !Array.isArray(book.searchTokens) ||
-          book.searchTokens.length === 0;
-
-        if (hasLeaks || needsIndexBackfill) {
-          const bookUpdates: Record<string, unknown> = {};
-
-          if (computedCleanIsbn) {
-            bookUpdates.cleanIsbn = computedCleanIsbn;
-          }
-          if (computedDedupeKey) {
-            bookUpdates.dedupeKey = computedDedupeKey;
-          }
-          if (computedSearchTokens.length > 0) {
-            bookUpdates.searchTokens = computedSearchTokens;
-          }
-
-          if (hasLeaks) {
-            const detailPayload: Record<string, unknown> = {};
-            if (leakedDetails.synopsis || leakedDetails.description) {
-              detailPayload.synopsis =
-                leakedDetails.synopsis || leakedDetails.description;
-            }
-            if (leakedDetails.authorBio) {
-              detailPayload.authorBio = leakedDetails.authorBio;
-            }
-            if (leakedDetails.embedding) {
-              detailPayload.embedding = leakedDetails.embedding;
-            }
-            if (leakedDetails.clusterCoordinates) {
-              detailPayload.clusterCoordinates =
-                leakedDetails.clusterCoordinates;
-            }
-
-            const detailRef = db
-              .collection('libraries')
-              .doc(libraryId)
-              .collection('bookDetails')
-              .doc(docId);
-            if (
-              typeof batch.set === 'function' &&
-              Object.keys(detailPayload).length > 0
-            ) {
-              batch.set(
-                detailRef,
-                bookDetailsDocConverter.toFirestoreWrite(
-                  docId,
-                  detailPayload,
-                  'upsert',
-                  `/libraries/${libraryId}/bookDetails/${docId}`,
-                ),
-                {merge: true},
-              );
-              count++;
-            }
-
-            bookUpdates['bookDetailsMetadata.hasSynopsis'] = Boolean(
-              leakedDetails.synopsis || leakedDetails.description,
-            );
-            bookUpdates['bookDetailsMetadata.hasAuthorBio'] = Boolean(
-              leakedDetails.authorBio,
-            );
-            bookUpdates['bookDetailsMetadata.hasEmbedding'] = Boolean(
-              leakedDetails.embedding,
-            );
-            bookUpdates['bookDetailsMetadata.hasClusterCoordinates'] = Boolean(
-              leakedDetails.clusterCoordinates,
-            );
-            bookUpdates.synopsis = FieldValue.delete();
-            bookUpdates.authorBio = FieldValue.delete();
-            bookUpdates.embedding = FieldValue.delete();
-            bookUpdates.clusterCoordinates = FieldValue.delete();
-            bookUpdates.description = FieldValue.delete();
-          }
-
-          validateFirestoreWritePayload(
-            storedBookDocSchema.partial(),
-            bookUpdates,
-            {
-              entity: 'StoredBookDoc',
-              documentPath: `/libraries/${libraryId}/books/${docId}`,
-              operation: 'update',
-            },
-          );
-          batch.update(doc.ref, bookUpdates);
-          count++;
-          totalSanitized++;
-
-          if (count >= batchSize) {
-            await batch.commit();
-            batch = db.batch();
-            count = 0;
-          }
-        }
-      }
-
-      if (count > 0) {
-        await batch.commit();
-      }
-
-      return {count: totalSanitized};
     } else {
       throw new Error(`Unsupported metadata reset type: '${metadataType}'`);
     }
@@ -346,23 +301,24 @@ export async function resetMetadata(
 
     for (const doc of snapshot.docs) {
       const docId = doc.id || (doc.ref as {id?: string})?.id || 'reset_book';
-      bookDocConverter.fromFirestoreWithLegacyLeaks(
+      const parsedBook = bookDocConverter.fromFirestore(
         docId,
         doc.data?.() || {},
         `/libraries/${libraryId}/books/${docId}`,
+        {skipSelfHeal: true},
       );
+      if (!doesStoredBookHaveResettableDetail(parsedBook, metadataType)) {
+        continue;
+      }
+
       batch.update(doc.ref, deletePayload);
       count++;
       totalReset++;
 
-      if (detailDeletePayload && typeof batch.set === 'function') {
+      if (detailDeletePayload) {
         const resolvedId = doc.id || (doc.ref as {id?: string})?.id;
         if (resolvedId) {
-          const detailRef = db
-            .collection('libraries')
-            .doc(libraryId)
-            .collection('bookDetails')
-            .doc(resolvedId);
+          const detailRef = libRef.collection('bookDetails').doc(resolvedId);
           batch.set(detailRef, detailDeletePayload, {merge: true});
           count++;
         }
@@ -377,6 +333,11 @@ export async function resetMetadata(
 
     if (count > 0) {
       await batch.commit();
+    }
+
+    if (totalReset > 0) {
+      await libRef.update({updatedAt: serverTs}).catch(() => {});
+      LibraryMetadataCache.invalidate(libraryId);
     }
 
     return {count: totalReset};
@@ -580,6 +541,7 @@ export async function auditPlaceholderCovers(
         const clearAllPayload = {
           coverUrl: FieldValue.delete(),
           coverUrlRaw: FieldValue.delete(),
+          missingFlags: FieldValue.arrayUnion('coverImage'),
           'enrichmentStatus.coverImage': FieldValue.delete(),
           updatedAt: nowIso,
         };

@@ -9,6 +9,7 @@ import {
   markLibraryVisited,
   parseRouteForFallback,
 } from './SuspenseFallbackRouter';
+import {useEntityCacheStore} from '../../stores/entityCacheStore';
 import {Library} from '../../types';
 
 const mockLibrary: Library = {
@@ -39,6 +40,7 @@ describe('SuspenseFallbackRouter', () => {
 
   beforeEach(() => {
     resetSuspenseNavigationHistory();
+    useEntityCacheStore.getState().clearAllEntities();
     queryClient = new QueryClient({
       defaultOptions: {
         queries: {retry: false},
@@ -206,6 +208,18 @@ describe('SuspenseFallbackRouter', () => {
     it('renders DashboardMainSkeleton on root route', () => {
       renderWithRouterAndQuery('/', queryClient);
       expect(screen.getByTestId('dashboard-main-skeleton')).toBeInTheDocument();
+    });
+
+    it('treats library navigation as warm when library is hydrated in useEntityCacheStore even with empty QueryClient', () => {
+      useEntityCacheStore.getState().upsertLibrary(mockLibrary);
+
+      renderWithRouterAndQuery('/library/lib-archival-1', queryClient);
+
+      expect(screen.getByTestId('library-main-skeleton')).toHaveAttribute(
+        'data-warm',
+        'true',
+      );
+      expect(screen.getByText('Botanical Manuscripts')).toBeInTheDocument();
     });
   });
 });

@@ -2,15 +2,15 @@ import type {z} from 'zod';
 import type {EnrichmentTier} from '../constants/enrichment';
 
 export enum MetadataKey {
-  GEO = 'geoMetadata',
-  TEMPORAL = 'temporalMetadata',
-  GENRE = 'primaryGenre',
+  GEO = 'geo',
+  TEMPORAL = 'temporal',
+  GENRE = 'genre',
   SYNOPSIS = 'synopsis',
   AUTHOR_BIO = 'authorBio',
-  EMBEDDING = 'embeddings',
+  EMBEDDING = 'embedding',
   SERIES = 'series',
   BASIC_INFO = 'basicInfo',
-  COVER_IMAGE = 'coverUrl',
+  COVER_IMAGE = 'coverImage',
 }
 
 export type CanonicalEnrichmentType =
@@ -37,7 +37,6 @@ export interface CoreBookData {
   primaryGenre?: string;
   subgenres?: string[];
   synopsis?: string;
-  description?: string;
   [key: string]: unknown;
 }
 

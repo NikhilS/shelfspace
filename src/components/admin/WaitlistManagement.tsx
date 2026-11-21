@@ -88,7 +88,7 @@ export function WaitlistManagement({
   const [processingEmail, setProcessingEmail] = useState<string | null>(null);
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
 
-  const utils = trpc.useUtils ? trpc.useUtils() : trpc.useContext();
+  const utils = trpc.useUtils();
 
   const {data, isLoading, isFetching, refetch} =
     trpc.auth.listWaitlist.useQuery({status: filter}, {staleTime: 1000 * 15});
@@ -224,7 +224,7 @@ export function WaitlistManagement({
   return (
     <section
       id="waitlist-management-section"
-      className="bg-surface-container-lowest rounded-2xl p-6 sm:p-8 border border-outline-variant/30 architectural-shadow space-y-6"
+      className="bento-card p-6 sm:p-8 space-y-6"
     >
       {/* Header with Title and Global Cohort Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-outline-variant/30">
@@ -267,7 +267,7 @@ export function WaitlistManagement({
             disabled={isBatchProcessing || stats.pending === 0}
             className="h-9 px-3.5 gap-1.5 text-xs font-semibold"
           >
-            <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />
+            <Sparkles className="w-3.5 h-3.5 text-on-primary" />
             <span>
               {isBatchProcessing
                 ? 'Onboarding...'
@@ -340,14 +340,14 @@ export function WaitlistManagement({
           onClick={() => setFilter('rejected')}
           className={`p-3.5 rounded-xl border text-left transition-all ${
             filter === 'rejected'
-              ? 'bg-slate-500/10 border-slate-500/40 ring-1 ring-slate-500/20'
+              ? 'bg-surface-container-high border-outline ring-1 ring-outline/25'
               : 'bg-surface-container/50 border-outline-variant/30 hover:border-outline-variant/60'
           }`}
         >
-          <div className="text-xs font-medium text-slate-700 dark:text-slate-300">
+          <div className="text-xs font-medium text-on-surface-variant">
             Rejected
           </div>
-          <div className="text-xl font-bold font-sans text-slate-800 dark:text-slate-200 mt-0.5">
+          <div className="text-xl font-bold font-mono tabular-nums text-on-surface mt-0.5">
             {stats.rejected}
           </div>
         </button>
@@ -619,7 +619,7 @@ function StatusBadge({status}: {status: WaitlistStatus}) {
       );
     case 'rejected':
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-500/15 text-slate-700 dark:text-slate-300 border border-slate-600/30">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-surface-container-high text-on-surface-variant border border-outline-variant">
           <XCircle className="w-3 h-3" />
           Rejected
         </span>

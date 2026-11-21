@@ -121,7 +121,7 @@ export function LibraryCard({lib, index}: LibraryCardProps) {
     <div className="h-full" data-card-index={index}>
       <Link
         to={targetPath}
-        className="block h-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 rounded-xl"
+        className="block h-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-xl"
         onMouseEnter={handleMouseEnter}
         onClick={handleCardClick}
       >

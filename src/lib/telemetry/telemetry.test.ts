@@ -4,12 +4,8 @@ import {
   instrumentMutation,
   calculatePayloadBytes,
   estimateStringBytes,
-  TelemetryPlugin,
   createLogger,
 } from './index';
-import {PersistenceTelemetryPlugin} from './PersistenceTelemetryPlugin';
-import {GeminiTelemetryPlugin} from './GeminiTelemetryPlugin';
-import {RenderPerformancePlugin} from './RenderPerformancePlugin';
 
 describe('Telemetry Bus, Zero-Cost Gating & Scoped Loggers', () => {
   beforeEach(() => {
@@ -72,24 +68,6 @@ describe('Telemetry Bus, Zero-Cost Gating & Scoped Loggers', () => {
     expect(engine.getLogs()[0].durationMs).toBeGreaterThanOrEqual(1);
   });
 
-  it('allows registering, retrieving, and unregistering plugins', () => {
-    const engine = DebugTelemetryEngine.getInstance();
-    const testPlugin: TelemetryPlugin = {
-      id: 'custom_test',
-      name: 'Custom Test',
-      renderTab: () => null,
-      onMetricUpdate: vi.fn(),
-    };
-
-    const unregister = engine.registerPlugin(testPlugin);
-    expect(engine.getPlugin('custom_test')).toBe(testPlugin);
-    expect(engine.getPlugins().some(p => p.id === 'custom_test')).toBe(true);
-
-    unregister();
-    expect(engine.getPlugin('custom_test')).toBeUndefined();
-    expect(engine.getPlugins().some(p => p.id === 'custom_test')).toBe(false);
-  });
-
   it('records mutations and updates metrics correctly', () => {
     const engine = DebugTelemetryEngine.getInstance();
     expect(engine.getMetrics().totalFirestoreWrites).toBe(0);
@@ -111,28 +89,6 @@ describe('Telemetry Bus, Zero-Cost Gating & Scoped Loggers', () => {
     const writeLog = logs.find(l => l.type === 'db_write');
     expect(writeLog).toBeDefined();
     expect(writeLog?.message).toContain('create on libraries/test-lib');
-  });
-
-  it('notifies registered plugins when metrics update', () => {
-    const engine = DebugTelemetryEngine.getInstance();
-    const onMetricUpdate =
-      vi.fn<(metrics: ReturnType<typeof engine.getMetrics>) => void>();
-    engine.registerPlugin({
-      id: 'listener_test',
-      name: 'Listener Test',
-      renderTab: () => null,
-      onMetricUpdate,
-    });
-
-    engine.recordMutation({
-      type: 'update',
-      path: 'libraries/test-lib/books/1',
-      durationMs: 15,
-      bytes: 64,
-    });
-
-    expect(onMetricUpdate).toHaveBeenCalled();
-    expect(onMetricUpdate.mock.calls[0]?.[0]?.totalFirestoreWrites).toBe(1);
   });
 
   it('instruments mutation functions with timing and telemetry tracking', async () => {
@@ -257,20 +213,5 @@ describe('Telemetry Bus, Zero-Cost Gating & Scoped Loggers', () => {
     DebugTelemetryEngine.setProfilingLevel('high_fidelity');
     expect(DebugTelemetryEngine.getProfilingLevel()).toBe('high_fidelity');
     expect(calculatePayloadBytes(sample)).toBeGreaterThan(0);
-  });
-
-  it('supports registering the core plugins (Persistence, Gemini, RenderPerformance)', () => {
-    const engine = DebugTelemetryEngine.getInstance();
-    const persistencePlugin = new PersistenceTelemetryPlugin();
-    const geminiPlugin = new GeminiTelemetryPlugin();
-    const renderPerfPlugin = new RenderPerformancePlugin();
-
-    engine.registerPlugin(persistencePlugin);
-    engine.registerPlugin(geminiPlugin);
-    engine.registerPlugin(renderPerfPlugin);
-
-    expect(engine.getPlugin('persistence')).toBeDefined();
-    expect(engine.getPlugin('gemini')).toBeDefined();
-    expect(engine.getPlugin('render_perf')).toBeDefined();
   });
 });

@@ -23,11 +23,7 @@ export interface PartitionedSwipeBooks<T extends SwipeCandidateBook> {
   nextReadyAtMs: number | null;
 }
 
-const TERMINAL_READ_OR_ABANDONED_STATUSES = new Set([
-  'finished',
-  'completed',
-  'abandoned',
-]);
+const TERMINAL_READ_OR_ABANDONED_STATUSES = new Set(['finished', 'abandoned']);
 
 /**
  * Resolves the effective reading status for a given book from the caller-overlaid `readingStatus` field.
@@ -76,7 +72,7 @@ export function isBookInReadSwipeCooldown(
 }
 
 /**
- * Returns true if the book does NOT have a terminal status of read ('finished' or 'completed')
+ * Returns true if the book does NOT have a terminal status of read ('finished')
  * or 'abandoned' for the active user, regardless of whether it was checked recently.
  */
 export function isBookUnreadForReadSwipe(book: SwipeCandidateBook): boolean {
@@ -89,7 +85,7 @@ export function isBookUnreadForReadSwipe(book: SwipeCandidateBook): boolean {
 
 /**
  * Returns true if the book is eligible for the "Have You Read It?" swipe deck right now:
- * 1. Does not have a status of 'finished', 'completed', or 'abandoned'.
+ * 1. Does not have a status of 'finished' or 'abandoned'.
  * 2. Was not reviewed within the 2-day resting window (unless `ignoreCooldown` is true).
  */
 export function isBookEligibleForReadSwipe(

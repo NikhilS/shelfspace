@@ -28,6 +28,7 @@ To avoid state fragmentation and dual-state synchronization bugs, **book(ish)** 
 | - `useAppStore`: Theme mode (`light` | `dark` | `system`) persisted to local |
 | - `useUIStore`: Active multi-selection set (`selectedBookIds: Set<string>`) |
 | - `useAuthStore`: Firebase Auth user, allowlist readiness, superadmin flag  |
+| - `useEntityCacheStore`: Normalized entities (`booksByKey`, `readingStates`)|
 | - `useCoverTransitionStore`: Shared-element FLIP cover state & scrollY map  |
 | - `useDebugStore`: HUD visibility, telemetry log ring buffer (max 200)       |
 +-----------------------------------------------------------------------------+
@@ -65,18 +66,18 @@ To avoid state fragmentation and dual-state synchronization bugs, **book(ish)** 
   await utils.book.list.invalidate({ libraryId });
   ```
 
-### Rule 3: Optimistic Mutations & Surgical Zero-Refetch Delta Commits
-When applying mutations (toggling reading status, adding/editing/deleting a book, or posting a review), use the domain cache reconcilers in `src/lib/readingStatusCache.ts`:
-1. Snapshot the existing cache data for rollback and apply the optimistic patch (`applyOptimisticReadingStatusPatch` / `removeBookFromReadingCaches`).
-2. When mutating reading status or swipe reviews on a client-known book, pass `bookSnapshot: buildBookSnapshotHint(...)` so the server skips pre-write Firestore reads (`0` pre-write reads).
-3. On mutation error: roll back to the snapshot and toast a warm, clear message.
-4. On mutation success: commit the authoritative delta returned by the server via `setData` (`commitReadingStatusDelta`, `commitBookUpsertDelta`, `commitBookDeleteDelta`, `commitBookReviewDelta`)—**do not** trigger full-collection `invalidateQueries` storms for single-entity writes. Reserve `invalidateReadingStatusQueries` strictly for multi-entity background enrichment or merge jobs (with `includeRecommendations: false` so daily editorial picks remain stable).
+### Rule 3: Optimistic Mutations & Normalized Zero-Refetch Delta Commits
+When applying mutations (toggling reading status, adding/editing/deleting a book, or posting a review), use the domain cache reconcilers in `src/lib/readingStatusCache/` backed by `useEntityCacheStore` (`src/stores/entityCacheStore.ts`):
+1. Snapshot the existing entity and query cache state with a monotonically increasing mutation version and apply the optimistic patch (`applyOptimisticReadingStatusPatch`, `applyOptimisticBookEditPatch`, or `removeBookFromReadingCaches`).
+2. When mutating reading status or swipe reviews on a client-known book, pass `bookSnapshot: buildBookSnapshotHint(...)` (`< 2KB` `MinimalBookStub`, free of heavy prose or oversized `data:` URLs) so the server skips pre-write Firestore reads (`0` pre-write reads).
+3. On mutation error: invoke the returned version-guarded rollback closure, which restores state only if no newer mutation superseded the failed optimistic write, and toast a warm, clear message.
+4. On mutation success: commit the authoritative delta returned by the server (`commitReadingStatusDelta`, `commitBookUpsertDelta`, `commitBookDeleteDelta`, `commitBookReviewDelta`) across `useEntityCacheStore` and coupled TanStack Query views—**do not** trigger full-collection `invalidateQueries` storms for single-entity writes. Reserve `invalidateReadingStatusQueries` strictly for multi-entity background enrichment or merge jobs (with `includeRecommendations: false` so daily editorial picks remain stable).
 
-### Rule 4: Cross-Query Cache Synchronization & Sharded Persistence
-`src/lib/queryClient.ts` configures a **5-minute `staleTime`** (60 minutes for warm `book.list` caches backed by incremental `book.syncChanges`), `refetchOnWindowFocus: false`, and **7-day Sharded Structured-Clone IndexedDB Persistence** (`bookish-cache-v2` in `src/lib/idbQueryShardPersister.ts`, flushing only dirty domain shards with `embedding` vectors stripped and zero `JSON.stringify`).
+### Rule 4: Cross-Query Cache Synchronization & UID-Indexed Sharded Persistence
+`src/lib/queryClient.ts` configures a **5-minute `staleTime`** (60 minutes for warm `book.list` caches backed by incremental `book.syncChanges`), `refetchOnWindowFocus: false`, and **7-day UID-Indexed Sharded Structured-Clone IndexedDB Persistence** (`bookish-cache-v3` with native `by_uid` `IDBIndex` in `src/lib/idbQueryShardPersister.ts`, querying `IDBKeyRange.only(uid)` instead of full-store cursor scans, flushing only dirty domain shards with `embedding` vectors stripped and zero `JSON.stringify`).
 
 1. **Synchronize the Entire Query Family, Never Just the Local View's Query:**
-   When a domain entity is projection-backed across multiple tRPC procedures, a mutation must patch **all** projections simultaneously (`src/lib/readingStatusCache.ts`):
+   When a domain entity is projection-backed across multiple tRPC procedures, a mutation must patch **all** projections simultaneously (`src/lib/readingStatusCache/`):
    - `trpc.readingTracker.getShelf({ shelf: 'all' })` (Personal Reading Room Bento, Currently Reading card, Reading Lists modal, and shelf counts)
    - `trpc.readingTracker.getUnreadLibraryBooks(undefined)` (*"Start Reading from Your Shelves"* picker)
    - `trpc.book.list({ libraryId })` (`LibraryView` collection grid/list/table and `LibraryOverview` Reading Pulse)
@@ -85,13 +86,14 @@ When applying mutations (toggling reading status, adding/editing/deleting a book
    - Daily editorial queries (`usePickOfTheDay` keyed by `(scopeKey, YYYY-MM-DD, refreshEpoch)` and `useBookRecommendations` with 24h `staleTime`) are intentionally decoupled from catalog counts so status/book edits never trigger redundant Gemini calls.
 
 2. **Centralize Cache Patching & Audit Every Mutation Entry Point:**
-   Never hand-roll partial cache patches inside individual components. Route every mutation through `src/lib/readingStatusCache.ts` across all entry points:
-   - Single-book detail actions (`src/pages/book-details/useBook.ts`)
+   Never hand-roll partial cache patches inside individual components. Route every mutation through `src/lib/readingStatusCache/` and `useEntityCacheStore` across all entry points:
+   - Single-book detail & edit actions (`src/pages/book-details/useBook.ts`)
    - Personal Reading Room & shelf actions (`src/pages/dashboard/useReadingShelf.ts`)
    - Library Overview inline status actions (`src/pages/library/LibraryOverview.tsx`)
    - Bulk selection toolbar actions (`src/hooks/useSelection.ts`)
    - Quick-add & full-page search/track flows (`src/components/book/QuickAddBookDialog.tsx`, `src/pages/AddBookView.tsx`, `src/pages/add-book/useAddBooks.ts`)
    - Interactive triage flows (`src/pages/read-swipe/useReadSwipeSession.ts`)
+   - Shelf Care duplicate deletes/merges, cover audits, bulk enrichment deltas & detail resets (`src/pages/spruce-up/useSpruceUp.ts`, `src/hooks/useBulkEnrichment.ts`, `src/pages/spruce-up/ResetMetadataSection.tsx`)
 
 ---
 
@@ -161,6 +163,6 @@ To support multi-thousand-volume libraries without sacrificing first-paint speed
 3. **Lookahead Pagination & Self-Healing `library.bookCount` (`BookService.listBooks`):**
    - Server queries use `limit + 1` lookahead to set `nextCursor` only when a $(N+1)\text{th}$ document exists, and asynchronously self-heal `libraries/{libraryId}.bookCount` whenever an unfiltered read detects drift between the stored count and actual collection count.
 4. **Incremental Warm Delta Sync (`book.syncChanges`):**
-   - Once a library's initial catalog is cached in memory or hydrated from its `library:<id>` IndexedDB shard, `useLibraryData` extends `book.list` freshness to 60 minutes and reconciles collaborator/cross-device changes via `trpcVanilla.book.syncChanges.query({ libraryId, sinceUpdatedAtMs, knownCount })` (throttled to 45s per library), downloading only modified `books` documents, hard-delete tombstones (`LibraryMetadataCache`), and reading-state overlays (`0` book documents transferred when unchanged).
+   - Once a library's initial catalog is cached in memory or hydrated from its `library:<id>` IndexedDB shard, `useLibraryData` extends `book.list` freshness to 60 minutes and reconciles collaborator/cross-device changes via `trpcVanilla.book.syncChanges.query({ libraryId, sinceUpdatedAtMs, knownCount })` (throttled to 45s per library), downloading only modified `books` documents, durable `/libraries/{libraryId}/tombstones` deletions (`BookTombstoneLedger`), and canonical `book:<libraryId>:<bookId>` reading-state overlays (`0` book documents transferred when unchanged).
 
 

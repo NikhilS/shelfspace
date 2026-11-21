@@ -86,7 +86,7 @@ export const BookHeader = memo(
         {/* Magazine Display Title & Author Byline */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div className="min-w-0 w-full break-words">
-            <h1 className="font-serif text-3xl sm:text-4xl lg:text-[42px] font-semibold tracking-tight text-primary leading-[1.15] mb-2">
+            <h1 className="font-serif text-3xl sm:text-4xl lg:text-[42px] font-bold tracking-tight text-primary leading-[1.12] [text-wrap:balance] mb-2">
               {toTitleCase(book.title)}
             </h1>
             <h2 className="font-sans text-lg sm:text-xl font-medium text-on-surface-variant line-clamp-2">
@@ -112,8 +112,8 @@ export const BookHeader = memo(
           )}
         </div>
 
-        {/* Compact Archival Metadata Strip (Mobile & Quick-Glance) */}
-        <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-on-surface-variant text-xs font-sans mt-5 pt-4 border-t border-outline-variant/40">
+        {/* Compact Archival Metadata Strip (Mobile Quick-Glance; Desktop uses Sticky Accession Ledger) */}
+        <div className="md:hidden flex flex-wrap items-center gap-4 text-on-surface-variant text-xs font-sans mt-5 pt-4 border-t border-outline-variant/40">
           <div className="flex items-center gap-1.5">
             <span className="metadata-eyebrow">Published:</span>
             <span className="font-mono tabular-nums font-medium text-on-surface">

@@ -7,6 +7,10 @@ import {getFirestoreTime} from '../lib/utils';
 import {computeReadingStateKey} from '../schemas/readingState';
 import {normalizeReadingStatus} from '../lib/readingStatusCache';
 import {markLibraryVisited} from '../components/layout/SuspenseFallbackRouter';
+import {
+  selectLibraryBooks,
+  useEntityCacheStore,
+} from '../stores/entityCacheStore';
 
 export interface UseLibraryDataResult {
   library: Library | null;
@@ -55,39 +59,6 @@ function computeHighWaterUpdatedAtMs(books: Book[]): number {
   return maxMs;
 }
 
-export function mapDocToBook(docSnap: {
-  id: string;
-  data: () => Record<string, unknown> | undefined;
-}): Book {
-  const data = docSnap.data() || {};
-  const bookData = {
-    id: docSnap.id,
-    ...data,
-    primaryGenre: data.primaryGenre || undefined,
-    subgenres: data.subgenres || [],
-    isCustomPrimary: Boolean(data.isCustomPrimary),
-  } as unknown as Book;
-
-  if (bookData.temporalMetadata) {
-    const {startYear, endYear} = bookData.temporalMetadata;
-    if (startYear !== undefined && endYear === undefined) {
-      bookData.temporalMetadata.endYear = startYear;
-    }
-
-    const updatedEndYear = bookData.temporalMetadata.endYear;
-    if (
-      (typeof startYear === 'number' &&
-        (startYear < -10000 || startYear > 2100)) ||
-      (typeof updatedEndYear === 'number' &&
-        (updatedEndYear < -10000 || updatedEndYear > 2100))
-    ) {
-      delete bookData.temporalMetadata;
-    }
-  }
-
-  return bookData;
-}
-
 export function useLibraryData(
   libraryId: string | undefined,
   userId: string | undefined,
@@ -95,20 +66,21 @@ export function useLibraryData(
 ): UseLibraryDataResult {
   const isEnabled = Boolean(libraryId && userId);
 
-  let utils: ReturnType<typeof trpc.useUtils> | undefined;
-  try {
-    if (typeof trpc !== 'undefined' && typeof trpc.useUtils === 'function') {
-      utils = trpc.useUtils();
-    }
-  } catch {
-    utils = undefined;
-  }
+  const utils = trpc.useUtils();
   const utilsRef = useRef(utils);
   utilsRef.current = utils;
 
   const cachedLibrary = useMemo((): Library | undefined => {
     const currentUtils = utilsRef.current;
-    if (!libraryId || !userId || !currentUtils?.library) {
+    if (!libraryId || !userId) {
+      return undefined;
+    }
+    const fromEntityStore =
+      useEntityCacheStore.getState().librariesById[libraryId];
+    if (fromEntityStore) {
+      return fromEntityStore;
+    }
+    if (!currentUtils?.library) {
       return undefined;
     }
     const getFn = currentUtils.library.get?.getData;
@@ -149,8 +121,9 @@ export function useLibraryData(
 
   const hasWarmBookListCache = Boolean(
     libraryId &&
-    utilsRef.current?.book?.list?.getData?.({libraryId}) &&
-    typeof trpcVanilla?.book?.syncChanges?.query === 'function',
+    (utilsRef.current?.book?.list?.getData?.({libraryId}) ||
+      (useEntityCacheStore.getState().bookIdsByLibrary[libraryId]?.length ??
+        0) > 0),
   );
 
   // 2. Declarative Books Collection Query (First 1,000 books for instant first paint;
@@ -176,6 +149,9 @@ export function useLibraryData(
 
   const baseBooks = useMemo(() => {
     if (!booksQuery.data) {
+      if (libraryId) {
+        return selectLibraryBooks(useEntityCacheStore.getState(), libraryId);
+      }
       return [];
     }
     const raw = booksQuery.data;
@@ -186,7 +162,7 @@ export function useLibraryData(
       return (raw as {books: Book[]}).books;
     }
     return [];
-  }, [booksQuery.data]);
+  }, [booksQuery.data, libraryId]);
 
   const initialNextCursor = useMemo(() => {
     const raw = booksQuery.data;
@@ -252,6 +228,13 @@ export function useLibraryData(
       nextCursor: string | undefined,
       latestTotalCount: number | undefined,
     ) => {
+      if (extraBooks.length > 0) {
+        useEntityCacheStore
+          .getState()
+          .hydrateLibraryBooks(targetLibId, extraBooks, {
+            replace: false,
+          });
+      }
       const currentUtils = utilsRef.current;
       if (!currentUtils?.book?.list?.setData) {
         return;
@@ -408,8 +391,7 @@ export function useLibraryData(
       Boolean(initialNextCursor) ||
       booksQuery.isLoading ||
       baseBooks.length === 0 ||
-      isOffline ||
-      typeof trpcVanilla?.book?.syncChanges?.query !== 'function'
+      isOffline
     ) {
       return undefined;
     }
@@ -463,6 +445,57 @@ export function useLibraryData(
             SyncReadingStateOverlay | undefined
           >;
 
+          const resolveOverlayForBook = (
+            bookRecord: CachedBookRecord,
+          ): SyncReadingStateOverlay | undefined => {
+            const canonicalKey = computeReadingStateKey({
+              libraryId,
+              isbn: bookRecord.isbn,
+              cleanIsbn: bookRecord.cleanIsbn,
+              bookId: bookRecord.id,
+            });
+            const cleanIsbn = (bookRecord.cleanIsbn || bookRecord.isbn || '')
+              .replace(/[^0-9X]/gi, '')
+              .toUpperCase();
+            return (
+              statesMap[canonicalKey] ??
+              (cleanIsbn ? statesMap[`ext:${cleanIsbn}`] : undefined)
+            );
+          };
+
+          const applyOverlayToBook = (
+            bookRecord: CachedBookRecord,
+          ): CachedBookRecord => {
+            const overlay = resolveOverlayForBook(bookRecord);
+            if (!overlay) {
+              return bookRecord;
+            }
+            return {
+              ...bookRecord,
+              readingStatus: normalizeReadingStatus(overlay.status),
+              ...(overlay.rating !== undefined
+                ? {userRating: overlay.rating}
+                : {}),
+              ...(overlay.readStatusReviewedAt !== undefined
+                ? {readStatusReviewedAt: overlay.readStatusReviewedAt}
+                : {}),
+            };
+          };
+
+          if (deletedSet.size > 0) {
+            useEntityCacheStore
+              .getState()
+              .removeBooks(libraryId, Array.from(deletedSet));
+          }
+          if (upsertedMap.size > 0) {
+            useEntityCacheStore
+              .getState()
+              .upsertBooksDelta(
+                libraryId,
+                Array.from(upsertedMap.values()).map(applyOverlayToBook),
+              );
+          }
+
           currentUtils.book.list.setData({libraryId}, old => {
             if (!old || !Array.isArray(old.books)) {
               return old;
@@ -476,7 +509,7 @@ export function useLibraryData(
               const existedBefore = old.books.some(b => b.id === id);
               if (!existedBefore && !deletedSet.has(id)) {
                 seen.add(id);
-                nextBooks.push(upserted);
+                nextBooks.push(applyOverlayToBook(upserted));
               }
             }
 
@@ -497,25 +530,7 @@ export function useLibraryData(
                 ? {...existing, ...upsertedReplacement}
                 : existing;
 
-              const stateKey = computeReadingStateKey({
-                isbn: mergedBase.isbn,
-                bookId: mergedBase.id,
-              });
-              const overlay = statesMap[stateKey];
-              if (overlay) {
-                nextBooks.push({
-                  ...mergedBase,
-                  readingStatus: normalizeReadingStatus(overlay.status),
-                  ...(overlay.rating !== undefined
-                    ? {userRating: overlay.rating}
-                    : {}),
-                  ...(overlay.readStatusReviewedAt !== undefined
-                    ? {readStatusReviewedAt: overlay.readStatusReviewedAt}
-                    : {}),
-                });
-              } else {
-                nextBooks.push(mergedBase);
-              }
+              nextBooks.push(applyOverlayToBook(mergedBase));
             }
 
             return {
@@ -629,8 +644,15 @@ export function useLibraryData(
   useEffect(() => {
     if (library && libraryId) {
       markLibraryVisited(libraryId);
+      useEntityCacheStore.getState().upsertLibrary(library);
     }
   }, [library, libraryId]);
+
+  useEffect(() => {
+    if (libraryId && !booksQuery.isLoading && books.length > 0) {
+      useEntityCacheStore.getState().hydrateLibraryBooks(libraryId, books);
+    }
+  }, [libraryId, booksQuery.isLoading, books]);
 
   // 4. Telemetry Logging (Deferred execution, gated when Developer HUD is closed)
   useEffect(() => {

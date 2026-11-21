@@ -1,6 +1,3 @@
-import type React from 'react';
-import type {DebugTelemetryEngine} from './ringBufferStore';
-
 export type LogLevel =
   | 'log'
   | 'info'
@@ -100,28 +97,6 @@ export interface ActiveListenerInfo {
 export interface TelemetryBaseline {
   timestamp: string;
   metrics: TelemetryMetrics;
-}
-
-export interface TelemetryPluginContext {
-  logs: TelemetryLog[];
-  metrics: TelemetryMetrics;
-  activeStates: Record<string, unknown>;
-  activeListeners: ActiveListenerInfo[];
-  baseline: TelemetryBaseline | null;
-  engine: DebugTelemetryEngine;
-  isOnline: boolean;
-}
-
-export interface TelemetryPlugin {
-  id: string;
-  name: string;
-  order?: number;
-  icon?: React.ComponentType<{className?: string; size?: number}>;
-  badge?: (ctx: TelemetryPluginContext) => string | number | undefined;
-  onLog?: (entry: TelemetryLog, engine: DebugTelemetryEngine) => void;
-  renderTab: (ctx: TelemetryPluginContext) => React.ReactNode;
-  getMetrics?: () => Record<string, unknown>;
-  onMetricUpdate?: (metrics: TelemetryMetrics) => void;
 }
 
 export interface ScopedDebugLogger {

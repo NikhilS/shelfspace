@@ -1,7 +1,7 @@
 import {z} from 'zod';
 
 /**
- * Validated WGS84 coordinate pair used by in-memory, disk, and Firestore L2 geolocation caches.
+ * Validated WGS84 coordinate pair used by in-memory L1 and Firestore L2 geolocation caches.
  */
 export const geolocationCoordinatesSchema = z
   .object({
@@ -31,13 +31,3 @@ export const storedGeolocationCacheDocSchema = z
 export type StoredGeolocationCacheDoc = z.infer<
   typeof storedGeolocationCacheDocSchema
 >;
-
-/**
- * Local disk cache schema for `.cache/geocache.json`.
- */
-export const diskGeolocationCacheSchema = z.record(
-  z.string().min(1).max(128),
-  geolocationCoordinatesSchema,
-);
-
-export type DiskGeolocationCache = z.infer<typeof diskGeolocationCacheSchema>;

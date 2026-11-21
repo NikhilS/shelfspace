@@ -32,6 +32,8 @@ import {
   BookJobTelemetry,
   ProviderTelemetrySummary,
 } from '../../hooks/useBulkEnrichment';
+import {trpcVanilla} from '../../lib/trpc';
+import {useOnlineStatus} from '../../hooks/useOnlineStatus';
 import {
   DataTable,
   DataTableColumn,
@@ -134,6 +136,7 @@ export function ManualEnrichmentSection({
   isAuditingCovers = false,
 }: ManualEnrichmentSectionProps) {
   const {hasAiPlan} = useAppPermissions();
+  const isOnline = useOnlineStatus();
   const [filterMissing, setFilterMissing] = useState<MetadataKey | 'all'>(
     'all',
   );
@@ -152,6 +155,45 @@ export function ManualEnrichmentSection({
   const [liveBookStates, setLiveBookStates] = useState<
     Record<string, BookJobTelemetry>
   >({});
+
+  useEffect(() => {
+    if (!libraryId || !isOnline) {
+      return;
+    }
+    const queryFn = trpcVanilla.enrichment?.getJobStatus?.query;
+    if (!queryFn) {
+      return;
+    }
+    let active = true;
+    void (async () => {
+      try {
+        const snap = await queryFn({libraryId});
+        if (!active || !snap) {
+          return;
+        }
+        if (snap.status !== 'running' && snap.status !== 'cancelling') {
+          return;
+        }
+        const matchedDescriptor = ENRICHMENT_DESCRIPTORS.find(
+          d => d.statusKey === snap.enrichmentType,
+        );
+        if (matchedDescriptor) {
+          setTargetMetadata(matchedDescriptor.key);
+        }
+        setEnrichmentEffectiveOverwrite(Boolean(snap.overwrite));
+        if (snap.perBookStates) {
+          setLiveBookStates(snap.perBookStates);
+        }
+        setEnrichmentBatchBooks([]);
+        setIsEnriching(true);
+      } catch {
+        // Ignore transient status lookup failures on mount
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [libraryId, isOnline]);
 
   const isTargetBlockedByAiPlan =
     !hasAiPlan && requiresAiPlanForEnrichment(targetMetadata);
@@ -565,6 +607,8 @@ function EnrichmentRunner({
     providerKey: targetMetadata,
     metadataField: targetMetadata,
     overwrite,
+    autoTrigger: books.length > 0,
+    autoReattach: true,
     ignoreUnsupportedStatus: true,
     filterPredicate: alwaysIncludeSelected,
     successToastMessage: `Finished enriching ${metadataLabel}`,

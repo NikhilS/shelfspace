@@ -1,5 +1,4 @@
 import {z} from 'zod';
-import {TRPCError} from '@trpc/server';
 import {router, protectedProcedure} from '../trpc';
 import {UserService} from '../../services/userService';
 import {
@@ -28,18 +27,5 @@ export const userRouter = router({
         displayName: input?.displayName || ctx.user.displayName,
         photoURL: input?.photoURL || ctx.user.photoURL,
       });
-    }),
-
-  getProfile: protectedProcedure
-    .input(z.object({uid: safeIdSchema}).strict().optional())
-    .query(async ({ctx, input}) => {
-      const targetUid = input?.uid || ctx.user.uid;
-      if (targetUid !== ctx.user.uid && !ctx.isAdmin) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Cannot access another user profile',
-        });
-      }
-      return await UserService.getProfile(targetUid);
     }),
 });

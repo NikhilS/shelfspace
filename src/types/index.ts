@@ -13,6 +13,9 @@ import type {
   StoredBookDoc,
   StoredReviewDoc,
   BookReviewRecord,
+  StoredBookTombstoneDoc,
+  ReadingStateKeyType,
+  MinimalBookStub,
   UserReadingState,
   StoredUserReadingStateDoc,
   UserReadingStateBookSnapshot,
@@ -20,6 +23,7 @@ import type {
 import type {
   StoredLibraryDoc,
   StoredAllowedDuplicateDoc,
+  StoredEnrichmentJobDoc,
   StoredUserProfileDoc,
   UserProfile,
 } from '../schemas/libraryApi';
@@ -30,14 +34,16 @@ import type {
 import type {
   GeolocationCoordinates,
   StoredGeolocationCacheDoc,
-  DiskGeolocationCache,
 } from '../schemas/geolocation';
-import {computeReadingStateKey} from '../schemas/book';
+import {
+  computeReadingStateKey,
+  resolveReadingStateKeyType,
+} from '../schemas/book';
 
 export * from './metadata';
 export * from './readingTracker';
 
-export {computeReadingStateKey};
+export {computeReadingStateKey, resolveReadingStateKeyType};
 
 export type {
   BookDetails,
@@ -54,18 +60,21 @@ export type {
   StoredBookDoc,
   StoredReviewDoc,
   BookReviewRecord,
+  StoredBookTombstoneDoc,
+  ReadingStateKeyType,
+  MinimalBookStub,
   UserReadingState,
   StoredUserReadingStateDoc,
   UserReadingStateBookSnapshot,
   StoredLibraryDoc,
   StoredAllowedDuplicateDoc,
+  StoredEnrichmentJobDoc,
   StoredUserProfileDoc,
   UserProfile,
   StoredAllowlistUserDoc,
   StoredWaitlistEntryDoc,
   GeolocationCoordinates,
   StoredGeolocationCacheDoc,
-  DiskGeolocationCache,
 };
 
 export interface Timestamp {
@@ -78,7 +87,7 @@ export interface Timestamp {
 export type FirestoreDate = Timestamp | Date | string | number;
 
 export type ReadingStatusValue =
-  'unset' | 'want_to_read' | 'reading' | 'finished' | 'completed' | 'abandoned';
+  'unset' | 'want_to_read' | 'reading' | 'finished' | 'abandoned';
 
 export type OwnershipStatus = 'owned' | 'unowned';
 
@@ -88,6 +97,8 @@ export interface Library {
   ownerId: string;
   ownerName: string;
   access?: Record<string, 'owner' | 'editor' | 'viewer'>;
+  collaboratorEmails?: string[];
+  activeJobId?: string | null;
   createdAt: Timestamp | string;
   updatedAt?: Timestamp | string;
   heroImageUrl?: string | null;
@@ -115,6 +126,8 @@ export interface Book extends Omit<
   isbn?: string;
   coverUrl?: string;
   publishedDate?: string;
+  primaryGenreLower?: string;
+  missingFlags?: string[];
   ownershipStatus?: OwnershipStatus;
   addedBy?: string | null;
   addedAt: FirestoreDate;
@@ -132,29 +145,6 @@ export interface Book extends Omit<
   authorBio?: string;
   embedding?: number[];
   clusterCoordinates?: ClusterCoordinates;
-  heavyDetails?: BookDetailsPayload;
-}
-
-export interface FilteredBookRecord {
-  id: string;
-  title: string;
-  author: string;
-  isbn?: string;
-  synopsis?: string;
-  primaryGenre?: string;
-  subgenres?: string[];
-  isCustomPrimary?: boolean;
-  genre?: string;
-  coverImage?: string;
-  geoData?: BookGeoMetadata;
-  temporalData?: BookTemporalMetadata;
-  metadataStatus: {
-    hasGeo: boolean;
-    hasTemporal: boolean;
-    hasGenre: boolean;
-    hasSynopsis: boolean;
-    hasCoverImage: boolean;
-  };
 }
 
 export interface TelemetryLogPayload {

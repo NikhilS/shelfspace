@@ -56,18 +56,23 @@ export function TidyShelfCheckIllustration({
         strokeWidth="1.5"
         strokeLinecap="round"
       />
-      {/* Warm check badge */}
+      {/* Warm terracotta check seal */}
       <circle
         cx="54"
         cy="38"
         r="10"
-        className="fill-surface stroke-primary"
+        className="fill-surface stroke-tertiary"
         strokeWidth="1.6"
       />
-      <circle cx="54" cy="38" r="7.5" className="fill-primary/12" />
+      <circle
+        cx="54"
+        cy="38"
+        r="7.5"
+        className="fill-tertiary/15 dark:fill-tertiary/24"
+      />
       <path
         d="M50.2 38.2L52.8 40.8L58 35.5"
-        className="stroke-primary"
+        className="stroke-tertiary"
         strokeWidth="1.7"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -100,7 +105,7 @@ export function ArchivalLedgerImportIllustration({
         cy="56"
         rx="30"
         ry="6"
-        className="fill-primary/8 dark:fill-primary/15"
+        className="fill-tertiary/10 dark:fill-tertiary/18"
       />
       {/* Archival card tray base */}
       <rect
@@ -112,19 +117,19 @@ export function ArchivalLedgerImportIllustration({
         className="fill-surface stroke-current"
         strokeWidth="1.5"
       />
-      {/* Brass label holder on front of tray */}
+      {/* Brass/terracotta label holder on front of tray */}
       <rect
         x="34"
         y="40"
         width="20"
         height="7"
         rx="1.5"
-        className="fill-primary/15 stroke-primary"
+        className="fill-tertiary/15 dark:fill-tertiary/24 stroke-tertiary"
         strokeWidth="1.4"
       />
       <path
         d="M38 43.5H50"
-        className="stroke-primary"
+        className="stroke-tertiary"
         strokeWidth="1.3"
         strokeLinecap="round"
       />
@@ -142,7 +147,7 @@ export function ArchivalLedgerImportIllustration({
         width="34"
         height="22"
         rx="2.5"
-        className="fill-surface stroke-primary"
+        className="fill-surface stroke-tertiary"
         strokeWidth="1.5"
       />
       <rect
@@ -151,7 +156,7 @@ export function ArchivalLedgerImportIllustration({
         width="34"
         height="5"
         rx="1.5"
-        className="fill-primary/15"
+        className="fill-tertiary/16 dark:fill-tertiary/25"
       />
       {/* Ruled catalog lines on incoming card */}
       <path
@@ -164,7 +169,7 @@ export function ArchivalLedgerImportIllustration({
       {/* Downward archival accession arrow */}
       <path
         d="M54 20V28M54 28L51.5 25.5M54 28L56.5 25.5"
-        className="stroke-primary"
+        className="stroke-tertiary"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -198,12 +203,12 @@ export function ShelfViewfinderIllustration({
         cy="55"
         rx="28"
         ry="5.5"
-        className="fill-primary/8 dark:fill-primary/15"
+        className="fill-tertiary/10 dark:fill-tertiary/18"
       />
       {/* Optical viewfinder corner brackets in terracotta */}
       <path
         d="M14 22V15C14 13.8954 14.8954 13 16 13H23M65 13H72C73.1046 13 74 13.8954 74 15V22M74 44V51C74 52.1046 73.1046 53 72 53H65M23 53H16C14.8954 53 14 52.1046 14 51V44"
-        className="stroke-primary"
+        className="stroke-tertiary"
         strokeWidth="1.6"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -239,12 +244,12 @@ export function ShelfViewfinderIllustration({
         width="10"
         height="29"
         rx="1.5"
-        className="fill-primary/15 stroke-primary"
+        className="fill-tertiary/16 dark:fill-tertiary/25 stroke-tertiary"
         strokeWidth="1.5"
       />
       <path
         d="M39.5 23H44.5M39.5 41H44.5"
-        className="stroke-primary"
+        className="stroke-tertiary"
         strokeWidth="1.3"
         strokeLinecap="round"
       />
@@ -274,7 +279,7 @@ export function ShelfViewfinderIllustration({
           y1="33"
           x2="70"
           y2="33"
-          className="stroke-primary animate-pulse"
+          className="stroke-tertiary animate-pulse"
           strokeWidth="1.6"
           strokeDasharray="3 2.5"
           strokeLinecap="round"
@@ -284,7 +289,7 @@ export function ShelfViewfinderIllustration({
           cx="42"
           cy="32"
           r="2"
-          className="fill-primary/25 stroke-primary"
+          className="fill-tertiary/25 dark:fill-tertiary/35 stroke-tertiary"
           strokeWidth="1.3"
         />
       )}
@@ -316,7 +321,7 @@ export function ExLibrisStampIllustration({
         cy="52"
         rx="24"
         ry="5"
-        className="fill-primary/8 dark:fill-primary/15"
+        className="fill-tertiary/10 dark:fill-tertiary/18"
       />
       {/* Outer archival bookplate frame */}
       <rect
@@ -342,7 +347,7 @@ export function ExLibrisStampIllustration({
       {/* Central four-point compass/curator star in terracotta */}
       <path
         d="M40 19L42.6 26.4L50 29L42.6 31.6L40 39L37.4 31.6L30 29L37.4 26.4L40 19Z"
-        className="fill-primary/18 stroke-primary"
+        className="fill-tertiary/20 dark:fill-tertiary/30 stroke-tertiary"
         strokeWidth="1.5"
         strokeLinejoin="round"
       />
@@ -381,7 +386,7 @@ export function FallenBookendIllustration({
         cy="54"
         rx="32"
         ry="5.5"
-        className="fill-primary/8 dark:fill-primary/15"
+        className="fill-tertiary/10 dark:fill-tertiary/18"
       />
       {/* Upright spine 1 */}
       <rect
@@ -418,12 +423,12 @@ export function FallenBookendIllustration({
           width="10"
           height="30"
           rx="1.5"
-          className="fill-primary/15 stroke-primary"
+          className="fill-tertiary/16 dark:fill-tertiary/25 stroke-tertiary"
           strokeWidth="1.5"
         />
         <path
           d="M47.5 28H52.5M47.5 45H52.5"
-          className="stroke-primary"
+          className="stroke-tertiary"
           strokeWidth="1.3"
           strokeLinecap="round"
         />
@@ -431,7 +436,7 @@ export function FallenBookendIllustration({
       {/* Slipped terracotta bookmark ribbon */}
       <path
         d="M64 44C67 44 69 46.5 68 50L71 48.5L73 51"
-        className="stroke-primary"
+        className="stroke-tertiary"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -469,7 +474,7 @@ export function ArchivalBookLoaderIllustration({
         cy="42"
         rx="20"
         ry="4.5"
-        className="fill-primary/10 dark:fill-primary/18"
+        className="fill-tertiary/12 dark:fill-tertiary/20"
       />
       {/* Left open page */}
       <path
@@ -488,14 +493,14 @@ export function ArchivalBookLoaderIllustration({
       {/* Turning leaf in terracotta */}
       <path
         d="M32 15C35.5 11.5 43 11.5 47 13.5V31.5C43 29.5 35.5 30 32 34V15Z"
-        className="fill-primary/15 stroke-primary animate-pulse"
+        className="fill-tertiary/16 dark:fill-tertiary/25 stroke-tertiary animate-pulse"
         strokeWidth="1.4"
         strokeLinejoin="round"
       />
       {/* Terracotta ribbon bookmark */}
       <path
         d="M32 15V41L35 38.5L38 41V31"
-        className="fill-primary/20 stroke-primary"
+        className="fill-tertiary/22 dark:fill-tertiary/30 stroke-tertiary"
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"

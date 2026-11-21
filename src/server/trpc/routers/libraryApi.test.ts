@@ -147,4 +147,31 @@ describe('libraryApiRouter', () => {
       'b2',
     ]);
   });
+
+  it('calls LibraryService.resetMetadata with canonical metadataType and editor role check', async () => {
+    vi.mocked(PermissionService.verifyLibraryAccess).mockResolvedValueOnce({
+      role: 'editor',
+      userId: 'user-123',
+    });
+    vi.mocked(LibraryService.resetMetadata).mockResolvedValueOnce({
+      count: 7,
+    });
+
+    const caller = libraryApiRouter.createCaller(mockCtx);
+    const res = await caller.resetMetadata({
+      libraryId: 'lib-1',
+      metadataType: 'series',
+    });
+
+    expect(LibraryService.resetMetadata).toHaveBeenCalledWith(
+      'user-123',
+      SUPERADMIN_EMAIL,
+      'lib-1',
+      'series',
+      {skipAccessCheck: true},
+    );
+    expect(res).toEqual({
+      count: 7,
+    });
+  });
 });

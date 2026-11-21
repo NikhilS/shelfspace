@@ -6,7 +6,6 @@ export const bookStatusEnum = z.enum([
   'want_to_read',
   'reading',
   'finished',
-  'completed',
   'abandoned',
 ]);
 
@@ -16,21 +15,8 @@ export type OwnershipStatus = z.infer<typeof ownershipStatusEnum>;
 export const geoLocationReferenceSchema = z
   .object({
     name: z.string().max(300),
-    adminLevel: z
-      .enum([
-        'city',
-        'state',
-        'country',
-        'region',
-        'City',
-        'State',
-        'Country',
-        'Region',
-      ])
-      .optional(),
+    adminLevel: z.enum(['city', 'state', 'country', 'region']).optional(),
     rationale: z.string().max(2000).optional(),
-    lat: z.number().min(-90).max(90).optional(),
-    lng: z.number().min(-180).max(180).optional(),
     coordinates: z
       .object({
         lat: z.number().min(-90).max(90),
@@ -55,9 +41,7 @@ export const bookTemporalMetadataSchema = z
     startYear: z.number().nullable().optional(),
     endYear: z.number().nullable().optional(),
     eraName: z.string().max(300).nullable().optional(),
-    eraLabel: z.string().max(300).nullable().optional(),
     rationale: z.string().max(2000).nullable().optional(),
-    lastProcessedAt: z.string().max(100).nullable().optional(),
     lastSyncedAt: z.string().max(100).nullable().optional(),
   })
   .strict();
@@ -72,24 +56,27 @@ export const clusterCoordinatesSchema = z
   })
   .strict();
 
+export const readingStateKeyTypeEnum = z.enum(['book', 'ext']);
+export type ReadingStateKeyType = z.infer<typeof readingStateKeyTypeEnum>;
+
 /**
- * Deterministic single-lookup key for `/users/{userId}/readingStates/{stateKey}`:
- * - `isbn:<NORMALIZED_ISBN>` when the book has a normalized ISBN (digits and 'X' only).
- * - `bookid:<BOOK_ID>` when the book has no ISBN in the system.
+ * Deterministic stable lookup key for `/users/{userId}/readingStates/{stateKey}`:
+ * - `book:<LIBRARY_ID>:<BOOK_ID>` for library-backed books (immutable across ISBN edits/enrichment).
+ * - `ext:<IDENTIFIER>` for standalone unowned external editions without a library book record.
  */
 export const readingStateKeySchema = z
   .string()
   .trim()
-  .min(6)
-  .max(160)
+  .min(5)
+  .max(280)
   .regex(
-    /^(isbn:[0-9X]{1,64}|bookid:[a-zA-Z0-9_-]{1,128})$/,
-    'Reading state key must be isbn:<NORMALIZED_ISBN> or bookid:<BOOK_ID>',
+    /^(book:[a-zA-Z0-9_-]{1,128}:[a-zA-Z0-9_-]{1,128}|ext:[a-zA-Z0-9_-]{1,128})$/,
+    'Reading state key must be book:<LIBRARY_ID>:<BOOK_ID> or ext:<IDENTIFIER>',
   );
 
 /**
  * Accepts either a standard Firestore document ID (`safeIdSchema`) or a deterministic
- * reading state key (`isbn:<NORMALIZED_ISBN>` / `bookid:<BOOK_ID>`).
+ * reading state key (`book:...` or `ext:...`).
  */
 export const safeBookOrStateIdSchema = z.union([
   safeIdSchema,
@@ -97,32 +84,29 @@ export const safeBookOrStateIdSchema = z.union([
 ]);
 
 /**
- * Denormalized book metadata snapshot embedded inside a user's reading state document
- * so `/users/{userId}/readingStates` can render the Personal Reading Room in a single query.
+ * Slim `< 2KB` fallback book metadata stub embedded inside a user's reading state document.
+ * Heavy prose (`synopsis`, `authorBio`), `subgenres`, `geoMetadata`, `temporalMetadata`, and
+ * `clusterCoordinates` are strictly excluded and hydrated live from `/libraries/{libId}/books/{bookId}`.
  */
-export const userReadingStateBookSnapshotSchema = z
+export const minimalBookStubSchema = z
   .object({
-    title: z.string().max(500),
-    author: z.string().max(500),
+    title: z.string().max(300),
+    author: z.string().max(300),
     isbn: z.string().max(64).optional(),
     cleanIsbn: z.string().max(64).optional(),
     coverUrl: safeImageUrlSchema.optional(),
     publishedDate: z.string().max(100).optional(),
     primaryGenre: z.string().max(200).optional(),
-    subgenres: z.array(z.string().max(200)).max(50).optional(),
-    series: z.string().max(300).optional(),
+    series: z.string().max(200).optional(),
     format: z.enum(['physical', 'digital']).optional(),
-    synopsis: z.string().max(50000).optional(),
-    authorBio: z.string().max(50000).optional(),
-    geoMetadata: bookGeoMetadataSchema.optional(),
-    temporalMetadata: bookTemporalMetadataSchema.optional(),
-    clusterCoordinates: clusterCoordinatesSchema.nullable().optional(),
     libraryId: safeIdSchema.optional(),
     libraryName: z.string().max(200).optional(),
     bookId: safeIdSchema.optional(),
     ownershipStatus: ownershipStatusEnum.optional(),
   })
   .strict();
+
+export const userReadingStateBookSnapshotSchema = minimalBookStubSchema;
 
 /**
  * Stored Firestore document schema for `/users/{userId}/readingStates/{stateKey}`.
@@ -132,7 +116,7 @@ export const storedUserReadingStateDocSchema = z
   .object({
     id: readingStateKeySchema,
     userId: safeIdSchema,
-    keyType: z.enum(['isbn', 'bookid']),
+    keyType: readingStateKeyTypeEnum,
     cleanIsbn: z.string().max(64).optional(),
     bookId: safeIdSchema.optional(),
     libraryId: safeIdSchema.optional(),
@@ -143,7 +127,7 @@ export const storedUserReadingStateDocSchema = z
     startedAt: z.string().max(100).nullable().optional(),
     finishedAt: z.string().max(100).nullable().optional(),
     readStatusReviewedAt: z.string().max(100).nullable().optional(),
-    bookSnapshot: userReadingStateBookSnapshotSchema.optional(),
+    bookSnapshot: minimalBookStubSchema.optional(),
     updatedAt: z.string().max(100).optional(),
   })
   .strict();
@@ -154,44 +138,93 @@ export const storedUserReadingStateDocSchema = z
 export const userReadingStateSchema = storedUserReadingStateDocSchema
   .extend({
     status: bookStatusEnum,
-    bookSnapshot: userReadingStateBookSnapshotSchema,
+    bookSnapshot: minimalBookStubSchema,
   })
   .strict();
 
+const SAFE_SEGMENT_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
+
+export function resolveReadingStateKeyType(
+  stateKey: string,
+): ReadingStateKeyType {
+  if (stateKey.startsWith('book:')) {
+    return 'book';
+  }
+  return 'ext';
+}
+
 /**
- * Computes the deterministic single-lookup key for `/users/{userId}/readingStates/{stateKey}`.
- * - If the book has a normalized ISBN (digits and 'X' only), returns `isbn:<NORMALIZED_ISBN>`.
- * - Otherwise, returns `bookid:<BOOK_ID>` (idempotently handling `isbn:` or `bookid:` prefixes on `bookId`).
+ * Computes the deterministic stable key for `/users/{userId}/readingStates/{stateKey}`:
+ * - When `libraryId` is present (and not `'external'`) with a valid `bookId`, returns `book:<libraryId>:<bookId>`.
+ *   This guarantees ISBN edits or AI enrichment never change the document ID or orphan collaborator reading states.
+ * - For standalone external books without a library container, returns `ext:<NORMALIZED_ISBN>` when an ISBN exists,
+ *   or `ext:<BOOK_ID>` otherwise.
+ * - Idempotent when `bookId` is already a canonical `book:...` or `ext:...` state key.
  */
 export function computeReadingStateKey(input: {
+  libraryId?: string | null;
   isbn?: string | null;
   cleanIsbn?: string | null;
   bookId: string;
 }): string {
   const rawBookId = (input.bookId || '').trim();
-  const isbnFromBookId = rawBookId.startsWith('isbn:')
-    ? rawBookId.slice('isbn:'.length)
-    : '';
+  const rawLibraryId = (input.libraryId || '').trim();
+
+  if (rawBookId.startsWith('book:')) {
+    const parts = rawBookId.split(':');
+    if (
+      parts.length === 3 &&
+      SAFE_SEGMENT_REGEX.test(parts[1]) &&
+      SAFE_SEGMENT_REGEX.test(parts[2])
+    ) {
+      return rawBookId;
+    }
+  }
+
+  let extractedBookId = rawBookId;
+  let isbnFromBookId = '';
+
+  if (rawBookId.startsWith('ext:')) {
+    const extPayload = rawBookId.slice('ext:'.length).trim();
+    if (/^[0-9X]{1,64}$/i.test(extPayload)) {
+      isbnFromBookId = extPayload;
+      extractedBookId = '';
+    } else {
+      extractedBookId = extPayload;
+    }
+  }
+
+  if (
+    rawLibraryId.length > 0 &&
+    rawLibraryId !== 'external' &&
+    SAFE_SEGMENT_REGEX.test(rawLibraryId) &&
+    extractedBookId.length > 0 &&
+    SAFE_SEGMENT_REGEX.test(extractedBookId)
+  ) {
+    return `book:${rawLibraryId}:${extractedBookId}`;
+  }
+
   const normalizedIsbn = (input.cleanIsbn || input.isbn || isbnFromBookId || '')
     .trim()
     .replace(/[^0-9X]/gi, '')
     .toUpperCase();
+
   if (normalizedIsbn.length > 0) {
-    return `isbn:${normalizedIsbn}`;
+    return `ext:${normalizedIsbn}`;
   }
-  const cleanBookId = rawBookId.startsWith('bookid:')
-    ? rawBookId.slice('bookid:'.length)
-    : rawBookId;
-  return `bookid:${cleanBookId}`;
+
+  const fallbackId = SAFE_SEGMENT_REGEX.test(extractedBookId)
+    ? extractedBookId
+    : 'unknown_book';
+  return `ext:${fallbackId}`;
 }
 
 export type GeoLocationReference = z.infer<typeof geoLocationReferenceSchema>;
 export type BookGeoMetadata = z.infer<typeof bookGeoMetadataSchema>;
 export type BookTemporalMetadata = z.infer<typeof bookTemporalMetadataSchema>;
 export type ClusterCoordinates = z.infer<typeof clusterCoordinatesSchema>;
-export type UserReadingStateBookSnapshot = z.infer<
-  typeof userReadingStateBookSnapshotSchema
->;
+export type MinimalBookStub = z.infer<typeof minimalBookStubSchema>;
+export type UserReadingStateBookSnapshot = MinimalBookStub;
 export type StoredUserReadingStateDoc = z.infer<
   typeof storedUserReadingStateDocSchema
 >;

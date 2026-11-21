@@ -41,54 +41,29 @@ export function BulkEnrichmentBanner({
   const percentage =
     total > 0 ? (Math.min(completed + failed, total) / total) * 100 : 0;
 
-  const themeClasses = {
-    teal: {
-      container:
-        'bg-teal-50 dark:bg-teal-950/20 border-teal-500 dark:border-teal-900/50',
-      icon: 'text-teal-600 dark:text-teal-400',
-      title: 'text-teal-900 dark:text-teal-200',
-      subtitle: 'text-teal-700 dark:text-teal-300',
-      progressBg: 'bg-teal-200/50 dark:bg-teal-900/40',
-      progressBar: 'bg-teal-600 dark:bg-teal-400',
-      errorText: 'text-red-600 dark:text-red-400',
-    },
-    indigo: {
-      container:
-        'bg-surface-container border-primary/50 dark:border-primary/40',
-      icon: 'text-primary',
-      title: 'text-on-surface font-semibold',
-      subtitle: 'text-on-surface-variant',
-      progressBg: 'bg-surface-container-highest',
-      progressBar: 'bg-primary',
-      errorText: 'text-error',
-    },
-  };
-
-  const selectedTheme = themeClasses[colorTheme];
+  const progressBarClass = colorTheme === 'teal' ? 'bg-tertiary' : 'bg-primary';
 
   return (
     <motion.div
-      initial={{opacity: 0, y: -8}}
+      initial={{opacity: 0, y: -6}}
       animate={{opacity: 1, y: 0}}
-      exit={{opacity: 0, y: -8}}
-      transition={{duration: 0.25, ease: 'easeOut'}}
-      className={`border-l-4 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 shadow-sm transition-colors ${selectedTheme.container} ${className}`}
+      exit={{opacity: 0, y: -6}}
+      transition={{duration: 0.22, ease: 'easeOut'}}
+      className={`bento-card bg-surface-container-low px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 ${className}`}
       id={id}
     >
-      <div className="flex items-center gap-2.5 min-w-0 w-full sm:w-auto">
-        <Sparkles
-          className={`animate-pulse w-5 h-5 flex-shrink-0 ${selectedTheme.icon}`}
-        />
+      <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
+        <div className="w-8 h-8 rounded-lg bg-tertiary/12 border border-tertiary/25 flex items-center justify-center shrink-0">
+          <Sparkles className="animate-pulse w-4 h-4 text-tertiary" />
+        </div>
         <div className="min-w-0">
-          <p
-            className={`text-sm font-medium leading-none ${selectedTheme.title}`}
-          >
+          <p className="font-serif text-sm font-semibold leading-snug text-on-surface">
             {title}
           </p>
-          <p className={`text-xs font-mono mt-1 ${selectedTheme.subtitle}`}>
+          <p className="text-xs font-mono tabular-nums mt-0.5 text-on-surface-variant">
             {description} {completed} of {total} completed
             {failed > 0 && (
-              <span className={`ml-2 font-semibold ${selectedTheme.errorText}`}>
+              <span className="ml-2 font-semibold text-error">
                 ({failed} failed)
               </span>
             )}
@@ -99,11 +74,9 @@ export function BulkEnrichmentBanner({
         </div>
       </div>
       <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 justify-between sm:justify-end">
-        <div
-          className={`w-full sm:w-36 rounded-full h-1.5 overflow-hidden shrink-0 ${selectedTheme.progressBg}`}
-        >
+        <div className="w-full sm:w-36 rounded-full h-1.5 overflow-hidden shrink-0 bg-surface-container-highest">
           <div
-            className={`h-1.5 rounded-full transition-all duration-300 ${selectedTheme.progressBar}`}
+            className={`h-1.5 rounded-full transition-all duration-300 ${progressBarClass}`}
             style={{width: `${percentage}%`}}
           />
         </div>
@@ -111,7 +84,7 @@ export function BulkEnrichmentBanner({
           <button
             type="button"
             onClick={onCancel}
-            className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded border border-red-300 dark:border-red-900/60 bg-red-50/90 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 transition-colors shadow-xs cursor-pointer select-none"
+            className="inline-flex items-center gap-1 text-xs font-sans font-semibold px-2.5 py-1 rounded-md border border-error/30 bg-error/10 hover:bg-error/15 text-error transition-colors cursor-pointer select-none"
             title="Stop ongoing enrichment"
           >
             <Square className="w-2.5 h-2.5 fill-current" />

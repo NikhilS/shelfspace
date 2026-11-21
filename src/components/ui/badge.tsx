@@ -3,16 +3,16 @@ import {cva, type VariantProps} from 'class-variance-authority';
 import {cn} from '@/lib/utils';
 
 const badgeVariants = cva(
-  'inline-flex items-center justify-center rounded-md border px-2 py-0.5 font-sans text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 whitespace-nowrap select-none',
+  'inline-flex items-center justify-center rounded-md border px-2 py-0.5 font-sans text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 whitespace-nowrap select-none',
   {
     variants: {
       variant: {
         default:
-          'border-transparent bg-primary text-primary-foreground hover:bg-primary/85',
+          'border-transparent bg-primary text-on-primary hover:bg-primary/85',
         secondary:
           'border-outline-variant/50 bg-surface-container text-on-surface hover:bg-surface-container-high',
         destructive:
-          'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/85',
+          'border-transparent bg-error text-on-error hover:bg-error/85',
         outline: 'border-outline-variant/70 bg-surface/80 text-on-surface',
         // Semantic Bookish Archival Tokens
         status:

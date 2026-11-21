@@ -5,11 +5,12 @@
       "description": "A user of the application.",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "displayName": { "type": "string" },
-        "photoURL": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "uid": {"type": "string"},
+        "email": {"type": "string", "format": "email"},
+        "displayName": {"type": "string"},
+        "photoURL": {"type": "string"},
+        "createdAt": {"type": "string", "format": "date-time"},
+        "updatedAt": {"type": "string", "format": "date-time"}
       },
       "required": ["uid", "email", "createdAt"]
     },
@@ -18,17 +19,28 @@
       "description": "A collection of books.",
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "ownerId": { "type": "string" },
-        "ownerName": { "type": "string" },
+        "name": {"type": "string"},
+        "ownerId": {"type": "string"},
+        "ownerName": {"type": "string"},
         "access": {
           "type": "object",
           "description": "Map of user emails to their access level.",
-          "additionalProperties": { "type": "string", "enum": ["owner", "editor", "viewer"] }
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["owner", "editor", "viewer"]
+          }
         },
-        "heroImageUrl": { "type": "string" },
-        "isVirtual": { "type": "boolean" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "collaboratorEmails": {
+          "type": "array",
+          "description": "Lowercase normalized collaborator emails indexed via array-contains.",
+          "items": {"type": "string", "format": "email"}
+        },
+        "activeJobId": {"type": "string"},
+        "heroImageUrl": {"type": "string"},
+        "isVirtual": {"type": "boolean"},
+        "bookCount": {"type": "number"},
+        "createdAt": {"type": "string", "format": "date-time"},
+        "updatedAt": {"type": "string", "format": "date-time"}
       },
       "required": ["name", "ownerId", "createdAt"]
     },
@@ -37,38 +49,56 @@
       "description": "A book in a library.",
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
-        "author": { "type": "string" },
-        "isbn": { "type": "string" },
-        "coverUrl": { "type": "string" },
-        "publishedDate": { "type": "string" },
-        "primaryGenre": { "type": "string" },
+        "id": {"type": "string"},
+        "title": {"type": "string"},
+        "author": {"type": "string"},
+        "isbn": {"type": "string"},
+        "cleanIsbn": {"type": "string"},
+        "dedupeKey": {"type": "string"},
+        "searchTokens": {
+          "type": "array",
+          "description": "Normalized prefix and word tokens for indexed catalog search.",
+          "items": {"type": "string"}
+        },
+        "coverUrl": {"type": "string"},
+        "coverUrlRaw": {"type": "string"},
+        "publishedDate": {"type": "string"},
+        "primaryGenre": {"type": "string"},
+        "primaryGenreLower": {"type": "string"},
+        "missingFlags": {
+          "type": "array",
+          "description": "Precomputed missing metadata dimensions for native array-contains filtering.",
+          "items": {"type": "string"}
+        },
         "subgenres": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {"type": "string"}
         },
-        "isCustomPrimary": { "type": "boolean" },
-        "series": { "type": "string" },
-        "format": { "type": "string", "enum": ["physical", "digital"] },
-        "ownershipStatus": { "type": "string", "enum": ["owned", "unowned"] },
+        "isCustomPrimary": {"type": "boolean"},
+        "series": {"type": "string"},
+        "format": {"type": "string", "enum": ["physical", "digital"]},
+        "ownershipStatus": {"type": "string", "enum": ["owned", "unowned"]},
         "geoMetadata": {
           "type": "object",
           "properties": {
-            "isNonEarth": { "type": "boolean" },
-            "lastSyncedAt": { "type": "string", "format": "date-time" },
+            "isNonEarth": {"type": "boolean"},
+            "lastSyncedAt": {"type": "string", "format": "date-time"},
             "locations": {
               "type": "array",
               "items": {
                 "type": "object",
                 "properties": {
-                  "name": { "type": "string" },
-                  "adminLevel": { "type": "string", "enum": ["city", "state", "country", "region"] },
-                  "rationale": { "type": "string" },
+                  "name": {"type": "string"},
+                  "adminLevel": {
+                    "type": "string",
+                    "enum": ["city", "state", "country", "region"]
+                  },
+                  "rationale": {"type": "string"},
                   "coordinates": {
                     "type": "object",
                     "properties": {
-                      "lat": { "type": "number" },
-                      "lng": { "type": "number" }
+                      "lat": {"type": "number"},
+                      "lng": {"type": "number"}
                     },
                     "required": ["lat", "lng"]
                   }
@@ -79,61 +109,107 @@
           },
           "required": ["isNonEarth", "locations", "lastSyncedAt"]
         },
-        "addedAt": { "type": "string", "format": "date-time" },
-        "addedBy": { "type": "string" }
+        "temporalMetadata": {
+          "type": "object",
+          "properties": {
+            "isNonHistorical": {"type": "boolean"},
+            "startYear": {"type": "number"},
+            "endYear": {"type": "number"},
+            "eraName": {"type": "string"},
+            "rationale": {"type": "string"},
+            "lastSyncedAt": {"type": "string", "format": "date-time"}
+          },
+          "required": ["isNonHistorical", "lastSyncedAt"]
+        },
+        "enrichmentStatus": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["pending", "completed", "failed", "skipped"]
+          }
+        },
+        "bookDetailsMetadata": {
+          "type": "object",
+          "properties": {
+            "hasSynopsis": {"type": "boolean"},
+            "hasAuthorBio": {"type": "boolean"},
+            "hasEmbedding": {"type": "boolean"},
+            "hasClusterCoordinates": {"type": "boolean"}
+          }
+        },
+        "coverCandidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": {"type": "string"},
+              "source": {"type": "string"},
+              "width": {"type": "number"},
+              "height": {"type": "number"}
+            },
+            "required": ["url", "source"]
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "fieldSources": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "skippedProviders": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "addedAt": {"type": "string", "format": "date-time"},
+        "addedBy": {"type": "string"},
+        "updatedAt": {"type": "string", "format": "date-time"}
       },
       "required": ["title", "addedAt", "addedBy"]
     },
     "UserReadingState": {
       "title": "UserReadingState",
-      "description": "Per-user per-book reading state stored in the user's private reading ledger, keyed deterministically by isbn:<NORMALIZED_ISBN> or bookid:<BOOK_ID>.",
+      "description": "Per-user per-book reading state stored in the user's private reading ledger, keyed stably by book:<libraryId>:<bookId> or ext:<cleanIsbn>.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "keyType": { "type": "string", "enum": ["isbn", "bookid"] },
-        "cleanIsbn": { "type": "string" },
-        "bookId": { "type": "string" },
-        "libraryId": { "type": "string" },
+        "id": {"type": "string"},
+        "userId": {"type": "string"},
+        "keyType": {"type": "string", "enum": ["book", "ext"]},
+        "cleanIsbn": {"type": "string"},
+        "bookId": {"type": "string"},
+        "libraryId": {"type": "string"},
         "status": {
           "type": "string",
           "enum": ["unset", "want_to_read", "reading", "finished", "abandoned"]
         },
-        "rating": { "type": "number" },
-        "reviewText": { "type": "string" },
-        "reviewedAt": { "type": "string", "format": "date-time" },
-        "startedAt": { "type": "string", "format": "date-time" },
-        "finishedAt": { "type": "string", "format": "date-time" },
-        "readStatusReviewedAt": { "type": "string", "format": "date-time" },
+        "rating": {"type": "number"},
+        "reviewText": {"type": "string"},
+        "reviewedAt": {"type": "string", "format": "date-time"},
+        "startedAt": {"type": "string", "format": "date-time"},
+        "finishedAt": {"type": "string", "format": "date-time"},
+        "readStatusReviewedAt": {"type": "string", "format": "date-time"},
         "bookSnapshot": {
           "type": "object",
+          "description": "Slim <2KB fallback stub used only when a book is unowned or deleted.",
           "properties": {
-            "title": { "type": "string" },
-            "author": { "type": "string" },
-            "isbn": { "type": "string" },
-            "cleanIsbn": { "type": "string" },
-            "coverUrl": { "type": "string" },
-            "primaryGenre": { "type": "string" },
-            "subgenres": {
-              "type": "array",
-              "items": { "type": "string" }
-            },
-            "publishedDate": { "type": "string" },
-            "synopsis": { "type": "string" },
-            "authorBio": { "type": "string" },
-            "series": { "type": "string" },
-            "format": { "type": "string", "enum": ["physical", "digital", "audiobook"] },
-            "ownershipStatus": { "type": "string", "enum": ["owned", "unowned"] },
-            "libraryId": { "type": "string" },
-            "libraryName": { "type": "string" },
-            "bookId": { "type": "string" },
-            "geoMetadata": { "type": "object" },
-            "temporalMetadata": { "type": "object" },
-            "clusterCoordinates": { "type": "object" }
+            "title": {"type": "string"},
+            "author": {"type": "string"},
+            "isbn": {"type": "string"},
+            "cleanIsbn": {"type": "string"},
+            "coverUrl": {"type": "string"},
+            "primaryGenre": {"type": "string"},
+            "publishedDate": {"type": "string"},
+            "series": {"type": "string"},
+            "format": {"type": "string", "enum": ["physical", "digital"]},
+            "ownershipStatus": {"type": "string", "enum": ["owned", "unowned"]},
+            "libraryId": {"type": "string"},
+            "libraryName": {"type": "string"},
+            "bookId": {"type": "string"}
           },
           "required": ["title", "author"]
         },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "updatedAt": {"type": "string", "format": "date-time"}
       },
       "required": ["id", "userId", "keyType", "status", "updatedAt"]
     },
@@ -142,20 +218,24 @@
       "description": "Heavy data for a book in a library. Linked 1-to-1 with a Book by using the exact same document ID.",
       "type": "object",
       "properties": {
-        "synopsis": { "type": "string" },
-        "authorBio": { "type": "string" },
+        "synopsis": {"type": "string"},
+        "authorBio": {"type": "string"},
         "clusterCoordinates": {
           "type": "object",
           "properties": {
-            "x": { "type": "number" },
-            "y": { "type": "number" }
+            "x": {"type": "number"},
+            "y": {"type": "number"},
+            "clusterId": {"type": "number"},
+            "clusterName": {"type": "string"},
+            "clusterThesis": {"type": "string"}
           }
         },
         "embedding": {
           "type": "array",
-          "items": { "type": "number" },
+          "items": {"type": "number"},
           "description": "Generated semantic vector embedding of the book synopsis for clustering."
-        }
+        },
+        "updatedAt": {"type": "string", "format": "date-time"}
       }
     },
     "Review": {
@@ -163,12 +243,12 @@
       "description": "A review for a book. Stored as a subcollection under the specific Book document.",
       "type": "object",
       "properties": {
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "rating": { "type": "number" },
-        "text": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "userId": {"type": "string"},
+        "userName": {"type": "string"},
+        "rating": {"type": "number"},
+        "text": {"type": "string"},
+        "createdAt": {"type": "string", "format": "date-time"},
+        "updatedAt": {"type": "string", "format": "date-time"}
       },
       "required": ["userId", "userName", "rating", "text", "createdAt"]
     },
@@ -179,40 +259,98 @@
       "properties": {
         "bookIds": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {"type": "string"}
         },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": {"type": "string", "format": "date-time"}
       },
       "required": ["bookIds", "createdAt"]
     },
     "Job": {
       "title": "Job",
-      "description": "A background task for a library.",
+      "description": "Durable background enrichment job state for stateless multi-instance Cloud Run.",
       "type": "object",
       "properties": {
-        "status": { "type": "string", "enum": ["running", "completed", "failed"] },
-        "progress": { "type": "number" },
-        "total": { "type": "number" },
-        "error": { "type": "string" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "id": {"type": "string"},
+        "libraryId": {"type": "string"},
+        "ownerUid": {"type": "string"},
+        "ownerEmail": {"type": "string", "format": "email"},
+        "enrichmentType": {"type": "string"},
+        "status": {
+          "type": "string",
+          "enum": ["running", "cancelling", "completed", "cancelled", "failed"]
+        },
+        "totalBooks": {"type": "number"},
+        "completedBooks": {"type": "number"},
+        "failedBooks": {"type": "number"},
+        "skippedBooks": {"type": "number"},
+        "overwrite": {"type": "boolean"},
+        "cancelRequested": {"type": "boolean"},
+        "leaseOwnerId": {"type": "string"},
+        "leaseExpiresAtMs": {"type": "number"},
+        "pendingBookIds": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "customGenres": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "allowAiFallback": {"type": "boolean"},
+        "activeWave": {
+          "type": "object",
+          "properties": {
+            "waveNumber": {"type": "number"},
+            "totalWaves": {"type": "number"},
+            "waveSize": {"type": "number"},
+            "provider": {"type": "string"}
+          }
+        },
+        "perBookStates": {
+          "type": "object",
+          "additionalProperties": {"type": "object"}
+        },
+        "startedAt": {"type": "number"},
+        "completedAt": {"type": "number"},
+        "updatedAtMs": {"type": "number"},
+        "updatedAt": {"type": "string", "format": "date-time"}
       },
-      "required": ["status", "updatedAt"]
+      "required": [
+        "libraryId",
+        "enrichmentType",
+        "status",
+        "totalBooks",
+        "startedAt",
+        "updatedAtMs"
+      ]
+    },
+    "BookTombstone": {
+      "title": "BookTombstone",
+      "description": "Persistent hard-delete tombstone enabling cross-instance incremental syncChanges.",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "bookId": {"type": "string"},
+        "deletedAtMs": {"type": "number"},
+        "deletedBy": {"type": "string"},
+        "updatedAt": {"type": "string", "format": "date-time"}
+      },
+      "required": ["bookId", "deletedAtMs"]
     },
     "GeolocationCache": {
       "title": "GeolocationCache",
       "description": "Cache of geocoding results for a given location name to prevent redundant API queries.",
       "type": "object",
       "properties": {
-        "locationName": { "type": "string" },
+        "locationName": {"type": "string"},
         "coordinates": {
           "type": "object",
           "properties": {
-            "lat": { "type": "number" },
-            "lng": { "type": "number" }
+            "lat": {"type": "number"},
+            "lng": {"type": "number"}
           },
           "required": ["lat", "lng"]
         },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": {"type": "string", "format": "date-time"}
       },
       "required": ["locationName", "coordinates", "createdAt"]
     },
@@ -221,15 +359,18 @@
       "description": "An applicant on the access invite waitlist.",
       "type": "object",
       "properties": {
-        "email": { "type": "string", "format": "email" },
-        "displayName": { "type": "string" },
-        "photoURL": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
-        "requestedAt": { "type": "string", "format": "date-time" },
-        "reviewedAt": { "type": "string", "format": "date-time" },
-        "reviewedBy": { "type": "string", "format": "email" },
-        "invitedBy": { "type": "string", "format": "email" },
-        "invitedLibraryName": { "type": "string" }
+        "email": {"type": "string", "format": "email"},
+        "displayName": {"type": "string"},
+        "photoURL": {"type": "string"},
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "requestedAt": {"type": "string", "format": "date-time"},
+        "reviewedAt": {"type": "string", "format": "date-time"},
+        "reviewedBy": {"type": "string", "format": "email"},
+        "invitedBy": {"type": "string", "format": "email"},
+        "invitedLibraryName": {"type": "string"}
       },
       "required": ["email", "status", "requestedAt"]
     },
@@ -238,58 +379,62 @@
       "description": "An allowlisted user with role and orthogonal AI Plan entitlement.",
       "type": "object",
       "properties": {
-        "email": { "type": "string", "format": "email" },
-        "role": { "type": "string", "enum": ["user", "admin"] },
-        "hasAiPlan": { "type": "boolean" },
-        "addedAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "email": {"type": "string", "format": "email"},
+        "role": {"type": "string", "enum": ["user", "admin"]},
+        "hasAiPlan": {"type": "boolean"},
+        "addedAt": {"type": "string", "format": "date-time"},
+        "updatedAt": {"type": "string", "format": "date-time"}
       },
       "required": ["email", "role", "hasAiPlan"]
     }
   },
   "firestore": {
     "/users/{userId}": {
-      "schema": { "$ref": "#/entities/UserProfile" },
+      "schema": {"$ref": "#/entities/UserProfile"},
       "description": "User profiles."
     },
     "/users/{userId}/readingStates/{stateKey}": {
-      "schema": { "$ref": "#/entities/UserReadingState" },
-      "description": "Per-user reading ledger keyed by isbn:<NORMALIZED_ISBN> or bookid:<BOOK_ID>."
+      "schema": {"$ref": "#/entities/UserReadingState"},
+      "description": "Per-user reading ledger keyed stably by book:<libraryId>:<bookId> or ext:<cleanIsbn>."
     },
     "/libraries/{libraryId}": {
-      "schema": { "$ref": "#/entities/Library" },
+      "schema": {"$ref": "#/entities/Library"},
       "description": "Libraries owned by users."
     },
     "/libraries/{libraryId}/allowedDuplicates/{allowedId}": {
-      "schema": { "$ref": "#/entities/AllowedDuplicate" },
+      "schema": {"$ref": "#/entities/AllowedDuplicate"},
       "description": "Dismissed duplicate suggestions within a library."
     },
     "/libraries/{libraryId}/jobs/{jobId}": {
-      "schema": { "$ref": "#/entities/Job" },
-      "description": "Background tasks for a library."
+      "schema": {"$ref": "#/entities/Job"},
+      "description": "Durable background enrichment jobs for a library."
+    },
+    "/libraries/{libraryId}/tombstones/{bookId}": {
+      "schema": {"$ref": "#/entities/BookTombstone"},
+      "description": "Persistent hard-delete tombstones for cross-instance delta sync."
     },
     "/libraries/{libraryId}/books/{bookId}": {
-      "schema": { "$ref": "#/entities/Book" },
+      "schema": {"$ref": "#/entities/Book"},
       "description": "Books within a library."
     },
     "/libraries/{libraryId}/bookDetails/{bookId}": {
-      "schema": { "$ref": "#/entities/BookDetails" },
+      "schema": {"$ref": "#/entities/BookDetails"},
       "description": "Heavy data for books within a library."
     },
     "/libraries/{libraryId}/books/{bookId}/reviews/{reviewId}": {
-      "schema": { "$ref": "#/entities/Review" },
+      "schema": {"$ref": "#/entities/Review"},
       "description": "Reviews for a book."
     },
     "/geolocationCache/{locationKey}": {
-      "schema": { "$ref": "#/entities/GeolocationCache" },
-      "description": "Global geolocation cache mapped by SHA256 of location name."
+      "schema": {"$ref": "#/entities/GeolocationCache"},
+      "description": "Global geolocation cache mapped by normalized location slug."
     },
     "/appSettings/waitlist/entries/{email}": {
-      "schema": { "$ref": "#/entities/WaitlistEntry" },
+      "schema": {"$ref": "#/entities/WaitlistEntry"},
       "description": "Submissions to the invite waitlist."
     },
     "/appSettings/allowlist/users/{email}": {
-      "schema": { "$ref": "#/entities/AllowlistUser" },
+      "schema": {"$ref": "#/entities/AllowlistUser"},
       "description": "Allowlisted users and their AI Plan status."
     }
   }

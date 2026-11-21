@@ -1,4 +1,5 @@
 import React, {useState, useMemo, useCallback, useEffect} from 'react';
+import {motion} from 'motion/react';
 import {useParams, useNavigate} from 'react-router-dom';
 import {useCollectionScope} from '../hooks/useCollectionScope';
 import {useAppPermissions} from '../hooks/useAppPermissions';
@@ -107,8 +108,8 @@ export function WorldMap() {
     books: enrichmentScopedBooks,
     isBooksLoading,
     libraryId: targetEnrichmentLibId,
-    providerKey: 'geoMetadata',
-    metadataField: 'geoMetadata',
+    providerKey: 'geo',
+    metadataField: 'geo',
     filterPredicate: filterGeoPredicate,
     canEdit: Boolean(canEdit && hasAiPlan),
     successToastMessage:
@@ -225,28 +226,60 @@ export function WorldMap() {
               onToggleWantToRead={setIncludeWantToRead}
             />
           )}
-          <div className="bg-surface-variant p-1 rounded-lg flex border border-outline-variant">
+          <div
+            className="bg-surface-container p-1 rounded-lg flex border border-outline-variant/60"
+            role="tablist"
+            aria-label="Map visualization mode"
+          >
             <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'map'}
               onClick={() => setActiveTab('map')}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${
+              className={`relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-sans font-semibold tracking-wide transition-colors cursor-pointer ${
                 activeTab === 'map'
-                  ? 'bg-primary text-on-primary shadow-sm'
+                  ? 'text-primary'
                   : 'text-on-surface-variant hover:text-on-surface'
               }`}
               id="toggle-cluster-view"
             >
-              <Grid size={14} /> Pin Clusters
+              {activeTab === 'map' && (
+                <motion.span
+                  layoutId="world-map-mode-pill"
+                  transition={{type: 'spring', stiffness: 500, damping: 38}}
+                  className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/50"
+                />
+              )}
+              <Grid
+                size={14}
+                className={`relative z-10 ${activeTab === 'map' ? 'text-tertiary' : ''}`}
+              />
+              <span className="relative z-10">Pin Clusters</span>
             </button>
             <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'heat'}
               onClick={() => setActiveTab('heat')}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${
+              className={`relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-sans font-semibold tracking-wide transition-colors cursor-pointer ${
                 activeTab === 'heat'
-                  ? 'bg-primary text-on-primary shadow-sm'
+                  ? 'text-primary'
                   : 'text-on-surface-variant hover:text-on-surface'
               }`}
               id="toggle-heatmap-view"
             >
-              <Flame size={14} /> Heat Map
+              {activeTab === 'heat' && (
+                <motion.span
+                  layoutId="world-map-mode-pill"
+                  transition={{type: 'spring', stiffness: 500, damping: 38}}
+                  className="absolute inset-0 rounded-md bg-surface shadow-2xs border border-outline-variant/50"
+                />
+              )}
+              <Flame
+                size={14}
+                className={`relative z-10 ${activeTab === 'heat' ? 'text-tertiary' : ''}`}
+              />
+              <span className="relative z-10">Heat Map</span>
             </button>
           </div>
         </div>
@@ -278,7 +311,7 @@ export function WorldMap() {
             placeholder="Search setting place, book title or writer name..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full bg-surface-container border border-outline-variant rounded-xl pl-11 pr-4 py-2.5 text-sm h-11 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
+            className="w-full bg-surface-container-low border border-outline-variant/70 rounded-lg pl-11 pr-4 py-2 text-sm h-10 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
             id="map-places-search"
           />
         </div>
@@ -290,7 +323,7 @@ export function WorldMap() {
           >
             <SelectTrigger
               id="map-genre-filter"
-              className="w-full bg-surface-container border border-outline-variant rounded-xl px-3.5 py-2.5 text-sm h-11 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
+              className="w-full bg-surface-container-low border border-outline-variant/70 rounded-lg px-3.5 py-2 text-sm h-10 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
             >
               <SelectValue />
             </SelectTrigger>

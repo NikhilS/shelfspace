@@ -11,6 +11,31 @@ vi.mock('../../stores/authStore', () => ({
   }),
 }));
 
+vi.mock('../../lib/trpc', () => ({
+  trpc: {
+    auth: {
+      getPermissions: {
+        useQuery: () => ({
+          data: {isAppAllowed: true, isAdmin: false, hasAiPlan: true},
+          isLoading: false,
+          refetch: vi.fn(),
+        }),
+      },
+    },
+    readingTracker: {
+      getRecommendations: {
+        useQuery: () => ({
+          data: undefined,
+          isLoading: false,
+          isFetching: false,
+          error: null,
+          refetch: vi.fn(),
+        }),
+      },
+    },
+  },
+}));
+
 vi.mock('../../pages/dashboard/useReadingShelf', () => ({
   useReadingShelf: () => ({
     allItems: [],

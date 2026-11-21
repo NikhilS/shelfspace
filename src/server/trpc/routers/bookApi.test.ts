@@ -51,6 +51,7 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
       vi.mocked(BookService.createBook).mockResolvedValueOnce({
         success: true,
         id: 'book-new-1',
+        libraryBookCountDelta: 1,
       });
 
       const caller = bookApiRouter.createCaller(mockUserCtx);
@@ -71,7 +72,11 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
         author: 'William Gibson',
         format: 'physical',
       });
-      expect(res).toEqual({success: true, id: 'book-new-1'});
+      expect(res).toEqual({
+        success: true,
+        id: 'book-new-1',
+        libraryBookCountDelta: 1,
+      });
     });
 
     it('denies user if PermissionService throws FORBIDDEN', async () => {
@@ -104,6 +109,7 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
       });
       vi.mocked(BookService.updateBook).mockResolvedValueOnce({
         success: true,
+        updatedAt: '2026-11-15T00:00:00.000Z',
       });
 
       const caller = bookApiRouter.createCaller(mockUserCtx);
@@ -118,7 +124,10 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
         bookId: 'book-1',
         updates: {title: 'Neuromancer (2nd Edition)'},
       });
-      expect(res).toEqual({success: true});
+      expect(res).toEqual({
+        success: true,
+        updatedAt: '2026-11-15T00:00:00.000Z',
+      });
     });
   });
 
@@ -130,6 +139,7 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
       });
       vi.mocked(BookService.deleteBook).mockResolvedValueOnce({
         success: true,
+        libraryBookCountDelta: -1,
       });
 
       const caller = bookApiRouter.createCaller(mockUserCtx);
@@ -142,7 +152,7 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
         libraryId: 'lib-1',
         bookId: 'book-1',
       });
-      expect(res).toEqual({success: true});
+      expect(res).toEqual({success: true, libraryBookCountDelta: -1});
     });
   });
 
@@ -261,6 +271,10 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
       vi.mocked(BookService.addReview).mockResolvedValueOnce({
         success: true,
         id: 'rev-1',
+        rating: 4,
+        reviewText: 'Great cyberpunk classic!',
+        reviewedAt: '2026-11-15T00:00:00.000Z',
+        userName: 'Reader',
       });
 
       const caller = bookApiRouter.createCaller(mockUserCtx);
@@ -288,7 +302,14 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
         },
         {skipAccessCheck: true},
       );
-      expect(res).toEqual({success: true, id: 'rev-1'});
+      expect(res).toEqual({
+        success: true,
+        id: 'rev-1',
+        rating: 4,
+        reviewText: 'Great cyberpunk classic!',
+        reviewedAt: '2026-11-15T00:00:00.000Z',
+        userName: 'Reader',
+      });
     });
 
     it('rejects unauthorized caller when attempting to add a review', async () => {
@@ -325,7 +346,7 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
         success: true,
         id: 'b-1',
         status: 'want_to_read',
-        stateKey: 'bookid:b-1',
+        stateKey: 'book:lib-1:b-1',
       });
 
       const caller = bookApiRouter.createCaller(mockUserCtx);
@@ -351,7 +372,7 @@ describe('bookApiRouter - Phase 2 Unified Write Procedures', () => {
         success: true,
         id: 'b-1',
         status: 'want_to_read',
-        stateKey: 'bookid:b-1',
+        stateKey: 'book:lib-1:b-1',
       });
     });
   });

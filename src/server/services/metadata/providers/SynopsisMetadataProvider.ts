@@ -9,12 +9,9 @@ import {
   type MetadataPlugin,
   type StageBookOutcome,
 } from '../../../../types/metadata';
-import * as geminiService from '../../gemini';
+import {generateBookSynopsesBatch} from '../../gemini';
 import {hydrateCatalogForResidualBooks} from '../bonusCatalogPatcher';
-import {
-  getOptionalModuleFunction,
-  runPluginStagesToRecord,
-} from '../stageRunner';
+import {runPluginStagesToRecord} from '../stageRunner';
 
 const synopsisPluginOutputSchema: z.ZodType<string | null> = z
   .string()
@@ -42,13 +39,9 @@ export class SynopsisMetadataProvider implements MetadataPlugin<string | null> {
           preferField: 'synopsis',
         });
 
-        const generateSynopsesFn = getOptionalModuleFunction<
-          typeof geminiService.generateBookSynopsesBatch
-        >(geminiService, 'generateBookSynopsesBatch');
         const canEscalateToGenerative =
           options?.allowAiFallback !== false &&
-          Boolean(process.env.GEMINI_API_KEY) &&
-          Boolean(generateSynopsesFn);
+          Boolean(process.env.GEMINI_API_KEY);
 
         for (const book of books) {
           const hit = catalogMap.get(book.id);
@@ -76,15 +69,11 @@ export class SynopsisMetadataProvider implements MetadataPlugin<string | null> {
       tier: 'generative',
       execute: async ({books, options}) => {
         const outcomes = new Map<string, StageBookOutcome<string | null>>();
-        const generateSynopsesFn = getOptionalModuleFunction<
-          typeof geminiService.generateBookSynopsesBatch
-        >(geminiService, 'generateBookSynopsesBatch');
         if (
           books.length === 0 ||
           options?.signal?.aborted ||
           options?.allowAiFallback === false ||
-          !process.env.GEMINI_API_KEY ||
-          !generateSynopsesFn
+          !process.env.GEMINI_API_KEY
         ) {
           return outcomes;
         }
@@ -109,7 +98,7 @@ export class SynopsisMetadataProvider implements MetadataPlugin<string | null> {
               return;
             }
             try {
-              const aiSynopses = await generateSynopsesFn(chunk, {
+              const aiSynopses = await generateBookSynopsesBatch(chunk, {
                 priority: 'BATCH',
                 signal: options?.signal,
               });

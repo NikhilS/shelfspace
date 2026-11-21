@@ -75,7 +75,7 @@ describe('enrichmentApiRouter', () => {
     >);
 
     const caller = enrichmentApiRouter.createCaller(mockCtx);
-    const res = await caller.triggerBatch({
+    const res = await caller.trigger({
       libraryId: 'lib-1',
       enrichmentType: 'genre',
       bookIds: ['b1', 'b2'],
@@ -119,9 +119,11 @@ describe('enrichmentApiRouter', () => {
     } as unknown as Awaited<
       ReturnType<typeof enrichmentJobCoordinator.startJob>
     >);
-    vi.mocked(enrichmentJobCoordinator.getJobStatus).mockReturnValueOnce({
+    vi.mocked(enrichmentJobCoordinator.getJobStatus).mockResolvedValueOnce({
       activeJob: null,
-    } as unknown as ReturnType<typeof enrichmentJobCoordinator.getJobStatus>);
+    } as unknown as Awaited<
+      ReturnType<typeof enrichmentJobCoordinator.getJobStatus>
+    >);
 
     const caller = enrichmentApiRouter.createCaller(mockCtx);
     const startRes = await caller.startJob({
@@ -155,7 +157,7 @@ describe('enrichmentApiRouter', () => {
 
     const caller = enrichmentApiRouter.createCaller(nonAiCtx);
     await expect(
-      caller.triggerBatch({
+      caller.trigger({
         libraryId: 'lib-1',
         enrichmentType: 'geo',
         bookIds: ['b1'],
@@ -190,7 +192,7 @@ describe('enrichmentApiRouter', () => {
     };
 
     const caller = enrichmentApiRouter.createCaller(nonAiCtx);
-    await caller.triggerBatch({
+    await caller.trigger({
       libraryId: 'lib-1',
       enrichmentType: 'synopsis',
       bookIds: ['b1'],

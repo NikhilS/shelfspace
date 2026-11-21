@@ -3,7 +3,11 @@ import {render, screen, fireEvent, waitFor} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {ResetMetadataSection} from './ResetMetadataSection';
 import {toast} from 'sonner';
-import {Book} from '../../types';
+import {
+  selectLibraryBooks,
+  useEntityCacheStore,
+} from '../../stores/entityCacheStore';
+import type {Book} from '../../types';
 
 vi.mock('sonner', () => ({
   toast: {
@@ -12,30 +16,50 @@ vi.mock('sonner', () => ({
   },
 }));
 
+const mockUseOnlineStatus = vi.fn(() => true);
+
+vi.mock('../../hooks/useOnlineStatus', () => ({
+  useOnlineStatus: () => mockUseOnlineStatus(),
+}));
+
+const mockInvalidateBookList = vi.fn();
+const mockInvalidateLibraryGet = vi.fn();
+const mockInvalidateGetShelf = vi.fn();
+const mockInvalidateUnreadBooks = vi.fn();
+
 const mockResetMetadata = vi
   .fn<
     (input: {
+      libraryId: string;
       metadataType: string;
-    }) => Promise<{success: boolean; count: number}>
+    }) => Promise<{count: number}>
   >()
   .mockImplementation(({metadataType}) => {
-    if (metadataType === 'genre') {
-      return Promise.resolve({success: true, count: 1});
+    if (
+      metadataType === 'genre' ||
+      metadataType === 'geo' ||
+      metadataType === 'series'
+    ) {
+      return Promise.resolve({count: 1});
     }
-    if (metadataType === 'geo') {
-      return Promise.resolve({success: true, count: 1});
-    }
-    if (metadataType === 'sanitize') {
-      return Promise.resolve({success: true, count: 1});
-    }
-    return Promise.resolve({success: true, count: 0});
+    return Promise.resolve({count: 0});
   });
 
 vi.mock('../../lib/trpc', () => ({
+  trpc: {
+    useUtils: () => ({
+      book: {list: {invalidate: mockInvalidateBookList}},
+      library: {get: {invalidate: mockInvalidateLibraryGet}},
+      readingTracker: {
+        getShelf: {invalidate: mockInvalidateGetShelf},
+        getUnreadLibraryBooks: {invalidate: mockInvalidateUnreadBooks},
+      },
+    }),
+  },
   trpcVanilla: {
     library: {
       resetMetadata: {
-        mutate: vi.fn((input: {metadataType: string}) =>
+        mutate: vi.fn((input: {libraryId: string; metadataType: string}) =>
           mockResetMetadata(input),
         ),
       },
@@ -43,57 +67,73 @@ vi.mock('../../lib/trpc', () => ({
   },
 }));
 
-describe('ResetMetadataSection', () => {
-  const mockBooks: Book[] = [
-    {
-      id: 'book-1',
-      title: 'Dune',
-      addedAt: {} as unknown as Book['addedAt'],
-      addedBy: 'user-1',
-      primaryGenre: 'Science Fiction',
-      subgenres: ['Space Opera'],
-      enrichmentStatus: {
-        genre: 'completed',
-      },
-    } as unknown as Book,
-    {
-      id: 'book-2',
-      title: 'Clean Code',
-      addedAt: {} as unknown as Book['addedAt'],
-      addedBy: 'user-1',
-    } as unknown as Book,
-  ];
+function makeBook(overrides: Partial<Book> & {id: string}): Book {
+  return {
+    title: overrides.title || `Book ${overrides.id}`,
+    author: overrides.author || 'Author',
+    isbn: overrides.isbn || '',
+    addedAt: '2026-01-01T00:00:00.000Z',
+    addedBy: 'user-1',
+    ...overrides,
+  };
+}
 
+describe('ResetMetadataSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseOnlineStatus.mockReturnValue(true);
+    useEntityCacheStore.getState().clearAllEntities();
   });
 
-  it('renders the reset metadata UI with taxonomy genres selected by default', () => {
-    render(<ResetMetadataSection libraryId="lib-123" books={mockBooks} />);
+  it('renders the Reset Book Details card with Genres selected by default and no legacy storage/migration cards', () => {
+    render(<ResetMetadataSection libraryId="lib-123" />);
 
     expect(screen.getByText('Reset Book Details')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', {name: /Reset Taxonomy Genres/i}),
+      screen.getByRole('button', {name: /Reset Genres/i}),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Refresh Catalog Indexes/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Optimize Library Storage/i),
+    ).not.toBeInTheDocument();
   });
 
-  it('successfully resets taxonomy genres across matching books using client bulk writer', async () => {
-    render(<ResetMetadataSection libraryId="lib-123" books={mockBooks} />);
+  it('resets genres across matching books via library.resetMetadata and reconciles useEntityCacheStore', async () => {
+    const sampleBooks: Book[] = [
+      makeBook({
+        id: 'b-1',
+        primaryGenre: 'Science Fiction',
+        subgenres: ['Space Opera'],
+        enrichmentStatus: {genre: 'completed'},
+      }),
+      makeBook({
+        id: 'b-2',
+        primaryGenre: '',
+      }),
+    ];
+    useEntityCacheStore.getState().hydrateLibraryBooks('lib-123', sampleBooks);
 
-    // Click to open confirmation dialog
+    render(<ResetMetadataSection libraryId="lib-123" books={sampleBooks} />);
+
+    expect(
+      screen.getByTestId('reset-metadata-affected-count'),
+    ).toHaveTextContent('1 of 2 books currently include Genres');
+
     const resetBtn = screen.getByRole('button', {
-      name: /Reset Taxonomy Genres/i,
+      name: /Reset Genres/i,
     });
     fireEvent.click(resetBtn);
 
-    // Dialog should open
-    expect(screen.getByText('Confirm Metadata Reset')).toBeInTheDocument();
+    expect(screen.getByText('Confirm Detail Reset')).toBeInTheDocument();
+    expect(
+      screen.getByText(/from 1 book in this library/i),
+    ).toBeInTheDocument();
 
-    // Click confirm in the dialog
     const confirmBtns = screen.getAllByRole('button', {
-      name: /Reset Taxonomy Genres/i,
+      name: /Reset Genres/i,
     });
-    // The dialog's button is the last one
     fireEvent.click(confirmBtns[confirmBtns.length - 1]);
 
     await waitFor(() => {
@@ -101,149 +141,118 @@ describe('ResetMetadataSection', () => {
         libraryId: 'lib-123',
         metadataType: 'genre',
       });
-      expect(toast.success).toHaveBeenCalledWith(
-        'Successfully reset Taxonomy Genres across 1 book.',
-      );
+      expect(toast.success).toHaveBeenCalledWith('Reset Genres across 1 book.');
     });
-    await waitFor(() => {
-      expect(
-        screen.queryByText('Confirm Metadata Reset'),
-      ).not.toBeInTheDocument();
-    });
-  });
+    expect(mockInvalidateGetShelf).toHaveBeenCalledTimes(1);
+    expect(mockInvalidateUnreadBooks).toHaveBeenCalledTimes(1);
 
-  it('handles resetting when 0 books require the reset', async () => {
-    mockResetMetadata.mockResolvedValueOnce({success: true, count: 0});
-    // Only books with no genre metadata
-    const booksWithoutGenre = [mockBooks[1]];
-    render(
-      <ResetMetadataSection libraryId="lib-123" books={booksWithoutGenre} />,
+    const cachedBooks = selectLibraryBooks(
+      useEntityCacheStore.getState(),
+      'lib-123',
     );
+    expect(cachedBooks[0]?.primaryGenre).toBeUndefined();
+    expect(cachedBooks[0]?.enrichmentStatus?.genre).toBeUndefined();
 
-    const resetBtn = screen.getByRole('button', {
-      name: /Reset Taxonomy Genres/i,
-    });
-    fireEvent.click(resetBtn);
-
-    const confirmBtns = screen.getAllByRole('button', {
-      name: /Reset Taxonomy Genres/i,
-    });
-    fireEvent.click(confirmBtns[confirmBtns.length - 1]);
-
-    await waitFor(() => {
-      expect(mockResetMetadata).toHaveBeenCalledWith({
-        libraryId: 'lib-123',
-        metadataType: 'genre',
-      });
-      expect(toast.success).toHaveBeenCalledWith(
-        'Successfully reset Taxonomy Genres across 0 books.',
-      );
-    });
     await waitFor(() => {
       expect(
-        screen.queryByText('Confirm Metadata Reset'),
+        screen.queryByText('Confirm Detail Reset'),
       ).not.toBeInTheDocument();
     });
+    expect(screen.getByText(/Missing Details/i)).toBeInTheDocument();
   });
 
-  it('allows selecting another metadata category to reset', async () => {
-    const geoBook: Book = {
-      id: 'book-3',
-      title: 'Foundation',
-      addedAt: {} as unknown as Book['addedAt'],
-      addedBy: 'user-1',
-      geoMetadata: {
-        isNonEarth: true,
-        locations: [],
-        lastSyncedAt: '2025-01-01',
-      },
-    } as unknown as Book;
+  it('shows live tabular affected book count and disables trigger when 0 books include the selected detail', async () => {
+    const sampleBooks: Book[] = [
+      makeBook({id: 'b-1', primaryGenre: 'History'}),
+      makeBook({id: 'b-2', primaryGenre: 'Literary Fiction'}),
+      makeBook({id: 'b-3'}),
+    ];
 
-    render(<ResetMetadataSection libraryId="lib-123" books={[geoBook]} />);
+    render(<ResetMetadataSection libraryId="lib-123" books={sampleBooks} />);
+
+    expect(
+      screen.getByTestId('reset-metadata-affected-count'),
+    ).toHaveTextContent('2 of 3 books currently include Genres');
+    expect(
+      screen.getByRole('button', {name: /Reset Genres/i}),
+    ).not.toBeDisabled();
 
     const select = screen.getByRole('combobox');
     fireEvent.pointerDown(select, {pointerType: 'mouse', button: 0});
-    const option = await screen.findByText('Settings & Places (Geo Metadata)');
+    const eraOption = await screen.findByText('Historical Eras');
+    fireEvent.click(eraOption);
+
+    expect(
+      screen.getByTestId('reset-metadata-affected-count'),
+    ).toHaveTextContent('No books currently include Historical Eras');
+    expect(
+      screen.getByRole('button', {name: /Reset Historical Eras/i}),
+    ).toBeDisabled();
+  });
+
+  it('disables the reset trigger with Unavailable while offline tooltip when offline', () => {
+    mockUseOnlineStatus.mockReturnValue(false);
+    const sampleBooks: Book[] = [makeBook({id: 'b-1', primaryGenre: 'Sci-Fi'})];
+
+    render(<ResetMetadataSection libraryId="lib-123" books={sampleBooks} />);
+
+    const resetBtn = screen.getByRole('button', {name: /Reset Genres/i});
+    expect(resetBtn).toBeDisabled();
+    expect(resetBtn).toHaveAttribute('title', 'Unavailable while offline');
+  });
+
+  it('handles resetting when 0 books require the reset and books prop is omitted', async () => {
+    mockResetMetadata.mockResolvedValueOnce({count: 0});
+    render(<ResetMetadataSection libraryId="lib-123" />);
+
+    const resetBtn = screen.getByRole('button', {
+      name: /Reset Genres/i,
+    });
+    fireEvent.click(resetBtn);
+
+    const confirmBtns = screen.getAllByRole('button', {
+      name: /Reset Genres/i,
+    });
+    fireEvent.click(confirmBtns[confirmBtns.length - 1]);
+
+    await waitFor(() => {
+      expect(mockResetMetadata).toHaveBeenCalledWith({
+        libraryId: 'lib-123',
+        metadataType: 'genre',
+      });
+      expect(toast.success).toHaveBeenCalledWith(
+        'Reset Genres across 0 books.',
+      );
+    });
+  });
+
+  it('allows selecting another detail category including Series Info to reset', async () => {
+    render(<ResetMetadataSection libraryId="lib-123" />);
+
+    const select = screen.getByRole('combobox');
+    fireEvent.pointerDown(select, {pointerType: 'mouse', button: 0});
+    const option = await screen.findByText('Series Info');
     fireEvent.click(option);
 
     const resetBtn = screen.getByRole('button', {
-      name: /Reset Settings & Places/i,
+      name: /Reset Series Info/i,
     });
     expect(resetBtn).toBeInTheDocument();
     fireEvent.click(resetBtn);
 
     const confirmBtns = screen.getAllByRole('button', {
-      name: /Reset Settings & Places/i,
+      name: /Reset Series Info/i,
     });
     fireEvent.click(confirmBtns[confirmBtns.length - 1]);
 
     await waitFor(() => {
       expect(mockResetMetadata).toHaveBeenCalledWith({
         libraryId: 'lib-123',
-        metadataType: 'geo',
+        metadataType: 'series',
       });
       expect(toast.success).toHaveBeenCalledWith(
-        'Successfully reset Settings & Places across 1 book.',
+        'Reset Series Info across 1 book.',
       );
     });
-  });
-
-  it('detects heavy leaks, renders alert banner, and triggers purge routine', async () => {
-    const leakedBooks: Book[] = [
-      {
-        id: 'book-leaked',
-        title: 'Leaked Book',
-        addedAt: {} as unknown as Book['addedAt'],
-        addedBy: 'user-1',
-        synopsis: 'Massive synopsis text that should be in bookDetails',
-      } as unknown as Book,
-    ];
-
-    render(<ResetMetadataSection libraryId="lib-123" books={leakedBooks} />);
-
-    expect(
-      screen.getByText(
-        /1 book can be optimized for faster search and loading/i,
-      ),
-    ).toBeInTheDocument();
-
-    const purgeBtn = screen.getByRole('button', {
-      name: /Optimize Storage/i,
-    });
-    fireEvent.click(purgeBtn);
-
-    expect(screen.getByText('Optimize Now')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', {name: /Optimize Now/i}));
-
-    await waitFor(() => {
-      expect(mockResetMetadata).toHaveBeenCalledWith({
-        libraryId: 'lib-123',
-        metadataType: 'sanitize',
-      });
-      expect(toast.success).toHaveBeenCalledWith(
-        expect.stringContaining('Optimized 1 books'),
-      );
-    });
-  });
-
-  it('renders hardened confirmation when no books contain leaks', () => {
-    const cleanBooks: Book[] = [
-      {
-        id: 'book-clean',
-        title: 'Clean Book',
-        addedAt: {} as unknown as Book['addedAt'],
-        addedBy: 'user-1',
-        dedupeKey: 'clean book::author',
-        hasSearchTokens: true,
-        bookDetailsMetadata: {hasSynopsis: false},
-      } as unknown as Book,
-    ];
-
-    render(<ResetMetadataSection libraryId="lib-123" books={cleanBooks} />);
-
-    expect(
-      screen.getByText('Library Storage Is Optimized'),
-    ).toBeInTheDocument();
   });
 });
